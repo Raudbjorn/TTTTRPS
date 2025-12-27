@@ -54,6 +54,16 @@ We are moving beyond simple "vector search" to a **Multi-Index Strategy**.
         - Construct a federated query that targets all relevant indexes simultaneously.
         - Add logic to aggregate and categorize results ("Rules", "Lore", "Chat Logs") in the frontend response.
 
+- [ ] **Phase 2.6: DM Conversation Integration**
+    - **Concept**: Leverage Meilisearch's `/chats` endpoint to power the DM conversation, replacing manual RAG.
+    - **Action**:
+        - Configure a **Chat Workspace** in Meilisearch.
+        - Set `prompts.system` to the DM Persona configuration.
+        - Enable specialized tools like `_meiliSearchSources` to automatically cite documents (Rules/Fiction) in replies.
+    - **Integration**:
+        - Update `src-tauri/src/core/llm.rs` to act as a proxy to the Meilisearch Chat API instead of calling OpenAI/Ollama directly (when in "RAG Mode").
+        - This unifies "Searching" and "Chatting" into the same backend logic.
+
 - [ ] **Refactor Ingestion Pipeline**
     - **Modify**: `src-tauri/src/ingestion/mod.rs`
     - **Action**: Instead of calling `vector_store::add` and `keyword_search::add`, call `search_client::add_documents`.
