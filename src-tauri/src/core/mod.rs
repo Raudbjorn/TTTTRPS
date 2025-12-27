@@ -10,3 +10,6 @@ pub mod embedding_pipeline;
 pub mod personality;
 pub mod session_manager;
 pub mod character_gen;
+pub mod npc_gen;
+pub mod voice;
+pub mod audio;
