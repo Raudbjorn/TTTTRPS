@@ -15,6 +15,16 @@ This document contains detailed, actionable tasks to bring the Rust/Tauri implem
 
 # IMPLEMENTATION STATUS SUMMARY
 
+## 🚀 IMMEDIATE FRONTEND ACTION PLAN
+To address user-facing parity efficiently:
+
+1.  **Refactor Design System** (`components/design_system.rs`): Extract inline styles/components from `chat.rs`, `session.rs` into reusable UI primitives (Button, Card, Modal, Badge).
+2.  **Chat Polish** (`components/chat.rs`): Implement Markdown rendering (pulldown-cmark) and syntax highlighting.
+3.  **Visual Feedback**: Add typing indicators and stream simulation (until backend streaming is ready).
+4.  **Campaign Dashboard**: Create the missing dashboard view to aggregate campaign stats and quick actions.
+
+---
+
 ## What's Already Implemented ✅
 
 The Rust implementation has achieved significant feature parity:
@@ -331,12 +341,16 @@ System keyring storage exists.
 Adaptive UI themes exist.
 
 ### 11.2 Design System Polish 🟡
-**File:** `frontend/src/components/design_system.rs` (new)
+**Target:** extract to `frontend/src/components/design_system.rs`
+*Current State:* UI elements are scattered in `chat.rs` and `session.rs`.
 
-- [ ] Create reusable button variants
-- [ ] Create modal/dialog component
-- [ ] Create toast/notification component
-- [ ] Create loading spinner
+- [ ] Create `Button` component (variants: primary, secondary, danger, ghost)
+- [ ] Create `Input` and `Select` components with consistent styling
+- [ ] Create `Modal` component (reusable portal-based dialog)
+- [ ] Create `Card` component (header, body, footer)
+- [ ] Create `Badge` component (for conditions, tags)
+- [ ] Create `LoadingSpinner` component
+- [ ] Refactor existing views to use these primitives
 
 ---
 
