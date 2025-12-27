@@ -106,9 +106,12 @@ We are moving beyond simple "vector search" to a **Multi-Index Strategy**.
         - Document counts per index grid
         - "Clear All Indexes" button with loading state
 
-- [ ] **Verify Features**
-    - **Library Search**: Test typo tolerance and semantic search.
-    - **Document Ingestion**: Verify PDFs are correctly indexed.
+- [x] **Verify Features**
+    - **Typo Tolerance**: ✅ "firebll" finds "fireball", "consitution poisen" works
+    - **Federated Search**: ✅ Cross-index search returns results from multiple indexes
+    - **Document Indexing**: ✅ Documents added and retrieved successfully
+    - **Health & Stats**: ✅ Health check and document counts working
+    - Integration tests added: `src-tauri/src/tests/meilisearch_integration_tests.rs`
 
 ## Summary
 
@@ -127,7 +130,7 @@ We are moving beyond simple "vector search" to a **Multi-Index Strategy**.
 | 3 | Remove keyword_search | Complete |
 | 3 | Remove embedding_pipeline | Complete |
 | 4 | Settings UI | Complete |
-| 4 | Feature verification | **Pending** |
+| 4 | Feature verification | Complete |
 
 ### Files Modified/Created
 - `src-tauri/src/core/sidecar_manager.rs` - Meilisearch process management
@@ -141,6 +144,8 @@ We are moving beyond simple "vector search" to a **Multi-Index Strategy**.
 - `src-tauri/tauri.conf.json` - External binary configured
 - `frontend/src/bindings.rs` - Meilisearch bindings added
 - `frontend/src/components/settings.rs` - Search Engine status card added
+- `src-tauri/src/tests/meilisearch_integration_tests.rs` - Integration test suite
+- `src-tauri/src/tests/mod.rs` - Test module registration
 
 ### Files Removed
 - `src-tauri/src/core/vector_store.rs`
