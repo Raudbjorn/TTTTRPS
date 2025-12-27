@@ -272,6 +272,7 @@ pub fn create_campaign(
         notes: vec![],
         created_at: Utc::now().to_rfc3339(),
         updated_at: Utc::now().to_rfc3339(),
+        settings: Default::default(),
     })
 }
 

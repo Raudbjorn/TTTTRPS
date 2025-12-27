@@ -8,3 +8,5 @@ pub mod keyword_search;
 pub mod hybrid_search;
 pub mod embedding_pipeline;
 pub mod personality;
+pub mod session_manager;
+pub mod character_gen;
