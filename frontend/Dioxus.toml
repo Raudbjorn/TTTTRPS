@@ -12,9 +12,9 @@ watch_path = ["src", "public"]
 port = 3030
 
 [web.resource]
-style = []
+style = ["public/tailwind.css", "public/themes.css"]
 script = []
 
 [web.resource.dev]
-style = []
+style = ["public/tailwind.css", "public/themes.css"]
 script = []

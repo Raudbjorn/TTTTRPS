@@ -98,6 +98,40 @@ check_rust_env() {
     print_success "Tauri CLI installed: $(cargo tauri --version 2>/dev/null || echo 'unknown')"
 }
 
+check_tailwind() {
+    print_section "Checking Tailwind CSS"
+    local TAILWIND_PATH="$PROJECT_ROOT/dev-resources/tailwindcss"
+
+    if [ ! -f "$TAILWIND_PATH" ]; then
+        print_warning "Tailwind CSS standalone binary not found. Downloading..."
+        mkdir -p "$PROJECT_ROOT/dev-resources"
+        curl -sL https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-x64 -o "$TAILWIND_PATH" || { print_error "Failed to download tailwindcss"; exit 1; }
+        chmod +x "$TAILWIND_PATH"
+        print_success "Tailwind CSS downloaded"
+    else
+        print_success "Tailwind CSS binary found"
+    fi
+}
+
+build_css() {
+    print_info "Building Tailwind CSS..."
+    local TAILWIND_PATH="$PROJECT_ROOT/dev-resources/tailwindcss"
+    cd "$FRONTEND_DIR"
+
+    # Create input.css if missing (should exist now but for safety)
+    if [ ! -f "input.css" ]; then
+        echo "@tailwind base; @tailwind components; @tailwind utilities;" > input.css
+    fi
+
+    # Create config if missing
+    if [ ! -f "tailwind.config.js" ]; then
+         echo "module.exports = { content: ['./src/**/*.{rs,html,css}', './dist/**/*.html', './index.html'], theme: { extend: {}, }, plugins: [], }" > tailwind.config.js
+    fi
+
+    "$TAILWIND_PATH" -i input.css -o public/tailwind.css --minify || print_warning "Tailwind build failed"
+    cd "$PROJECT_ROOT"
+}
+
 check_linux_deps() {
     print_section "Checking Linux Dependencies"
 
@@ -122,6 +156,40 @@ check_linux_deps() {
     else
         print_success "Linux dependencies check passed"
     fi
+}
+
+check_tailwind() {
+    print_section "Checking Tailwind CSS"
+    local TAILWIND_PATH="$PROJECT_ROOT/dev-resources/tailwindcss"
+
+    if [ ! -f "$TAILWIND_PATH" ]; then
+        print_warning "Tailwind CSS standalone binary not found. Downloading..."
+        mkdir -p "$PROJECT_ROOT/dev-resources"
+        curl -sL https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-x64 -o "$TAILWIND_PATH" || { print_error "Failed to download tailwindcss"; exit 1; }
+        chmod +x "$TAILWIND_PATH"
+        print_success "Tailwind CSS downloaded"
+    else
+        print_success "Tailwind CSS binary found"
+    fi
+}
+
+build_css() {
+    print_info "Building Tailwind CSS..."
+    local TAILWIND_PATH="$PROJECT_ROOT/dev-resources/tailwindcss"
+    cd "$FRONTEND_DIR"
+
+    # Create input.css if missing
+    if [ ! -f "input.css" ]; then
+        echo "@tailwind base; @tailwind components; @tailwind utilities;" > input.css
+    fi
+
+    # Create config if missing
+    if [ ! -f "tailwind.config.js" ]; then
+         echo "module.exports = { content: ['./src/**/*.{rs,html,css}', './dist/**/*.html', './index.html'], theme: { extend: {}, }, plugins: [], }" > tailwind.config.js
+    fi
+
+    "$TAILWIND_PATH" -i input.css -o public/tailwind.css --minify || print_warning "Tailwind build failed"
+    cd "$PROJECT_ROOT"
 }
 
 build_frontend() {
@@ -296,15 +364,23 @@ case $COMMAND in
              check_rust_env
         fi
         [[ "$OSTYPE" == "linux-gnu"* ]] && check_linux_deps
+        check_tailwind
+        build_css
         run_dev
         ;;
     build)
         check_rust_env
         [[ "$OSTYPE" == "linux-gnu"* ]] && check_linux_deps
+        check_tailwind
+        build_css
+        check_tauri
         build_frontend
         build_desktop
         ;;
     frontend)
+        check_rust_env
+        check_tailwind
+        build_css
         build_frontend
         ;;
     backend)
