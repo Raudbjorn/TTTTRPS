@@ -1,18 +1,20 @@
 pub mod models;
-pub mod vector_store;
 pub mod voice;
 pub mod llm;
 pub mod llm_router;
 pub mod campaign_manager;
 pub mod credentials;
-pub mod keyword_search;
-pub mod hybrid_search;
-pub mod embedding_pipeline;
 pub mod personality;
 pub mod session_manager;
 pub mod character_gen;
 pub mod npc_gen;
 pub mod audio;
+
+// Meilisearch-based search (replaces vector_store, keyword_search, hybrid_search, embedding_pipeline)
+pub mod sidecar_manager;
+pub mod search_client;
+pub mod meilisearch_pipeline;
+pub mod meilisearch_chat;
 
 // Extended feature modules
 pub mod streaming;
@@ -29,5 +31,3 @@ pub mod session_summary;
 pub mod search_analytics;
 pub mod name_gen;
 pub mod voice_queue;
-pub mod sidecar_manager;
-pub mod search_client;

@@ -51,15 +51,12 @@ base64 = "0.22"
 hmac = "0.12"
 pbkdf2 = "0.12"
 flate2 = "1.0"
-# Core Logic Dependencies
-lancedb = "0.4"
-arrow-array = "51.0"
-arrow-schema = "51.0"
 
-# Full-text search
-tantivy = "0.22"
+# Meilisearch for unified search (replaces lancedb + tantivy)
+meilisearch-sdk = "0.31"
+dirs = "6.0"
 
-reqwest = { version = "0.11", features = ["json", "multipart"] }
+reqwest = { version = "0.11", features = ["json", "multipart", "stream"] }
 rodio = "0.19"
 lopdf = "0.32"
 epub = "2.1"
@@ -69,7 +66,7 @@ async-trait = "0.1"
 # Keychain dependencies
 keyring = "2.3"
 tracing = "0.1.44"
-meilisearch-sdk = "0.31.0"
+
 # Platform-specific dependencies
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.54", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_Security", "Win32_Security_Credentials"] }

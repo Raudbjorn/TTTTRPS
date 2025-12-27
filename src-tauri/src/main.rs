@@ -6,7 +6,6 @@
 mod native_features;
 
 use ttrpg_assistant::commands;
-use ttrpg_assistant::core::vector_store::VectorStore;
 use std::sync::Arc;
 use tauri::Manager;
 use native_features::NativeFeaturesState;
@@ -26,38 +25,52 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let handle = app.handle().clone();
-            let state = app.state::<NativeFeaturesState>().inner().clone();
-            let handle_clone = handle.clone();
+
+            // Initialize native features async
+            {
+                let handle = handle.clone();
+                let state = app.state::<NativeFeaturesState>().inner().clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = state.initialize(&handle).await {
+                        eprintln!("Failed to initialize native features: {}", e);
+                    }
+                });
+            }
+
+            // Initialize managers (Meilisearch-based)
+            let (cm, sm, ns, creds, vm, sidecar_manager, search_client, personality_store, pipeline) =
+                commands::AppState::init_defaults();
+
+            // Start Meilisearch Sidecar
+            sidecar_manager.start(handle.clone());
+
+            // Initialize Meilisearch indexes after sidecar starts
+            let sc = search_client.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = state.initialize(&handle_clone).await {
-                    eprintln!("Failed to initialize native features: {}", e);
+                // Wait for Meilisearch to be ready
+                if sc.wait_for_health(10).await {
+                    if let Err(e) = sc.initialize_indexes().await {
+                        log::error!("Failed to initialize Meilisearch indexes: {}", e);
+                    } else {
+                        log::info!("Meilisearch indexes initialized successfully");
+                    }
+                } else {
+                    log::warn!("Meilisearch not ready after 10 seconds - indexes not initialized");
                 }
             });
 
-            // Initialize VectorStore and AppState
-            tauri::async_runtime::block_on(async {
-                let vector_store = VectorStore::with_defaults().await.expect("Failed to initialize VectorStore");
-                vector_store.initialize().await.expect("Failed to create default tables");
-
-                // Initialize managers
-                let (cm, sm, ns, creds, vm, sidecar_manager, search_client, personality_store) = commands::AppState::init_defaults();
-
-                // Start Meilisearch Sidecar
-                sidecar_manager.start(handle.clone());
-
-                app.manage(commands::AppState {
-                    llm_client: std::sync::RwLock::new(None),
-                    llm_config: std::sync::RwLock::new(None),
-                    vector_store: Arc::new(vector_store),
-                    campaign_manager: cm,
-                    session_manager: sm,
-                    npc_store: ns,
-                    credentials: creds,
-                    voice_manager: vm, // vm is now RwLock<VoiceManager>
-                    sidecar_manager,
-                    search_client,
-                    personality_store,
-                });
+            app.manage(commands::AppState {
+                llm_client: std::sync::RwLock::new(None),
+                llm_config: std::sync::RwLock::new(None),
+                campaign_manager: cm,
+                session_manager: sm,
+                npc_store: ns,
+                credentials: creds,
+                voice_manager: vm,
+                sidecar_manager,
+                search_client,
+                personality_store,
+                ingestion_pipeline: pipeline,
             });
 
             Ok(())
@@ -84,7 +97,7 @@ fn main() {
             commands::update_campaign,
             commands::delete_campaign,
 
-            // New Campaign features
+            // Campaign Snapshots
             commands::create_snapshot,
             commands::list_snapshots,
             commands::restore_snapshot,
@@ -129,18 +142,17 @@ fn main() {
             commands::delete_npc,
             commands::search_npcs,
 
-            // Document Ingestion Commands
-            commands::ingest_document, // My custom one
-            commands::ingest_pdf,      // Remote's one (simple version) ?? I might want to keep mine as primary ingest_document
+            // Document Ingestion & Search (Meilisearch)
+            commands::ingest_document,
+            commands::ingest_pdf,
+            commands::search,
+            commands::check_meilisearch_health,
+            commands::reindex_library,
 
-            // Voice Commands (Using MY updated 'speak', but keeping config ones if needed)
+            // Voice Commands
             commands::speak,
             commands::configure_voice,
             commands::get_voice_config,
-            // commands::audio::get_audio_devices, // Logic moved
-            // commands::audio::set_audio_output,
-            // commands::synthesize_voice, // Remote had this, but I refactored to use speak/VoiceManager
-            // commands::get_voice_presets,
 
             // Audio Commands
             commands::get_audio_volumes,
@@ -155,9 +167,6 @@ fn main() {
             // Utility Commands
             commands::get_app_version,
             commands::get_system_info,
-
-            // Search
-            commands::search,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

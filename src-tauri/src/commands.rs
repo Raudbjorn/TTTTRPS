@@ -5,17 +5,15 @@
 use tauri::State;
 use crate::core::voice::{
     VoiceManager, VoiceConfig, VoiceProviderType, ElevenLabsConfig,
-    OllamaConfig, FishAudioConfig, SynthesisRequest, OutputFormat
+    OllamaConfig, SynthesisRequest, OutputFormat
 };
-use crate::ingestion::pdf_parser;
 use crate::core::models::Campaign;
 use std::sync::RwLock;
 use std::path::Path;
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
-use crate::core::vector_store::{VectorStore, VectorStoreConfig};
-use crate::core::embedding_pipeline::{EmbeddingPipeline, PipelineConfig};
 use std::sync::Arc;
+use std::collections::HashMap;
 
 // Core modules
 use crate::core::llm::{LLMConfig, LLMClient, ChatMessage, ChatRequest, MessageRole};
@@ -29,11 +27,12 @@ use crate::core::session_manager::{
 use crate::core::character_gen::{CharacterGenerator, GenerationOptions, Character};
 use crate::core::npc_gen::{NPCGenerator, NPCGenerationOptions, NPC, NPCStore};
 use crate::core::credentials::CredentialManager;
-// Voice imports consolidated above
 use crate::core::audio::AudioVolumes;
 use crate::ingestion::pdf_parser::PDFParser;
-use crate::core::sidecar_manager::SidecarManager;
+use crate::core::sidecar_manager::{SidecarManager, MeilisearchConfig};
 use crate::core::search_client::SearchClient;
+use crate::core::meilisearch_pipeline::MeilisearchPipeline;
+use crate::core::meilisearch_chat::{DMChatManager, ChatMessage as MeiliChatMessage};
 use crate::core::personality::PersonalityStore;
 
 // ============================================================================
@@ -43,7 +42,6 @@ use crate::core::personality::PersonalityStore;
 pub struct AppState {
     pub llm_client: RwLock<Option<LLMClient>>,
     pub llm_config: RwLock<Option<LLMConfig>>,
-    pub vector_store: Arc<VectorStore>,
     pub campaign_manager: CampaignManager,
     pub session_manager: SessionManager,
     pub npc_store: NPCStore,
@@ -52,37 +50,28 @@ pub struct AppState {
     pub sidecar_manager: Arc<SidecarManager>,
     pub search_client: Arc<SearchClient>,
     pub personality_store: Arc<PersonalityStore>,
-}
-
-impl Default for AppState {
-    fn default() -> Self {
-         // This default is not really used as we initialize with VectorStore in main
-         // But to satisfy Default trait if needed (though we likely won't rely on it)
-         // We can't easily create a default VectorStore here without async
-         panic!("AppState must be initialized with VectorStore");
-    }
-}
-
-pub struct AppStateInit {
-    pub llm_client: RwLock<Option<LLMClient>>,
-    pub llm_config: RwLock<Option<LLMConfig>>,
-    pub vector_store: Arc<VectorStore>,
-}
-
-impl AppStateInit {
-
-    pub fn new(vector_store: VectorStore) -> Self {
-        Self {
-            llm_client: RwLock::new(None),
-            llm_config: RwLock::new(None),
-            vector_store: Arc::new(vector_store),
-        }
-    }
+    pub ingestion_pipeline: Arc<MeilisearchPipeline>,
 }
 
 // Helper init for default state components
 impl AppState {
-    pub fn init_defaults() -> (CampaignManager, SessionManager, NPCStore, CredentialManager, RwLock<VoiceManager>, Arc<SidecarManager>, Arc<SearchClient>, Arc<PersonalityStore>) {
+    pub fn init_defaults() -> (
+        CampaignManager,
+        SessionManager,
+        NPCStore,
+        CredentialManager,
+        RwLock<VoiceManager>,
+        Arc<SidecarManager>,
+        Arc<SearchClient>,
+        Arc<PersonalityStore>,
+        Arc<MeilisearchPipeline>,
+    ) {
+        let sidecar_config = MeilisearchConfig::default();
+        let search_client = SearchClient::new(
+            &sidecar_config.url(),
+            Some(&sidecar_config.master_key),
+        );
+
         (
             CampaignManager::new(),
             SessionManager::new(),
@@ -92,9 +81,10 @@ impl AppState {
                 cache_dir: Some(PathBuf::from("./voice_cache")),
                 ..Default::default()
             })),
-            Arc::new(SidecarManager::new()),
-            Arc::new(SearchClient::new("http://localhost:7700", Some("masterKey"))), // TODO: Configurable key
+            Arc::new(SidecarManager::with_config(sidecar_config)),
+            Arc::new(search_client),
             Arc::new(PersonalityStore::new()),
+            Arc::new(MeilisearchPipeline::with_defaults()),
         )
     }
 }
@@ -110,6 +100,9 @@ pub struct ChatRequestPayload {
     pub system_prompt: Option<String>,
     pub personality_id: Option<String>,
     pub context: Option<Vec<String>>,
+    /// Enable RAG mode to route through Meilisearch Chat
+    #[serde(default)]
+    pub use_rag: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -186,11 +179,75 @@ pub async fn chat(
         .clone()
         .ok_or("LLM not configured. Please configure in Settings.")?;
 
-    let client = LLMClient::new(config);
+    // Determine effective system prompt
+    let system_prompt = if let Some(pid) = &payload.personality_id {
+        match state.personality_store.get(pid) {
+            Ok(profile) => profile.to_system_prompt(),
+            Err(_) => payload.system_prompt.clone().unwrap_or_else(|| {
+                "You are a helpful TTRPG Game Master assistant.".to_string()
+            })
+        }
+    } else {
+        payload.system_prompt.clone().unwrap_or_else(|| {
+            "You are a helpful TTRPG Game Master assistant. Help the user with their tabletop RPG questions, \
+             provide rules clarifications, generate content, and assist with running their campaign.".to_string()
+        })
+    };
 
+    // RAG Mode: Route through Meilisearch Chat API
+    if payload.use_rag {
+        let sidecar_config = state.sidecar_manager.config();
+        let dm_chat = DMChatManager::new(
+            &sidecar_config.url(),
+            Some(&sidecar_config.master_key),
+        );
+
+        // Get API key for the configured LLM provider
+        let api_key = match &config {
+            LLMConfig::OpenAI { api_key, .. } => api_key.clone(),
+            LLMConfig::Claude { api_key, .. } => api_key.clone(),
+            LLMConfig::Gemini { api_key, .. } => api_key.clone(),
+            LLMConfig::Ollama { .. } => String::new(), // Ollama doesn't need API key
+        };
+
+        let model = match &config {
+            LLMConfig::OpenAI { model, .. } => model.clone(),
+            LLMConfig::Claude { model, .. } => model.clone(),
+            LLMConfig::Gemini { model, .. } => model.clone(),
+            LLMConfig::Ollama { model, .. } => model.clone(),
+        };
+
+        // Initialize the DM chat workspace (idempotent)
+        if !api_key.is_empty() {
+            dm_chat.initialize(&api_key, Some(&model), Some(&system_prompt)).await
+                .map_err(|e| format!("Failed to initialize RAG: {}", e))?;
+        }
+
+        // Build conversation history
+        let mut meili_messages = vec![];
+        if let Some(context) = &payload.context {
+            for ctx in context {
+                meili_messages.push(MeiliChatMessage::user(ctx));
+            }
+        }
+        meili_messages.push(MeiliChatMessage::user(&payload.message));
+
+        // Send to Meilisearch Chat (with automatic RAG)
+        let response = dm_chat.chat_with_history(meili_messages, &model).await
+            .map_err(|e| format!("RAG chat failed: {}", e))?;
+
+        return Ok(ChatResponsePayload {
+            content: response,
+            model,
+            input_tokens: None, // Meilisearch doesn't report token usage
+            output_tokens: None,
+        });
+    }
+
+    // Standard Mode: Direct LLM call
+    let client = LLMClient::new(config);
     let mut messages = vec![];
 
-    // Add context messages if provided
     if let Some(context) = &payload.context {
         for ctx in context {
             messages.push(ChatMessage {
@@ -200,30 +257,10 @@ pub async fn chat(
         }
     }
 
-    // Add the main message
     messages.push(ChatMessage {
         role: MessageRole::User,
         content: payload.message,
     });
-
-    // Determine effective system prompt
-    let system_prompt = if let Some(pid) = &payload.personality_id {
-        // Try to load personality
-        match state.personality_store.get(pid) {
-            Ok(profile) => profile.to_system_prompt(),
-            Err(_) => {
-                // Fallback if not found
-                 payload.system_prompt.clone().unwrap_or_else(|| {
-                    "You are a helpful TTRPG Game Master assistant.".to_string()
-                })
-            }
-        }
-    } else {
-         payload.system_prompt.clone().unwrap_or_else(|| {
-            "You are a helpful TTRPG Game Master assistant. Help the user with their tabletop RPG questions, \
-             provide rules clarifications, generate content, and assist with running their campaign.".to_string()
-        })
-    };
 
     let request = ChatRequest {
         messages,
@@ -313,13 +350,26 @@ pub fn get_llm_config(state: State<'_, AppState>) -> Result<Option<LLMSettings>,
 }
 
 // ============================================================================
-
 // Document Ingestion Commands
 // ============================================================================
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct IngestOptions {
+    /// Source type: "rules", "fiction", "document", etc.
+    #[serde(default = "default_source_type")]
+    pub source_type: String,
+    /// Campaign ID to associate with
+    pub campaign_id: Option<String>,
+}
+
+fn default_source_type() -> String {
+    "document".to_string()
+}
 
 #[tauri::command]
 pub async fn ingest_document(
     path: String,
+    options: Option<IngestOptions>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     let path_obj = Path::new(&path);
@@ -327,46 +377,25 @@ pub async fn ingest_document(
         return Err(format!("File not found: {}", path));
     }
 
-    // Get LLM config
-    let llm_config = {
-        let guard = state.llm_config.read().map_err(|e| e.to_string())?;
-        guard.clone().ok_or("LLM not configured. Please configure in Settings.")?
-    };
+    let opts = options.unwrap_or(IngestOptions {
+        source_type: "document".to_string(),
+        campaign_id: None,
+    });
 
-    // Create pipeline
-    // Note: VectorStore clone is cheap (Arc internally or we wrap it)
-    // Actually VectorStore struct in vector_store.rs seems to hold Connection which might be cloneable?
-    // Let's check vector_store.rs. It has `conn: Connection` which is lancedb::connection::Connection.
-    // lancedb Connection is usually cheaply cloneable or we can wrap VectorStore in Arc.
-    // In AppState we wrapped it in Arc.
-
-    // We need to create a NEW VectorStore instance or pass the Arc?
-    // EmbeddingPipeline takes VectorStore by value.
-    // We should probably change EmbeddingPipeline to take Arc<VectorStore> or clone the internal connection if possible.
-    // Checking vector_store.rs... `conn` is `lancedb::connection::Connection`.
-    // lancedb::Connection seems to be a wrapper around an inner Arc, so it might be cloneable.
-    // But `VectorStore` struct definition doesn't derive Clone.
-    // We will assume for now we need to change EmbeddingPipeline or perform a workaround.
-    // Workaround: Modify EmbeddingPipeline to accept a potentially shared VectorStore,
-    // OR just instantiate a new VectorStore connection here since it's just a connection to DB.
-
-    // Let's create a fresh VectorStore connection for the pipeline to avoid ownership issues for now,
-    // assuming VectorStore::new is relatively cheap (just opening DB).
-    let vector_store = VectorStore::new(VectorStoreConfig::default()).await
-        .map_err(|e| format!("Failed to connect to vector store: {}", e))?;
-
-    let pipeline = EmbeddingPipeline::new(
-        llm_config,
-        vector_store,
-        PipelineConfig::default(),
-    );
-
-    let result = pipeline.process_file(path_obj, "user_upload").await
+    // Use Meilisearch pipeline for ingestion
+    let result = state.ingestion_pipeline
+        .process_file(
+            &state.search_client,
+            path_obj,
+            &opts.source_type,
+            opts.campaign_id.as_deref(),
+        )
+        .await
         .map_err(|e| format!("Ingestion failed: {}", e))?;
 
     Ok(format!(
-        "Ingested {}: {}/{} chunks stored ({} failed)",
-        result.source, result.stored_chunks, result.total_chunks, result.failed_chunks
+        "Ingested '{}': {} chunks into '{}' index",
+        result.source, result.stored_chunks, result.index_used
     ))
 }
 
@@ -374,51 +403,88 @@ pub async fn ingest_document(
 // Search Commands
 // ============================================================================
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SearchOptions {
+    /// Maximum results to return
+    #[serde(default = "default_limit")]
+    pub limit: usize,
+    /// Source type filter
+    pub source_type: Option<String>,
+    /// Campaign ID filter
+    pub campaign_id: Option<String>,
+    /// Search specific index only
+    pub index: Option<String>,
+}
+
+fn default_limit() -> usize {
+    10
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SearchResultPayload {
+    pub content: String,
+    pub source: String,
+    pub source_type: String,
+    pub page_number: Option<u32>,
+    pub score: f32,
+    pub index: String,
+}
+
 #[tauri::command]
 pub async fn search(
     query: String,
+    options: Option<SearchOptions>,
     state: State<'_, AppState>,
-) -> Result<Vec<String>, String> {
-    // 1. Get embedding for query
-    let (client, config) = {
-        let client_guard = state.llm_client.read().map_err(|e| e.to_string())?;
-        let config_guard = state.llm_config.read().map_err(|e| e.to_string())?;
+) -> Result<Vec<SearchResultPayload>, String> {
+    let opts = options.unwrap_or(SearchOptions {
+        limit: 10,
+        source_type: None,
+        campaign_id: None,
+        index: None,
+    });
 
-        // We need both client and config info (embedded dim)
-        let client = client_guard.as_ref().ok_or("LLM client not initialized")?;
-        // We can't clone client easily if it doesn't derive Clone?
-        // reqwest::Client is cloneable. LLMClient struct definition?
-        // Let's check LLMClient in llm.rs...
-        // `pub struct LLMClient { client: Client, config: LLMConfig }`
-        // It doesn't derive Clone. We might need to construct a new one or make it Clone.
-        // For now, let's construct a temp one from config, it's safer.
-        let config = config_guard.clone().ok_or("LLM not configured")?;
-        (LLMClient::new(config.clone()), config)
+    // Build filter if needed
+    let filter = match (&opts.source_type, &opts.campaign_id) {
+        (Some(st), Some(cid)) => Some(format!("source_type = '{}' AND campaign_id = '{}'", st, cid)),
+        (Some(st), None) => Some(format!("source_type = '{}'", st)),
+        (None, Some(cid)) => Some(format!("campaign_id = '{}'", cid)),
+        (None, None) => None,
     };
 
-    let embedding_resp = client.embed(&query).await
-        .map_err(|e| format!("Failed to generate embedding: {}", e))?;
+    let results = if let Some(index_name) = &opts.index {
+        // Search specific index
+        state.search_client
+            .search(index_name, &query, opts.limit, filter.as_deref())
+            .await
+            .map_err(|e| format!("Search failed: {}", e))?
+    } else {
+        // Federated search across all content indexes
+        let federated = state.search_client
+            .search_all(&query, opts.limit)
+            .await
+            .map_err(|e| format!("Search failed: {}", e))?;
+        federated.results
+    };
 
-    // 2. Search vector store
-    let results = state.vector_store.search(
-        &embedding_resp.embedding,
-        5, // limit
-        None, // no source filter
-    ).await.map_err(|e| format!("Search failed: {}", e))?;
-
-    // 3. Format results
-    let formatted: Vec<String> = results.into_iter()
-        .map(|r| format!(
-            "[{:.2}] {}...\n(Source: {} p.{})",
-            r.score,
-            r.document.content.chars().take(100).collect::<String>(),
-            r.document.source,
-            r.document.page_number.unwrap_or(0)
-        ))
+    // Format results
+    let formatted: Vec<SearchResultPayload> = results
+        .into_iter()
+        .map(|r| SearchResultPayload {
+            content: r.document.content,
+            source: r.document.source,
+            source_type: r.document.source_type,
+            page_number: r.document.page_number,
+            score: r.score,
+            index: r.index,
+        })
         .collect();
 
     Ok(formatted)
 }
+
+// ============================================================================
+// Voice Configuration Commands
+// ============================================================================
 
 #[tauri::command]
 pub fn configure_voice(
@@ -432,10 +498,6 @@ pub fn configure_voice(
                 .map_err(|e| e.to_string())?;
         }
     }
-
-    // Note: For simplicity in this iteration, we re-create the manager with the new config.
-    // In a real app, we might update the existing one.
-    // We also need to retrieve secrets if they are masked.
 
     let mut effective_config = config.clone();
 
@@ -477,7 +539,56 @@ pub fn get_voice_config(state: State<'_, AppState>) -> Result<VoiceConfig, Strin
     }
 }
 
+// ============================================================================
+// Meilisearch Commands
+// ============================================================================
 
+/// Get Meilisearch health status
+#[tauri::command]
+pub async fn check_meilisearch_health(
+    state: State<'_, AppState>,
+) -> Result<MeilisearchStatus, String> {
+    let healthy = state.search_client.health_check().await;
+    let stats = if healthy {
+        state.search_client.get_all_stats().await.ok()
+    } else {
+        None
+    };
+
+    Ok(MeilisearchStatus {
+        healthy,
+        host: state.search_client.host().to_string(),
+        document_counts: stats,
+    })
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MeilisearchStatus {
+    pub healthy: bool,
+    pub host: String,
+    pub document_counts: Option<HashMap<String, u64>>,
+}
+
+/// Reindex all documents (clear and re-ingest)
+#[tauri::command]
+pub async fn reindex_library(
+    index_name: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    if let Some(name) = index_name {
+        state.search_client
+            .clear_index(&name)
+            .await
+            .map_err(|e| format!("Failed to clear index: {}", e))?;
+        Ok(format!("Cleared index '{}'", name))
+    } else {
+        // Clear all indexes
+        for idx in crate::core::search_client::SearchClient::all_indexes() {
+            let _ = state.search_client.clear_index(idx).await;
+        }
+        Ok("Cleared all indexes".to_string())
+    }
+}
 // ============================================================================
 // Character Generation Commands
 // ============================================================================

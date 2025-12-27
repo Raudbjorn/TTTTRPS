@@ -544,6 +544,29 @@ pub async fn get_system_info() -> Result<SystemInfo, String> {
 }
 
 // ============================================================================
+// Meilisearch Types and Commands
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MeilisearchStatus {
+    pub healthy: bool,
+    pub host: String,
+    pub document_counts: Option<std::collections::HashMap<String, u64>>,
+}
+
+pub async fn check_meilisearch_health() -> Result<MeilisearchStatus, String> {
+    invoke_no_args("check_meilisearch_health").await
+}
+
+pub async fn reindex_library(index_name: Option<String>) -> Result<String, String> {
+    #[derive(Serialize)]
+    struct Args {
+        index_name: Option<String>,
+    }
+    invoke("reindex_library", &Args { index_name }).await
+}
+
+// ============================================================================
 // Search Types and Commands
 // ============================================================================
 

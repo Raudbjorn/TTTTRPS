@@ -2,7 +2,8 @@
 use dioxus::prelude::*;
 use crate::bindings::{
     configure_llm, get_llm_config, save_api_key, check_llm_health, LLMSettings, HealthStatus,
-    configure_voice, get_voice_config, VoiceConfig, ElevenLabsConfig, OllamaConfig
+    configure_voice, get_voice_config, VoiceConfig, ElevenLabsConfig, OllamaConfig,
+    check_meilisearch_health, reindex_library, MeilisearchStatus
 };
 use crate::components::design_system::{Button, ButtonVariant, Input, Select, Card, CardHeader, CardBody, Badge, BadgeVariant};
 
@@ -50,6 +51,11 @@ pub fn Settings() -> Element {
     let mut selected_voice_provider = use_signal(|| "Disabled".to_string());
     let mut voice_api_key_or_host = use_signal(|| String::new());
     let mut voice_model_id = use_signal(|| String::new());
+
+    // Meilisearch Signals
+    let mut meili_status = use_signal(|| Option::<MeilisearchStatus>::None);
+    let mut is_reindexing = use_signal(|| false);
+    let mut reindex_status = use_signal(|| String::new());
 
     // Load existing config on mount
     use_effect(move || {
@@ -118,6 +124,11 @@ pub fn Settings() -> Element {
             // Check health
             if let Ok(status) = check_llm_health().await {
                 health_status.set(Some(status));
+            }
+
+            // Check Meilisearch health
+            if let Ok(status) = check_meilisearch_health().await {
+                meili_status.set(Some(status));
             }
         });
     });
@@ -472,6 +483,89 @@ pub fn Settings() -> Element {
                                 option { value: "scifi", "Sci-Fi" }
                                 option { value: "horror", "Horror" }
                                 option { value: "cyberpunk", "Cyberpunk" }
+                            }
+                        }
+                    }
+                }
+
+                Card {
+                    CardHeader {
+                        div {
+                            class: "flex items-center justify-between",
+                            h2 { class: "text-lg font-semibold", "Search Engine" }
+                            if let Some(status) = meili_status.read().as_ref() {
+                                Badge {
+                                    variant: if status.healthy { BadgeVariant::Success } else { BadgeVariant::Error },
+                                    if status.healthy { "Connected" } else { "Offline" }
+                                }
+                            }
+                        }
+                    }
+                    CardBody {
+                        class: "space-y-4",
+                        // Host info
+                        if let Some(status) = meili_status.read().as_ref() {
+                            div {
+                                class: "text-sm text-theme-secondary",
+                                span { class: "font-medium", "Host: " }
+                                span { "{status.host}" }
+                            }
+                        }
+
+                        // Document counts
+                        if let Some(status) = meili_status.read().as_ref() {
+                            if let Some(counts) = &status.document_counts {
+                                div {
+                                    class: "space-y-2",
+                                    h3 { class: "text-sm font-medium text-theme-secondary", "Index Document Counts" }
+                                    div {
+                                        class: "grid grid-cols-2 gap-2 text-sm",
+                                        for (index, count) in counts.iter() {
+                                            div {
+                                                class: "flex justify-between px-2 py-1 bg-theme-secondary rounded",
+                                                span { class: "font-mono", "{index}" }
+                                                span { class: "text-theme-accent", "{count}" }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Reindex status message
+                        if !reindex_status.read().is_empty() {
+                            div {
+                                class: if reindex_status.read().contains("Error") { "text-red-400 text-sm" } else { "text-green-400 text-sm" },
+                                "{reindex_status}"
+                            }
+                        }
+
+                        // Reindex button
+                        div {
+                            class: "pt-2",
+                            Button {
+                                variant: ButtonVariant::Secondary,
+                                loading: *is_reindexing.read(),
+                                onclick: move |_| {
+                                    is_reindexing.set(true);
+                                    reindex_status.set("Re-indexing...".to_string());
+                                    spawn(async move {
+                                        match reindex_library(None).await {
+                                            Ok(msg) => {
+                                                reindex_status.set(msg);
+                                                // Refresh status
+                                                if let Ok(status) = check_meilisearch_health().await {
+                                                    meili_status.set(Some(status));
+                                                }
+                                            }
+                                            Err(e) => {
+                                                reindex_status.set(format!("Error: {}", e));
+                                            }
+                                        }
+                                        is_reindexing.set(false);
+                                    });
+                                },
+                                "Clear All Indexes"
                             }
                         }
                     }
