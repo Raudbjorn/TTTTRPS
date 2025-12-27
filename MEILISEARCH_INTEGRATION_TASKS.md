@@ -2,6 +2,23 @@
 
 This document outlines the step-by-step process to replace the current fragmented search architecture (LanceDB + Tantivy) with a unified Meilisearch Sidecar integration.
 
+## Background & Context
+
+### Goal
+To provide the "Sidecar DM" with a robust, high-performance, and unified search engine that enables AI-powered features (Semantic Search) alongside traditional full-text search (Fuzzy Matching, Typo Tolerance) without the complexity of managing multiple databases.
+
+### The "Sidecar" Architecture
+Instead of embedding a library, the application will manage a background `meilisearch` process (Sidecar). This ensures:
+- **Performance**: Indexing heavy lifting happens in a separate process, keeping the UI responsive.
+- **Isolation**: Crashes in the search engine don't bring down the main app.
+- **Simplicity**: Users install a single "App", and the Sidecar is managed transparently.
+
+### The "Game Changer": Federated Search & Multi-Embedders
+We are moving beyond simple "vector search" to a **Multi-Index Strategy**.
+- **Specialization**: Rules require different semantic understanding than Fan Fiction.
+- **Implementation**: We will define specific "indexes" (e.g., `rules`, `fiction`) and assign them unique **Embedders** (e.g., `text-embedding-3-small` for rules, a narrative model for fiction).
+- **Federated Search**: A single user query will simultaneously search all indexes, and the UI will aggregate results, providing the perfect "Context" for the LLM regardless of the source domain.
+
 ## Phase 1: Preparation & Sidecar Build
 
 - [ ] **Build Custom Meilisearch Binary**
