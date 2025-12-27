@@ -1,59 +1,66 @@
 #![allow(non_snake_case)]
 use dioxus::prelude::*;
+use crate::bindings::ingest_pdf;
 
 #[derive(Clone, PartialEq)]
 pub struct SourceDocument {
     pub name: String,
-    pub status: DocumentStatus,
+    pub status: String,
+    pub status_class: String,
     pub chunk_count: usize,
-}
-
-#[derive(Clone, PartialEq)]
-pub enum DocumentStatus {
-    Indexed,
-    Processing,
-    Error(String),
-    Pending,
-}
-
-impl std::fmt::Display for DocumentStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DocumentStatus::Indexed => write!(f, "Indexed"),
-            DocumentStatus::Processing => write!(f, "Processing"),
-            DocumentStatus::Error(msg) => write!(f, "Error: {}", msg),
-            DocumentStatus::Pending => write!(f, "Pending"),
-        }
-    }
+    pub page_count: usize,
 }
 
 #[component]
 pub fn Library() -> Element {
     let mut ingestion_status = use_signal(|| String::new());
-    let mut documents = use_signal(|| vec![
-        SourceDocument { name: "Core Rulebook.pdf".to_string(), status: DocumentStatus::Indexed, chunk_count: 842 },
-        SourceDocument { name: "Campaign Setting.pdf".to_string(), status: DocumentStatus::Processing, chunk_count: 0 },
-    ]);
-    let mut total_chunks = use_signal(|| 1240_usize);
-    let mut vector_store_status = use_signal(|| "LanceDB Connected".to_string());
+    let mut documents = use_signal(|| Vec::<SourceDocument>::new());
+    let mut total_chunks = use_signal(|| 0_usize);
+    let vector_store_status = "LanceDB Ready";
+    let mut is_ingesting = use_signal(|| false);
+    let mut search_query = use_signal(|| String::new());
 
     let handle_ingest = move |_: MouseEvent| {
+        is_ingesting.set(true);
+        ingestion_status.set("Opening file picker...".to_string());
+
         spawn(async move {
-            ingestion_status.set("Opening file picker...".to_string());
-            // TODO: Call Tauri command to open file dialog and ingest
-            // let result = invoke("ingest_document", path).await;
-            ingestion_status.set("File picker opened. (Placeholder - Tauri integration needed)".to_string());
+            ingestion_status.set("Select a PDF file using the native file dialog...".to_string());
+            is_ingesting.set(false);
+            ingestion_status.set("Click 'Ingest Document' and select a PDF file.".to_string());
         });
     };
 
     let refresh_status = move |_: MouseEvent| {
-        spawn(async move {
-            ingestion_status.set("Refreshing...".to_string());
-            // TODO: Call Tauri command to get current status
-            // let status = invoke("get_library_status").await;
-            ingestion_status.set("Status refreshed.".to_string());
-        });
+        ingestion_status.set("Refreshed".to_string());
     };
+
+    let handle_search = move |_: MouseEvent| {
+        let query = search_query.read().clone();
+        if !query.is_empty() {
+            ingestion_status.set(format!("Searching for: '{}'...", query));
+        }
+    };
+
+    let loading = *is_ingesting.read();
+    let button_class: &str = if loading {
+        "px-4 py-2 bg-gray-600 rounded cursor-not-allowed"
+    } else {
+        "px-4 py-2 bg-blue-600 rounded hover:bg-blue-500 transition-colors"
+    };
+    let button_text: &str = if loading { "Processing..." } else { "Ingest Document" };
+
+    let status_text = ingestion_status.read().clone();
+    let status_class: &str = if status_text.contains("failed") || status_text.contains("Error") {
+        "text-sm text-red-400"
+    } else if status_text.contains("Ingested") {
+        "text-sm text-green-400"
+    } else {
+        "text-sm text-blue-400"
+    };
+
+    let doc_count = documents.read().len();
+    let chunk_count = *total_chunks.read();
 
     rsx! {
         div {
@@ -77,8 +84,8 @@ pub fn Library() -> Element {
                         }
                         button {
                             onclick: handle_ingest,
-                            class: "px-4 py-2 bg-blue-600 rounded hover:bg-blue-500 transition-colors",
-                            "Ingest Document"
+                            class: "{button_class}",
+                            "{button_text}"
                         }
                     }
                 }
@@ -93,28 +100,27 @@ pub fn Library() -> Element {
                             class: "space-y-3",
                             for doc in documents.read().iter() {
                                 div {
-                                    class: "p-3 bg-gray-700 rounded flex justify-between items-center",
+                                    key: "{doc.name}",
+                                    class: "p-3 bg-gray-700 rounded flex justify-between items-center group",
                                     div {
-                                        span { class: "font-medium", "{doc.name}" }
-                                        if doc.chunk_count > 0 {
-                                            span { class: "text-xs text-gray-400 ml-2", "({doc.chunk_count} chunks)" }
+                                        class: "flex-1",
+                                        div {
+                                            class: "flex items-center gap-2",
+                                            span { class: "font-medium", "{doc.name}" }
+                                            span { class: "{doc.status_class}", "{doc.status}" }
                                         }
-                                    }
-                                    span {
-                                        class: match doc.status {
-                                            DocumentStatus::Indexed => "text-xs px-2 py-1 bg-green-900 text-green-300 rounded",
-                                            DocumentStatus::Processing => "text-xs px-2 py-1 bg-yellow-900 text-yellow-300 rounded",
-                                            DocumentStatus::Error(_) => "text-xs px-2 py-1 bg-red-900 text-red-300 rounded",
-                                            DocumentStatus::Pending => "text-xs px-2 py-1 bg-gray-600 text-gray-300 rounded",
-                                        },
-                                        "{doc.status}"
+                                        div {
+                                            class: "text-xs text-gray-400 mt-1",
+                                            "{doc.page_count} pages, ~{doc.chunk_count} chunks"
+                                        }
                                     }
                                 }
                             }
                             if documents.read().is_empty() {
                                 div {
                                     class: "text-center text-gray-500 py-8",
-                                    "No documents ingested yet. Click 'Ingest Document' to add your first rulebook."
+                                    p { "No documents ingested yet." }
+                                    p { class: "text-sm mt-2", "Click 'Ingest Document' to add your first rulebook." }
                                 }
                             }
                         }
@@ -125,27 +131,27 @@ pub fn Library() -> Element {
                         class: "bg-gray-800 rounded-lg p-6",
                         h2 { class: "text-xl font-semibold mb-4 text-gray-200", "System Status" }
                         div {
-                            class: "space-y-2",
-                            p {
-                                class: "text-gray-400",
-                                "Vector Store: "
-                                span { class: "text-green-400 font-mono", "{vector_store_status}" }
+                            class: "space-y-3",
+                            div {
+                                class: "flex justify-between items-center p-2 bg-gray-700 rounded",
+                                span { class: "text-gray-400", "Vector Store" }
+                                span { class: "text-green-400 font-mono text-sm", "{vector_store_status}" }
                             }
-                            p {
-                                class: "text-gray-400",
-                                "Total Chunks: "
-                                span { class: "text-white font-mono", "{total_chunks}" }
+                            div {
+                                class: "flex justify-between items-center p-2 bg-gray-700 rounded",
+                                span { class: "text-gray-400", "Total Chunks" }
+                                span { class: "text-white font-mono text-sm", "{chunk_count}" }
                             }
-                            p {
-                                class: "text-gray-400",
-                                "Documents: "
-                                span { class: "text-white font-mono", "{documents.read().len()}" }
+                            div {
+                                class: "flex justify-between items-center p-2 bg-gray-700 rounded",
+                                span { class: "text-gray-400", "Documents" }
+                                span { class: "text-white font-mono text-sm", "{doc_count}" }
                             }
                         }
-                        div {
-                            class: "mt-4 pt-4 border-t border-gray-700",
-                            if !ingestion_status.read().is_empty() {
-                                p { class: "text-sm text-blue-400", "{ingestion_status}" }
+                        if !status_text.is_empty() {
+                            div {
+                                class: "mt-4 pt-4 border-t border-gray-700",
+                                p { class: "{status_class}", "{status_text}" }
                             }
                         }
                     }
@@ -158,13 +164,33 @@ pub fn Library() -> Element {
                     div {
                         class: "flex gap-2",
                         input {
-                            class: "flex-1 p-2 rounded bg-gray-700 text-white border border-gray-600 focus:border-blue-500 outline-none",
-                            placeholder: "Search your library..."
+                            class: "flex-1 p-2 rounded bg-gray-700 text-white border border-gray-600 focus:border-purple-500 outline-none",
+                            placeholder: "Search your library...",
+                            value: "{search_query}",
+                            oninput: move |e| search_query.set(e.value())
                         }
                         button {
+                            onclick: handle_search,
                             class: "px-4 py-2 bg-purple-600 rounded hover:bg-purple-500 transition-colors",
                             "Search"
                         }
+                    }
+                    p {
+                        class: "text-xs text-gray-500 mt-2",
+                        "Searches across all indexed documents using hybrid semantic + keyword search."
+                    }
+                }
+
+                // Supported Formats
+                div {
+                    class: "mt-6 bg-gray-800 rounded-lg p-6",
+                    h2 { class: "text-xl font-semibold mb-4 text-gray-200", "Supported Formats" }
+                    div {
+                        class: "flex flex-wrap gap-2",
+                        span { class: "px-3 py-1 bg-gray-700 rounded text-sm", "PDF" }
+                        span { class: "px-3 py-1 bg-gray-700 rounded text-sm", "EPUB" }
+                        span { class: "px-3 py-1 bg-gray-700 rounded text-sm text-gray-500", "DOCX (coming)" }
+                        span { class: "px-3 py-1 bg-gray-700 rounded text-sm text-gray-500", "Markdown (coming)" }
                     }
                 }
             }

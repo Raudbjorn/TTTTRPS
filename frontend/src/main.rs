@@ -2,6 +2,8 @@
 
 use dioxus::prelude::*;
 
+pub mod bindings;
+
 mod components {
     pub mod chat;
     pub mod settings;

@@ -6,9 +6,7 @@
 mod native_features;
 
 use ttrpg_assistant::commands;
-
 use tauri::Manager;
-use std::sync::Mutex as StdMutex;
 use native_features::NativeFeaturesState;
 
 fn main() {
@@ -36,31 +34,92 @@ fn main() {
         })
         // Native features (DragDrop, Dialogs)
         .manage(NativeFeaturesState::new())
-        // New AppState
-        .manage(commands::AppState {
-            llm_client: StdMutex::new(None),
-            llm_config: StdMutex::new(None),
-        })
+        // Application state
+        .manage(commands::AppState::default())
         .invoke_handler(tauri::generate_handler![
+            // Native features
             native_features::show_native_file_dialog,
             native_features::show_save_dialog,
             native_features::send_native_notification,
             native_features::handle_drag_drop_event,
+
             // LLM Commands
             commands::configure_llm,
             commands::chat,
             commands::check_llm_health,
             commands::get_llm_config,
-            // Document Commands
-            commands::ingest_document,
-            commands::search,
-            // Character Commands
-            commands::generate_character,
+
             // Campaign Commands
-            commands::create_campaign,
             commands::list_campaigns,
+            commands::create_campaign,
             commands::get_campaign,
+            commands::update_campaign,
             commands::delete_campaign,
+            commands::create_snapshot,
+            commands::list_snapshots,
+            commands::restore_snapshot,
+            commands::export_campaign,
+            commands::import_campaign,
+
+            // Campaign Notes Commands
+            commands::add_campaign_note,
+            commands::get_campaign_notes,
+            commands::search_campaign_notes,
+            commands::delete_campaign_note,
+
+            // Session Commands
+            commands::start_session,
+            commands::get_session,
+            commands::get_active_session,
+            commands::list_sessions,
+            commands::end_session,
+
+            // Combat Commands
+            commands::start_combat,
+            commands::end_combat,
+            commands::get_combat,
+            commands::add_combatant,
+            commands::remove_combatant,
+            commands::next_turn,
+            commands::get_current_combatant,
+            commands::damage_combatant,
+            commands::heal_combatant,
+            commands::add_condition,
+            commands::remove_condition,
+
+            // Character Generation Commands
+            commands::generate_character,
+            commands::get_supported_systems,
+
+            // NPC Commands
+            commands::generate_npc,
+            commands::get_npc,
+            commands::list_npcs,
+            commands::update_npc,
+            commands::delete_npc,
+            commands::search_npcs,
+
+            // Document Ingestion Commands
+            commands::ingest_pdf,
+
+            // Voice Commands
+            commands::configure_voice,
+            commands::synthesize_voice,
+            commands::get_voice_presets,
+
+            // Audio Commands
+            commands::get_audio_volumes,
+            commands::get_sfx_categories,
+
+            // Credential Commands
+            commands::save_api_key,
+            commands::get_api_key,
+            commands::delete_api_key,
+            commands::list_stored_providers,
+
+            // Utility Commands
+            commands::get_app_version,
+            commands::get_system_info,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

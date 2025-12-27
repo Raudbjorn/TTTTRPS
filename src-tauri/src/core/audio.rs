@@ -6,7 +6,6 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
-use std::time::Duration;
 use std::collections::HashMap;
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
 use serde::{Deserialize, Serialize};
@@ -99,7 +98,7 @@ pub struct AudioPlayer {
     volumes: Arc<RwLock<AudioVolumes>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AudioVolumes {
     pub master: f32,
     pub voice: f32,

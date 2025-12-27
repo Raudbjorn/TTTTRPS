@@ -6,7 +6,7 @@
 //! - System TTS (fallback)
 
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use thiserror::Error;
 use reqwest::Client;
 use tokio::fs;
@@ -158,6 +158,7 @@ pub struct SynthesisResult {
 // Voice Client
 // ============================================================================
 
+#[derive(Clone)]
 pub struct VoiceClient {
     config: VoiceConfig,
     http_client: Client,
