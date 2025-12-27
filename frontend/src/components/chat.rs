@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 use dioxus::prelude::*;
-use crate::bindings::{chat, ChatRequestPayload, check_llm_health};
+use crate::bindings::{chat, ChatRequestPayload, check_llm_health, get_session_usage, SessionUsage};
 
 #[derive(Clone, PartialEq)]
 pub struct Message {
@@ -21,6 +21,13 @@ pub fn Chat() -> Element {
     ]);
     let mut is_loading = use_signal(|| false);
     let mut llm_status = use_signal(|| "Checking...".to_string());
+    let mut session_usage = use_signal(|| SessionUsage {
+        session_input_tokens: 0,
+        session_output_tokens: 0,
+        session_requests: 0,
+        session_cost_usd: 0.0,
+    });
+    let mut show_usage_panel = use_signal(|| false);
 
     // Check LLM health on mount
     use_effect(move || {
@@ -39,6 +46,7 @@ pub fn Chat() -> Element {
             }
         });
     });
+
 
     let send_message = move |_: MouseEvent| {
         let msg = message_input.read().clone();
@@ -69,6 +77,10 @@ pub fn Chat() -> Element {
                                 _ => None,
                             },
                         });
+                        // Update session usage
+                        if let Ok(usage) = get_session_usage().await {
+                            session_usage.set(usage);
+                        }
                     }
                     Err(e) => {
                         messages.write().push(Message {
@@ -112,6 +124,10 @@ pub fn Chat() -> Element {
                                     _ => None,
                                 },
                             });
+                            // Update session usage
+                            if let Ok(usage) = get_session_usage().await {
+                                session_usage.set(usage);
+                            }
                         }
                         Err(e) => {
                             messages.write().push(Message {
@@ -125,6 +141,14 @@ pub fn Chat() -> Element {
                 });
             }
         }
+    };
+
+    let usage = session_usage.read();
+    let total_tokens = usage.session_input_tokens + usage.session_output_tokens;
+    let cost_display = if usage.session_cost_usd < 0.01 {
+        format!("<$0.01")
+    } else {
+        format!("${:.2}", usage.session_cost_usd)
     };
 
     rsx! {
@@ -142,11 +166,61 @@ pub fn Chat() -> Element {
                     }
                 }
                 div {
-                    class: "flex gap-4",
+                    class: "flex items-center gap-4",
+                    // Usage indicator
+                    button {
+                        class: "flex items-center gap-2 text-xs px-2 py-1 bg-gray-700 rounded hover:bg-gray-600",
+                        onclick: move |_| {
+                            let current = *show_usage_panel.read();
+                            show_usage_panel.set(!current);
+                        },
+                        span { class: "text-gray-400", "{total_tokens} tokens" }
+                        span { class: "text-green-400", "{cost_display}" }
+                    }
+                    Link { to: crate::Route::Campaigns {}, class: "text-gray-300 hover:text-white", "Campaigns" }
+                    Link { to: crate::Route::CharacterCreator {}, class: "text-gray-300 hover:text-white", "Characters" }
                     Link { to: crate::Route::Library {}, class: "text-gray-300 hover:text-white", "Library" }
                     Link { to: crate::Route::Settings {}, class: "text-gray-300 hover:text-white", "Settings" }
                 }
             }
+
+            // Usage Panel (collapsible)
+            if *show_usage_panel.read() {
+                div {
+                    class: "p-3 bg-gray-800 border-b border-gray-700",
+                    div {
+                        class: "max-w-4xl mx-auto",
+                        div {
+                            class: "flex justify-between items-center text-sm",
+                            div {
+                                class: "flex gap-6",
+                                div {
+                                    span { class: "text-gray-400", "Input: " }
+                                    span { class: "text-white font-mono", "{usage.session_input_tokens}" }
+                                }
+                                div {
+                                    span { class: "text-gray-400", "Output: " }
+                                    span { class: "text-white font-mono", "{usage.session_output_tokens}" }
+                                }
+                                div {
+                                    span { class: "text-gray-400", "Requests: " }
+                                    span { class: "text-white font-mono", "{usage.session_requests}" }
+                                }
+                                div {
+                                    span { class: "text-gray-400", "Est. Cost: " }
+                                    span { class: "text-green-400 font-mono", "${usage.session_cost_usd:.4}" }
+                                }
+                            }
+                            button {
+                                class: "text-gray-500 hover:text-white text-xs",
+                                onclick: move |_| show_usage_panel.set(false),
+                                "Close"
+                            }
+                        }
+                    }
+                }
+            }
+
             // Message Area
             div {
                 class: "flex-1 p-4 overflow-y-auto space-y-4",
@@ -185,7 +259,7 @@ pub fn Chat() -> Element {
             div {
                 class: "p-4 bg-gray-800 border-t border-gray-700",
                 div {
-                    class: "flex gap-2",
+                    class: "flex gap-2 max-w-4xl mx-auto",
                     input {
                         class: "flex-1 p-2 rounded bg-gray-700 text-white border border-gray-600 focus:border-blue-500 outline-none",
                         placeholder: "Ask the DM...",

@@ -486,3 +486,98 @@ pub async fn get_app_version() -> Result<String, String> {
 pub async fn get_system_info() -> Result<SystemInfo, String> {
     invoke_no_args("get_system_info").await
 }
+
+// ============================================================================
+// Search Types and Commands
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchQuery {
+    pub query: String,
+    pub search_type: String,  // "hybrid", "semantic", "keyword"
+    pub limit: Option<usize>,
+    pub source_filter: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchResult {
+    pub id: String,
+    pub content: String,
+    pub source: String,
+    pub score: f32,
+    pub metadata: Option<std::collections::HashMap<String, String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchResponse {
+    pub results: Vec<SearchResult>,
+    pub query_time_ms: u64,
+    pub total_results: usize,
+}
+
+pub async fn search(query: SearchQuery) -> Result<SearchResponse, String> {
+    #[derive(Serialize)]
+    struct Args {
+        query: SearchQuery,
+    }
+    invoke("search", &Args { query }).await
+}
+
+pub async fn semantic_search(query: String, limit: usize) -> Result<Vec<SearchResult>, String> {
+    #[derive(Serialize)]
+    struct Args {
+        query: String,
+        limit: usize,
+    }
+    invoke("semantic_search", &Args { query, limit }).await
+}
+
+pub async fn keyword_search(query: String, limit: usize) -> Result<Vec<SearchResult>, String> {
+    #[derive(Serialize)]
+    struct Args {
+        query: String,
+        limit: usize,
+    }
+    invoke("keyword_search", &Args { query, limit }).await
+}
+
+// ============================================================================
+// Usage Tracking Types and Commands
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UsageStats {
+    pub total_input_tokens: u64,
+    pub total_output_tokens: u64,
+    pub total_requests: u32,
+    pub estimated_cost_usd: f64,
+    pub provider_breakdown: std::collections::HashMap<String, ProviderUsage>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ProviderUsage {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub requests: u32,
+    pub estimated_cost_usd: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionUsage {
+    pub session_input_tokens: u64,
+    pub session_output_tokens: u64,
+    pub session_requests: u32,
+    pub session_cost_usd: f64,
+}
+
+pub async fn get_usage_stats() -> Result<UsageStats, String> {
+    invoke_no_args("get_usage_stats").await
+}
+
+pub async fn get_session_usage() -> Result<SessionUsage, String> {
+    invoke_no_args("get_session_usage").await
+}
+
+pub async fn reset_usage_stats() -> Result<(), String> {
+    invoke_no_args("reset_usage_stats").await
+}
