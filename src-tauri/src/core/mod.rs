@@ -4,3 +4,5 @@ pub mod llm;
 pub mod llm_router;
 pub mod campaign_manager;
 pub mod credentials;
+pub mod keyword_search;
+pub mod hybrid_search;
