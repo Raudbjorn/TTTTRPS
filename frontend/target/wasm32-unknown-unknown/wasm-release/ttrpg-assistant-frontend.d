@@ -1,0 +1,1 @@
+/home/svnbjrn/dev/TTTRPS/frontend/target/wasm32-unknown-unknown/wasm-release/ttrpg-assistant-frontend.wasm: /home/svnbjrn/dev/TTTRPS/frontend/src/components/chat.rs /home/svnbjrn/dev/TTTRPS/frontend/src/components/library.rs /home/svnbjrn/dev/TTTRPS/frontend/src/components/settings.rs /home/svnbjrn/dev/TTTRPS/frontend/src/main.rs

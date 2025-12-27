@@ -1,0 +1,71 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/tooling/cli/schema.json",
+  "codesigning": {
+    "windows": {
+      "certificatePath": "${WINDOWS_CERTIFICATE_PATH:-}",
+      "certificatePassword": "${WINDOWS_CERTIFICATE_PASSWORD:-}",
+      "timestampUrl": "http://timestamp.digicert.com",
+      "digestAlgorithm": "sha256"
+    },
+    "macos": {
+      "identity": "${MACOS_SIGNING_IDENTITY:-Developer ID Application: Your Name (TEAM_ID)}",
+      "entitlements": "entitlements.plist",
+      "notarization": {
+        "appleId": "${APPLE_ID:-}",
+        "password": "${APPLE_PASSWORD:-}",
+        "teamId": "${APPLE_TEAM_ID:-}",
+        "ascProvider": "${ASC_PROVIDER:-}"
+      },
+      "hardenedRuntime": true
+    },
+    "linux": {
+      "gpgKey": "${GPG_KEY_ID:-}",
+      "gpgPassphrase": "${GPG_PASSPHRASE:-}",
+      "signDebPackages": true,
+      "signRpmPackages": true,
+      "signAppImagePackages": true
+    }
+  },
+  "environment": {
+    "requiredVariables": {
+      "production": [
+        "TAURI_SIGNING_PRIVATE_KEY",
+        "TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+      ],
+      "windows": [
+        "WINDOWS_CERTIFICATE_PATH",
+        "WINDOWS_CERTIFICATE_PASSWORD"
+      ],
+      "macos": [
+        "MACOS_SIGNING_IDENTITY",
+        "APPLE_ID",
+        "APPLE_PASSWORD",
+        "APPLE_TEAM_ID"
+      ],
+      "linux": [
+        "GPG_KEY_ID"
+      ]
+    },
+    "optionalVariables": [
+      "UPDATE_URL",
+      "TAURI_STRONGHOLD_PASSWORD",
+      "ASC_PROVIDER"
+    ]
+  },
+  "validation": {
+    "certificates": {
+      "checkExpiration": true,
+      "warningDays": 30
+    },
+    "keys": {
+      "checkPrivateKey": true,
+      "validateFormat": true
+    }
+  },
+  "security": {
+    "keyStorage": "environment",
+    "certificateStorage": "secure",
+    "useHardwareSecurityModule": false,
+    "enableTamperProtection": true
+  }
+}

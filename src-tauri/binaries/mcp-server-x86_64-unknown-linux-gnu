@@ -1,0 +1,17 @@
+#!/bin/bash
+# MCP Server wrapper for development
+# This script launches the Python MCP server
+
+# Use absolute path for development - this is the MDMAI project root
+PROJECT_ROOT="/home/svnbjrn/dev/MDMAI"
+
+if [ ! -d "$PROJECT_ROOT/src" ]; then
+    echo "[SIDECAR] ERROR: src/ directory not found at $PROJECT_ROOT" >&2
+    exit 1
+fi
+
+cd "$PROJECT_ROOT"
+
+# Ensure MCP_STDIO_MODE is exported and exec the Python server
+export MCP_STDIO_MODE="${MCP_STDIO_MODE:-true}"
+exec /usr/bin/uv run python -m src.main "$@"

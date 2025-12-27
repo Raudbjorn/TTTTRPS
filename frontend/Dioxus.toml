@@ -1,0 +1,19 @@
+[application]
+name = "ttrpg-assistant-frontend"
+default_platform = "web"
+
+[web.app]
+title = "TTRPG Assistant"
+base_path = "/"
+
+[web.watcher]
+reload_html = true
+watch_path = ["src", "public"]
+
+[web.resource]
+style = []
+script = []
+
+[web.resource.dev]
+style = []
+script = []
