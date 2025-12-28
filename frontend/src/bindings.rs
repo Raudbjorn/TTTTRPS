@@ -207,12 +207,29 @@ pub async fn list_stored_providers() -> Result<Vec<String>, String> {
 // Document Commands
 // ============================================================================
 
+/// Parse PDF and return stats (does NOT index)
 pub async fn ingest_pdf(path: String) -> Result<IngestResult, String> {
     #[derive(Serialize)]
     struct Args {
         path: String,
     }
     invoke("ingest_pdf", &Args { path }).await
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IngestOptions {
+    pub source_type: String,
+    pub campaign_id: Option<String>,
+}
+
+/// Ingest document into Meilisearch (indexes the content)
+pub async fn ingest_document(path: String, options: Option<IngestOptions>) -> Result<String, String> {
+    #[derive(Serialize)]
+    struct Args {
+        path: String,
+        options: Option<IngestOptions>,
+    }
+    invoke("ingest_document", &Args { path, options }).await
 }
 
 // ============================================================================
@@ -601,7 +618,7 @@ pub async fn search(query: String, options: Option<SearchOptions>) -> Result<Vec
     invoke("search", &Args { query, options }).await
 }
 
-pub async fn semantic_search(query: String, limit: usize) -> Result<Vec<SearchResult>, String> {
+pub async fn semantic_search(query: String, limit: usize) -> Result<Vec<SearchResultPayload>, String> {
     #[derive(Serialize)]
     struct Args {
         query: String,
@@ -610,7 +627,7 @@ pub async fn semantic_search(query: String, limit: usize) -> Result<Vec<SearchRe
     invoke("semantic_search", &Args { query, limit }).await
 }
 
-pub async fn keyword_search(query: String, limit: usize) -> Result<Vec<SearchResult>, String> {
+pub async fn keyword_search(query: String, limit: usize) -> Result<Vec<SearchResultPayload>, String> {
     #[derive(Serialize)]
     struct Args {
         query: String,

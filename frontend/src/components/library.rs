@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 use dioxus::prelude::*;
-use crate::bindings::{ingest_pdf, search, get_vector_store_status, SearchOptions};
+use crate::bindings::{ingest_pdf, ingest_document, search, IngestOptions, SearchOptions, check_meilisearch_health};
 
 #[derive(Clone, PartialEq)]
 pub struct SourceDocument {
@@ -17,8 +17,21 @@ pub fn Library() -> Element {
     let mut documents = use_signal(|| Vec::<SourceDocument>::new());
     let mut total_chunks = use_signal(|| 0_usize);
 
+    // Fetch Meilisearch status
     let status_resource = use_resource(move || async move {
-        get_vector_store_status().await.unwrap_or_else(|e| format!("Error: {}", e))
+        match check_meilisearch_health().await {
+            Ok(status) => {
+                if status.healthy {
+                    format!("Meilisearch: {} docs",
+                        status.document_counts.as_ref()
+                            .map(|c| c.values().sum::<u64>().to_string())
+                            .unwrap_or_else(|| "0".to_string()))
+                } else {
+                    "Meilisearch: Offline".to_string()
+                }
+            }
+            Err(e) => format!("Error: {}", e)
+        }
     });
 
     let current_status = status_resource.read().clone().unwrap_or_else(|| "Checking...".to_string());
@@ -33,27 +46,52 @@ pub fn Library() -> Element {
     let _process_file = move |path: String| {
         is_ingesting.set(true);
         let filename = path.split('/').last().unwrap_or(&path).to_string();
-        ingestion_status.set(format!("Ingesting {}...", filename));
+        ingestion_status.set(format!("Parsing {}...", filename));
 
         spawn(async move {
+            // Step 1: Parse the PDF to get stats
             match ingest_pdf(path.clone()).await {
                 Ok(result) => {
-                    let doc = SourceDocument {
-                        name: result.source_name.clone(),
-                        status: "Ready".to_string(),
-                        status_class: "text-green-400 text-xs".to_string(),
-                        chunk_count: result.character_count / 500, // Approximate chunks
-                        page_count: result.page_count,
+                    ingestion_status.set(format!("Indexing {} to Meilisearch...", result.source_name));
+
+                    // Step 2: Index the document into Meilisearch
+                    let options = IngestOptions {
+                        source_type: "documents".to_string(),
+                        campaign_id: None,
                     };
-                    documents.write().push(doc);
-                    *total_chunks.write() += result.character_count / 500;
-                    ingestion_status.set(format!(
-                        "Ingested {} ({} pages, {} chars)",
-                        result.source_name, result.page_count, result.character_count
-                    ));
+
+                    match ingest_document(path.clone(), Some(options)).await {
+                        Ok(_index_result) => {
+                            let doc = SourceDocument {
+                                name: result.source_name.clone(),
+                                status: "Indexed".to_string(),
+                                status_class: "text-green-400 text-xs".to_string(),
+                                chunk_count: result.character_count / 500, // Approximate chunks
+                                page_count: result.page_count,
+                            };
+                            documents.write().push(doc);
+                            *total_chunks.write() += result.character_count / 500;
+                            ingestion_status.set(format!(
+                                "Indexed {} ({} pages, {} chars) into Meilisearch",
+                                result.source_name, result.page_count, result.character_count
+                            ));
+                        }
+                        Err(e) => {
+                            // PDF parsed but indexing failed
+                            let doc = SourceDocument {
+                                name: result.source_name.clone(),
+                                status: "Parse Only".to_string(),
+                                status_class: "text-yellow-400 text-xs".to_string(),
+                                chunk_count: result.character_count / 500,
+                                page_count: result.page_count,
+                            };
+                            documents.write().push(doc);
+                            ingestion_status.set(format!("Parsed but indexing failed: {}", e));
+                        }
+                    }
                 }
                 Err(e) => {
-                    ingestion_status.set(format!("Error: {}", e));
+                    ingestion_status.set(format!("Error parsing PDF: {}", e));
                 }
             }
             is_ingesting.set(false);
@@ -78,11 +116,18 @@ pub fn Library() -> Element {
         ingestion_status.set(format!("Searching for: '{}'...", query));
 
         spawn(async move {
-            match search(query.clone(), None).await {
+            let options = SearchOptions {
+                limit: 10,
+                source_type: None,
+                campaign_id: None,
+                index: None,
+            };
+
+            match search(query.clone(), Some(options)).await {
                 Ok(results) => {
                     let mapped_results: Vec<SearchResult> = results.into_iter().map(|r| {
-                        let snippet = if r.content.len() > 150 {
-                            format!("{}...", &r.content[0..150])
+                        let snippet = if r.content.len() > 200 {
+                            format!("{}...", &r.content[0..200])
                         } else {
                             r.content.clone()
                         };
@@ -95,8 +140,9 @@ pub fn Library() -> Element {
                         }
                     }).collect();
 
+                    let count = mapped_results.len();
                     search_results.set(mapped_results);
-                    ingestion_status.set(format!("Found {} results for: '{}'", search_results.len(), query));
+                    ingestion_status.set(format!("Found {} results for: '{}'", count, query));
                 },
                 Err(e) => {
                     ingestion_status.set(format!("Search failed: {}", e));
@@ -120,7 +166,7 @@ pub fn Library() -> Element {
     let status_text = ingestion_status.read().clone();
     let status_class: &str = if status_text.contains("Error") {
         "text-sm text-red-400"
-    } else if status_text.contains("Ingested") {
+    } else if status_text.contains("Ingested") || status_text.contains("Indexed") {
         "text-sm text-green-400"
     } else {
         "text-sm text-blue-400"
@@ -245,9 +291,9 @@ pub fn Library() -> Element {
                             class: "space-y-3",
                             div {
                                 class: "flex justify-between items-center p-2 bg-gray-700 rounded",
-                                span { class: "text-gray-400", "Vector Store" }
+                                span { class: "text-gray-400", "Search Engine" }
                                 span {
-                                    class: if current_status.contains("Ready") { "text-green-400 font-mono text-sm" } else { "text-red-400 font-mono text-sm" },
+                                    class: if current_status.contains("docs") { "text-green-400 font-mono text-sm" } else { "text-red-400 font-mono text-sm" },
                                     "{current_status}"
                                 }
                             }
@@ -274,7 +320,7 @@ pub fn Library() -> Element {
                 // Search Section
                 div {
                     class: "mt-6 bg-gray-800 rounded-lg p-6",
-                    h2 { class: "text-xl font-semibold mb-4 text-gray-200", "Hybrid Search" }
+                    h2 { class: "text-xl font-semibold mb-4 text-gray-200", "Federated Search" }
                     div {
                         class: "flex gap-2",
                         input {
@@ -306,7 +352,7 @@ pub fn Library() -> Element {
                     }
                     p {
                         class: "text-xs text-gray-500 mt-2",
-                        "Combines semantic (vector) + keyword (BM25) search across all documents."
+                        "Federated search across all indexes with typo tolerance and semantic matching."
                     }
 
                     // Search Results
