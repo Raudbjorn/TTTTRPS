@@ -3,7 +3,8 @@ use dioxus::prelude::*;
 use crate::bindings::{
     configure_llm, get_llm_config, save_api_key, check_llm_health, LLMSettings, HealthStatus,
     configure_voice, get_voice_config, VoiceConfig, ElevenLabsConfig, OllamaConfig,
-    check_meilisearch_health, reindex_library, MeilisearchStatus
+    check_meilisearch_health, reindex_library, MeilisearchStatus,
+    list_ollama_models, OllamaModel
 };
 use crate::components::design_system::{Button, ButtonVariant, Input, Select, Card, CardHeader, CardBody, Badge, BadgeVariant};
 
@@ -57,6 +58,26 @@ pub fn Settings() -> Element {
     let mut is_reindexing = use_signal(|| false);
     let mut reindex_status = use_signal(|| String::new());
 
+    // Ollama models list
+    let mut ollama_models = use_signal(|| Vec::<OllamaModel>::new());
+    let mut is_loading_models = use_signal(|| false);
+
+    // Function to fetch Ollama models
+    let fetch_ollama_models = move |host: String| {
+        spawn(async move {
+            is_loading_models.set(true);
+            match list_ollama_models(host).await {
+                Ok(models) => {
+                    ollama_models.set(models);
+                }
+                Err(_) => {
+                    ollama_models.set(Vec::new());
+                }
+            }
+            is_loading_models.set(false);
+        });
+    };
+
     // Load existing config on mount
     use_effect(move || {
         spawn(async move {
@@ -64,7 +85,12 @@ pub fn Settings() -> Element {
                 match config.provider.as_str() {
                     "ollama" => {
                         selected_provider.set(LLMProvider::Ollama);
-                        api_key_or_host.set(config.host.unwrap_or_default());
+                        let host = config.host.clone().unwrap_or_else(|| "http://localhost:11434".to_string());
+                        api_key_or_host.set(host.clone());
+                        // Fetch available models
+                        if let Ok(models) = list_ollama_models(host).await {
+                            ollama_models.set(models);
+                        }
                     }
                     "claude" => {
                         selected_provider.set(LLMProvider::Claude);
@@ -83,6 +109,11 @@ pub fn Settings() -> Element {
                 model_name.set(config.model);
                 if let Some(emb) = config.embedding_model {
                     embedding_model.set(emb);
+                }
+            } else {
+                // No config, but if Ollama is default, fetch models
+                if let Ok(models) = list_ollama_models("http://localhost:11434".to_string()).await {
+                    ollama_models.set(models);
                 }
             }
 
@@ -364,6 +395,8 @@ pub fn Settings() -> Element {
                                         LLMProvider::Ollama => {
                                              api_key_or_host.set("http://localhost:11434".to_string());
                                              model_name.set("llama3.2".to_string());
+                                             // Fetch available models
+                                             fetch_ollama_models("http://localhost:11434".to_string());
                                         }
                                         LLMProvider::Claude => {
                                              api_key_or_host.set(String::new());
@@ -397,13 +430,35 @@ pub fn Settings() -> Element {
                             }
                         }
 
-                        // Model Name
+                        // Model Name - dropdown for Ollama, text input for others
                         div {
                             label { class: "block text-sm font-medium text-theme-secondary mb-1", "Model" }
-                            Input {
-                                placeholder: "e.g. llama3.2, gpt-4o",
-                                value: "{model_name}",
-                                oninput: move |val| model_name.set(val)
+                            if matches!(*selected_provider.read(), LLMProvider::Ollama) {
+                                select {
+                                    class: "w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:border-purple-500 outline-none",
+                                    value: "{model_name}",
+                                    onchange: move |e| model_name.set(e.value()),
+                                    if ollama_models.read().is_empty() {
+                                        option { value: "{model_name}", "{model_name}" }
+                                    }
+                                    for model in ollama_models.read().iter() {
+                                        option {
+                                            value: "{model.name}",
+                                            selected: *model_name.read() == model.name,
+                                            if let Some(ref size) = model.size {
+                                                "{model.name} ({size})"
+                                            } else {
+                                                "{model.name}"
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                Input {
+                                    placeholder: "e.g. claude-3-5-sonnet, gpt-4o",
+                                    value: "{model_name}",
+                                    oninput: move |val| model_name.set(val)
+                                }
                             }
                         }
 

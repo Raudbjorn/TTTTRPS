@@ -17,6 +17,21 @@ extern "C" {
     // Dialog plugin - file picker
     #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "dialog"], js_name = "open")]
     async fn dialog_open(options: JsValue) -> JsValue;
+
+    // Event listener - for progress events
+    #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "event"], js_name = "listen")]
+    fn event_listen(event: &str, handler: &js_sys::Function) -> JsValue;
+}
+
+/// Listen for Tauri events (returns unlisten function)
+pub fn listen_event<F>(event_name: &str, callback: F) -> JsValue
+where
+    F: Fn(JsValue) + 'static,
+{
+    let closure = wasm_bindgen::closure::Closure::wrap(Box::new(callback) as Box<dyn Fn(JsValue)>);
+    let result = event_listen(event_name, closure.as_ref().unchecked_ref());
+    closure.forget(); // Prevent closure from being dropped
+    result
 }
 
 /// Invoke a Tauri command with typed arguments and response
@@ -111,8 +126,18 @@ pub async fn pick_document_file() -> Option<String> {
         title: Some("Select Document".to_string()),
         filters: Some(vec![
             FileFilter {
-                name: "Documents".to_string(),
-                extensions: vec!["pdf".to_string(), "epub".to_string(), "txt".to_string(), "md".to_string()],
+                name: "All Supported".to_string(),
+                extensions: vec![
+                    "pdf".to_string(),
+                    "epub".to_string(),
+                    "mobi".to_string(),
+                    "azw".to_string(),
+                    "azw3".to_string(),
+                    "docx".to_string(),
+                    "txt".to_string(),
+                    "md".to_string(),
+                    "markdown".to_string(),
+                ],
             },
             FileFilter {
                 name: "PDF".to_string(),
@@ -121,6 +146,18 @@ pub async fn pick_document_file() -> Option<String> {
             FileFilter {
                 name: "EPUB".to_string(),
                 extensions: vec!["epub".to_string()],
+            },
+            FileFilter {
+                name: "MOBI/AZW".to_string(),
+                extensions: vec!["mobi".to_string(), "azw".to_string(), "azw3".to_string()],
+            },
+            FileFilter {
+                name: "DOCX".to_string(),
+                extensions: vec!["docx".to_string()],
+            },
+            FileFilter {
+                name: "Text/Markdown".to_string(),
+                extensions: vec!["txt".to_string(), "md".to_string(), "markdown".to_string()],
             },
             FileFilter {
                 name: "All Files".to_string(),
@@ -246,6 +283,21 @@ pub async fn get_llm_config() -> Result<Option<LLMSettings>, String> {
     invoke_no_args("get_llm_config").await
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OllamaModel {
+    pub name: String,
+    pub size: Option<String>,
+    pub parameter_size: Option<String>,
+}
+
+pub async fn list_ollama_models(host: String) -> Result<Vec<OllamaModel>, String> {
+    #[derive(Serialize)]
+    struct Args {
+        host: String,
+    }
+    invoke("list_ollama_models", &Args { host }).await
+}
+
 pub async fn configure_voice(config: VoiceConfig) -> Result<String, String> {
     #[derive(Serialize)]
     struct Args {
@@ -322,6 +374,26 @@ pub async fn ingest_document(path: String, options: Option<IngestOptions>) -> Re
         options: Option<IngestOptions>,
     }
     invoke("ingest_document", &Args { path, options }).await
+}
+
+/// Progress event from document ingestion
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IngestProgress {
+    pub stage: String,
+    pub progress: f32,
+    pub message: String,
+    pub source_name: String,
+}
+
+/// Ingest document with progress reporting via events
+pub async fn ingest_document_with_progress(path: String, source_type: Option<String>) -> Result<IngestResult, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        path: String,
+        source_type: Option<String>,
+    }
+    invoke("ingest_document_with_progress", &Args { path, source_type }).await
 }
 
 // ============================================================================

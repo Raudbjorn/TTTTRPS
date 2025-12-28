@@ -5,6 +5,9 @@
 
 use crate::core::search_client::{SearchClient, SearchDocument, SearchError};
 use crate::ingestion::pdf_parser::PDFParser;
+use crate::ingestion::epub_parser::EPUBParser;
+use crate::ingestion::mobi_parser::MOBIParser;
+use crate::ingestion::docx_parser::DOCXParser;
 use chrono::Utc;
 use std::collections::HashMap;
 use std::path::Path;
@@ -103,6 +106,9 @@ impl MeilisearchPipeline {
 
         let chunks = match extension.to_lowercase().as_str() {
             "pdf" => self.process_pdf(path, &source_name)?,
+            "epub" => self.process_epub(path, &source_name)?,
+            "mobi" | "azw" | "azw3" => self.process_mobi(path, &source_name)?,
+            "docx" => self.process_docx(path, &source_name)?,
             "txt" | "md" | "markdown" => self.process_text_file(path, &source_name)?,
             _ => {
                 // Try to read as text
@@ -171,6 +177,72 @@ impl MeilisearchPipeline {
         }
 
         Ok(all_chunks)
+    }
+
+    /// Process an EPUB file
+    fn process_epub(&self, path: &Path, source_name: &str) -> Result<Vec<(String, Option<u32>)>, SearchError> {
+        let extracted = EPUBParser::extract_structured(path)
+            .map_err(|e| SearchError::ConfigError(format!("EPUB parsing failed: {}", e)))?;
+
+        let mut all_chunks = Vec::new();
+
+        for chapter in extracted.chapters {
+            // Use chapter index as a pseudo "page number" for reference
+            let chapter_num = (chapter.index + 1) as u32;
+            let chapter_chunks = self.chunk_text(&chapter.text, source_name, Some(chapter_num));
+            all_chunks.extend(chapter_chunks);
+        }
+
+        log::info!(
+            "Processed EPUB '{}': {} chapters, {} total chunks",
+            source_name,
+            extracted.chapter_count,
+            all_chunks.len()
+        );
+
+        Ok(all_chunks)
+    }
+
+    /// Process a MOBI/AZW file
+    fn process_mobi(&self, path: &Path, source_name: &str) -> Result<Vec<(String, Option<u32>)>, SearchError> {
+        let extracted = MOBIParser::extract_structured(path)
+            .map_err(|e| SearchError::ConfigError(format!("MOBI parsing failed: {}", e)))?;
+
+        let mut all_chunks = Vec::new();
+
+        for section in extracted.sections {
+            // Use section index as pseudo page number
+            let section_num = (section.index + 1) as u32;
+            let section_chunks = self.chunk_text(&section.text, source_name, Some(section_num));
+            all_chunks.extend(section_chunks);
+        }
+
+        log::info!(
+            "Processed MOBI '{}': {} sections, {} total chunks",
+            source_name,
+            extracted.section_count,
+            all_chunks.len()
+        );
+
+        Ok(all_chunks)
+    }
+
+    /// Process a DOCX file
+    fn process_docx(&self, path: &Path, source_name: &str) -> Result<Vec<(String, Option<u32>)>, SearchError> {
+        let extracted = DOCXParser::extract_structured(path)
+            .map_err(|e| SearchError::ConfigError(format!("DOCX parsing failed: {}", e)))?;
+
+        // DOCX doesn't have page numbers, chunk the full text
+        let chunks = self.chunk_text(&extracted.text, source_name, None);
+
+        log::info!(
+            "Processed DOCX '{}': {} paragraphs, {} total chunks",
+            source_name,
+            extracted.paragraphs.len(),
+            chunks.len()
+        );
+
+        Ok(chunks)
     }
 
     /// Process a text file

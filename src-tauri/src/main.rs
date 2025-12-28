@@ -89,6 +89,7 @@ fn main() {
             commands::chat,
             commands::check_llm_health,
             commands::get_llm_config,
+            commands::list_ollama_models,
 
             // Campaign Commands
             commands::list_campaigns,
@@ -144,6 +145,7 @@ fn main() {
 
             // Document Ingestion & Search (Meilisearch)
             commands::ingest_document,
+            commands::ingest_document_with_progress,
             commands::ingest_pdf,
             commands::search,
             commands::check_meilisearch_health,

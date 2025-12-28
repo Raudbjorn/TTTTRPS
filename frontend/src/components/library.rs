@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 use dioxus::prelude::*;
-use crate::bindings::{ingest_pdf, ingest_document, search, IngestOptions, SearchOptions, check_meilisearch_health, pick_document_file};
+use crate::bindings::{search, SearchOptions, check_meilisearch_health, pick_document_file, ingest_document_with_progress, IngestProgress};
 
 #[derive(Clone, PartialEq)]
 pub struct SourceDocument {
@@ -14,6 +14,7 @@ pub struct SourceDocument {
 #[component]
 pub fn Library() -> Element {
     let mut ingestion_status = use_signal(|| String::new());
+    let mut ingestion_progress = use_signal(|| 0.0_f32);
     let mut documents = use_signal(|| Vec::<SourceDocument>::new());
     let mut total_chunks = use_signal(|| 0_usize);
 
@@ -42,56 +43,86 @@ pub fn Library() -> Element {
     let mut search_results = use_signal(|| Vec::<SearchResult>::new());
     let mut is_searching = use_signal(|| false);
 
+    // Set up event listener for progress updates
+    use_effect(move || {
+        use wasm_bindgen::prelude::*;
+        use wasm_bindgen::JsCast;
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        // Wrap signals in Rc<RefCell> for interior mutability
+        let progress_signal = Rc::new(RefCell::new(ingestion_progress));
+        let status_signal = Rc::new(RefCell::new(ingestion_status));
+
+        let progress_clone = progress_signal.clone();
+        let status_clone = status_signal.clone();
+
+        let callback = Closure::wrap(Box::new(move |event: JsValue| {
+            // Extract payload from event
+            if let Ok(payload) = js_sys::Reflect::get(&event, &JsValue::from_str("payload")) {
+                if let Ok(progress_val) = js_sys::Reflect::get(&payload, &JsValue::from_str("progress")) {
+                    if let Some(progress) = progress_val.as_f64() {
+                        progress_clone.borrow_mut().set(progress as f32);
+                    }
+                }
+                if let Ok(message_val) = js_sys::Reflect::get(&payload, &JsValue::from_str("message")) {
+                    if let Some(message) = message_val.as_string() {
+                        status_clone.borrow_mut().set(message);
+                    }
+                }
+            }
+        }) as Box<dyn Fn(JsValue)>);
+
+        // Get the listen function from Tauri
+        if let Some(window) = web_sys::window() {
+            if let Ok(tauri) = js_sys::Reflect::get(&window, &JsValue::from_str("__TAURI__")) {
+                if let Ok(event_module) = js_sys::Reflect::get(&tauri, &JsValue::from_str("event")) {
+                    if let Ok(listen_fn) = js_sys::Reflect::get(&event_module, &JsValue::from_str("listen")) {
+                        if let Some(listen) = listen_fn.dyn_ref::<js_sys::Function>() {
+                            let _ = listen.call2(
+                                &JsValue::NULL,
+                                &JsValue::from_str("ingest-progress"),
+                                callback.as_ref().unchecked_ref(),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        callback.forget();
+    });
+
     let handle_ingest = move |_: MouseEvent| {
         spawn(async move {
             // Open file picker dialog
             if let Some(path) = pick_document_file().await {
                 is_ingesting.set(true);
+                ingestion_progress.set(0.0);
                 let filename = path.split('/').last().unwrap_or(&path).to_string();
-                ingestion_status.set(format!("Parsing {}...", filename));
+                ingestion_status.set(format!("Starting {}...", filename));
 
-                // Step 1: Parse the PDF to get stats
-                match ingest_pdf(path.clone()).await {
+                // Use the progress-reporting ingestion
+                match ingest_document_with_progress(path.clone(), Some("documents".to_string())).await {
                     Ok(result) => {
-                        ingestion_status.set(format!("Indexing {} to Meilisearch...", result.source_name));
-
-                        // Step 2: Index the document into Meilisearch
-                        let options = IngestOptions {
-                            source_type: "documents".to_string(),
-                            campaign_id: None,
+                        let doc = SourceDocument {
+                            name: result.source_name.clone(),
+                            status: "Indexed".to_string(),
+                            status_class: "text-green-400 text-xs".to_string(),
+                            chunk_count: result.character_count / 500,
+                            page_count: result.page_count,
                         };
-
-                        match ingest_document(path.clone(), Some(options)).await {
-                            Ok(_index_result) => {
-                                let doc = SourceDocument {
-                                    name: result.source_name.clone(),
-                                    status: "Indexed".to_string(),
-                                    status_class: "text-green-400 text-xs".to_string(),
-                                    chunk_count: result.character_count / 500,
-                                    page_count: result.page_count,
-                                };
-                                documents.write().push(doc);
-                                *total_chunks.write() += result.character_count / 500;
-                                ingestion_status.set(format!(
-                                    "Indexed {} ({} pages, {} chars) into Meilisearch",
-                                    result.source_name, result.page_count, result.character_count
-                                ));
-                            }
-                            Err(e) => {
-                                let doc = SourceDocument {
-                                    name: result.source_name.clone(),
-                                    status: "Parse Only".to_string(),
-                                    status_class: "text-yellow-400 text-xs".to_string(),
-                                    chunk_count: result.character_count / 500,
-                                    page_count: result.page_count,
-                                };
-                                documents.write().push(doc);
-                                ingestion_status.set(format!("Parsed but indexing failed: {}", e));
-                            }
-                        }
+                        documents.write().push(doc);
+                        *total_chunks.write() += result.character_count / 500;
+                        ingestion_status.set(format!(
+                            "Indexed {} ({} pages, {} chars)",
+                            result.source_name, result.page_count, result.character_count
+                        ));
+                        ingestion_progress.set(1.0);
                     }
                     Err(e) => {
-                        ingestion_status.set(format!("Error parsing document: {}", e));
+                        ingestion_status.set(format!("Error: {}", e));
+                        ingestion_progress.set(0.0);
                     }
                 }
                 is_ingesting.set(false);
@@ -171,6 +202,7 @@ pub fn Library() -> Element {
 
     let doc_count = documents.read().len();
     let chunk_count = *total_chunks.read();
+    let progress_percent = (*ingestion_progress.read() * 100.0) as u32;
 
     let drop_zone_class = if drag_active {
         "border-2 border-dashed border-purple-400 bg-purple-900/20 rounded-lg p-8 text-center transition-colors"
@@ -232,9 +264,9 @@ pub fn Library() -> Element {
                         p {
                             class: if drag_active { "text-purple-300 font-semibold" } else { "text-gray-400" },
                             if drag_active {
-                                "Drop PDF here!"
+                                "Drop files here!"
                             } else {
-                                "Drag & Drop PDF files here"
+                                "Drag & Drop files here"
                             }
                         }
                         p {
@@ -274,7 +306,7 @@ pub fn Library() -> Element {
                                 div {
                                     class: "text-center text-gray-500 py-8",
                                     p { "No documents ingested yet." }
-                                    p { class: "text-sm mt-2", "Drag a PDF or click 'Ingest Document'." }
+                                    p { class: "text-sm mt-2", "Click 'Ingest Document' to add files." }
                                 }
                             }
                         }
@@ -305,10 +337,34 @@ pub fn Library() -> Element {
                                 span { class: "text-white font-mono text-sm", "{doc_count}" }
                             }
                         }
-                        if !status_text.is_empty() {
+                        if !status_text.is_empty() || loading {
                             div {
                                 class: "mt-4 pt-4 border-t border-gray-700",
                                 p { class: "{status_class}", "{status_text}" }
+
+                                // Progress bar during ingestion
+                                if loading {
+                                    div {
+                                        class: "mt-3",
+                                        div {
+                                            class: "flex justify-between text-xs text-gray-400 mb-1",
+                                            span { "{progress_percent}%" }
+                                            span {
+                                                if progress_percent < 40 { "Parsing..." }
+                                                else if progress_percent < 60 { "Chunking..." }
+                                                else if progress_percent < 100 { "Indexing..." }
+                                                else { "Complete!" }
+                                            }
+                                        }
+                                        div {
+                                            class: "w-full bg-gray-600 rounded-full h-2.5",
+                                            div {
+                                                class: "bg-purple-500 h-2.5 rounded-full transition-all duration-300",
+                                                style: "width: {progress_percent}%",
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -378,11 +434,13 @@ pub fn Library() -> Element {
                     class: "mt-6 bg-gray-800 rounded-lg p-6",
                     h2 { class: "text-xl font-semibold mb-4 text-gray-200", "Supported Formats" }
                     div {
-                        class: "flex flex-wrap gap-2",
-                        span { class: "px-3 py-1 bg-green-900 text-green-300 rounded text-sm", "PDF" }
-                        span { class: "px-3 py-1 bg-green-900 text-green-300 rounded text-sm", "EPUB" }
-                        span { class: "px-3 py-1 bg-gray-700 rounded text-sm text-gray-500", "DOCX (planned)" }
-                        span { class: "px-3 py-1 bg-gray-700 rounded text-sm text-gray-500", "Markdown (planned)" }
+                        class: "flex flex-wrap",
+                        span { class: "px-3 py-1 mr-2 mb-2 bg-green-900 text-green-300 rounded text-sm", "PDF" }
+                        span { class: "px-3 py-1 mr-2 mb-2 bg-green-900 text-green-300 rounded text-sm", "EPUB" }
+                        span { class: "px-3 py-1 mr-2 mb-2 bg-green-900 text-green-300 rounded text-sm", "MOBI/AZW" }
+                        span { class: "px-3 py-1 mr-2 mb-2 bg-green-900 text-green-300 rounded text-sm", "DOCX" }
+                        span { class: "px-3 py-1 mr-2 mb-2 bg-green-900 text-green-300 rounded text-sm", "Markdown" }
+                        span { class: "px-3 py-1 mr-2 mb-2 bg-green-900 text-green-300 rounded text-sm", "TXT" }
                     }
                 }
             }

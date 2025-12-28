@@ -152,6 +152,14 @@ pub struct EmbeddingResponse {
     pub dimensions: usize,
 }
 
+/// Information about an Ollama model
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OllamaModel {
+    pub name: String,
+    pub size: Option<String>,
+    pub parameter_size: Option<String>,
+}
+
 // ============================================================================
 // LLM Client
 // ============================================================================
@@ -254,6 +262,70 @@ impl LLMClient {
                 }
             }
         }
+    }
+
+    // ========================================================================
+    // Ollama Model Listing
+    // ========================================================================
+
+    /// List available models from Ollama
+    pub async fn list_ollama_models(host: &str) -> Result<Vec<OllamaModel>> {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()
+            .map_err(|e| LLMError::InvalidResponse(e.to_string()))?;
+
+        let url = format!("{}/api/tags", host);
+        let response = client.get(&url).send().await
+            .map_err(|e| LLMError::InvalidResponse(format!("Failed to connect to Ollama: {}", e)))?;
+
+        if !response.status().is_success() {
+            return Err(LLMError::ApiError {
+                status: response.status().as_u16(),
+                message: format!("Ollama returned status: {}", response.status())
+            });
+        }
+
+        #[derive(Deserialize)]
+        struct OllamaTagsResponse {
+            models: Vec<OllamaModelInfo>,
+        }
+
+        #[derive(Deserialize)]
+        struct OllamaModelInfo {
+            name: String,
+            size: Option<u64>,
+            #[serde(default)]
+            details: Option<OllamaModelDetails>,
+        }
+
+        #[derive(Deserialize, Default)]
+        struct OllamaModelDetails {
+            family: Option<String>,
+            parameter_size: Option<String>,
+        }
+
+        let tags: OllamaTagsResponse = response.json().await
+            .map_err(|e| LLMError::InvalidResponse(format!("Failed to parse Ollama response: {}", e)))?;
+
+        let models = tags.models.into_iter().map(|m| {
+            let size_str = m.size.map(|s| {
+                if s > 1_000_000_000 {
+                    format!("{:.1}GB", s as f64 / 1_000_000_000.0)
+                } else {
+                    format!("{:.0}MB", s as f64 / 1_000_000.0)
+                }
+            });
+            let param_size = m.details.and_then(|d| d.parameter_size);
+
+            OllamaModel {
+                name: m.name,
+                size: size_str,
+                parameter_size: param_size,
+            }
+        }).collect();
+
+        Ok(models)
     }
 
     // ========================================================================

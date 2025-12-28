@@ -350,6 +350,14 @@ pub fn get_llm_config(state: State<'_, AppState>) -> Result<Option<LLMSettings>,
     }))
 }
 
+/// List available models from an Ollama instance
+#[tauri::command]
+pub async fn list_ollama_models(host: String) -> Result<Vec<crate::core::llm::OllamaModel>, String> {
+    crate::core::llm::LLMClient::list_ollama_models(&host)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 // ============================================================================
 // Document Ingestion Commands
 // ============================================================================
@@ -986,6 +994,193 @@ pub struct IngestResult {
     pub page_count: usize,
     pub character_count: usize,
     pub source_name: String,
+}
+
+/// Progress event for document ingestion
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IngestProgress {
+    pub stage: String,
+    pub progress: f32,       // 0.0 to 1.0
+    pub message: String,
+    pub source_name: String,
+}
+
+/// Ingest a document with progress reporting via Tauri events
+#[tauri::command]
+pub async fn ingest_document_with_progress(
+    app: tauri::AppHandle,
+    path: String,
+    source_type: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<IngestResult, String> {
+    use tauri::Emitter;
+
+    let path_buf = std::path::Path::new(&path);
+    let source_name = path_buf
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let source_type = source_type.unwrap_or_else(|| "document".to_string());
+
+    // Stage 1: Parsing (0-40%)
+    let _ = app.emit("ingest-progress", IngestProgress {
+        stage: "parsing".to_string(),
+        progress: 0.0,
+        message: format!("Loading {}...", source_name),
+        source_name: source_name.clone(),
+    });
+
+    // Get file size for rough progress estimation
+    let file_size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+    let estimated_pages = (file_size / 50_000).max(1) as usize; // Rough estimate: 50KB per page
+
+    // Parse based on file type
+    let extension = path_buf.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let format_name = match extension.to_lowercase().as_str() {
+        "pdf" => "PDF",
+        "epub" => "EPUB",
+        "mobi" | "azw" | "azw3" => "MOBI",
+        "docx" => "DOCX",
+        "txt" => "text",
+        "md" | "markdown" => "Markdown",
+        _ => "document",
+    };
+
+    let _ = app.emit("ingest-progress", IngestProgress {
+        stage: "parsing".to_string(),
+        progress: 0.1,
+        message: format!("Parsing {} (~{} estimated pages)...", format_name, estimated_pages),
+        source_name: source_name.clone(),
+    });
+    let page_count: usize;
+    let text_content: String;
+
+    match extension.to_lowercase().as_str() {
+        "pdf" => {
+            use crate::ingestion::pdf_parser::PDFParser;
+            let pages = PDFParser::extract_text_with_pages(path_buf)
+                .map_err(|e| format!("PDF parsing failed: {}", e))?;
+            page_count = pages.len();
+            text_content = pages.into_iter().map(|(_, text)| text).collect::<Vec<_>>().join("\n\n");
+
+            let _ = app.emit("ingest-progress", IngestProgress {
+                stage: "parsing".to_string(),
+                progress: 0.4,
+                message: format!("Parsed {} pages", page_count),
+                source_name: source_name.clone(),
+            });
+        }
+        "epub" => {
+            use crate::ingestion::epub_parser::EPUBParser;
+            let extracted = EPUBParser::extract_structured(path_buf)
+                .map_err(|e| format!("EPUB parsing failed: {}", e))?;
+            page_count = extracted.chapter_count;
+            text_content = extracted.chapters.into_iter().map(|c| c.text).collect::<Vec<_>>().join("\n\n");
+
+            let _ = app.emit("ingest-progress", IngestProgress {
+                stage: "parsing".to_string(),
+                progress: 0.4,
+                message: format!("Parsed {} chapters", page_count),
+                source_name: source_name.clone(),
+            });
+        }
+        "mobi" | "azw" | "azw3" => {
+            use crate::ingestion::mobi_parser::MOBIParser;
+            let extracted = MOBIParser::extract_structured(path_buf)
+                .map_err(|e| format!("MOBI parsing failed: {}", e))?;
+            page_count = extracted.section_count;
+            text_content = extracted.sections.into_iter().map(|s| s.text).collect::<Vec<_>>().join("\n\n");
+
+            let _ = app.emit("ingest-progress", IngestProgress {
+                stage: "parsing".to_string(),
+                progress: 0.4,
+                message: format!("Parsed {} sections", page_count),
+                source_name: source_name.clone(),
+            });
+        }
+        "docx" => {
+            use crate::ingestion::docx_parser::DOCXParser;
+            let extracted = DOCXParser::extract_structured(path_buf)
+                .map_err(|e| format!("DOCX parsing failed: {}", e))?;
+            page_count = extracted.paragraphs.len();
+            text_content = extracted.text;
+
+            let _ = app.emit("ingest-progress", IngestProgress {
+                stage: "parsing".to_string(),
+                progress: 0.4,
+                message: format!("Parsed {} paragraphs", page_count),
+                source_name: source_name.clone(),
+            });
+        }
+        "txt" | "md" | "markdown" => {
+            text_content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("Failed to read file: {}", e))?;
+            page_count = text_content.lines().count() / 50; // Rough page estimate
+
+            let _ = app.emit("ingest-progress", IngestProgress {
+                stage: "parsing".to_string(),
+                progress: 0.4,
+                message: format!("Loaded {} characters", text_content.len()),
+                source_name: source_name.clone(),
+            });
+        }
+        _ => {
+            // Try to read as text for unknown formats
+            text_content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("Unsupported format or failed to read: {}", e))?;
+            page_count = 1;
+
+            let _ = app.emit("ingest-progress", IngestProgress {
+                stage: "parsing".to_string(),
+                progress: 0.4,
+                message: "File loaded".to_string(),
+                source_name: source_name.clone(),
+            });
+        }
+    }
+
+    // Stage 2: Chunking (40-60%)
+    let _ = app.emit("ingest-progress", IngestProgress {
+        stage: "chunking".to_string(),
+        progress: 0.5,
+        message: format!("Chunking {} characters...", text_content.len()),
+        source_name: source_name.clone(),
+    });
+
+    // Stage 3: Indexing (60-100%)
+    let _ = app.emit("ingest-progress", IngestProgress {
+        stage: "indexing".to_string(),
+        progress: 0.6,
+        message: "Indexing to Meilisearch...".to_string(),
+        source_name: source_name.clone(),
+    });
+
+    // Use the pipeline to process and index
+    let result = state.ingestion_pipeline
+        .process_file(
+            &state.search_client,
+            path_buf,
+            &source_type,
+            None
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Done!
+    let _ = app.emit("ingest-progress", IngestProgress {
+        stage: "complete".to_string(),
+        progress: 1.0,
+        message: format!("Indexed {} chunks", result.total_chunks),
+        source_name: source_name.clone(),
+    });
+
+    Ok(IngestResult {
+        page_count,
+        character_count: text_content.len(),
+        source_name: result.source,
+    })
 }
 
 // ============================================================================

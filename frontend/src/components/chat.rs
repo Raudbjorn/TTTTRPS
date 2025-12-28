@@ -198,16 +198,18 @@ pub fn Chat() -> Element {
                 }
                 div {
                     class: "flex items-center gap-4",
-                    // Usage indicator
-                    Button {
-                        variant: ButtonVariant::Secondary,
-                        class: "text-xs py-1",
-                        onclick: move |_| {
-                            let current = *show_usage_panel.read();
-                            show_usage_panel.set(!current);
-                        },
-                        span { class: "text-gray-400", "{total_tokens} tokens" }
-                        span { class: "text-green-400", "{cost_display}" }
+                    // Usage indicator (only show if tokens used with a paid model)
+                    if total_tokens >= 1 && usage.session_cost_usd > 0.0 {
+                        Button {
+                            variant: ButtonVariant::Secondary,
+                            class: "text-xs py-1",
+                            onclick: move |_| {
+                                let current = *show_usage_panel.read();
+                                show_usage_panel.set(!current);
+                            },
+                            span { class: "text-gray-400", "{total_tokens} tokens" }
+                            span { class: "text-green-400", "{cost_display}" }
+                        }
                     }
                     Link { to: crate::Route::Campaigns {}, class: "text-theme-secondary hover:text-theme-primary", "Campaigns" }
                     Link { to: crate::Route::CharacterCreator {}, class: "text-theme-secondary hover:text-theme-primary", "Characters" }
