@@ -418,7 +418,8 @@ pub async fn get_voice_config() -> Result<VoiceConfig, String> {
     invoke_no_args("get_voice_config").await
 }
 
-/// Detect available voice providers on the local system
+/// Detect available self-hosted voice providers on the local system.
+/// Cloud providers (ElevenLabs, OpenAI, FishAudio) require API keys and are not detected here.
 pub async fn detect_voice_providers() -> Result<VoiceProviderDetection, String> {
     invoke_no_args("detect_voice_providers").await
 }

@@ -64,6 +64,52 @@ impl LLMProvider {
     }
 }
 
+// ============================================================================
+// Voice Provider Metadata (centralized)
+// ============================================================================
+
+/// Metadata for a voice provider
+struct VoiceProviderInfo {
+    id: &'static str,
+    display_name: &'static str,
+    is_local: bool,
+    default_url: Option<&'static str>,
+}
+
+/// All self-hosted voice providers with their metadata
+const LOCAL_VOICE_PROVIDERS: &[VoiceProviderInfo] = &[
+    VoiceProviderInfo { id: "Ollama", display_name: "Ollama", is_local: true, default_url: Some("http://localhost:11434") },
+    VoiceProviderInfo { id: "Chatterbox", display_name: "Chatterbox", is_local: true, default_url: Some("http://localhost:8000") },
+    VoiceProviderInfo { id: "GptSoVits", display_name: "GPT-SoVITS", is_local: true, default_url: Some("http://localhost:9880") },
+    VoiceProviderInfo { id: "XttsV2", display_name: "XTTS-v2 (Coqui)", is_local: true, default_url: Some("http://localhost:5002") },
+    VoiceProviderInfo { id: "FishSpeech", display_name: "Fish Speech", is_local: true, default_url: Some("http://localhost:7860") },
+    VoiceProviderInfo { id: "Dia", display_name: "Dia", is_local: true, default_url: Some("http://localhost:8003") },
+];
+
+/// All cloud voice providers
+const CLOUD_VOICE_PROVIDERS: &[VoiceProviderInfo] = &[
+    VoiceProviderInfo { id: "ElevenLabs", display_name: "ElevenLabs", is_local: false, default_url: None },
+    VoiceProviderInfo { id: "OpenAI", display_name: "OpenAI TTS", is_local: false, default_url: None },
+    VoiceProviderInfo { id: "FishAudio", display_name: "Fish Audio (Cloud)", is_local: false, default_url: None },
+];
+
+/// Helper to check if a provider ID is local
+fn is_local_provider(id: &str) -> bool {
+    LOCAL_VOICE_PROVIDERS.iter().any(|p| p.id == id)
+}
+
+/// Helper to check if a provider ID is cloud
+fn is_cloud_provider(id: &str) -> bool {
+    CLOUD_VOICE_PROVIDERS.iter().any(|p| p.id == id)
+}
+
+/// Get default URL for a provider
+fn get_provider_default_url(id: &str) -> Option<&'static str> {
+    LOCAL_VOICE_PROVIDERS.iter()
+        .find(|p| p.id == id)
+        .and_then(|p| p.default_url)
+}
+
 #[component]
 pub fn Settings() -> Element {
     let mut selected_provider = use_signal(|| LLMProvider::Ollama);
@@ -91,6 +137,17 @@ pub fn Settings() -> Element {
     // Cloud provider models list
     let mut cloud_models = use_signal(|| Vec::<ModelInfo>::new());
     let mut is_loading_models = use_signal(|| false);
+
+    // Reusable closure to detect voice providers (used in init and refresh button)
+    let refresh_voice_detection = move || {
+        spawn(async move {
+            is_detecting_providers.set(true);
+            if let Ok(detection) = detect_voice_providers().await {
+                voice_provider_detection.set(detection);
+            }
+            is_detecting_providers.set(false);
+        });
+    };
 
     // Function to fetch Ollama models
     let fetch_ollama_models = move |host: String| {
@@ -264,12 +321,8 @@ pub fn Settings() -> Element {
                 meili_status.set(Some(status));
             }
 
-            // Detect available voice providers
-            is_detecting_providers.set(true);
-            if let Ok(detection) = detect_voice_providers().await {
-                voice_provider_detection.set(detection);
-            }
-            is_detecting_providers.set(false);
+            // Detect available voice providers (using shared closure)
+            refresh_voice_detection();
         });
     });
 
@@ -722,37 +775,22 @@ pub fn Settings() -> Element {
                                 onchange: move |e| {
                                     let val = e.value();
                                     selected_voice_provider.set(val.clone());
-                                    // Set defaults based on provider
-                                    match val.as_str() {
-                                        "Ollama" => {
-                                            voice_api_key_or_host.set("http://localhost:11434".to_string());
-                                            voice_model_id.set("bark".to_string());
-                                        }
-                                        "ElevenLabs" => {
-                                            voice_api_key_or_host.set(String::new());
-                                            voice_model_id.set("eleven_multilingual_v2".to_string());
-                                        }
-                                        "Chatterbox" => {
-                                            voice_api_key_or_host.set("http://localhost:8000".to_string());
-                                            voice_model_id.set(String::new());
-                                        }
-                                        "GptSoVits" => {
-                                            voice_api_key_or_host.set("http://localhost:9880".to_string());
-                                            voice_model_id.set(String::new());
-                                        }
-                                        "XttsV2" => {
-                                            voice_api_key_or_host.set("http://localhost:5002".to_string());
-                                            voice_model_id.set(String::new());
-                                        }
-                                        "FishSpeech" => {
-                                            voice_api_key_or_host.set("http://localhost:7860".to_string());
-                                            voice_model_id.set(String::new());
-                                        }
-                                        "Dia" => {
-                                            voice_api_key_or_host.set("http://localhost:8003".to_string());
-                                            voice_model_id.set(String::new());
-                                        }
-                                        _ => {}
+                                    // Set defaults based on provider using centralized metadata
+                                    if let Some(url) = get_provider_default_url(&val) {
+                                        voice_api_key_or_host.set(url.to_string());
+                                        // Set model ID for specific providers
+                                        let model = match val.as_str() {
+                                            "Ollama" => "bark",
+                                            _ => "",
+                                        };
+                                        voice_model_id.set(model.to_string());
+                                    } else if is_cloud_provider(&val) {
+                                        voice_api_key_or_host.set(String::new());
+                                        let model = match val.as_str() {
+                                            "ElevenLabs" => "eleven_multilingual_v2",
+                                            _ => "",
+                                        };
+                                        voice_model_id.set(model.to_string());
                                     }
                                 },
                                 option { value: "Disabled", "Disabled" }
@@ -762,34 +800,26 @@ pub fn Settings() -> Element {
                                     option { value: "OpenAI", "OpenAI TTS" }
                                     option { value: "FishAudio", "Fish Audio (Cloud)" }
                                 }
-                                // Self-hosted providers with availability status
+                                // Self-hosted providers with availability status (using centralized metadata)
                                 optgroup { label: "Self-Hosted (Local)",
                                     {
                                         let detection = voice_provider_detection.read();
-                                        let providers = vec![
-                                            ("Ollama", "Ollama"),
-                                            ("Chatterbox", "Chatterbox"),
-                                            ("GptSoVits", "GPT-SoVITS"),
-                                            ("XttsV2", "XTTS-v2 (Coqui)"),
-                                            ("FishSpeech", "Fish Speech"),
-                                            ("Dia", "Dia"),
-                                        ];
                                         rsx! {
-                                            for (value, label) in providers {
+                                            for provider_info in LOCAL_VOICE_PROVIDERS {
                                                 {
                                                     let is_available = detection.providers.iter()
-                                                        .find(|p| p.provider == value)
+                                                        .find(|p| p.provider == provider_info.id)
                                                         .map(|p| p.available)
                                                         .unwrap_or(false);
                                                     let display = if is_available {
-                                                        format!("{} [running]", label)
+                                                        format!("{} [running]", provider_info.display_name)
                                                     } else {
-                                                        format!("{} [not detected]", label)
+                                                        format!("{} [not detected]", provider_info.display_name)
                                                     };
                                                     let style = if is_available { "" } else { "color: #888;" };
                                                     rsx! {
                                                         option {
-                                                            value: value,
+                                                            value: provider_info.id,
                                                             style: style,
                                                             "{display}"
                                                         }
@@ -804,31 +834,20 @@ pub fn Settings() -> Element {
 
                         // Provider-specific configuration
                         if *selected_voice_provider.read() != "Disabled" {
-                            // Base URL field for local providers
+                            // Base URL field for local providers (using centralized helpers)
                             {
                                 let provider = selected_voice_provider.read().clone();
-                                let is_local = matches!(provider.as_str(),
-                                    "Ollama" | "Chatterbox" | "GptSoVits" | "XttsV2" | "FishSpeech" | "Dia"
-                                );
-                                let is_cloud = matches!(provider.as_str(), "ElevenLabs" | "OpenAI" | "FishAudio");
+                                let provider_is_local = is_local_provider(&provider);
 
                                 rsx! {
                                     div {
                                         label { class: "block text-sm font-medium text-theme-secondary mb-1",
-                                            if is_local { "Base URL" } else { "API Key" }
+                                            if provider_is_local { "Base URL" } else { "API Key" }
                                         }
                                         Input {
-                                            r#type: if is_local { "text" } else { "password" },
-                                            placeholder: if is_local {
-                                                match provider.as_str() {
-                                                    "Ollama" => "http://localhost:11434",
-                                                    "Chatterbox" => "http://localhost:8000",
-                                                    "GptSoVits" => "http://localhost:9880",
-                                                    "XttsV2" => "http://localhost:5002",
-                                                    "FishSpeech" => "http://localhost:7860",
-                                                    "Dia" => "http://localhost:8003",
-                                                    _ => ""
-                                                }
+                                            r#type: if provider_is_local { "text" } else { "password" },
+                                            placeholder: if provider_is_local {
+                                                get_provider_default_url(&provider).unwrap_or("")
                                             } else { "sk-..." },
                                             value: "{voice_api_key_or_host}",
                                             oninput: move |val| voice_api_key_or_host.set(val)
@@ -855,21 +874,13 @@ pub fn Settings() -> Element {
                             }
                         }
 
-                        // Refresh detection button
+                        // Refresh detection button (using shared closure)
                         div {
                             class: "pt-2",
                             Button {
                                 variant: ButtonVariant::Secondary,
                                 loading: *is_detecting_providers.read(),
-                                onclick: move |_| {
-                                    spawn(async move {
-                                        is_detecting_providers.set(true);
-                                        if let Ok(detection) = detect_voice_providers().await {
-                                            voice_provider_detection.set(detection);
-                                        }
-                                        is_detecting_providers.set(false);
-                                    });
-                                },
+                                onclick: move |_| refresh_voice_detection(),
                                 "Refresh Detection"
                             }
                         }
