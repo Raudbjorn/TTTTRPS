@@ -93,6 +93,8 @@ fn main() {
             commands::list_claude_models,
             commands::list_openai_models,
             commands::list_gemini_models,
+            commands::list_openrouter_models,
+            commands::list_provider_models,
 
             // Campaign Commands
             commands::list_campaigns,

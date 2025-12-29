@@ -153,6 +153,37 @@ pub fn configure_llm(
             api_key: settings.api_key.clone().ok_or("Gemini requires an API key")?,
             model: settings.model,
         },
+        "openai" => LLMConfig::OpenAI {
+            api_key: settings.api_key.clone().ok_or("OpenAI requires an API key")?,
+            model: settings.model,
+            max_tokens: 4096,
+            organization_id: None,
+            base_url: "https://api.openai.com/v1".to_string(),
+        },
+        "openrouter" => LLMConfig::OpenRouter {
+            api_key: settings.api_key.clone().ok_or("OpenRouter requires an API key")?,
+            model: settings.model,
+        },
+        "mistral" => LLMConfig::Mistral {
+            api_key: settings.api_key.clone().ok_or("Mistral requires an API key")?,
+            model: settings.model,
+        },
+        "groq" => LLMConfig::Groq {
+            api_key: settings.api_key.clone().ok_or("Groq requires an API key")?,
+            model: settings.model,
+        },
+        "together" => LLMConfig::Together {
+            api_key: settings.api_key.clone().ok_or("Together requires an API key")?,
+            model: settings.model,
+        },
+        "cohere" => LLMConfig::Cohere {
+            api_key: settings.api_key.clone().ok_or("Cohere requires an API key")?,
+            model: settings.model,
+        },
+        "deepseek" => LLMConfig::DeepSeek {
+            api_key: settings.api_key.clone().ok_or("DeepSeek requires an API key")?,
+            model: settings.model,
+        },
         _ => return Err(format!("Unknown provider: {}", settings.provider)),
     };
 
@@ -207,13 +238,25 @@ pub async fn chat(
             LLMConfig::OpenAI { api_key, .. } => api_key.clone(),
             LLMConfig::Claude { api_key, .. } => api_key.clone(),
             LLMConfig::Gemini { api_key, .. } => api_key.clone(),
-            LLMConfig::Ollama { .. } => String::new(), // Ollama doesn't need API key
+            LLMConfig::OpenRouter { api_key, .. } => api_key.clone(),
+            LLMConfig::Mistral { api_key, .. } => api_key.clone(),
+            LLMConfig::Groq { api_key, .. } => api_key.clone(),
+            LLMConfig::Together { api_key, .. } => api_key.clone(),
+            LLMConfig::Cohere { api_key, .. } => api_key.clone(),
+            LLMConfig::DeepSeek { api_key, .. } => api_key.clone(),
+            LLMConfig::Ollama { .. } => String::new(),
         };
 
         let model = match &config {
             LLMConfig::OpenAI { model, .. } => model.clone(),
             LLMConfig::Claude { model, .. } => model.clone(),
             LLMConfig::Gemini { model, .. } => model.clone(),
+            LLMConfig::OpenRouter { model, .. } => model.clone(),
+            LLMConfig::Mistral { model, .. } => model.clone(),
+            LLMConfig::Groq { model, .. } => model.clone(),
+            LLMConfig::Together { model, .. } => model.clone(),
+            LLMConfig::Cohere { model, .. } => model.clone(),
+            LLMConfig::DeepSeek { model, .. } => model.clone(),
             LLMConfig::Ollama { model, .. } => model.clone(),
         };
 
@@ -347,6 +390,48 @@ pub fn get_llm_config(state: State<'_, AppState>) -> Result<Option<LLMSettings>,
             model: model.clone(),
             embedding_model: None,
         },
+        LLMConfig::OpenRouter { model, .. } => LLMSettings {
+            provider: "openrouter".to_string(),
+            api_key: Some("********".to_string()),
+            host: None,
+            model: model.clone(),
+            embedding_model: None,
+        },
+        LLMConfig::Mistral { model, .. } => LLMSettings {
+            provider: "mistral".to_string(),
+            api_key: Some("********".to_string()),
+            host: None,
+            model: model.clone(),
+            embedding_model: None,
+        },
+        LLMConfig::Groq { model, .. } => LLMSettings {
+            provider: "groq".to_string(),
+            api_key: Some("********".to_string()),
+            host: None,
+            model: model.clone(),
+            embedding_model: None,
+        },
+        LLMConfig::Together { model, .. } => LLMSettings {
+            provider: "together".to_string(),
+            api_key: Some("********".to_string()),
+            host: None,
+            model: model.clone(),
+            embedding_model: None,
+        },
+        LLMConfig::Cohere { model, .. } => LLMSettings {
+            provider: "cohere".to_string(),
+            api_key: Some("********".to_string()),
+            host: None,
+            model: model.clone(),
+            embedding_model: None,
+        },
+        LLMConfig::DeepSeek { model, .. } => LLMSettings {
+            provider: "deepseek".to_string(),
+            api_key: Some("********".to_string()),
+            host: None,
+            model: model.clone(),
+            embedding_model: None,
+        },
     }))
 }
 
@@ -407,6 +492,28 @@ pub async fn list_gemini_models(api_key: Option<String>) -> Result<Vec<crate::co
         }
     }
     Ok(crate::core::llm::get_fallback_models("gemini"))
+}
+
+/// List available OpenRouter models (no auth required - uses public API)
+#[tauri::command]
+pub async fn list_openrouter_models() -> Result<Vec<crate::core::llm::ModelInfo>, String> {
+    // OpenRouter has a public models endpoint
+    match crate::core::llm::fetch_openrouter_models().await {
+        Ok(models) => Ok(models.into_iter().map(|m| m.into()).collect()),
+        Err(_) => Ok(crate::core::llm::get_extended_fallback_models("openrouter")),
+    }
+}
+
+/// List available models for any provider via LiteLLM catalog
+#[tauri::command]
+pub async fn list_provider_models(provider: String) -> Result<Vec<crate::core::llm::ModelInfo>, String> {
+    // First try LiteLLM catalog (comprehensive, no auth)
+    match crate::core::llm::fetch_litellm_models_for_provider(&provider).await {
+        Ok(models) if !models.is_empty() => return Ok(models),
+        _ => {} // Fall through
+    }
+    // Fallback to extended hardcoded list
+    Ok(crate::core::llm::get_extended_fallback_models(&provider))
 }
 
 // ============================================================================
@@ -1364,6 +1471,13 @@ pub async fn speak(text: String, state: State<'_, AppState>) -> Result<(), Strin
                     }),
                     ..Default::default()
                 },
+                // Other providers don't have native TTS - use default (disabled)
+                LLMConfig::OpenRouter { .. } |
+                LLMConfig::Mistral { .. } |
+                LLMConfig::Groq { .. } |
+                LLMConfig::Together { .. } |
+                LLMConfig::Cohere { .. } |
+                LLMConfig::DeepSeek { .. } => VoiceConfig::default(),
             }
         } else {
              VoiceConfig::default()

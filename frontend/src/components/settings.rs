@@ -5,7 +5,8 @@ use crate::bindings::{
     configure_voice, get_voice_config, VoiceConfig, ElevenLabsConfig, OllamaConfig,
     check_meilisearch_health, reindex_library, MeilisearchStatus,
     list_ollama_models, OllamaModel,
-    list_claude_models, list_openai_models, list_gemini_models, ModelInfo
+    list_claude_models, list_openai_models, list_gemini_models,
+    list_openrouter_models, list_provider_models, ModelInfo
 };
 use crate::components::design_system::{Button, ButtonVariant, Input, Select, Card, CardHeader, CardBody, Badge, BadgeVariant};
 
@@ -15,15 +16,27 @@ pub enum LLMProvider {
     Claude,
     Gemini,
     OpenAI,
+    OpenRouter,
+    Mistral,
+    Groq,
+    Together,
+    Cohere,
+    DeepSeek,
 }
 
 impl std::fmt::Display for LLMProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LLMProvider::Ollama => write!(f, "Ollama"),
-            LLMProvider::Claude => write!(f, "Claude"),
-            LLMProvider::Gemini => write!(f, "Gemini"),
+            LLMProvider::Ollama => write!(f, "Ollama (Local)"),
+            LLMProvider::Claude => write!(f, "Claude (Anthropic)"),
+            LLMProvider::Gemini => write!(f, "Gemini (Google)"),
             LLMProvider::OpenAI => write!(f, "OpenAI"),
+            LLMProvider::OpenRouter => write!(f, "OpenRouter (400+ models)"),
+            LLMProvider::Mistral => write!(f, "Mistral AI"),
+            LLMProvider::Groq => write!(f, "Groq (Fast)"),
+            LLMProvider::Together => write!(f, "Together AI"),
+            LLMProvider::Cohere => write!(f, "Cohere"),
+            LLMProvider::DeepSeek => write!(f, "DeepSeek"),
         }
     }
 }
@@ -35,7 +48,17 @@ impl LLMProvider {
             LLMProvider::Claude => "claude".to_string(),
             LLMProvider::Gemini => "gemini".to_string(),
             LLMProvider::OpenAI => "openai".to_string(),
+            LLMProvider::OpenRouter => "openrouter".to_string(),
+            LLMProvider::Mistral => "mistral".to_string(),
+            LLMProvider::Groq => "groq".to_string(),
+            LLMProvider::Together => "together".to_string(),
+            LLMProvider::Cohere => "cohere".to_string(),
+            LLMProvider::DeepSeek => "deepseek".to_string(),
         }
+    }
+
+    fn requires_api_key(&self) -> bool {
+        !matches!(self, LLMProvider::Ollama)
     }
 }
 
@@ -89,6 +112,12 @@ pub fn Settings() -> Element {
                 LLMProvider::Claude => list_claude_models(api_key).await.unwrap_or_default(),
                 LLMProvider::OpenAI => list_openai_models(api_key).await.unwrap_or_default(),
                 LLMProvider::Gemini => list_gemini_models(api_key).await.unwrap_or_default(),
+                LLMProvider::OpenRouter => list_openrouter_models().await.unwrap_or_default(),
+                LLMProvider::Mistral => list_provider_models("mistral".to_string()).await.unwrap_or_default(),
+                LLMProvider::Groq => list_provider_models("groq".to_string()).await.unwrap_or_default(),
+                LLMProvider::Together => list_provider_models("together".to_string()).await.unwrap_or_default(),
+                LLMProvider::Cohere => list_provider_models("cohere".to_string()).await.unwrap_or_default(),
+                LLMProvider::DeepSeek => list_provider_models("deepseek".to_string()).await.unwrap_or_default(),
                 _ => Vec::new(),
             };
             cloud_models.set(models);
@@ -112,8 +141,7 @@ pub fn Settings() -> Element {
                     }
                     "claude" => {
                         selected_provider.set(LLMProvider::Claude);
-                        api_key_or_host.set(String::new()); // Don't show masked key
-                        // Fetch models (will use fallback without valid key)
+                        api_key_or_host.set(String::new());
                         if let Ok(models) = list_claude_models(None).await {
                             cloud_models.set(models);
                         }
@@ -129,6 +157,48 @@ pub fn Settings() -> Element {
                         selected_provider.set(LLMProvider::OpenAI);
                         api_key_or_host.set(String::new());
                         if let Ok(models) = list_openai_models(None).await {
+                            cloud_models.set(models);
+                        }
+                    }
+                    "openrouter" => {
+                        selected_provider.set(LLMProvider::OpenRouter);
+                        api_key_or_host.set(String::new());
+                        if let Ok(models) = list_openrouter_models().await {
+                            cloud_models.set(models);
+                        }
+                    }
+                    "mistral" => {
+                        selected_provider.set(LLMProvider::Mistral);
+                        api_key_or_host.set(String::new());
+                        if let Ok(models) = list_provider_models("mistral".to_string()).await {
+                            cloud_models.set(models);
+                        }
+                    }
+                    "groq" => {
+                        selected_provider.set(LLMProvider::Groq);
+                        api_key_or_host.set(String::new());
+                        if let Ok(models) = list_provider_models("groq".to_string()).await {
+                            cloud_models.set(models);
+                        }
+                    }
+                    "together" => {
+                        selected_provider.set(LLMProvider::Together);
+                        api_key_or_host.set(String::new());
+                        if let Ok(models) = list_provider_models("together".to_string()).await {
+                            cloud_models.set(models);
+                        }
+                    }
+                    "cohere" => {
+                        selected_provider.set(LLMProvider::Cohere);
+                        api_key_or_host.set(String::new());
+                        if let Ok(models) = list_provider_models("cohere".to_string()).await {
+                            cloud_models.set(models);
+                        }
+                    }
+                    "deepseek" => {
+                        selected_provider.set(LLMProvider::DeepSeek);
+                        api_key_or_host.set(String::new());
+                        if let Ok(models) = list_provider_models("deepseek".to_string()).await {
                             cloud_models.set(models);
                         }
                     }
@@ -364,6 +434,12 @@ pub fn Settings() -> Element {
         LLMProvider::Claude => "sk-ant-...",
         LLMProvider::Gemini => "AIza...",
         LLMProvider::OpenAI => "sk-...",
+        LLMProvider::OpenRouter => "sk-or-...",
+        LLMProvider::Mistral => "API Key",
+        LLMProvider::Groq => "gsk_...",
+        LLMProvider::Together => "API Key",
+        LLMProvider::Cohere => "API Key",
+        LLMProvider::DeepSeek => "sk-...",
     };
 
     let label_text = match *selected_provider.read() {
@@ -371,6 +447,12 @@ pub fn Settings() -> Element {
         LLMProvider::Claude => "Claude API Key",
         LLMProvider::Gemini => "Gemini API Key",
         LLMProvider::OpenAI => "OpenAI API Key",
+        LLMProvider::OpenRouter => "OpenRouter API Key",
+        LLMProvider::Mistral => "Mistral API Key",
+        LLMProvider::Groq => "Groq API Key",
+        LLMProvider::Together => "Together API Key",
+        LLMProvider::Cohere => "Cohere API Key",
+        LLMProvider::DeepSeek => "DeepSeek API Key",
     };
 
     let show_embedding_model = matches!(*selected_provider.read(), LLMProvider::Ollama);
@@ -407,14 +489,18 @@ pub fn Settings() -> Element {
                         div {
                             label { class: "block text-sm font-medium text-theme-secondary mb-1", "Provider" }
                             Select {
-                                value: selected_provider.read().to_string_key(), // Map back to string or handle in onchange
+                                value: selected_provider.read().to_string_key(),
                                 onchange: move |val: String| {
-                                    // Map "Ollama" etc value from options back to enum?
-                                    // Wait, options values are string.
                                     let provider = match val.as_str() {
                                         "Claude" => LLMProvider::Claude,
                                         "Gemini" => LLMProvider::Gemini,
                                         "OpenAI" => LLMProvider::OpenAI,
+                                        "OpenRouter" => LLMProvider::OpenRouter,
+                                        "Mistral" => LLMProvider::Mistral,
+                                        "Groq" => LLMProvider::Groq,
+                                        "Together" => LLMProvider::Together,
+                                        "Cohere" => LLMProvider::Cohere,
+                                        "DeepSeek" => LLMProvider::DeepSeek,
                                         _ => LLMProvider::Ollama,
                                     };
                                     selected_provider.set(provider.clone());
@@ -423,7 +509,6 @@ pub fn Settings() -> Element {
                                         LLMProvider::Ollama => {
                                              api_key_or_host.set("http://localhost:11434".to_string());
                                              model_name.set("llama3.2".to_string());
-                                             // Fetch available models
                                              fetch_ollama_models("http://localhost:11434".to_string());
                                         }
                                         LLMProvider::Claude => {
@@ -441,12 +526,48 @@ pub fn Settings() -> Element {
                                              model_name.set("gpt-4o".to_string());
                                              fetch_cloud_models(LLMProvider::OpenAI, None);
                                         }
+                                        LLMProvider::OpenRouter => {
+                                             api_key_or_host.set(String::new());
+                                             model_name.set("openai/gpt-4o".to_string());
+                                             fetch_cloud_models(LLMProvider::OpenRouter, None);
+                                        }
+                                        LLMProvider::Mistral => {
+                                             api_key_or_host.set(String::new());
+                                             model_name.set("mistral-large-latest".to_string());
+                                             fetch_cloud_models(LLMProvider::Mistral, None);
+                                        }
+                                        LLMProvider::Groq => {
+                                             api_key_or_host.set(String::new());
+                                             model_name.set("llama-3.3-70b-versatile".to_string());
+                                             fetch_cloud_models(LLMProvider::Groq, None);
+                                        }
+                                        LLMProvider::Together => {
+                                             api_key_or_host.set(String::new());
+                                             model_name.set("meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo".to_string());
+                                             fetch_cloud_models(LLMProvider::Together, None);
+                                        }
+                                        LLMProvider::Cohere => {
+                                             api_key_or_host.set(String::new());
+                                             model_name.set("command-r-plus".to_string());
+                                             fetch_cloud_models(LLMProvider::Cohere, None);
+                                        }
+                                        LLMProvider::DeepSeek => {
+                                             api_key_or_host.set(String::new());
+                                             model_name.set("deepseek-chat".to_string());
+                                             fetch_cloud_models(LLMProvider::DeepSeek, None);
+                                        }
                                     }
                                 },
                                 option { value: "Ollama", selected: matches!(*selected_provider.read(), LLMProvider::Ollama), "Ollama (Local)" }
+                                option { value: "OpenRouter", selected: matches!(*selected_provider.read(), LLMProvider::OpenRouter), "OpenRouter (400+ models)" }
                                 option { value: "Claude", selected: matches!(*selected_provider.read(), LLMProvider::Claude), "Claude (Anthropic)" }
-                                option { value: "Gemini", selected: matches!(*selected_provider.read(), LLMProvider::Gemini), "Gemini (Google)" }
                                 option { value: "OpenAI", selected: matches!(*selected_provider.read(), LLMProvider::OpenAI), "OpenAI" }
+                                option { value: "Gemini", selected: matches!(*selected_provider.read(), LLMProvider::Gemini), "Gemini (Google)" }
+                                option { value: "Mistral", selected: matches!(*selected_provider.read(), LLMProvider::Mistral), "Mistral AI" }
+                                option { value: "Groq", selected: matches!(*selected_provider.read(), LLMProvider::Groq), "Groq (Fast)" }
+                                option { value: "Together", selected: matches!(*selected_provider.read(), LLMProvider::Together), "Together AI" }
+                                option { value: "Cohere", selected: matches!(*selected_provider.read(), LLMProvider::Cohere), "Cohere" }
+                                option { value: "DeepSeek", selected: matches!(*selected_provider.read(), LLMProvider::DeepSeek), "DeepSeek" }
                             }
                         }
 

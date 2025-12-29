@@ -73,6 +73,36 @@ pub enum LLMConfig {
         #[serde(default = "default_openai_base_url")]
         base_url: String,
     },
+    /// OpenRouter - aggregates 400+ models from multiple providers
+    OpenRouter {
+        api_key: String,
+        model: String,
+    },
+    /// Mistral AI
+    Mistral {
+        api_key: String,
+        model: String,
+    },
+    /// Groq - fast inference
+    Groq {
+        api_key: String,
+        model: String,
+    },
+    /// Together AI - open source models
+    Together {
+        api_key: String,
+        model: String,
+    },
+    /// Cohere
+    Cohere {
+        api_key: String,
+        model: String,
+    },
+    /// DeepSeek
+    DeepSeek {
+        api_key: String,
+        model: String,
+    },
 }
 
 fn default_openai_max_tokens() -> u32 {
@@ -223,6 +253,12 @@ impl LLMClient {
             LLMConfig::Claude { .. } => "claude",
             LLMConfig::Gemini { .. } => "gemini",
             LLMConfig::OpenAI { .. } => "openai",
+            LLMConfig::OpenRouter { .. } => "openrouter",
+            LLMConfig::Mistral { .. } => "mistral",
+            LLMConfig::Groq { .. } => "groq",
+            LLMConfig::Together { .. } => "together",
+            LLMConfig::Cohere { .. } => "cohere",
+            LLMConfig::DeepSeek { .. } => "deepseek",
         }
     }
 
@@ -241,6 +277,25 @@ impl LLMClient {
             LLMConfig::OpenAI { api_key, model, max_tokens, organization_id, base_url } => {
                 self.openai_chat(api_key, model, *max_tokens, organization_id.as_deref(), base_url, request).await
             }
+            // OpenAI-compatible providers
+            LLMConfig::OpenRouter { api_key, model } => {
+                self.openai_chat(api_key, model, 4096, None, "https://openrouter.ai/api/v1", request).await
+            }
+            LLMConfig::Mistral { api_key, model } => {
+                self.openai_chat(api_key, model, 4096, None, "https://api.mistral.ai/v1", request).await
+            }
+            LLMConfig::Groq { api_key, model } => {
+                self.openai_chat(api_key, model, 4096, None, "https://api.groq.com/openai/v1", request).await
+            }
+            LLMConfig::Together { api_key, model } => {
+                self.openai_chat(api_key, model, 4096, None, "https://api.together.xyz/v1", request).await
+            }
+            LLMConfig::Cohere { api_key, model } => {
+                self.cohere_chat(api_key, model, request).await
+            }
+            LLMConfig::DeepSeek { api_key, model } => {
+                self.openai_chat(api_key, model, 4096, None, "https://api.deepseek.com/v1", request).await
+            }
         }
     }
 
@@ -252,7 +307,6 @@ impl LLMClient {
                 self.ollama_embed(host, model, text).await
             }
             LLMConfig::Claude { .. } => {
-                // Claude doesn't have native embeddings, would need Voyage API
                 Err(LLMError::EmbeddingNotSupported(
                     "Claude requires Voyage API for embeddings".to_string()
                 ))
@@ -262,6 +316,19 @@ impl LLMClient {
             }
             LLMConfig::OpenAI { api_key, base_url, .. } => {
                 self.openai_embed(api_key, base_url, text).await
+            }
+            LLMConfig::Together { api_key, .. } => {
+                self.openai_embed(api_key, "https://api.together.xyz/v1", text).await
+            }
+            LLMConfig::Cohere { api_key, .. } => {
+                self.cohere_embed(api_key, text).await
+            }
+            // These providers don't have embedding APIs
+            LLMConfig::OpenRouter { .. } | LLMConfig::Mistral { .. } |
+            LLMConfig::Groq { .. } | LLMConfig::DeepSeek { .. } => {
+                Err(LLMError::EmbeddingNotSupported(
+                    "Provider does not support embeddings".to_string()
+                ))
             }
         }
     }
@@ -277,15 +344,12 @@ impl LLMClient {
                 }
             }
             LLMConfig::Claude { api_key, .. } => {
-                // Simple validation - just check if key looks valid
                 Ok(api_key.starts_with("sk-ant-"))
             }
             LLMConfig::Gemini { api_key, .. } => {
-                // Simple validation
                 Ok(api_key.starts_with("AIza"))
             }
             LLMConfig::OpenAI { api_key, base_url, .. } => {
-                // Check models endpoint to validate API key
                 let url = format!("{}/models", base_url);
                 match self.client.get(&url)
                     .header("Authorization", format!("Bearer {}", api_key))
@@ -295,6 +359,53 @@ impl LLMClient {
                     Ok(resp) => Ok(resp.status().is_success()),
                     Err(_) => Ok(false),
                 }
+            }
+            // OpenAI-compatible providers - check models endpoint
+            LLMConfig::OpenRouter { api_key, .. } => {
+                let url = "https://openrouter.ai/api/v1/models";
+                match self.client.get(url)
+                    .header("Authorization", format!("Bearer {}", api_key))
+                    .send().await
+                {
+                    Ok(resp) => Ok(resp.status().is_success()),
+                    Err(_) => Ok(false),
+                }
+            }
+            LLMConfig::Mistral { api_key, .. } => {
+                let url = "https://api.mistral.ai/v1/models";
+                match self.client.get(url)
+                    .header("Authorization", format!("Bearer {}", api_key))
+                    .send().await
+                {
+                    Ok(resp) => Ok(resp.status().is_success()),
+                    Err(_) => Ok(false),
+                }
+            }
+            LLMConfig::Groq { api_key, .. } => {
+                let url = "https://api.groq.com/openai/v1/models";
+                match self.client.get(url)
+                    .header("Authorization", format!("Bearer {}", api_key))
+                    .send().await
+                {
+                    Ok(resp) => Ok(resp.status().is_success()),
+                    Err(_) => Ok(false),
+                }
+            }
+            LLMConfig::Together { api_key, .. } => {
+                let url = "https://api.together.xyz/v1/models";
+                match self.client.get(url)
+                    .header("Authorization", format!("Bearer {}", api_key))
+                    .send().await
+                {
+                    Ok(resp) => Ok(resp.status().is_success()),
+                    Err(_) => Ok(false),
+                }
+            }
+            LLMConfig::Cohere { api_key, .. } => {
+                Ok(!api_key.is_empty())
+            }
+            LLMConfig::DeepSeek { api_key, .. } => {
+                Ok(api_key.starts_with("sk-"))
             }
         }
     }
@@ -900,6 +1011,126 @@ impl LLMClient {
     }
 
     // ========================================================================
+    // Cohere Implementation
+    // ========================================================================
+
+    async fn cohere_chat(&self, api_key: &str, model: &str, request: ChatRequest) -> Result<ChatResponse> {
+        let url = "https://api.cohere.ai/v1/chat";
+
+        // Cohere uses a different message format
+        let mut chat_history: Vec<serde_json::Value> = Vec::new();
+
+        // Add conversation history (excluding the last message which becomes the query)
+        for msg in request.messages.iter().take(request.messages.len().saturating_sub(1)) {
+            let role = match msg.role {
+                MessageRole::System => "SYSTEM",
+                MessageRole::User => "USER",
+                MessageRole::Assistant => "CHATBOT",
+            };
+            chat_history.push(serde_json::json!({
+                "role": role,
+                "message": msg.content
+            }));
+        }
+
+        // Last message is the current query
+        let message = request.messages.last()
+            .map(|m| m.content.clone())
+            .unwrap_or_default();
+
+        let mut body = serde_json::json!({
+            "model": model,
+            "message": message,
+        });
+
+        if !chat_history.is_empty() {
+            body["chat_history"] = serde_json::Value::Array(chat_history);
+        }
+
+        if let Some(system) = &request.system_prompt {
+            body["preamble"] = serde_json::Value::String(system.clone());
+        }
+
+        if let Some(temp) = request.temperature {
+            body["temperature"] = serde_json::json!(temp);
+        }
+
+        let resp = self.client.post(url)
+            .header("Authorization", format!("Bearer {}", api_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let text = resp.text().await.unwrap_or_default();
+            return Err(LLMError::ApiError { status: status.as_u16(), message: text });
+        }
+
+        let json: serde_json::Value = resp.json().await?;
+
+        let content = json["text"]
+            .as_str()
+            .ok_or_else(|| LLMError::InvalidResponse("Missing text in response".to_string()))?
+            .to_string();
+
+        let usage = json["meta"]["tokens"].as_object().map(|t| TokenUsage {
+            input_tokens: t["input_tokens"].as_u64().unwrap_or(0) as u32,
+            output_tokens: t["output_tokens"].as_u64().unwrap_or(0) as u32,
+        });
+
+        Ok(ChatResponse {
+            content,
+            model: model.to_string(),
+            usage,
+            finish_reason: json["finish_reason"].as_str().map(|s| s.to_string()),
+        })
+    }
+
+    async fn cohere_embed(&self, api_key: &str, text: &str) -> Result<EmbeddingResponse> {
+        let url = "https://api.cohere.ai/v1/embed";
+
+        let body = serde_json::json!({
+            "texts": [text],
+            "model": "embed-english-v3.0",
+            "input_type": "search_document"
+        });
+
+        let resp = self.client.post(url)
+            .header("Authorization", format!("Bearer {}", api_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status().as_u16();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(LLMError::ApiError { status, message: text });
+        }
+
+        let json: serde_json::Value = resp.json().await?;
+
+        let embedding: Vec<f32> = json["embeddings"]
+            .as_array()
+            .and_then(|arr| arr.first())
+            .and_then(|e| e.as_array())
+            .ok_or_else(|| LLMError::InvalidResponse("Missing embeddings".to_string()))?
+            .iter()
+            .map(|v| v.as_f64().unwrap_or(0.0) as f32)
+            .collect();
+
+        let dimensions = embedding.len();
+
+        Ok(EmbeddingResponse {
+            embedding,
+            model: "embed-english-v3.0".to_string(),
+            dimensions,
+        })
+    }
+
+    // ========================================================================
     // OpenAI Implementation
     // ========================================================================
 
@@ -1101,6 +1332,272 @@ impl ChatRequest {
     pub fn with_max_tokens(mut self, max: u32) -> Self {
         self.max_tokens = Some(max);
         self
+    }
+}
+
+// ============================================================================
+// External Model Catalog Fetchers (No Auth Required)
+// ============================================================================
+
+/// Model info with extended metadata from LiteLLM catalog
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtendedModelInfo {
+    pub id: String,
+    pub name: String,
+    pub provider: String,
+    pub description: Option<String>,
+    pub context_window: Option<u32>,
+    pub input_cost_per_million: Option<f64>,
+    pub output_cost_per_million: Option<f64>,
+    pub supports_vision: bool,
+    pub supports_function_calling: bool,
+}
+
+impl From<ExtendedModelInfo> for ModelInfo {
+    fn from(e: ExtendedModelInfo) -> Self {
+        ModelInfo {
+            id: e.id,
+            name: e.name,
+            description: e.description,
+        }
+    }
+}
+
+/// Fetch comprehensive model catalog from BerriAI/litellm (no auth required)
+/// Returns models grouped by provider
+pub async fn fetch_litellm_catalog() -> Result<std::collections::HashMap<String, Vec<ExtendedModelInfo>>> {
+    let client = Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| LLMError::InvalidResponse(e.to_string()))?;
+
+    let url = "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
+
+    let response = client
+        .get(url)
+        .header("User-Agent", "TTRPG-Assistant")
+        .send()
+        .await
+        .map_err(|e| LLMError::InvalidResponse(format!("Failed to fetch LiteLLM catalog: {}", e)))?;
+
+    if !response.status().is_success() {
+        return Err(LLMError::ApiError {
+            status: response.status().as_u16(),
+            message: "Failed to fetch LiteLLM catalog".to_string(),
+        });
+    }
+
+    #[derive(Deserialize)]
+    struct LiteLLMModel {
+        litellm_provider: Option<String>,
+        max_input_tokens: Option<u32>,
+        max_output_tokens: Option<u32>,
+        input_cost_per_token: Option<f64>,
+        output_cost_per_token: Option<f64>,
+        supports_vision: Option<bool>,
+        supports_function_calling: Option<bool>,
+        mode: Option<String>,
+    }
+
+    let models: std::collections::HashMap<String, LiteLLMModel> = response.json().await
+        .map_err(|e| LLMError::InvalidResponse(format!("Failed to parse LiteLLM catalog: {}", e)))?;
+
+    // Group by provider and filter to chat models
+    let mut grouped: std::collections::HashMap<String, Vec<ExtendedModelInfo>> = std::collections::HashMap::new();
+
+    for (model_id, model) in models {
+        // Skip non-chat models
+        if let Some(mode) = &model.mode {
+            if mode != "chat" && mode != "completion" {
+                continue;
+            }
+        }
+
+        let provider = model.litellm_provider.clone().unwrap_or_else(|| "unknown".to_string());
+
+        // Skip embedding-only, image, audio models
+        if model_id.contains("embedding") || model_id.contains("tts") ||
+           model_id.contains("whisper") || model_id.contains("dall-e") ||
+           model_id.contains("text-embedding") {
+            continue;
+        }
+
+        let info = ExtendedModelInfo {
+            id: model_id.clone(),
+            name: model_id.replace("/", " ").replace("-", " "),
+            provider: provider.clone(),
+            description: None,
+            context_window: model.max_input_tokens,
+            input_cost_per_million: model.input_cost_per_token.map(|c| c * 1_000_000.0),
+            output_cost_per_million: model.output_cost_per_token.map(|c| c * 1_000_000.0),
+            supports_vision: model.supports_vision.unwrap_or(false),
+            supports_function_calling: model.supports_function_calling.unwrap_or(false),
+        };
+
+        grouped.entry(provider).or_default().push(info);
+    }
+
+    Ok(grouped)
+}
+
+/// Fetch models from LiteLLM for a specific provider
+pub async fn fetch_litellm_models_for_provider(provider: &str) -> Result<Vec<ModelInfo>> {
+    let catalog = fetch_litellm_catalog().await?;
+
+    // Map provider names
+    let litellm_provider = match provider {
+        "claude" | "anthropic" => "anthropic",
+        "openai" => "openai",
+        "gemini" | "google" => "vertex_ai-language-models",
+        "mistral" => "mistral",
+        "groq" => "groq",
+        "together" => "together_ai",
+        "openrouter" => "openrouter",
+        "cohere" => "cohere_chat",
+        "deepseek" => "deepseek",
+        "fireworks" => "fireworks_ai",
+        other => other,
+    };
+
+    let models = catalog.get(litellm_provider)
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .map(ModelInfo::from)
+        .collect();
+
+    Ok(models)
+}
+
+/// Fetch models from OpenRouter API (no auth required)
+pub async fn fetch_openrouter_models() -> Result<Vec<ExtendedModelInfo>> {
+    let client = Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| LLMError::InvalidResponse(e.to_string()))?;
+
+    let url = "https://openrouter.ai/api/v1/models";
+
+    let response = client
+        .get(url)
+        .header("User-Agent", "TTRPG-Assistant")
+        .send()
+        .await
+        .map_err(|e| LLMError::InvalidResponse(format!("Failed to fetch OpenRouter models: {}", e)))?;
+
+    if !response.status().is_success() {
+        return Err(LLMError::ApiError {
+            status: response.status().as_u16(),
+            message: "Failed to fetch OpenRouter models".to_string(),
+        });
+    }
+
+    #[derive(Deserialize)]
+    struct OpenRouterResponse {
+        data: Vec<OpenRouterModel>,
+    }
+
+    #[derive(Deserialize)]
+    struct OpenRouterModel {
+        id: String,
+        name: String,
+        context_length: Option<u32>,
+        pricing: Option<OpenRouterPricing>,
+        architecture: Option<OpenRouterArch>,
+    }
+
+    #[derive(Deserialize)]
+    struct OpenRouterPricing {
+        prompt: Option<String>,
+        completion: Option<String>,
+    }
+
+    #[derive(Deserialize)]
+    struct OpenRouterArch {
+        modality: Option<String>,
+    }
+
+    let resp: OpenRouterResponse = response.json().await
+        .map_err(|e| LLMError::InvalidResponse(format!("Failed to parse OpenRouter response: {}", e)))?;
+
+    let models = resp.data.into_iter()
+        .map(|m| {
+            let supports_vision = m.architecture
+                .as_ref()
+                .and_then(|a| a.modality.as_ref())
+                .map(|m| m.contains("image"))
+                .unwrap_or(false);
+
+            // Parse pricing (string format like "0.0000025")
+            let input_cost = m.pricing.as_ref()
+                .and_then(|p| p.prompt.as_ref())
+                .and_then(|s| s.parse::<f64>().ok())
+                .map(|c| c * 1_000_000.0);
+
+            let output_cost = m.pricing.as_ref()
+                .and_then(|p| p.completion.as_ref())
+                .and_then(|s| s.parse::<f64>().ok())
+                .map(|c| c * 1_000_000.0);
+
+            // Extract provider from model ID (e.g., "openai/gpt-4" -> "openai")
+            let provider = m.id.split('/').next().unwrap_or("unknown").to_string();
+
+            ExtendedModelInfo {
+                id: m.id,
+                name: m.name,
+                provider,
+                description: None,
+                context_window: m.context_length,
+                input_cost_per_million: input_cost,
+                output_cost_per_million: output_cost,
+                supports_vision,
+                supports_function_calling: true, // OpenRouter generally supports this
+            }
+        })
+        .collect();
+
+    Ok(models)
+}
+
+/// Get fallback models for new providers
+pub fn get_extended_fallback_models(provider: &str) -> Vec<ModelInfo> {
+    match provider {
+        "openrouter" => vec![
+            ModelInfo { id: "openai/gpt-4o".to_string(), name: "GPT-4o (via OpenRouter)".to_string(), description: Some("OpenAI's latest".to_string()) },
+            ModelInfo { id: "anthropic/claude-3.5-sonnet".to_string(), name: "Claude 3.5 Sonnet".to_string(), description: Some("Anthropic's best".to_string()) },
+            ModelInfo { id: "google/gemini-pro-1.5".to_string(), name: "Gemini Pro 1.5".to_string(), description: Some("Google's latest".to_string()) },
+            ModelInfo { id: "meta-llama/llama-3.1-70b-instruct".to_string(), name: "Llama 3.1 70B".to_string(), description: Some("Open source".to_string()) },
+        ],
+        "mistral" => vec![
+            ModelInfo { id: "mistral-large-latest".to_string(), name: "Mistral Large".to_string(), description: Some("Most capable".to_string()) },
+            ModelInfo { id: "mistral-medium-latest".to_string(), name: "Mistral Medium".to_string(), description: Some("Balanced".to_string()) },
+            ModelInfo { id: "mistral-small-latest".to_string(), name: "Mistral Small".to_string(), description: Some("Fast".to_string()) },
+            ModelInfo { id: "codestral-latest".to_string(), name: "Codestral".to_string(), description: Some("Code specialist".to_string()) },
+            ModelInfo { id: "open-mistral-nemo".to_string(), name: "Mistral Nemo".to_string(), description: Some("Open weight".to_string()) },
+        ],
+        "groq" => vec![
+            ModelInfo { id: "llama-3.3-70b-versatile".to_string(), name: "Llama 3.3 70B".to_string(), description: Some("Fast inference".to_string()) },
+            ModelInfo { id: "llama-3.1-8b-instant".to_string(), name: "Llama 3.1 8B".to_string(), description: Some("Fastest".to_string()) },
+            ModelInfo { id: "mixtral-8x7b-32768".to_string(), name: "Mixtral 8x7B".to_string(), description: Some("MoE model".to_string()) },
+            ModelInfo { id: "gemma2-9b-it".to_string(), name: "Gemma 2 9B".to_string(), description: Some("Google open".to_string()) },
+        ],
+        "together" => vec![
+            ModelInfo { id: "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo".to_string(), name: "Llama 3.1 405B".to_string(), description: Some("Largest open".to_string()) },
+            ModelInfo { id: "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo".to_string(), name: "Llama 3.1 70B".to_string(), description: Some("Fast".to_string()) },
+            ModelInfo { id: "mistralai/Mixtral-8x22B-Instruct-v0.1".to_string(), name: "Mixtral 8x22B".to_string(), description: Some("Large MoE".to_string()) },
+            ModelInfo { id: "Qwen/Qwen2.5-72B-Instruct-Turbo".to_string(), name: "Qwen 2.5 72B".to_string(), description: Some("Alibaba".to_string()) },
+        ],
+        "cohere" => vec![
+            ModelInfo { id: "command-r-plus".to_string(), name: "Command R+".to_string(), description: Some("Most capable".to_string()) },
+            ModelInfo { id: "command-r".to_string(), name: "Command R".to_string(), description: Some("Balanced".to_string()) },
+            ModelInfo { id: "command-light".to_string(), name: "Command Light".to_string(), description: Some("Fast".to_string()) },
+        ],
+        "deepseek" => vec![
+            ModelInfo { id: "deepseek-chat".to_string(), name: "DeepSeek Chat".to_string(), description: Some("General purpose".to_string()) },
+            ModelInfo { id: "deepseek-coder".to_string(), name: "DeepSeek Coder".to_string(), description: Some("Code specialist".to_string()) },
+            ModelInfo { id: "deepseek-reasoner".to_string(), name: "DeepSeek Reasoner".to_string(), description: Some("Reasoning".to_string()) },
+        ],
+        _ => get_fallback_models(provider),
     }
 }
 

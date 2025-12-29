@@ -330,6 +330,20 @@ pub async fn list_gemini_models(api_key: Option<String>) -> Result<Vec<ModelInfo
     invoke("list_gemini_models", &Args { api_key }).await
 }
 
+/// List OpenRouter models (no auth required - uses public API)
+pub async fn list_openrouter_models() -> Result<Vec<ModelInfo>, String> {
+    invoke_no_args("list_openrouter_models").await
+}
+
+/// List models for any provider via LiteLLM catalog (no auth required)
+pub async fn list_provider_models(provider: String) -> Result<Vec<ModelInfo>, String> {
+    #[derive(Serialize)]
+    struct Args {
+        provider: String,
+    }
+    invoke("list_provider_models", &Args { provider }).await
+}
+
 pub async fn configure_voice(config: VoiceConfig) -> Result<String, String> {
     #[derive(Serialize)]
     struct Args {
