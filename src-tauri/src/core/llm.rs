@@ -1415,15 +1415,12 @@ pub async fn fetch_litellm_catalog() -> Result<std::collections::HashMap<String,
 
         let provider = model.litellm_provider.clone().unwrap_or_else(|| "unknown".to_string());
 
-        // Skip embedding-only, image, audio models
-        if model_id.contains("embedding") || model_id.contains("tts") ||
-           model_id.contains("whisper") || model_id.contains("dall-e") {
-            continue;
-        }
+        // The mode field check above is sufficient to filter chat models
+        // No need for additional string-based filtering which can be brittle
 
         let info = ExtendedModelInfo {
             id: model_id.clone(),
-            name: model_id.clone(),
+            name: model_id.clone(), // Use model ID directly as name
             provider: provider.clone(),
             description: None,
             context_window: model.max_input_tokens,
@@ -1550,7 +1547,7 @@ pub async fn fetch_openrouter_models() -> Result<Vec<ExtendedModelInfo>> {
                 input_cost_per_million: input_cost,
                 output_cost_per_million: output_cost,
                 supports_vision,
-                supports_function_calling: true, // OpenRouter generally supports this
+                supports_function_calling: false, // Not all models support this, safer to default false
             }
         })
         .collect();

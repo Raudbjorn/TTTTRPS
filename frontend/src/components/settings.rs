@@ -114,15 +114,19 @@ pub fn Settings() -> Element {
         spawn(async move {
             is_loading_models.set(true);
             let models = match provider {
+                // Providers with dedicated API endpoints
                 LLMProvider::Claude => list_claude_models(api_key).await.unwrap_or_default(),
                 LLMProvider::OpenAI => list_openai_models(api_key).await.unwrap_or_default(),
                 LLMProvider::Gemini => list_gemini_models(api_key).await.unwrap_or_default(),
                 LLMProvider::OpenRouter => list_openrouter_models().await.unwrap_or_default(),
-                LLMProvider::Mistral => list_provider_models("mistral".to_string()).await.unwrap_or_default(),
-                LLMProvider::Groq => list_provider_models("groq".to_string()).await.unwrap_or_default(),
-                LLMProvider::Together => list_provider_models("together".to_string()).await.unwrap_or_default(),
-                LLMProvider::Cohere => list_provider_models("cohere".to_string()).await.unwrap_or_default(),
-                LLMProvider::DeepSeek => list_provider_models("deepseek".to_string()).await.unwrap_or_default(),
+                // Providers using LiteLLM catalog
+                p @ (LLMProvider::Mistral
+                | LLMProvider::Groq
+                | LLMProvider::Together
+                | LLMProvider::Cohere
+                | LLMProvider::DeepSeek) => {
+                    list_provider_models(p.to_string_key()).await.unwrap_or_default()
+                }
                 _ => Vec::new(),
             };
             cloud_models.set(models);
