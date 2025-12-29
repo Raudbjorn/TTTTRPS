@@ -6,7 +6,7 @@ This document contains actionable tasks for achieving feature parity, organized 
 
 | Field | Value |
 |-------|-------|
-| Version | 1.0.0 |
+| Version | 1.1.0 |
 | Last Updated | 2025-12-29 |
 | Status | Draft |
 
@@ -288,28 +288,34 @@ Build comprehensive campaign management dashboard.
 **Status:** `[ ]`
 
 **Description:**
-Add relationship tracking between campaign entities.
+Add relationship tracking between campaign entities using a dedicated relationships table (see design.md §3.1 for schema). This replaces the previous JSON-based approach for better query performance and relational integrity.
 
 **Subtasks:**
-- [ ] Create relationships table
-- [ ] Implement NPC-to-NPC relationships
-- [ ] Add NPC-to-location associations
-- [ ] Create quest-to-entity links
-- [ ] Implement relationship query commands
-- [ ] Add relationship visualization
-- [ ] Create relationship editor component
+- [ ] Implement `entity_relationships` table migration (schema in design.md)
+- [ ] Create `EntityRelationship` struct with proper types
+- [ ] Implement CRUD operations for relationships
+- [ ] Add bidirectional relationship queries
+- [ ] Support relationship types: ally, enemy, family, employee, located_at, etc.
+- [ ] Implement relationship strength (0.0-1.0 scale)
+- [ ] Add Tauri commands for relationship management
+- [ ] Create relationship graph visualization component
+- [ ] Build relationship editor UI
 
 **Files to Create/Modify:**
-- `src-tauri/src/core/campaign/relationships.rs`
-- `src-tauri/src/core/database/schema.rs`
-- `src-tauri/src/commands.rs`
+- `src-tauri/src/core/database/schema.rs` (add migration)
+- `src-tauri/src/core/campaign/relationships.rs` (new module)
+- `src-tauri/src/core/campaign/mod.rs` (export module)
+- `src-tauri/src/commands.rs` (add commands)
 - `frontend/src/components/campaign/relationship_graph.rs`
+- `frontend/src/components/campaign/relationship_editor.rs`
 
 **Acceptance Criteria:**
-- Define relationships between entities
-- Query related entities
-- Visualize entity graph
-- Edit relationships in UI
+- Entity relationships stored in dedicated table with proper indexes
+- Support NPC↔NPC, NPC↔Location, Character↔NPC, Quest↔Entity relationships
+- Query relationships by source, target, or type
+- Bidirectional relationships handled correctly
+- Relationship visualization as interactive graph
+- Edit/delete relationships from UI
 
 ---
 
@@ -915,4 +921,5 @@ TASK-018 (Multi-System Gen)
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.1.0 | 2025-12-29 | Update TASK-009 to use dedicated entity_relationships table per design.md |
 | 1.0.0 | 2025-12-29 | Initial task breakdown |

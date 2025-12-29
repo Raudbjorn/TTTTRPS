@@ -6,7 +6,7 @@ This document describes the architecture and design decisions for achieving feat
 
 | Field | Value |
 |-------|-------|
-| Version | 1.0.0 |
+| Version | 1.1.0 |
 | Last Updated | 2025-12-29 |
 | Status | Draft |
 
@@ -351,7 +351,117 @@ impl VersionManager {
 
 **Satisfies:** REQ-CAMP-002
 
-### 2.6 Session Timeline
+### 2.6 Entity Relationship System
+
+**Purpose:** Track many-to-many relationships between campaign entities (NPCs, Characters, Locations, Quests).
+
+**Location:** `src-tauri/src/core/campaign/relationships.rs`
+
+**Design:**
+
+```rust
+pub struct EntityRelationship {
+    pub id: String,
+    pub campaign_id: String,
+    pub source_entity_type: EntityType,
+    pub source_entity_id: String,
+    pub target_entity_type: EntityType,
+    pub target_entity_id: String,
+    pub relationship_type: RelationshipType,
+    pub description: Option<String>,
+    pub strength: f32,          // 0.0 to 1.0
+    pub bidirectional: bool,
+    pub metadata: Option<serde_json::Value>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum EntityType {
+    Npc,
+    Character,
+    Location,
+    Quest,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub enum RelationshipType {
+    // Social
+    Ally,
+    Enemy,
+    Neutral,
+    Family,
+    Friend,
+    Rival,
+    // Professional
+    Employee,
+    Employer,
+    Colleague,
+    Mentor,
+    Student,
+    // Location
+    LocatedAt,
+    OriginatesFrom,
+    Controls,
+    // Quest
+    QuestGiver,
+    QuestTarget,
+    QuestLocation,
+    // Custom
+    Custom(String),
+}
+
+pub struct RelationshipManager {
+    db: Arc<Database>,
+}
+
+impl RelationshipManager {
+    /// Create a relationship between entities
+    pub async fn create(&self, relationship: EntityRelationship) -> Result<String>;
+
+    /// Get all relationships for an entity
+    pub async fn get_for_entity(
+        &self,
+        entity_type: EntityType,
+        entity_id: &str,
+    ) -> Result<Vec<EntityRelationship>>;
+
+    /// Get relationships of a specific type
+    pub async fn get_by_type(
+        &self,
+        campaign_id: &str,
+        relationship_type: &RelationshipType,
+    ) -> Result<Vec<EntityRelationship>>;
+
+    /// Delete a relationship
+    pub async fn delete(&self, id: &str) -> Result<()>;
+
+    /// Get entity graph for visualization
+    pub async fn get_entity_graph(&self, campaign_id: &str) -> Result<EntityGraph>;
+}
+
+pub struct EntityGraph {
+    pub nodes: Vec<GraphNode>,
+    pub edges: Vec<GraphEdge>,
+}
+
+pub struct GraphNode {
+    pub entity_type: EntityType,
+    pub entity_id: String,
+    pub label: String,
+}
+
+pub struct GraphEdge {
+    pub source_id: String,
+    pub target_id: String,
+    pub relationship_type: RelationshipType,
+    pub bidirectional: bool,
+}
+```
+
+**Satisfies:** REQ-CAMP-003
+
+### 2.7 Session Timeline
 
 **Purpose:** Track chronological events within sessions.
 
@@ -402,7 +512,7 @@ impl SessionTimeline {
 
 **Satisfies:** REQ-SESS-005
 
-### 2.7 Character Generation Engine
+### 2.8 Character Generation Engine
 
 **Purpose:** Generate characters for multiple TTRPG systems.
 
@@ -529,10 +639,27 @@ CREATE TABLE npcs (
     motivations TEXT,
     stats TEXT,          -- JSON
     voice_profile_id TEXT REFERENCES voice_profiles(id) ON DELETE SET NULL,
-    relationships TEXT,  -- JSON
     quest_hooks TEXT,    -- JSON
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
+);
+
+-- Entity Relationships (many-to-many between campaign entities)
+CREATE TABLE entity_relationships (
+    id TEXT PRIMARY KEY,
+    campaign_id TEXT NOT NULL REFERENCES campaigns(id),
+    source_entity_type TEXT NOT NULL,  -- 'npc', 'character', 'location', 'quest'
+    source_entity_id TEXT NOT NULL,
+    target_entity_type TEXT NOT NULL,
+    target_entity_id TEXT NOT NULL,
+    relationship_type TEXT NOT NULL,   -- 'ally', 'enemy', 'family', 'employee', 'located_at', etc.
+    description TEXT,
+    strength REAL DEFAULT 1.0,         -- 0.0 to 1.0, relationship strength
+    bidirectional INTEGER DEFAULT 0,   -- 1 if relationship applies both ways
+    metadata TEXT,                     -- JSON for additional properties
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(source_entity_type, source_entity_id, target_entity_type, target_entity_id, relationship_type)
 );
 
 -- Locations
@@ -619,6 +746,10 @@ CREATE INDEX idx_sessions_campaign ON sessions(campaign_id);
 CREATE INDEX idx_events_session ON session_events(session_id);
 CREATE INDEX idx_notes_session ON session_notes(session_id);
 CREATE INDEX idx_versions_campaign ON campaign_versions(campaign_id);
+CREATE INDEX idx_relationships_campaign ON entity_relationships(campaign_id);
+CREATE INDEX idx_relationships_source ON entity_relationships(source_entity_type, source_entity_id);
+CREATE INDEX idx_relationships_target ON entity_relationships(target_entity_type, target_entity_id);
+CREATE INDEX idx_relationships_type ON entity_relationships(relationship_type);
 ```
 
 ---
@@ -815,4 +946,5 @@ frontend/src/components/
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.1.0 | 2025-12-29 | Add entity_relationships table (replaces JSON in npcs), add EntityRelationship module design |
 | 1.0.0 | 2025-12-29 | Initial design document |
