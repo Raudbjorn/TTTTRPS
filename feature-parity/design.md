@@ -523,7 +523,7 @@ CREATE TABLE npcs (
     campaign_id TEXT REFERENCES campaigns(id),
     name TEXT NOT NULL,
     role TEXT,
-    location_id TEXT REFERENCES locations(id),
+    location_id TEXT REFERENCES locations(id) ON DELETE SET NULL,
     description TEXT,
     personality TEXT,
     motivations TEXT,
