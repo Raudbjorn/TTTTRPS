@@ -358,6 +358,57 @@ pub async fn list_ollama_models(host: String) -> Result<Vec<crate::core::llm::Ol
         .map_err(|e| e.to_string())
 }
 
+/// List available Claude models (with fallback)
+#[tauri::command]
+pub async fn list_claude_models(api_key: Option<String>) -> Result<Vec<crate::core::llm::ModelInfo>, String> {
+    if let Some(key) = api_key {
+        if !key.is_empty() && !key.starts_with("*") {
+            match crate::core::llm::LLMClient::list_claude_models(&key).await {
+                Ok(models) if !models.is_empty() => return Ok(models),
+                _ => {} // Fall through to fallback
+            }
+        }
+    }
+    Ok(crate::core::llm::get_fallback_models("claude"))
+}
+
+/// List available OpenAI models (with fallback)
+#[tauri::command]
+pub async fn list_openai_models(api_key: Option<String>) -> Result<Vec<crate::core::llm::ModelInfo>, String> {
+    // First try OpenAI API if we have a valid key
+    if let Some(key) = api_key {
+        if !key.is_empty() && !key.starts_with("*") {
+            match crate::core::llm::LLMClient::list_openai_models(&key, None).await {
+                Ok(models) if !models.is_empty() => return Ok(models),
+                _ => {} // Fall through to GitHub fallback
+            }
+        }
+    }
+
+    // Second try: fetch from GitHub community list
+    match crate::core::llm::LLMClient::fetch_openai_models_from_github().await {
+        Ok(models) if !models.is_empty() => return Ok(models),
+        _ => {} // Fall through to hardcoded fallback
+    }
+
+    // Final fallback: hardcoded list
+    Ok(crate::core::llm::get_fallback_models("openai"))
+}
+
+/// List available Gemini models (with fallback)
+#[tauri::command]
+pub async fn list_gemini_models(api_key: Option<String>) -> Result<Vec<crate::core::llm::ModelInfo>, String> {
+    if let Some(key) = api_key {
+        if !key.is_empty() && !key.starts_with("*") {
+            match crate::core::llm::LLMClient::list_gemini_models(&key).await {
+                Ok(models) if !models.is_empty() => return Ok(models),
+                _ => {} // Fall through to fallback
+            }
+        }
+    }
+    Ok(crate::core::llm::get_fallback_models("gemini"))
+}
+
 // ============================================================================
 // Document Ingestion Commands
 // ============================================================================

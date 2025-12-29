@@ -298,6 +298,38 @@ pub async fn list_ollama_models(host: String) -> Result<Vec<OllamaModel>, String
     invoke("list_ollama_models", &Args { host }).await
 }
 
+/// Generic model info for cloud providers
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelInfo {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+}
+
+pub async fn list_claude_models(api_key: Option<String>) -> Result<Vec<ModelInfo>, String> {
+    #[derive(Serialize)]
+    struct Args {
+        api_key: Option<String>,
+    }
+    invoke("list_claude_models", &Args { api_key }).await
+}
+
+pub async fn list_openai_models(api_key: Option<String>) -> Result<Vec<ModelInfo>, String> {
+    #[derive(Serialize)]
+    struct Args {
+        api_key: Option<String>,
+    }
+    invoke("list_openai_models", &Args { api_key }).await
+}
+
+pub async fn list_gemini_models(api_key: Option<String>) -> Result<Vec<ModelInfo>, String> {
+    #[derive(Serialize)]
+    struct Args {
+        api_key: Option<String>,
+    }
+    invoke("list_gemini_models", &Args { api_key }).await
+}
+
 pub async fn configure_voice(config: VoiceConfig) -> Result<String, String> {
     #[derive(Serialize)]
     struct Args {

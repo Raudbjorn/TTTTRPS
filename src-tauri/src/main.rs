@@ -90,6 +90,9 @@ fn main() {
             commands::check_llm_health,
             commands::get_llm_config,
             commands::list_ollama_models,
+            commands::list_claude_models,
+            commands::list_openai_models,
+            commands::list_gemini_models,
 
             // Campaign Commands
             commands::list_campaigns,

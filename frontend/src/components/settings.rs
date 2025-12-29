@@ -4,7 +4,8 @@ use crate::bindings::{
     configure_llm, get_llm_config, save_api_key, check_llm_health, LLMSettings, HealthStatus,
     configure_voice, get_voice_config, VoiceConfig, ElevenLabsConfig, OllamaConfig,
     check_meilisearch_health, reindex_library, MeilisearchStatus,
-    list_ollama_models, OllamaModel
+    list_ollama_models, OllamaModel,
+    list_claude_models, list_openai_models, list_gemini_models, ModelInfo
 };
 use crate::components::design_system::{Button, ButtonVariant, Input, Select, Card, CardHeader, CardBody, Badge, BadgeVariant};
 
@@ -60,6 +61,8 @@ pub fn Settings() -> Element {
 
     // Ollama models list
     let mut ollama_models = use_signal(|| Vec::<OllamaModel>::new());
+    // Cloud provider models list
+    let mut cloud_models = use_signal(|| Vec::<ModelInfo>::new());
     let mut is_loading_models = use_signal(|| false);
 
     // Function to fetch Ollama models
@@ -74,6 +77,21 @@ pub fn Settings() -> Element {
                     ollama_models.set(Vec::new());
                 }
             }
+            is_loading_models.set(false);
+        });
+    };
+
+    // Function to fetch cloud provider models (with API key)
+    let fetch_cloud_models = move |provider: LLMProvider, api_key: Option<String>| {
+        spawn(async move {
+            is_loading_models.set(true);
+            let models = match provider {
+                LLMProvider::Claude => list_claude_models(api_key).await.unwrap_or_default(),
+                LLMProvider::OpenAI => list_openai_models(api_key).await.unwrap_or_default(),
+                LLMProvider::Gemini => list_gemini_models(api_key).await.unwrap_or_default(),
+                _ => Vec::new(),
+            };
+            cloud_models.set(models);
             is_loading_models.set(false);
         });
     };
@@ -95,14 +113,24 @@ pub fn Settings() -> Element {
                     "claude" => {
                         selected_provider.set(LLMProvider::Claude);
                         api_key_or_host.set(String::new()); // Don't show masked key
+                        // Fetch models (will use fallback without valid key)
+                        if let Ok(models) = list_claude_models(None).await {
+                            cloud_models.set(models);
+                        }
                     }
                     "gemini" => {
                         selected_provider.set(LLMProvider::Gemini);
                         api_key_or_host.set(String::new());
+                        if let Ok(models) = list_gemini_models(None).await {
+                            cloud_models.set(models);
+                        }
                     }
                     "openai" => {
                         selected_provider.set(LLMProvider::OpenAI);
                         api_key_or_host.set(String::new());
+                        if let Ok(models) = list_openai_models(None).await {
+                            cloud_models.set(models);
+                        }
                     }
                     _ => {}
                 }
@@ -401,14 +429,17 @@ pub fn Settings() -> Element {
                                         LLMProvider::Claude => {
                                              api_key_or_host.set(String::new());
                                              model_name.set("claude-3-5-sonnet-20241022".to_string());
+                                             fetch_cloud_models(LLMProvider::Claude, None);
                                         }
                                         LLMProvider::Gemini => {
                                              api_key_or_host.set(String::new());
-                                             model_name.set("gemini-pro".to_string());
+                                             model_name.set("gemini-1.5-pro".to_string());
+                                             fetch_cloud_models(LLMProvider::Gemini, None);
                                         }
                                         LLMProvider::OpenAI => {
                                              api_key_or_host.set(String::new());
                                              model_name.set("gpt-4o".to_string());
+                                             fetch_cloud_models(LLMProvider::OpenAI, None);
                                         }
                                     }
                                 },
@@ -430,10 +461,11 @@ pub fn Settings() -> Element {
                             }
                         }
 
-                        // Model Name - dropdown for Ollama, text input for others
+                        // Model Name - dropdown for all providers
                         div {
                             label { class: "block text-sm font-medium text-theme-secondary mb-1", "Model" }
                             if matches!(*selected_provider.read(), LLMProvider::Ollama) {
+                                // Ollama dropdown
                                 select {
                                     class: "w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:border-purple-500 outline-none",
                                     value: "{model_name}",
@@ -454,10 +486,25 @@ pub fn Settings() -> Element {
                                     }
                                 }
                             } else {
-                                Input {
-                                    placeholder: "e.g. claude-3-5-sonnet, gpt-4o",
+                                // Cloud provider dropdown
+                                select {
+                                    class: "w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:border-purple-500 outline-none",
                                     value: "{model_name}",
-                                    oninput: move |val| model_name.set(val)
+                                    onchange: move |e| model_name.set(e.value()),
+                                    if cloud_models.read().is_empty() {
+                                        option { value: "{model_name}", "{model_name}" }
+                                    }
+                                    for model in cloud_models.read().iter() {
+                                        option {
+                                            value: "{model.id}",
+                                            selected: *model_name.read() == model.id,
+                                            if let Some(ref desc) = model.description {
+                                                "{model.name} - {desc}"
+                                            } else {
+                                                "{model.name}"
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

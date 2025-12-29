@@ -160,6 +160,41 @@ pub struct OllamaModel {
     pub parameter_size: Option<String>,
 }
 
+/// Generic model info for any provider
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelInfo {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+}
+
+/// Hardcoded fallback models for each provider
+pub fn get_fallback_models(provider: &str) -> Vec<ModelInfo> {
+    match provider {
+        "claude" => vec![
+            ModelInfo { id: "claude-sonnet-4-20250514".to_string(), name: "Claude Sonnet 4".to_string(), description: Some("Latest balanced model".to_string()) },
+            ModelInfo { id: "claude-3-5-sonnet-20241022".to_string(), name: "Claude 3.5 Sonnet".to_string(), description: Some("Best for most tasks".to_string()) },
+            ModelInfo { id: "claude-3-5-haiku-20241022".to_string(), name: "Claude 3.5 Haiku".to_string(), description: Some("Fast and efficient".to_string()) },
+            ModelInfo { id: "claude-3-opus-20240229".to_string(), name: "Claude 3 Opus".to_string(), description: Some("Most capable".to_string()) },
+        ],
+        "openai" => vec![
+            ModelInfo { id: "gpt-4o".to_string(), name: "GPT-4o".to_string(), description: Some("Latest multimodal".to_string()) },
+            ModelInfo { id: "gpt-4o-mini".to_string(), name: "GPT-4o Mini".to_string(), description: Some("Fast and affordable".to_string()) },
+            ModelInfo { id: "gpt-4-turbo".to_string(), name: "GPT-4 Turbo".to_string(), description: Some("High capability".to_string()) },
+            ModelInfo { id: "gpt-3.5-turbo".to_string(), name: "GPT-3.5 Turbo".to_string(), description: Some("Fast, legacy".to_string()) },
+            ModelInfo { id: "o1-preview".to_string(), name: "o1 Preview".to_string(), description: Some("Reasoning model".to_string()) },
+            ModelInfo { id: "o1-mini".to_string(), name: "o1 Mini".to_string(), description: Some("Fast reasoning".to_string()) },
+        ],
+        "gemini" => vec![
+            ModelInfo { id: "gemini-2.0-flash-exp".to_string(), name: "Gemini 2.0 Flash".to_string(), description: Some("Latest experimental".to_string()) },
+            ModelInfo { id: "gemini-1.5-pro".to_string(), name: "Gemini 1.5 Pro".to_string(), description: Some("Best quality".to_string()) },
+            ModelInfo { id: "gemini-1.5-flash".to_string(), name: "Gemini 1.5 Flash".to_string(), description: Some("Fast and efficient".to_string()) },
+            ModelInfo { id: "gemini-1.0-pro".to_string(), name: "Gemini 1.0 Pro".to_string(), description: Some("Stable".to_string()) },
+        ],
+        _ => vec![],
+    }
+}
+
 // ============================================================================
 // LLM Client
 // ============================================================================
@@ -324,6 +359,205 @@ impl LLMClient {
                 parameter_size: param_size,
             }
         }).collect();
+
+        Ok(models)
+    }
+
+    /// List available models from Claude/Anthropic API
+    pub async fn list_claude_models(api_key: &str) -> Result<Vec<ModelInfo>> {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .map_err(|e| LLMError::InvalidResponse(e.to_string()))?;
+
+        let response = client
+            .get("https://api.anthropic.com/v1/models")
+            .header("x-api-key", api_key)
+            .header("anthropic-version", "2023-06-01")
+            .send()
+            .await
+            .map_err(|e| LLMError::InvalidResponse(format!("Failed to connect: {}", e)))?;
+
+        if !response.status().is_success() {
+            return Err(LLMError::ApiError {
+                status: response.status().as_u16(),
+                message: "Failed to fetch models".to_string(),
+            });
+        }
+
+        #[derive(Deserialize)]
+        struct ClaudeModelsResponse {
+            data: Vec<ClaudeModelInfo>,
+        }
+
+        #[derive(Deserialize)]
+        struct ClaudeModelInfo {
+            id: String,
+            display_name: Option<String>,
+        }
+
+        let resp: ClaudeModelsResponse = response.json().await
+            .map_err(|e| LLMError::InvalidResponse(e.to_string()))?;
+
+        let models = resp.data.into_iter()
+            .filter(|m| m.id.contains("claude"))
+            .map(|m| ModelInfo {
+                name: m.display_name.unwrap_or_else(|| m.id.clone()),
+                id: m.id,
+                description: None,
+            })
+            .collect();
+
+        Ok(models)
+    }
+
+    /// List available models from OpenAI API
+    pub async fn list_openai_models(api_key: &str, base_url: Option<&str>) -> Result<Vec<ModelInfo>> {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .map_err(|e| LLMError::InvalidResponse(e.to_string()))?;
+
+        let url = format!("{}/models", base_url.unwrap_or("https://api.openai.com/v1"));
+
+        let response = client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", api_key))
+            .send()
+            .await
+            .map_err(|e| LLMError::InvalidResponse(format!("Failed to connect: {}", e)))?;
+
+        if !response.status().is_success() {
+            return Err(LLMError::ApiError {
+                status: response.status().as_u16(),
+                message: "Failed to fetch models".to_string(),
+            });
+        }
+
+        #[derive(Deserialize)]
+        struct OpenAIModelsResponse {
+            data: Vec<OpenAIModelInfo>,
+        }
+
+        #[derive(Deserialize)]
+        struct OpenAIModelInfo {
+            id: String,
+        }
+
+        let resp: OpenAIModelsResponse = response.json().await
+            .map_err(|e| LLMError::InvalidResponse(e.to_string()))?;
+
+        // Filter to chat models only
+        let chat_prefixes = ["gpt-4", "gpt-3.5", "gpt-5", "o1", "o3", "o4", "chatgpt"];
+        let models = resp.data.into_iter()
+            .filter(|m| chat_prefixes.iter().any(|p| m.id.starts_with(p)))
+            .map(|m| ModelInfo {
+                name: m.id.clone(),
+                id: m.id,
+                description: None,
+            })
+            .collect();
+
+        Ok(models)
+    }
+
+    /// Fetch OpenAI models list from community-maintained GitHub repo
+    /// This is used as a fallback when no API key is provided
+    pub async fn fetch_openai_models_from_github() -> Result<Vec<ModelInfo>> {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()
+            .map_err(|e| LLMError::InvalidResponse(e.to_string()))?;
+
+        let url = "https://github.com/c0des1ayr/openai-models-list/releases/download/continuous/models.json";
+
+        let response = client
+            .get(url)
+            .header("User-Agent", "TTRPG-Assistant")
+            .send()
+            .await
+            .map_err(|e| LLMError::InvalidResponse(format!("Failed to fetch models list: {}", e)))?;
+
+        if !response.status().is_success() {
+            return Err(LLMError::ApiError {
+                status: response.status().as_u16(),
+                message: "Failed to fetch models from GitHub".to_string(),
+            });
+        }
+
+        #[derive(Deserialize)]
+        struct GithubModelsResponse {
+            models: Vec<String>,
+        }
+
+        let resp: GithubModelsResponse = response.json().await
+            .map_err(|e| LLMError::InvalidResponse(format!("Failed to parse models: {}", e)))?;
+
+        // Filter to chat/completion models only (exclude embeddings, tts, whisper, etc.)
+        let chat_prefixes = ["gpt-3.5", "gpt-4", "gpt-5", "o1", "o3", "o4", "chatgpt"];
+        let models: Vec<ModelInfo> = resp.models.into_iter()
+            .filter(|m| chat_prefixes.iter().any(|p| m.starts_with(p)))
+            .filter(|m| !m.contains("transcribe") && !m.contains("tts") && !m.contains("audio") && !m.contains("image"))
+            .map(|m| ModelInfo {
+                name: m.clone(),
+                id: m,
+                description: None,
+            })
+            .collect();
+
+        Ok(models)
+    }
+
+    /// List available models from Gemini/Google API
+    pub async fn list_gemini_models(api_key: &str) -> Result<Vec<ModelInfo>> {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .map_err(|e| LLMError::InvalidResponse(e.to_string()))?;
+
+        let url = format!(
+            "https://generativelanguage.googleapis.com/v1beta/models?key={}",
+            api_key
+        );
+
+        let response = client.get(&url).send().await
+            .map_err(|e| LLMError::InvalidResponse(format!("Failed to connect: {}", e)))?;
+
+        if !response.status().is_success() {
+            return Err(LLMError::ApiError {
+                status: response.status().as_u16(),
+                message: "Failed to fetch models".to_string(),
+            });
+        }
+
+        #[derive(Deserialize)]
+        struct GeminiModelsResponse {
+            models: Vec<GeminiModelInfo>,
+        }
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct GeminiModelInfo {
+            name: String,
+            display_name: Option<String>,
+            description: Option<String>,
+        }
+
+        let resp: GeminiModelsResponse = response.json().await
+            .map_err(|e| LLMError::InvalidResponse(e.to_string()))?;
+
+        // Filter to generative models and extract model ID from full name
+        let models = resp.models.into_iter()
+            .filter(|m| m.name.contains("gemini"))
+            .map(|m| {
+                let id = m.name.strip_prefix("models/").unwrap_or(&m.name).to_string();
+                ModelInfo {
+                    name: m.display_name.unwrap_or_else(|| id.clone()),
+                    id,
+                    description: m.description,
+                }
+            })
+            .collect();
 
         Ok(models)
     }
