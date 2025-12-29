@@ -57,7 +57,8 @@ pub fn PersonalityManager() -> Element {
             div { class: "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6",
                 for p in personalities.read().clone() {
                     let p_id = p.id.clone();
-                    div {
+                    rsx! {
+                        div {
                         class: "group bg-zinc-800/40 p-4 rounded-lg hover:bg-zinc-800 transition-all cursor-pointer relative",
                         onclick: move |_| { selected_id.set(Some(p_id.clone())); is_editing.set(true); },
 
@@ -82,6 +83,8 @@ pub fn PersonalityManager() -> Element {
                              }
                         }
                     }
+                    }
+                }
                 }
             }
 

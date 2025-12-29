@@ -76,21 +76,48 @@ pub fn Session(campaign_id: String) -> Element {
         });
     };
 
-    // Theme Logic
+    // Theme Logic - Dynamic Class Selection based on Campaign System
+    // Supports: fantasy, cosmic, terminal, noir, neon (per design.md)
     let theme_class = use_memo(move || {
         match campaign.read().as_ref() {
-            Some(c) => match c.system.to_lowercase().as_str() {
-                s if s.contains("cthulhu") || s.contains("coc") => "theme-cosmic",
-                s if s.contains("cyberpunk") || s.contains("alien") || s.contains("mothership") || s.contains("sci-fi") => "theme-terminal",
-                _ => "theme-fantasy"
+            Some(c) => {
+                let system = c.system.to_lowercase();
+                match system.as_str() {
+                    // Noir themes: 90s office paranoia
+                    s if s.contains("delta green") => "theme-noir",
+                    s if s.contains("night's black agents") || s.contains("nba") => "theme-noir",
+
+                    // Cosmic horror themes
+                    s if s.contains("cthulhu") || s.contains("coc") => "theme-cosmic",
+                    s if s.contains("kult") || s.contains("vaesen") => "theme-cosmic",
+
+                    // Terminal/Sci-Fi themes
+                    s if s.contains("mothership") => "theme-terminal",
+                    s if s.contains("alien") && s.contains("rpg") => "theme-terminal",
+                    s if s.contains("traveller") => "theme-terminal",
+                    s if s.contains("stars without number") || s.contains("swn") => "theme-terminal",
+
+                    // Neon/Cyberpunk themes
+                    s if s.contains("cyberpunk") => "theme-neon",
+                    s if s.contains("shadowrun") => "theme-neon",
+                    s if s.contains("the sprawl") => "theme-neon",
+
+                    // Fantasy (default)
+                    s if s.contains("d&d") || s.contains("dnd") || s.contains("5e") => "theme-fantasy",
+                    s if s.contains("pathfinder") => "theme-fantasy",
+                    s if s.contains("warhammer fantasy") => "theme-fantasy",
+
+                    // Default to fantasy for unknown systems
+                    _ => "theme-fantasy"
+                }
             },
             None => "theme-fantasy"
         }
-    });
+    }).read().clone();
 
     rsx! {
         div {
-            class: "flex h-screen w-screen bg-[var(--bg-main)] text-[var(--text-main)] overflow-hidden font-ui {theme_class}",
+            class: "flex h-screen w-screen bg-deep text-primary overflow-hidden font-body {theme_class}",
 
             // Left Sidebar: Session List
             SessionList {
@@ -289,9 +316,11 @@ fn ActiveSessionWorkspace(session: GameSession, on_session_ended: EventHandler<(
                          // Turn Order List
                          div { class: "divide-y divide-zinc-700",
                              for (idx, combatant) in c.combatants.iter().enumerate() {
-                                 let cid_dmg = combatant.id.clone();
-                                 let cid_heal = combatant.id.clone();
-                                 div {
+                                 {
+                                     let cid_dmg = combatant.id.clone();
+                                     let cid_heal = combatant.id.clone();
+                                     rsx! {
+                                         div {
                                      class: if idx == c.current_turn { "bg-purple-900/20 flex items-center p-3 border-l-4 border-purple-500" } else { "flex items-center p-3 hover:bg-zinc-700/50" },
                                      // Init
                                      div { class: "w-12 text-center font-mono text-xl text-zinc-500", "{combatant.initiative}" }
