@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::collections::HashMap;
+use crate::database::{Database, NpcConversation, ConversationMessage};
 
 // Core modules
 use crate::core::llm::{LLMConfig, LLMClient, ChatMessage, ChatRequest, MessageRole};
@@ -51,6 +52,7 @@ pub struct AppState {
     pub search_client: Arc<SearchClient>,
     pub personality_store: Arc<PersonalityStore>,
     pub ingestion_pipeline: Arc<MeilisearchPipeline>,
+    pub database: Database,
 }
 
 // Helper init for default state components
@@ -1554,3 +1556,76 @@ pub async fn speak(text: String, state: State<'_, AppState>) -> Result<(), Strin
         Ok(())
     }
 }
+
+// ============================================================================
+// NPC Conversation Commands
+// ============================================================================
+
+#[tauri::command]
+pub async fn list_npc_conversations(
+    campaign_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<NpcConversation>, String> {
+    state.database.list_npc_conversations(&campaign_id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_npc_conversation(
+    npc_id: String,
+    state: State<'_, AppState>,
+) -> Result<NpcConversation, String> {
+    match state.database.get_npc_conversation(&npc_id).await.map_err(|e| e.to_string())? {
+        Some(c) => Ok(c),
+        None => Err(format!("Conversation not found for NPC {}", npc_id)),
+    }
+}
+
+#[tauri::command]
+pub async fn add_npc_message(
+    npc_id: String,
+    content: String,
+    role: String,
+    state: State<'_, AppState>,
+) -> Result<ConversationMessage, String> {
+    // 1. Get Conversation - strict requirement, must exist
+    // (In future we might auto-create, but we need campaign_id)
+    let mut conv = match state.database.get_npc_conversation(&npc_id).await.map_err(|e| e.to_string())? {
+        Some(c) => c,
+        None => return Err("Conversation does not exist.".to_string()),
+    };
+
+    // 2. Add Message
+    let message = ConversationMessage {
+        id: uuid::Uuid::new_v4().to_string(),
+        role,
+        content,
+        parent_message_id: None,
+        created_at: chrono::Utc::now().to_rfc3339(),
+    };
+
+    let mut messages: Vec<ConversationMessage> = serde_json::from_str(&conv.messages_json)
+        .unwrap_or_default();
+    messages.push(message.clone());
+
+    conv.messages_json = serde_json::to_string(&messages).map_err(|e| e.to_string())?;
+    conv.last_message_at = message.created_at.clone();
+    conv.unread_count += 1;
+
+    // 3. Save
+    state.database.save_npc_conversation(&conv).await.map_err(|e| e.to_string())?;
+
+    Ok(message)
+}
+
+#[tauri::command]
+pub async fn mark_npc_read(
+    npc_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    if let Some(mut conv) = state.database.get_npc_conversation(&npc_id).await.map_err(|e| e.to_string())? {
+        conv.unread_count = 0;
+        state.database.save_npc_conversation(&conv).await.map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+

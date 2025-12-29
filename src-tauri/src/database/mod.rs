@@ -406,4 +406,47 @@ impl Database {
             .await?;
         Ok(())
     }
+
+    // =========================================================================
+    // NPC Conversation Operations
+    // =========================================================================
+
+    pub async fn get_npc_conversation(&self, npc_id: &str) -> Result<Option<NpcConversation>, sqlx::Error> {
+        sqlx::query_as::<_, NpcConversation>(
+            "SELECT * FROM npc_conversations WHERE npc_id = ?"
+        )
+        .bind(npc_id)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn list_npc_conversations(&self, campaign_id: &str) -> Result<Vec<NpcConversation>, sqlx::Error> {
+        sqlx::query_as::<_, NpcConversation>(
+            "SELECT * FROM npc_conversations WHERE campaign_id = ? ORDER BY last_message_at DESC"
+        )
+        .bind(campaign_id)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn save_npc_conversation(&self, conversation: &NpcConversation) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT OR REPLACE INTO npc_conversations
+            (id, npc_id, campaign_id, messages_json, unread_count, last_message_at, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            "#
+        )
+        .bind(&conversation.id)
+        .bind(&conversation.npc_id)
+        .bind(&conversation.campaign_id)
+        .bind(&conversation.messages_json)
+        .bind(conversation.unread_count)
+        .bind(&conversation.last_message_at)
+        .bind(&conversation.created_at)
+        .bind(&conversation.updated_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
 }
