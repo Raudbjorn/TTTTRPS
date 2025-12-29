@@ -387,7 +387,7 @@ The system SHALL generate characters for multiple TTRPG systems.
 **Acceptance Criteria:**
 - D&D 5e character generation
 - Pathfinder 2e support
-- At least 6 additional systems
+- At least 6 additional systems (e.g., Cyberpunk, Shadowrun, GURPS, Warhammer)
 - System-specific stat arrays
 - Class and race selection
 
