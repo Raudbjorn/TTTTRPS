@@ -126,7 +126,7 @@ pub struct LLMRouter {
 pub trait LLMProvider: Send + Sync {
     fn id(&self) -> &str;
     async fn chat(&self, request: ChatRequest) -> Result<ChatResponse>;
-    async fn stream_chat(&self, request: ChatRequest) -> Result<impl Stream<Item = ChatChunk>>;
+    async fn stream_chat(&self, request: ChatRequest) -> Result<Box<dyn Stream<Item = Result<ChatChunk>> + Send + Unpin>>;
     async fn health_check(&self) -> bool;
     fn pricing(&self) -> ProviderPricing;
 }
