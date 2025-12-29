@@ -1,5 +1,10 @@
 # Feature Parity Technical Design
 
+> **Note**: This document is a technical implementation summary derived from the main
+> design specification in `UXdesign/design.md`. For the full UX specification including
+> visual mockups, component designs, and theme definitions, refer to the UXdesign directory.
+> This document focuses on implementation details for the Dioxus/Rust frontend.
+
 ## Architecture Overview
 
 ### Frontend (Dioxus/WASM)

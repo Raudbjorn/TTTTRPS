@@ -3,6 +3,7 @@
 use dioxus::prelude::*;
 
 pub mod bindings;
+pub mod theme;
 
 mod components {
     pub mod chat;
@@ -43,20 +44,9 @@ fn main() {
     launch(App);
 }
 
-// Global Theme Signal
-pub type ThemeSignal = Signal<String>;
-
 fn App() -> Element {
-    // Initialize theme signal
-    use_context_provider(|| Signal::new("fantasy".to_string()));
-    let theme_sig = use_context::<ThemeSignal>();
-
-    // Effect to update body attribute
-    use_effect(move || {
-        let current_theme = theme_sig.read();
-        let _ = document::eval(&format!("document.body.setAttribute('data-theme', '{}')", current_theme));
-    });
-
+    // Theme is now applied via CSS classes on individual components
+    // (see session.rs for dynamic theme class selection based on campaign system)
     rsx! {
         Router::<Route> {}
     }
