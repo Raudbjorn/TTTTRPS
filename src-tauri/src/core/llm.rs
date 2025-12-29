@@ -1417,14 +1417,13 @@ pub async fn fetch_litellm_catalog() -> Result<std::collections::HashMap<String,
 
         // Skip embedding-only, image, audio models
         if model_id.contains("embedding") || model_id.contains("tts") ||
-           model_id.contains("whisper") || model_id.contains("dall-e") ||
-           model_id.contains("text-embedding") {
+           model_id.contains("whisper") || model_id.contains("dall-e") {
             continue;
         }
 
         let info = ExtendedModelInfo {
             id: model_id.clone(),
-            name: model_id.replace("/", " ").replace("-", " "),
+            name: model_id.clone(),
             provider: provider.clone(),
             description: None,
             context_window: model.max_input_tokens,
