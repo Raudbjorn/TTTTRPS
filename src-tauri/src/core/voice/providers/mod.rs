@@ -5,6 +5,7 @@ use super::types::{Result, SynthesisRequest, Voice, UsageInfo};
 pub mod elevenlabs;
 pub mod fish_audio;
 pub mod ollama;
+pub mod openai;
 
 // Self-hosted providers
 pub mod chatterbox;

@@ -162,6 +162,10 @@ fn main() {
             commands::configure_voice,
             commands::get_voice_config,
             commands::detect_voice_providers,
+            commands::list_openai_voices,
+            commands::list_openai_tts_models,
+            commands::list_elevenlabs_voices,
+            commands::list_available_voices,
 
             // Audio Commands
             commands::get_audio_volumes,

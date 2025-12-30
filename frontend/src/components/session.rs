@@ -1,483 +1,454 @@
 #![allow(non_snake_case)]
 use dioxus::prelude::*;
 use crate::bindings::{
-    get_campaign, get_active_session, start_session, end_session,
+    get_campaign, get_active_session, list_sessions, start_session, end_session,
     start_combat, end_combat, get_combat, add_combatant, remove_combatant,
     next_turn, damage_combatant, heal_combatant,
-    Campaign, GameSession, CombatState
+    Campaign, GameSession, CombatState, SessionSummary,
+    get_session
 };
+use crate::components::campaign_details::session_list::SessionList;
+use crate::components::campaign_details::npc_list::NPCList;
 
 #[component]
 pub fn Session(campaign_id: String) -> Element {
     let mut campaign = use_signal(|| Option::<Campaign>::None);
-    let mut session = use_signal(|| Option::<GameSession>::None);
-    let mut combat = use_signal(|| Option::<CombatState>::None);
-    let mut status_message = use_signal(|| String::new());
-    let mut is_loading = use_signal(|| true);
+    let mut sessions = use_signal(|| Vec::<SessionSummary>::new());
+    let mut active_session = use_signal(|| Option::<GameSession>::None);
 
-    // Add combatant form
-    let mut new_combatant_name = use_signal(|| String::new());
-    let mut new_combatant_init = use_signal(|| "10".to_string());
-    let mut new_combatant_type = use_signal(|| "monster".to_string());
+    // UI State
+    let mut selected_session_id = use_signal(|| Option::<String>::None);
+    let mut is_loading = use_signal(|| true);
 
     let campaign_id_clone = campaign_id.clone();
 
-    // Load campaign and active session on mount
+    // Initial Load
     use_effect(move || {
-        let campaign_id = campaign_id_clone.clone();
+        let cid = campaign_id_clone.clone();
         spawn(async move {
-            // Load campaign
-            if let Ok(Some(c)) = get_campaign(campaign_id.clone()).await {
+            // Parallel fetch could be better but sequential is fine for now
+            if let Ok(Some(c)) = get_campaign(cid.clone()).await {
                 campaign.set(Some(c));
             }
 
-            // Check for active session
-            if let Ok(Some(s)) = get_active_session(campaign_id.clone()).await {
-                session.set(Some(s.clone()));
-                // Load combat if session is active
-                if let Ok(Some(c)) = get_combat(s.id).await {
-                    combat.set(Some(c));
-                }
+            if let Ok(list) = list_sessions(cid.clone()).await {
+                sessions.set(list);
+            }
+
+            if let Ok(Some(s)) = get_active_session(cid.clone()).await {
+                active_session.set(Some(s.clone()));
+                // Default select the active session
+                selected_session_id.set(Some(s.id));
+            } else {
+                 // If no active session, maybe select the last one or none
             }
 
             is_loading.set(false);
         });
     });
 
-    let campaign_id_for_start = campaign_id.clone();
-    let handle_start_session = move |_: MouseEvent| {
-        let campaign_id = campaign_id_for_start.clone();
-        let session_num = campaign.read().as_ref().map(|c| c.session_count + 1).unwrap_or(1);
+    let handle_session_select = move |id: String| {
+        selected_session_id.set(Some(id));
+    };
+
+    // Callback when a new session is started via the Active View (if empty)
+    let on_session_started = move |s: GameSession| {
+        active_session.set(Some(s.clone()));
+        selected_session_id.set(Some(s.id.clone()));
+        // Refresh list
+        let cid = campaign_id.clone();
         spawn(async move {
-            match start_session(campaign_id, session_num).await {
-                Ok(s) => {
-                    session.set(Some(s));
-                    status_message.set("Session started!".to_string());
-                }
-                Err(e) => {
-                    status_message.set(format!("Error: {}", e));
-                }
+            if let Ok(list) = list_sessions(cid).await {
+                sessions.set(list);
             }
         });
     };
 
-    let handle_end_session = move |_: MouseEvent| {
-        if let Some(s) = session.read().as_ref() {
-            let session_id = s.id.clone();
-            spawn(async move {
-                match end_session(session_id).await {
-                    Ok(_) => {
-                        session.set(None);
-                        combat.set(None);
-                        status_message.set("Session ended!".to_string());
-                    }
-                    Err(e) => {
-                        status_message.set(format!("Error: {}", e));
-                    }
-                }
-            });
-        }
-    };
-
-    let handle_start_combat = move |_: MouseEvent| {
-        if let Some(s) = session.read().as_ref() {
-            let session_id = s.id.clone();
-            spawn(async move {
-                match start_combat(session_id).await {
-                    Ok(c) => {
-                        combat.set(Some(c));
-                        status_message.set("Combat started!".to_string());
-                    }
-                    Err(e) => {
-                        status_message.set(format!("Error: {}", e));
-                    }
-                }
-            });
-        }
-    };
-
-    let handle_end_combat = move |_: MouseEvent| {
-        if let Some(s) = session.read().as_ref() {
-            let session_id = s.id.clone();
-            spawn(async move {
-                match end_combat(session_id).await {
-                    Ok(_) => {
-                        combat.set(None);
-                        status_message.set("Combat ended!".to_string());
-                    }
-                    Err(e) => {
-                        status_message.set(format!("Error: {}", e));
-                    }
-                }
-            });
-        }
-    };
-
-    let handle_add_combatant = move |_: MouseEvent| {
-        if let Some(s) = session.read().as_ref() {
-            let session_id = s.id.clone();
-            let name = new_combatant_name.read().clone();
-            let init: i32 = new_combatant_init.read().parse().unwrap_or(10);
-            let ctype = new_combatant_type.read().clone();
-
-            if name.trim().is_empty() {
-                status_message.set("Name is required".to_string());
-                return;
+    let on_session_ended = move |_| {
+         active_session.set(None);
+         selected_session_id.set(None); // Or switch to "Summary" view of just ended
+         // Refresh list
+        let cid = campaign_id.clone();
+        spawn(async move {
+            if let Ok(list) = list_sessions(cid).await {
+                sessions.set(list);
             }
+        });
+    };
 
-            spawn(async move {
-                match add_combatant(session_id.clone(), name, init, ctype).await {
-                    Ok(c) => {
-                        if let Some(ref mut combat_state) = *combat.write() {
-                            combat_state.combatants.push(c);
-                            combat_state.combatants.sort_by(|a, b| b.initiative.cmp(&a.initiative));
-                        }
-                        new_combatant_name.set(String::new());
-                        new_combatant_init.set("10".to_string());
-                    }
-                    Err(e) => {
-                        status_message.set(format!("Error: {}", e));
-                    }
+    // Theme Logic - Dynamic Class Selection based on Campaign System
+    // Supports: fantasy, cosmic, terminal, noir, neon (per design.md)
+    //
+    // TODO [FE F4]: Implement theme interpolation for blended settings
+    // Currently uses single theme detection. Design spec (design.md) calls for
+    // weighted theme blending via CSS custom property interpolation, e.g.:
+    //   Delta Green = cosmic(0.4) + noir(0.6)
+    // See ThemeWeights struct in design.md for full implementation plan.
+    let theme_class = use_memo(move || {
+        match campaign.read().as_ref() {
+            Some(c) => {
+                let system = c.system.to_lowercase();
+                match system.as_str() {
+                    // Noir themes: 90s office paranoia
+                    s if s.contains("delta green") => "theme-noir",
+                    s if s.contains("night's black agents") || s.contains("nba") => "theme-noir",
+
+                    // Cosmic horror themes
+                    s if s.contains("cthulhu") || s.contains("coc") => "theme-cosmic",
+                    s if s.contains("kult") || s.contains("vaesen") => "theme-cosmic",
+
+                    // Terminal/Sci-Fi themes
+                    s if s.contains("mothership") => "theme-terminal",
+                    s if s.contains("alien") && s.contains("rpg") => "theme-terminal",
+                    s if s.contains("traveller") => "theme-terminal",
+                    s if s.contains("stars without number") || s.contains("swn") => "theme-terminal",
+
+                    // Neon/Cyberpunk themes
+                    s if s.contains("cyberpunk") => "theme-neon",
+                    s if s.contains("shadowrun") => "theme-neon",
+                    s if s.contains("the sprawl") => "theme-neon",
+
+                    // Fantasy (default)
+                    s if s.contains("d&d") || s.contains("dnd") || s.contains("5e") => "theme-fantasy",
+                    s if s.contains("pathfinder") => "theme-fantasy",
+                    s if s.contains("warhammer fantasy") => "theme-fantasy",
+
+                    // Default to fantasy for unknown systems
+                    _ => "theme-fantasy"
                 }
-            });
+            },
+            None => "theme-fantasy"
         }
-    };
-
-    let handle_next_turn = move |_: MouseEvent| {
-        if let Some(s) = session.read().as_ref() {
-            let session_id = s.id.clone();
-            spawn(async move {
-                match next_turn(session_id.clone()).await {
-                    Ok(_) => {
-                        // Refresh combat state
-                        if let Ok(Some(c)) = get_combat(session_id).await {
-                            combat.set(Some(c));
-                        }
-                    }
-                    Err(e) => {
-                        status_message.set(format!("Error: {}", e));
-                    }
-                }
-            });
-        }
-    };
-
-    let handle_damage = move |combatant_id: String, amount: i32| {
-        move |_: MouseEvent| {
-            if let Some(s) = session.read().as_ref() {
-                let session_id = s.id.clone();
-                let cid = combatant_id.clone();
-                spawn(async move {
-                    match damage_combatant(session_id.clone(), cid.clone(), amount).await {
-                        Ok(new_hp) => {
-                            if let Some(ref mut combat_state) = *combat.write() {
-                                if let Some(c) = combat_state.combatants.iter_mut().find(|c| c.id == cid) {
-                                    c.hp_current = new_hp;
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            status_message.set(format!("Error: {}", e));
-                        }
-                    }
-                });
-            }
-        }
-    };
-
-    let handle_heal = move |combatant_id: String, amount: i32| {
-        move |_: MouseEvent| {
-            if let Some(s) = session.read().as_ref() {
-                let session_id = s.id.clone();
-                let cid = combatant_id.clone();
-                spawn(async move {
-                    match heal_combatant(session_id.clone(), cid.clone(), amount).await {
-                        Ok(new_hp) => {
-                            if let Some(ref mut combat_state) = *combat.write() {
-                                if let Some(c) = combat_state.combatants.iter_mut().find(|c| c.id == cid) {
-                                    c.hp_current = new_hp;
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            status_message.set(format!("Error: {}", e));
-                        }
-                    }
-                });
-            }
-        }
-    };
-
-    let handle_remove = move |combatant_id: String| {
-        move |_: MouseEvent| {
-            if let Some(s) = session.read().as_ref() {
-                let session_id = s.id.clone();
-                let cid = combatant_id.clone();
-                spawn(async move {
-                    match remove_combatant(session_id, cid.clone()).await {
-                        Ok(_) => {
-                            if let Some(ref mut combat_state) = *combat.write() {
-                                combat_state.combatants.retain(|c| c.id != cid);
-                            }
-                        }
-                        Err(e) => {
-                            status_message.set(format!("Error: {}", e));
-                        }
-                    }
-                });
-            }
-        }
-    };
-
-    let loading = *is_loading.read();
-    let status = status_message.read().clone();
-    let has_session = session.read().is_some();
-    let has_combat = combat.read().is_some();
-    let campaign_name = campaign.read().as_ref().map(|c| c.name.clone()).unwrap_or_else(|| "Loading...".to_string());
+    }).read().clone();
 
     rsx! {
         div {
-            class: "p-8 bg-gray-900 text-white min-h-screen font-sans",
-            div {
-                class: "max-w-6xl mx-auto",
-                // Header
-                div {
-                    class: "flex items-center justify-between mb-8",
-                    div {
-                        class: "flex items-center",
-                        Link { to: crate::Route::Campaigns {}, class: "mr-4 text-gray-400 hover:text-white", "← Campaigns" }
-                        h1 { class: "text-2xl font-bold", "{campaign_name}" }
-                    }
-                    div {
-                        class: "flex gap-2",
-                        if !has_session {
-                            button {
-                                onclick: handle_start_session,
-                                class: "px-4 py-2 bg-green-600 rounded hover:bg-green-500",
-                                "Start Session"
-                            }
-                        } else {
-                            button {
-                                onclick: handle_end_session,
-                                class: "px-4 py-2 bg-red-600 rounded hover:bg-red-500",
-                                "End Session"
+            class: "flex h-screen w-screen bg-deep text-primary overflow-hidden font-body {theme_class}",
+
+            // Left Sidebar: Session List
+            SessionList {
+                sessions: sessions.read().clone(),
+                active_session_id: active_session.read().as_ref().map(|s| s.id.clone()),
+                on_select_session: handle_session_select
+            }
+
+            // Center: Main Content
+            div { class: "flex-1 flex flex-col min-w-0 bg-zinc-900",
+                if is_loading.read().clone() {
+                    div { class: "flex items-center justify-center h-full", "Loading Realm..." }
+                } else {
+                    // Header
+                   div { class: "h-14 border-b border-zinc-800 flex items-center justify-between px-6 bg-zinc-900/50 backdrop-blur-sm",
+                        div {
+                            class: "flex items-center gap-4",
+                            Link { to: crate::Route::Campaigns{}, class: "text-zinc-500 hover:text-white transition-colors", "← Back" }
+                            h1 { class: "font-bold text-lg text-zinc-100", "{campaign.read().as_ref().map(|c| c.name.clone()).unwrap_or_default()}" }
+                        }
+                        div { class: "flex items-center gap-4",
+                            // Transcription Toggle (Mock)
+                            div { class: "flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-800 border border-zinc-700",
+                                div { class: "w-2 h-2 rounded-full bg-red-500" } // Active dot logic to be added
+                                span { class: "text-xs font-medium text-zinc-400", "Live Listen" }
+                                // Toggle Switch Visual
+                                div { class: "w-8 h-4 bg-zinc-700 rounded-full relative ml-2",
+                                    div { class: "absolute left-0 top-0 w-4 h-4 bg-zinc-400 rounded-full shadow-sm transform scale-90 transition-transform" }
+                                }
                             }
                         }
-                    }
-                }
+                   }
 
-                // Status
-                if !status.is_empty() {
-                    div {
-                        class: "mb-4 p-3 bg-gray-800 rounded text-sm",
-                        "{status}"
-                    }
-                }
-
-                if loading {
-                    div {
-                        class: "text-center py-8 text-gray-500",
-                        "Loading..."
-                    }
-                } else if !has_session {
-                    div {
-                        class: "text-center py-12 bg-gray-800 rounded-lg",
-                        p { class: "text-gray-400 mb-4", "No active session" }
-                        p { class: "text-gray-500 text-sm", "Start a session to begin tracking combat and encounters." }
-                    }
-                } else {
-                    div {
-                        class: "grid grid-cols-1 lg:grid-cols-3 gap-6",
-
-                        // Combat Tracker (2/3 width)
-                        div {
-                            class: "lg:col-span-2 bg-gray-800 rounded-lg p-6",
-                            div {
-                                class: "flex justify-between items-center mb-4",
-                                h2 { class: "text-xl font-semibold", "Combat Tracker" }
-                                if !has_combat {
-                                    button {
-                                        onclick: handle_start_combat,
-                                        class: "px-4 py-2 bg-red-600 rounded hover:bg-red-500",
-                                        "Start Combat"
+                   // Workspace
+                   div { class: "flex-1 overflow-y-auto p-6 relative",
+                        if let Some(selected_id) = selected_session_id.read().as_ref() {
+                            // Check if it is the active session
+                            if let Some(active) = active_session.read().as_ref() {
+                                if &active.id == selected_id {
+                                    ActiveSessionWorkspace {
+                                        session: active.clone(),
+                                        on_session_ended: on_session_ended
                                     }
                                 } else {
-                                    div {
-                                        class: "flex gap-2",
-                                        button {
-                                            onclick: handle_next_turn,
-                                            class: "px-4 py-2 bg-blue-600 rounded hover:bg-blue-500",
-                                            "Next Turn"
-                                        }
-                                        button {
-                                            onclick: handle_end_combat,
-                                            class: "px-4 py-2 bg-gray-600 rounded hover:bg-gray-500",
-                                            "End Combat"
-                                        }
-                                    }
-                                }
-                            }
-
-                            if has_combat {
-                                // Round indicator
-                                if let Some(c) = combat.read().as_ref() {
-                                    div {
-                                        class: "mb-4 text-center",
-                                        span { class: "text-lg font-bold text-yellow-400", "Round {c.round}" }
-                                    }
-                                }
-
-                                // Combatant list
-                                div {
-                                    class: "space-y-2",
-                                    if let Some(c) = combat.read().as_ref() {
-                                        for (idx, combatant) in c.combatants.iter().enumerate() {
-                                            div {
-                                                key: "{combatant.id}",
-                                                class: {
-                                                    let is_current = idx == c.current_turn;
-                                                    let is_down = combatant.hp_current <= 0;
-                                                    if is_current {
-                                                        "p-3 bg-yellow-900 border-2 border-yellow-500 rounded flex items-center gap-4"
-                                                    } else if is_down {
-                                                        "p-3 bg-gray-700 opacity-50 rounded flex items-center gap-4"
-                                                    } else {
-                                                        "p-3 bg-gray-700 rounded flex items-center gap-4"
-                                                    }
-                                                },
-                                                // Initiative
-                                                div {
-                                                    class: "w-12 text-center",
-                                                    span { class: "text-xl font-bold", "{combatant.initiative}" }
-                                                }
-                                                // Name and type
-                                                div {
-                                                    class: "flex-1",
-                                                    div { class: "font-semibold", "{combatant.name}" }
-                                                    div {
-                                                        class: "text-xs text-gray-400",
-                                                        "{combatant.combatant_type}"
-                                                        if !combatant.conditions.is_empty() {
-                                                            " - "
-                                                            for cond in combatant.conditions.iter() {
-                                                                span { class: "text-yellow-400", "{cond} " }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                                // HP
-                                                div {
-                                                    class: "flex items-center gap-2",
-                                                    button {
-                                                        onclick: handle_damage(combatant.id.clone(), 1),
-                                                        class: "px-2 py-1 bg-red-700 rounded text-sm hover:bg-red-600",
-                                                        "-1"
-                                                    }
-                                                    span {
-                                                        class: if combatant.hp_current <= 0 { "text-red-400 font-bold" } else { "font-bold" },
-                                                        "{combatant.hp_current}/{combatant.hp_max}"
-                                                    }
-                                                    button {
-                                                        onclick: handle_heal(combatant.id.clone(), 1),
-                                                        class: "px-2 py-1 bg-green-700 rounded text-sm hover:bg-green-600",
-                                                        "+1"
-                                                    }
-                                                }
-                                                // Remove button
-                                                button {
-                                                    onclick: handle_remove(combatant.id.clone()),
-                                                    class: "px-2 py-1 text-red-400 hover:text-red-300",
-                                                    "X"
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // Add combatant form
-                                div {
-                                    class: "mt-4 pt-4 border-t border-gray-700",
-                                    h3 { class: "text-sm font-semibold mb-2 text-gray-400", "Add Combatant" }
-                                    div {
-                                        class: "flex gap-2",
-                                        input {
-                                            class: "flex-1 p-2 bg-gray-700 rounded border border-gray-600 text-sm",
-                                            placeholder: "Name",
-                                            value: "{new_combatant_name}",
-                                            oninput: move |e| new_combatant_name.set(e.value())
-                                        }
-                                        input {
-                                            class: "w-16 p-2 bg-gray-700 rounded border border-gray-600 text-sm text-center",
-                                            placeholder: "Init",
-                                            value: "{new_combatant_init}",
-                                            oninput: move |e| new_combatant_init.set(e.value())
-                                        }
-                                        select {
-                                            class: "p-2 bg-gray-700 rounded border border-gray-600 text-sm",
-                                            onchange: move |e| new_combatant_type.set(e.value()),
-                                            option { value: "player", "Player" }
-                                            option { value: "npc", "NPC" }
-                                            option { value: "monster", selected: true, "Monster" }
-                                            option { value: "ally", "Ally" }
-                                        }
-                                        button {
-                                            onclick: handle_add_combatant,
-                                            class: "px-4 py-2 bg-blue-600 rounded hover:bg-blue-500 text-sm",
-                                            "Add"
-                                        }
+                                    // Past Session View (Placeholder for now, implementation could be fetching logs)
+                                     div { class: "flex flex-col items-center justify-center h-full text-zinc-500",
+                                        h3 { class: "text-xl font-bold text-zinc-400 mb-2", "Historical Archive" }
+                                        p { "Reviewing past logs for session {selected_id}..." }
+                                        // Potential improvement: Fetch session details and show summary
                                     }
                                 }
                             } else {
-                                div {
-                                    class: "text-center py-8 text-gray-500",
-                                    "Start combat to track initiative and HP"
+                                // Selected ID exists but no active session?
+                                // Means we are viewing history while no session is active.
+                                div { class: "flex flex-col items-center justify-center h-full text-zinc-500",
+                                    h3 { class: "text-xl font-bold text-zinc-400 mb-2", "Historical Archive" }
+                                    p { "Reviewing past logs for session {selected_id}..." }
                                 }
+                            }
+                        } else {
+                            // No session selected
+                            if active_session.read().is_none() {
+                                // Prompt to start new
+                                div { class: "flex flex-col items-center justify-center h-full",
+                                    button {
+                                        class: "px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-lg shadow-lg font-bold transition-all transform hover:scale-105",
+                                        onclick: move |_| {
+                                           let cid = campaign_id.clone();
+                                           let s_num = campaign.read().as_ref().map(|c| c.session_count + 1).unwrap_or(1);
+                                           spawn(async move {
+                                               if let Ok(s) = start_session(cid, s_num).await {
+                                                   on_session_started(s);
+                                               }
+                                           });
+                                        },
+                                        "Start New Session"
+                                    }
+                                }
+                            } else {
+                                div { class: "text-center text-zinc-500 mt-20", "Select a session from the sidebar" }
                             }
                         }
+                   }
+                }
+            }
 
-                        // Session Info (1/3 width)
-                        div {
-                            class: "bg-gray-800 rounded-lg p-6",
-                            h2 { class: "text-xl font-semibold mb-4", "Session Info" }
-                            if let Some(s) = session.read().as_ref() {
-                                div {
-                                    class: "space-y-3",
-                                    div {
-                                        span { class: "text-gray-400", "Session #" }
-                                        span { class: "ml-2 font-bold", "{s.session_number}" }
+            // Right Sidebar: NPCs
+            NPCList { campaign_id: campaign_id.clone() }
+        }
+    }
+}
+
+// Sub-component for the Active Session Logic (Combat, etc)
+#[component]
+fn ActiveSessionWorkspace(session: GameSession, on_session_ended: EventHandler<()>) -> Element {
+    let mut combat = use_signal(|| Option::<CombatState>::None);
+    let mut status_message = use_signal(|| String::new());
+
+    // Combatant Form
+    let mut new_combatant_name = use_signal(|| String::new());
+    let mut new_combatant_init = use_signal(|| "10".to_string());
+    let mut new_combatant_type = use_signal(|| "monster".to_string());
+
+    let session_id = session.id.clone();
+
+    use_effect(move || {
+        let sid = session.id.clone();
+        spawn(async move {
+             if let Ok(Some(c)) = get_combat(sid).await {
+                 combat.set(Some(c));
+             }
+        });
+    });
+
+    // Handlers (Similar to original session.rs but using signals local to this component)
+    let session_id_c = session_id.clone();
+    let _handle_end_session = move |_| {
+        let sid = session_id_c.clone();
+        let cb = on_session_ended;
+        spawn(async move {
+            if end_session(sid).await.is_ok() {
+                cb.call(());
+            }
+        });
+    };
+
+    // ... (For brevity, I will implement the core combat logic handlers here again)
+    // NOTE: In a real refactor, I would extract `CombatTracker` to a separate file, but to keep existing functionality without creating too many files right now, I'll inline.
+
+    rsx! {
+        div { class: "space-y-6 max-w-5xl mx-auto",
+
+            // Session Control Bar
+            div { class: "flex justify-between items-center bg-zinc-800/50 p-4 rounded-lg border border-zinc-700",
+                div {
+                    div { class: "text-xs text-zinc-400 uppercase tracking-widest", "Current Session" }
+                    div { class: "text-2xl font-bold text-white", "Session #{session.session_number}" }
+                }
+                button {
+                    class: "px-4 py-2 bg-red-600/20 text-red-400 border border-red-600/50 rounded hover:bg-red-600 hover:text-white transition-colors",
+                    onclick: _handle_end_session,
+                    "End Session"
+                }
+            }
+
+            // Combat Section
+            div { class: "bg-zinc-800 rounded-lg shadow-xl overflow-hidden border border-zinc-700",
+                div { class: "p-4 bg-zinc-900 border-b border-zinc-700 flex justify-between items-center",
+                    h3 { class: "font-bold text-zinc-200", "Encounter Tracker" }
+                    if combat.read().is_none() {
+                         button {
+                            class: "px-3 py-1 bg-purple-600 text-white text-sm rounded hover:bg-purple-500",
+                            onclick: move |_| {
+                                let sid = session_id.clone();
+                                spawn(async move {
+                                    if let Ok(c) = start_combat(sid).await {
+                                        combat.set(Some(c));
                                     }
-                                    div {
-                                        span { class: "text-gray-400", "Status: " }
-                                        span { class: "ml-2 text-green-400", "{s.status}" }
-                                    }
-                                    div {
-                                        span { class: "text-gray-400", "Started: " }
-                                        span { class: "ml-2 text-sm", "{s.started_at}" }
-                                    }
-                                }
+                                });
+                            },
+                            "Start Combat"
+                        }
+                    } else {
+                        // Combat Controls
+                        div { class: "flex gap-2",
+                            button {
+                                class: "px-3 py-1 bg-blue-600/20 text-blue-400 border border-blue-600/50 rounded text-sm hover:bg-blue-600 hover:text-white",
+                                onclick: move |_| {
+                                     let sid = session_id.clone();
+                                     spawn(async move {
+                                         if next_turn(sid.clone()).await.is_ok() {
+                                              if let Ok(Some(c)) = get_combat(sid).await { combat.set(Some(c)); }
+                                         }
+                                     });
+                                },
+                                "Next Turn"
                             }
-
-                            div {
-                                class: "mt-6 pt-4 border-t border-gray-700",
-                                h3 { class: "font-semibold mb-3", "Quick Actions" }
-                                div {
-                                    class: "space-y-2",
-                                    Link {
-                                        to: crate::Route::Chat {},
-                                        class: "block w-full px-4 py-2 bg-gray-700 rounded hover:bg-gray-600 text-center text-sm",
-                                        "Ask the GM"
-                                    }
-                                    Link {
-                                        to: crate::Route::CharacterCreator {},
-                                        class: "block w-full px-4 py-2 bg-gray-700 rounded hover:bg-gray-600 text-center text-sm",
-                                        "Generate NPC"
-                                    }
-                                }
+                             button {
+                                class: "px-3 py-1 bg-zinc-700 text-zinc-300 rounded text-sm hover:bg-zinc-600",
+                                onclick: move |_| {
+                                     let sid = session_id.clone();
+                                     spawn(async move {
+                                         if end_combat(sid).await.is_ok() {
+                                              combat.set(None);
+                                         }
+                                     });
+                                },
+                                "End Encounter"
                             }
                         }
+                    }
+                }
+
+                if let Some(c) = combat.read().as_ref() {
+                    div { class: "p-0",
+                         // Turn Order List
+                         div { class: "divide-y divide-zinc-700",
+                             for (idx, combatant) in c.combatants.iter().enumerate() {
+                                 {
+                                     let cid_dmg = combatant.id.clone();
+                                     let cid_heal = combatant.id.clone();
+                                     let cid_remove = combatant.id.clone();
+                                     let combatant_name = combatant.name.clone();
+                                     rsx! {
+                                         div {
+                                     class: if idx == c.current_turn { "bg-purple-900/20 flex items-center p-3 border-l-4 border-purple-500" } else { "flex items-center p-3 hover:bg-zinc-700/50" },
+                                     // Init
+                                     div { class: "w-12 text-center font-mono text-xl text-zinc-500", "{combatant.initiative}" }
+                                     // Info
+                                     div { class: "flex-1 px-4",
+                                        div { class: "font-bold text-zinc-200", "{combatant.name}" }
+                                        div { class: "text-xs text-zinc-500 uppercase", "{combatant.combatant_type}" }
+                                     }
+                                     // HP & Actions
+                                     div { class: "flex items-center gap-3",
+                                        div { class: "text-zinc-400 font-mono", "{combatant.hp_current} / {combatant.hp_max}" }
+                                        // Quick Actions
+                                        button {
+                                            class: "w-8 h-8 rounded bg-red-900/50 text-red-400 hover:bg-red-600 hover:text-white",
+                                            aria_label: "Deal 1 damage to {combatant_name}",
+                                            onclick: move |_| {
+                                                let sid = session_id.clone();
+                                                let cid = cid_dmg.clone();
+                                                spawn(async move {
+                                                    if damage_combatant(sid.clone(), cid, 1).await.is_ok() {
+                                                         if let Ok(Some(c)) = get_combat(sid).await { combat.set(Some(c)); }
+                                                    }
+                                                });
+                                            },
+                                            "-"
+                                        }
+                                        button {
+                                            class: "w-8 h-8 rounded bg-green-900/50 text-green-400 hover:bg-green-600 hover:text-white",
+                                            aria_label: "Heal 1 HP for {combatant_name}",
+                                            onclick: move |_| {
+                                                let sid = session_id.clone();
+                                                let cid = cid_heal.clone();
+                                                spawn(async move {
+                                                    if heal_combatant(sid.clone(), cid, 1).await.is_ok() {
+                                                         if let Ok(Some(c)) = get_combat(sid).await { combat.set(Some(c)); }
+                                                    }
+                                                });
+                                            },
+                                            "+"
+                                        }
+                                        button {
+                                            class: "w-8 h-8 rounded bg-zinc-700/50 text-zinc-400 hover:bg-zinc-600 hover:text-white ml-2",
+                                            aria_label: "Remove {combatant_name} from combat",
+                                            onclick: move |_| {
+                                                let sid = session_id.clone();
+                                                let cid = cid_remove.clone();
+                                                spawn(async move {
+                                                    if remove_combatant(sid.clone(), cid).await.is_ok() {
+                                                         if let Ok(Some(c)) = get_combat(sid).await { combat.set(Some(c)); }
+                                                    }
+                                                });
+                                            },
+                                            "×"
+                                        }
+                                     }
+                                 }
+                             }
+                         }
+                         }
+                         }
+                         // Add Combatant
+                         div { class: "p-4 bg-zinc-900/50 flex gap-2 border-t border-zinc-700",
+                            input {
+                                class: "bg-zinc-800 border-zinc-700 rounded px-3 py-2 text-sm text-white flex-1",
+                                placeholder: "Name",
+                                value: "{new_combatant_name}",
+                                oninput: move |e| new_combatant_name.set(e.value())
+                            }
+                            input {
+                                class: "bg-zinc-800 border-zinc-700 rounded px-3 py-2 text-sm text-white w-20 text-center",
+                                placeholder: "Init",
+                                r#type: "number",
+                                value: "{new_combatant_init}",
+                                oninput: move |e| new_combatant_init.set(e.value())
+                            }
+                            select {
+                                class: "bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm text-white",
+                                value: "{new_combatant_type}",
+                                onchange: move |e| new_combatant_type.set(e.value()),
+                                option { value: "player", "Player" }
+                                option { value: "monster", selected: true, "Monster" }
+                                option { value: "npc", "NPC" }
+                                option { value: "ally", "Ally" }
+                            }
+                            button {
+                                class: "px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white rounded text-sm font-medium",
+                                onclick: move |_| {
+                                    let sid = session_id.clone();
+                                    let name = new_combatant_name.read().clone();
+                                    let init = new_combatant_init.read().parse().unwrap_or(10);
+                                    let ctype = new_combatant_type.read().clone();
+                                    let session_id_c_inner = sid.clone();
+
+                                    spawn(async move {
+                                         if add_combatant(sid, name, init, ctype).await.is_ok() {
+                                             // Re-fetch combat state to update UI
+                                             if let Ok(Some(c)) = get_combat(session_id_c_inner).await {
+                                                 // We need a way to update combat signal.
+                                                 // But combat signal is not available here easily if we don't clone the setter...
+                                                 // Actually, 'combat' signal is available in scope if we move it or a setter.
+
+                                                 // Wait, accessing 'combat' signal inside this spawn which is inside an onclick...
+                                                 // 'combat' is a Signal. Signal is Copy. So we can just move it?
+                                                 // Yes, signals are Copy. so 'combat' captured by move closure is fine.
+                                                 combat.set(Some(c));
+                                             }
+                                         }
+                                    });
+                                },
+                                "Add"
+                            }
+                         }
+                    }
+                } else {
+                    div { class: "p-8 text-center text-zinc-500",
+                        "Peaceful times. Start combat to track initiative."
                     }
                 }
             }
         }
     }
 }
+

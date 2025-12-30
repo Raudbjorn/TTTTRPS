@@ -6,6 +6,7 @@ use crate::core::voice::providers::{VoiceProvider};
 use crate::core::voice::providers::elevenlabs::ElevenLabsProvider;
 use crate::core::voice::providers::fish_audio::FishAudioProvider;
 use crate::core::voice::providers::ollama::OllamaProvider;
+use crate::core::voice::providers::openai::OpenAIVoiceProvider;
 use crate::core::voice::providers::{
     ChatterboxProvider, GptSoVitsProvider, XttsV2Provider, FishSpeechProvider, DiaProvider,
 };
@@ -55,6 +56,10 @@ impl VoiceManager {
 
         if let Some(cfg) = &config.dia {
             providers.insert("dia".to_string(), Box::new(DiaProvider::new(cfg.clone())));
+        }
+
+        if let Some(cfg) = &config.openai {
+             providers.insert("openai".to_string(), Box::new(OpenAIVoiceProvider::new(cfg.clone())));
         }
 
         let cache_dir = config.cache_dir.clone().unwrap_or_else(|| PathBuf::from("./voice_cache"));

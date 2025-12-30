@@ -1445,6 +1445,49 @@ pub struct SystemInfo {
 // Voice Commands
 // ============================================================================
 
+use crate::core::voice::Voice;
+
+/// List available OpenAI TTS voices (static list, no API call needed)
+#[tauri::command]
+pub fn list_openai_voices() -> Vec<Voice> {
+    crate::core::voice::providers::openai::get_openai_voices()
+}
+
+/// List available OpenAI TTS models
+#[tauri::command]
+pub fn list_openai_tts_models() -> Vec<(String, String)> {
+    crate::core::voice::providers::openai::get_openai_tts_models()
+}
+
+/// List available ElevenLabs voices (requires API key)
+#[tauri::command]
+pub async fn list_elevenlabs_voices(api_key: String) -> Result<Vec<Voice>, String> {
+    use crate::core::voice::ElevenLabsConfig;
+    use crate::core::voice::providers::elevenlabs::ElevenLabsProvider;
+    use crate::core::voice::providers::VoiceProvider;
+
+    let provider = ElevenLabsProvider::new(ElevenLabsConfig {
+        api_key,
+        model_id: None,
+    });
+
+    provider.list_voices().await.map_err(|e| e.to_string())
+}
+
+/// List all voices from the currently configured voice provider
+#[tauri::command]
+pub async fn list_available_voices(state: State<'_, AppState>) -> Result<Vec<Voice>, String> {
+    // Clone the config to avoid holding the lock across await
+    let config = {
+        let manager = state.voice_manager.read().map_err(|e| e.to_string())?;
+        manager.get_config().clone()
+    };
+
+    // Create a new manager with the config for the async call
+    let manager = VoiceManager::new(config);
+    manager.list_voices().await.map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn speak(text: String, state: State<'_, AppState>) -> Result<(), String> {
     // 1. Determine config

@@ -12,6 +12,7 @@ mod components {
     pub mod session;
     pub mod character;
     pub mod design_system;
+    pub mod campaign_details;
 }
 use components::chat::Chat;
 use components::settings::Settings;

@@ -317,6 +317,45 @@ pub struct VoiceProviderDetection {
     pub detected_at: Option<String>,
 }
 
+/// Voice information from a TTS provider
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Voice {
+    pub id: String,
+    pub name: String,
+    pub provider: String,
+    pub description: Option<String>,
+    pub preview_url: Option<String>,
+    pub labels: Vec<String>,
+}
+
+// ============================================================================
+// Voice Commands
+// ============================================================================
+
+/// List available OpenAI TTS voices (static list, no API key needed)
+pub async fn list_openai_voices() -> Result<Vec<Voice>, String> {
+    invoke_no_args("list_openai_voices").await
+}
+
+/// List available OpenAI TTS models
+pub async fn list_openai_tts_models() -> Result<Vec<(String, String)>, String> {
+    invoke_no_args("list_openai_tts_models").await
+}
+
+/// List available ElevenLabs voices (requires API key)
+pub async fn list_elevenlabs_voices(api_key: String) -> Result<Vec<Voice>, String> {
+    #[derive(Serialize)]
+    struct Args {
+        api_key: String,
+    }
+    invoke("list_elevenlabs_voices", &Args { api_key }).await
+}
+
+/// List voices from the currently configured voice provider
+pub async fn list_available_voices() -> Result<Vec<Voice>, String> {
+    invoke_no_args("list_available_voices").await
+}
+
 // ============================================================================
 // LLM Commands
 // ============================================================================
