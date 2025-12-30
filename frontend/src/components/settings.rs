@@ -77,7 +77,9 @@ struct VoiceProviderInfo {
     default_url: Option<&'static str>,
 }
 
-/// All self-hosted voice providers with their metadata
+/// All self-hosted voice providers with their metadata.
+/// Note: `id` values must match VoiceProviderType enum variant names exactly
+/// (e.g., "Ollama", "XttsV2") since detection uses serde-serialized enum strings.
 const LOCAL_VOICE_PROVIDERS: &[VoiceProviderInfo] = &[
     VoiceProviderInfo { id: "Ollama", display_name: "Ollama", is_local: true, default_url: Some("http://localhost:11434") },
     VoiceProviderInfo { id: "Chatterbox", display_name: "Chatterbox", is_local: true, default_url: Some("http://localhost:8000") },
