@@ -6,8 +6,9 @@ This document contains actionable tasks for migrating from Dioxus to Leptos, org
 
 | Field | Value |
 |-------|-------|
-| Version | 1.0.0 |
+| Version | 1.1.0 |
 | Created | 2026-01-01 |
+| Updated | 2026-01-01 |
 | Status | Draft |
 
 ---
@@ -350,14 +351,177 @@ Migrate Markdown renderer component.
 
 ---
 
-## Phase 3: Page Components
+## Phase 3: Layout & Services
 
-### TASK-M013: Port Chat Page
+### TASK-M013: Port LayoutState Service
 
 **Status:** `[ ]`
 
 **Description:**
-Migrate the main Chat page component (~369 LOC).
+Migrate the LayoutState service that manages the app shell layout.
+
+**Subtasks:**
+- [ ] Create `services/layout_service.rs`
+- [ ] Implement `ViewType` enum (Campaigns, Chat, Library, Graph, Settings)
+- [ ] Implement `LayoutState` struct with signals
+- [ ] Add sidebar visibility and width signals
+- [ ] Add info panel visibility and width signals
+- [ ] Add active view signal
+- [ ] Implement toggle methods
+- [ ] Test context provision
+
+**Files to Create:**
+- `frontend-leptos/src/services/mod.rs`
+- `frontend-leptos/src/services/layout_service.rs`
+
+**Acceptance Criteria:**
+- ViewType enum works
+- LayoutState provides context correctly
+- Toggle methods update signals
+
+---
+
+### TASK-M014: Port ThemeService
+
+**Status:** `[ ]`
+
+**Description:**
+Migrate the OKLCH-based theme interpolation service.
+
+**Subtasks:**
+- [ ] Create `services/theme_service.rs`
+- [ ] Implement `ThemeDefinition` struct with OKLCH colors
+- [ ] Add preset themes (fantasy, cosmic, terminal, noir, neon)
+- [ ] Implement weight-based theme interpolation
+- [ ] Add CSS generation function
+- [ ] Test theme mixing
+
+**Files to Create:**
+- `frontend-leptos/src/services/theme_service.rs`
+
+**Acceptance Criteria:**
+- Theme definitions work
+- Interpolation produces valid OKLCH values
+- CSS custom properties generate correctly
+
+---
+
+### TASK-M015: Port MainShell Component
+
+**Status:** `[ ]`
+
+**Description:**
+Migrate the grid-based app shell layout component.
+
+**Subtasks:**
+- [ ] Create `components/layout/main_shell.rs`
+- [ ] Implement CSS Grid layout with dynamic columns
+- [ ] Add resizable panel support with drag handlers
+- [ ] Integrate IconRail, Sidebar, Main, InfoPanel, Footer areas
+- [ ] Implement mouse move/up handlers for resizing
+- [ ] Test panel resizing
+
+**Files to Create:**
+- `frontend-leptos/src/components/layout/mod.rs`
+- `frontend-leptos/src/components/layout/main_shell.rs`
+
+**Dependencies:** TASK-M013 (LayoutState)
+
+**Acceptance Criteria:**
+- Grid layout renders correctly
+- Panels resize on drag
+- Layout adapts when panels toggle
+
+---
+
+### TASK-M016: Port IconRail Component
+
+**Status:** `[ ]`
+
+**Description:**
+Migrate the vertical navigation rail.
+
+**Subtasks:**
+- [ ] Create `components/layout/icon_rail.rs`
+- [ ] Implement RailIcon sub-component
+- [ ] Add active state styling
+- [ ] Add tooltip on hover
+- [ ] Wire up ViewType navigation
+- [ ] Test all navigation items
+
+**Files to Create:**
+- `frontend-leptos/src/components/layout/icon_rail.rs`
+
+**Dependencies:** TASK-M013 (LayoutState)
+
+**Acceptance Criteria:**
+- Icons render correctly
+- Active state shown
+- Clicking changes ViewType
+
+---
+
+### TASK-M017: Port MediaBar and DragHandle
+
+**Status:** `[ ]`
+
+**Description:**
+Migrate the footer media bar and resizable panel drag handles.
+
+**Subtasks:**
+- [ ] Create `components/layout/media_bar.rs`
+- [ ] Create `components/resizable_panel.rs`
+- [ ] Implement DragHandle with left/right positioning
+- [ ] Add hover and active states
+- [ ] Test in MainShell context
+
+**Files to Create:**
+- `frontend-leptos/src/components/layout/media_bar.rs`
+- `frontend-leptos/src/components/resizable_panel.rs`
+
+**Acceptance Criteria:**
+- MediaBar renders controls
+- DragHandle responds to mouse events
+- Visual feedback on hover/drag
+
+---
+
+### TASK-M018: Port NpcConversation Component
+
+**Status:** `[ ]`
+
+**Description:**
+Migrate the NPC chat conversation component.
+
+**Subtasks:**
+- [ ] Create `components/campaign_details/npc_conversation.rs`
+- [ ] Implement message loading from backend
+- [ ] Implement send message with reply
+- [ ] Add typing indicator during NPC response
+- [ ] Port message bubble styling
+- [ ] Test full conversation flow
+
+**Files to Create:**
+- `frontend-leptos/src/components/campaign_details/npc_conversation.rs`
+
+**Dependencies:** TASK-M005 (Button), TASK-M006 (Input), TASK-M012 (Markdown)
+
+**Acceptance Criteria:**
+- Conversation loads on open
+- Messages display correctly
+- Send triggers NPC reply
+- Typing indicator shows during reply
+
+---
+
+## Phase 4: Page Components
+
+### TASK-M019: Port Chat Page
+
+**Status:** `[ ]`
+
+**Description:**
+Migrate the main Chat page component (~280 LOC) and ChatMessage sub-component.
 
 **Subtasks:**
 - [ ] Create `components/chat.rs`
@@ -384,7 +548,7 @@ Migrate the main Chat page component (~369 LOC).
 
 ---
 
-### TASK-M014: Port Settings Page
+### TASK-M020: Port Settings Page
 
 **Status:** `[ ]`
 
@@ -417,7 +581,7 @@ Migrate the Settings page (~981 LOC). This is the largest component.
 
 ---
 
-### TASK-M015: Port Library Page
+### TASK-M021: Port Library Page
 
 **Status:** `[ ]`
 
@@ -447,7 +611,7 @@ Migrate the Library/Document page (~457 LOC).
 
 ---
 
-### TASK-M016: Port Campaigns Page
+### TASK-M022: Port Campaigns Page
 
 **Status:** `[ ]`
 
@@ -478,7 +642,7 @@ Migrate the Campaigns list page (~271 LOC).
 
 ---
 
-### TASK-M017: Port Session Page
+### TASK-M023: Port Session Page
 
 **Status:** `[ ]`
 
@@ -511,7 +675,7 @@ Migrate the Session page with combat tracking (~452 LOC).
 
 ---
 
-### TASK-M018: Port Character Creator Page
+### TASK-M024: Port Character Creator Page
 
 **Status:** `[ ]`
 
@@ -539,7 +703,7 @@ Migrate the Character Creator page (~284 LOC).
 
 ---
 
-### TASK-M019: Port Campaign Detail Components
+### TASK-M025: Port Campaign Detail Components
 
 **Status:** `[ ]`
 
@@ -566,9 +730,9 @@ Migrate campaign detail sub-components.
 
 ---
 
-## Phase 4: Integration & Testing
+## Phase 5: Integration & Testing
 
-### TASK-M020: Update Tauri Configuration
+### TASK-M026: Update Tauri Configuration
 
 **Status:** `[ ]`
 
@@ -592,7 +756,7 @@ Update Tauri to use new Leptos frontend.
 
 ---
 
-### TASK-M021: Integration Testing
+### TASK-M027: Integration Testing
 
 **Status:** `[ ]`
 
@@ -618,7 +782,7 @@ Comprehensive testing of migrated application.
 
 ---
 
-### TASK-M022: Remove Dioxus Frontend
+### TASK-M028: Remove Dioxus Frontend
 
 **Status:** `[ ]`
 
@@ -661,55 +825,68 @@ TASK-M004 ─┬─► TASK-M005 (Button)
            ├─► TASK-M011 (Loading)
            └─► TASK-M012 (Markdown)
 
-Design System ─┬─► TASK-M013 (Chat)
-               ├─► TASK-M014 (Settings)
-               ├─► TASK-M015 (Library)
-               ├─► TASK-M016 (Campaigns)
-               ├─► TASK-M017 (Session)
-               ├─► TASK-M018 (Character)
-               └─► TASK-M019 (Campaign Details)
+Design System ─► TASK-M013 (LayoutState)
+               └─► TASK-M014 (ThemeService)
+                   └─► TASK-M015 (MainShell)
+                       ├─► TASK-M016 (IconRail)
+                       └─► TASK-M017 (MediaBar/DragHandle)
 
-Pages ─► TASK-M020 (Tauri Config)
-     └─► TASK-M021 (Integration)
-         └─► TASK-M022 (Cleanup)
+Layout ─┬─► TASK-M018 (NpcConversation)
+        ├─► TASK-M019 (Chat)
+        ├─► TASK-M020 (Settings)
+        ├─► TASK-M021 (Library)
+        ├─► TASK-M022 (Campaigns)
+        ├─► TASK-M023 (Session)
+        ├─► TASK-M024 (Character)
+        └─► TASK-M025 (Campaign Details)
+
+Pages ─► TASK-M026 (Tauri Config)
+     └─► TASK-M027 (Integration)
+         └─► TASK-M028 (Cleanup)
 ```
 
 ---
 
 ## Effort Estimates
 
-| Task | Complexity | Estimated Hours |
-|------|------------|-----------------|
-| TASK-M001 | Low | 2 |
-| TASK-M002 | Low | 1 |
-| TASK-M003 | Low | 2 |
-| TASK-M004 | Low | 1 |
-| TASK-M005 | Low | 1 |
-| TASK-M006 | Low | 1 |
-| TASK-M007 | Low | 0.5 |
-| TASK-M008 | Low | 0.5 |
-| TASK-M009 | Low | 1 |
-| TASK-M010 | Medium | 1.5 |
-| TASK-M011 | Low | 0.5 |
-| TASK-M012 | Low | 1 |
-| TASK-M013 | High | 6 |
-| TASK-M014 | High | 10 |
-| TASK-M015 | Medium | 5 |
-| TASK-M016 | Medium | 4 |
-| TASK-M017 | High | 6 |
-| TASK-M018 | Medium | 3 |
-| TASK-M019 | Medium | 3 |
-| TASK-M020 | Low | 1 |
-| TASK-M021 | Medium | 4 |
-| TASK-M022 | Low | 1 |
+| Task | Component | Complexity | Estimated Hours |
+|------|-----------|------------|-----------------|
+| TASK-M001 | Setup | Low | 2 |
+| TASK-M002 | Bindings | Low | 1 |
+| TASK-M003 | Routing | Low | 2 |
+| TASK-M004 | Theme | Low | 1 |
+| TASK-M005 | Button | Low | 1 |
+| TASK-M006 | Input | Low | 1 |
+| TASK-M007 | Card | Low | 0.5 |
+| TASK-M008 | Badge | Low | 0.5 |
+| TASK-M009 | Select | Low | 1 |
+| TASK-M010 | Modal | Medium | 1.5 |
+| TASK-M011 | Loading | Low | 0.5 |
+| TASK-M012 | Markdown | Low | 1 |
+| TASK-M013 | LayoutState | Medium | 2 |
+| TASK-M014 | ThemeService | Medium | 3 |
+| TASK-M015 | MainShell | High | 4 |
+| TASK-M016 | IconRail | Medium | 2 |
+| TASK-M017 | MediaBar/DragHandle | Low | 1.5 |
+| TASK-M018 | NpcConversation | High | 4 |
+| TASK-M019 | Chat | High | 5 |
+| TASK-M020 | Settings | High | 10 |
+| TASK-M021 | Library | Medium | 5 |
+| TASK-M022 | Campaigns | Medium | 4 |
+| TASK-M023 | Session | High | 6 |
+| TASK-M024 | Character | Medium | 3 |
+| TASK-M025 | Campaign Details | Medium | 3 |
+| TASK-M026 | Tauri Config | Low | 1 |
+| TASK-M027 | Integration Testing | Medium | 4 |
+| TASK-M028 | Cleanup | Low | 1 |
 
-**Total Estimated Hours: ~56 hours**
+**Total Estimated Hours: ~72 hours**
 
 ---
 
 ## Sprint Suggestions
 
-### Sprint 1: Foundation (8 hours)
+### Sprint 1: Foundation (6 hours)
 - TASK-M001: Project Setup
 - TASK-M002: Bindings
 - TASK-M003: Routing
@@ -718,21 +895,29 @@ Pages ─► TASK-M020 (Tauri Config)
 ### Sprint 2: Design System (8 hours)
 - TASK-M005 through TASK-M012
 
-### Sprint 3: Core Pages (21 hours)
-- TASK-M013: Chat
-- TASK-M014: Settings
-- TASK-M015: Library
+### Sprint 3: Layout & Services (16.5 hours)
+- TASK-M013: LayoutState Service
+- TASK-M014: ThemeService
+- TASK-M015: MainShell
+- TASK-M016: IconRail
+- TASK-M017: MediaBar/DragHandle
+- TASK-M018: NpcConversation
 
-### Sprint 4: Remaining Pages (16 hours)
-- TASK-M016: Campaigns
-- TASK-M017: Session
-- TASK-M018: Character
-- TASK-M019: Campaign Details
+### Sprint 4: Core Pages (20 hours)
+- TASK-M019: Chat
+- TASK-M020: Settings
+- TASK-M021: Library
 
-### Sprint 5: Integration (6 hours)
-- TASK-M020: Tauri Config
-- TASK-M021: Integration Testing
-- TASK-M022: Cleanup
+### Sprint 5: Remaining Pages (16 hours)
+- TASK-M022: Campaigns
+- TASK-M023: Session
+- TASK-M024: Character
+- TASK-M025: Campaign Details
+
+### Sprint 6: Integration (6 hours)
+- TASK-M026: Tauri Config
+- TASK-M027: Integration Testing
+- TASK-M028: Cleanup
 
 ---
 
@@ -760,4 +945,5 @@ Pages ─► TASK-M020 (Tauri Config)
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.1.0 | 2026-01-01 | Added Phase 3 (Layout & Services) with TASK-M013 through TASK-M018 for UX overhaul components |
 | 1.0.0 | 2026-01-01 | Initial task breakdown |

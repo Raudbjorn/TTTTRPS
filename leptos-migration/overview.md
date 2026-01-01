@@ -6,8 +6,9 @@ This document provides the rationale and high-level plan for migrating the front
 
 | Field | Value |
 |-------|-------|
-| Version | 1.0.0 |
+| Version | 1.1.0 |
 | Created | 2026-01-01 |
+| Updated | 2026-01-01 |
 | Status | Draft |
 
 ---
@@ -87,11 +88,13 @@ By choosing Leptos over a web framework:
 
 | Metric | Value |
 |--------|-------|
-| Total Component LOC | ~3,200 |
+| Total Component LOC | ~4,500 |
 | Page Components | 6 |
+| Layout Components | 4 (MainShell, IconRail, MediaBar, DragHandle) |
 | Design System Components | 12+ |
-| Routes | 6 |
-| IPC Bindings | 928 LOC |
+| Services | 2 (LayoutState, ThemeService) |
+| Views (ViewType) | 5 (Campaigns, Chat, Library, Graph, Settings) |
+| IPC Bindings | ~1,150 LOC |
 | Tailwind Classes | Extensive |
 
 ---
@@ -131,10 +134,12 @@ By choosing Leptos over a web framework:
 |-----------|--------|
 | `frontend/Cargo.toml` | Replace dioxus deps with leptos |
 | `frontend/src/main.rs` | Rewrite app entry point |
-| `frontend/src/components/*.rs` | Rewrite all components (~3,200 LOC) |
+| `frontend/src/components/*.rs` | Rewrite all components (~4,500 LOC) |
+| `frontend/src/services/*.rs` | Migrate services (LayoutState, ThemeService) |
 | `frontend/Dioxus.toml` | Remove (replaced by Trunk.toml or cargo-leptos) |
 | `src-tauri/tauri.conf.json` | Update build commands |
-| Routing | Migrate from Dioxus Router to Leptos Router |
+| Navigation | Migrate ViewType-based navigation pattern |
+| Layout System | Port MainShell, IconRail, MediaBar, resizable panels |
 
 ### 5.2 What Stays the Same
 
@@ -164,10 +169,13 @@ By choosing Leptos over a web framework:
 
 ## 7. Success Criteria
 
-- [ ] All 6 routes functional
+- [ ] All 5 ViewType views functional (Campaigns, Chat, Library, Graph, Settings)
+- [ ] Layout system working (MainShell, IconRail, MediaBar)
+- [ ] Resizable panels functional (sidebar, info panel)
 - [ ] All design system components ported
 - [ ] All Tauri IPC bindings working
-- [ ] Theme switching works
+- [ ] Theme service with OKLCH interpolation working
+- [ ] NPC conversation feature functional
 - [ ] No regression in features
 - [ ] Build size similar or smaller
 - [ ] Performance maintained or improved
@@ -202,4 +210,5 @@ By choosing Leptos over a web framework:
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.1.0 | 2026-01-01 | Updated for UX overhaul: new layout system, services, ViewType navigation |
 | 1.0.0 | 2026-01-01 | Initial overview document |

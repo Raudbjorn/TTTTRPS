@@ -6,8 +6,9 @@ This document provides detailed translation guidance for each existing Dioxus co
 
 | Field | Value |
 |-------|-------|
-| Version | 1.0.0 |
+| Version | 1.1.0 |
 | Created | 2026-01-01 |
+| Updated | 2026-01-01 |
 | Status | Draft |
 
 ---
@@ -18,16 +19,34 @@ This document provides detailed translation guidance for each existing Dioxus co
 
 | Component | File | LOC | Complexity |
 |-----------|------|-----|------------|
-| **Chat** | `chat.rs` | 369 | High |
+| **Chat** | `chat.rs` | ~280 | High |
+| **ChatMessage** | `chat/chat_message.rs` | 96 | Medium |
 | **Settings** | `settings.rs` | 981 | High |
 | **Library** | `library.rs` | 457 | Medium |
 | **Campaigns** | `campaigns.rs` | 271 | Medium |
 | **Session** | `session.rs` | 452 | High |
 | **CharacterCreator** | `character.rs` | 284 | Medium |
 | **Design System** | `design_system.rs` | 365 | Low |
-| **Campaign Details** | `campaign_details/*.rs` | ~300 | Medium |
+| **Campaign Details** | `campaign_details/*.rs` | ~450 | Medium |
+| **NpcConversation** | `campaign_details/npc_conversation.rs` | 226 | High |
 
-**Total: ~3,479 LOC**
+### 1.2 Layout Components (New)
+
+| Component | File | LOC | Complexity |
+|-----------|------|-----|------------|
+| **MainShell** | `layout/main_shell.rs` | 163 | High |
+| **IconRail** | `layout/icon_rail.rs` | 77 | Medium |
+| **MediaBar** | `layout/media_bar.rs` | 35 | Low |
+| **DragHandle** | `resizable_panel.rs` | 37 | Low |
+
+### 1.3 Services
+
+| Service | File | LOC | Purpose |
+|---------|------|-----|---------|
+| **LayoutState** | `services/layout_service.rs` | 42 | Panel visibility, widths, active view |
+| **ThemeService** | `services/theme_service.rs` | 218 | OKLCH theme interpolation |
+
+**Total: ~4,500 LOC**
 
 ---
 
@@ -500,9 +519,252 @@ pub fn Markdown(#[prop(into)] content: MaybeSignal<String>) -> impl IntoView {
 
 ---
 
-## 3. Page Components
+## 3. Layout Components
 
-### 3.1 Chat Component (High Complexity)
+### 3.1 MainShell (Grid-based App Shell)
+
+**Dioxus (Current):**
+```rust
+#[derive(Props, Clone, PartialEq)]
+pub struct MainShellProps {
+    children: Element,
+    sidebar: Element,
+    info_panel: Element,
+}
+
+#[component]
+pub fn MainShell(props: MainShellProps) -> Element {
+    let layout = use_context::<LayoutState>();
+    let mut dragging = use_signal(|| Option::<ResizeSide>::None);
+
+    let grid_template_cols = format!("64px {} 1fr {}",
+        if *layout.sidebar_visible.read() { format!("{}px", *layout.sidebar_width.read()) } else { "0px".to_string() },
+        if *layout.infopanel_visible.read() { format!("{}px", *layout.infopanel_width.read()) } else { "0px".to_string() }
+    );
+
+    rsx! {
+        div {
+            style: "display: grid; grid-template-columns: {grid_template_cols}; ...",
+            onmousemove: handle_move,
+            onmouseup: handle_up,
+            // IconRail, Sidebar, Main, InfoPanel, Footer areas
+        }
+    }
+}
+```
+
+**Leptos (Target):**
+```rust
+#[derive(Clone)]
+pub struct MainShellProps {
+    pub children: Children,
+    pub sidebar: Children,
+    pub info_panel: Children,
+}
+
+#[component]
+pub fn MainShell(props: MainShellProps) -> impl IntoView {
+    let layout = expect_context::<LayoutState>();
+    let (dragging, set_dragging) = signal(None::<ResizeSide>);
+
+    let grid_cols = Memo::new(move |_| {
+        let sidebar = if layout.sidebar_visible.get() {
+            format!("{}px", layout.sidebar_width.get())
+        } else { "0px".to_string() };
+        let info = if layout.infopanel_visible.get() {
+            format!("{}px", layout.infopanel_width.get())
+        } else { "0px".to_string() };
+        format!("64px {} 1fr {}", sidebar, info)
+    });
+
+    view! {
+        <div
+            style=move || format!("display: grid; grid-template-columns: {};", grid_cols.get())
+            on:mousemove=handle_move
+            on:mouseup=move |_| set_dragging.set(None)
+        >
+            <div style="grid-area: rail;"><IconRail /></div>
+            <div style="grid-area: sidebar;">{(props.sidebar)()}</div>
+            <div style="grid-area: main;">{(props.children)()}</div>
+            <div style="grid-area: info;">{(props.info_panel)()}</div>
+            <div style="grid-area: footer;"><MediaBar /></div>
+        </div>
+    }
+}
+```
+
+### 3.2 IconRail (Vertical Navigation)
+
+**Dioxus (Current):**
+```rust
+#[component]
+pub fn IconRail() -> Element {
+    let mut layout = use_context::<LayoutState>();
+    let active = *layout.active_view.read();
+
+    rsx! {
+        div { class: "icon-rail",
+            RailIcon {
+                active: active == ViewType::Chat,
+                icon: "💬",
+                onclick: move |_| layout.active_view.set(ViewType::Chat)
+            }
+        }
+    }
+}
+```
+
+**Leptos (Target):**
+```rust
+#[component]
+pub fn IconRail() -> impl IntoView {
+    let layout = expect_context::<LayoutState>();
+
+    view! {
+        <div class="icon-rail">
+            <RailIcon
+                active=move || layout.active_view.get() == ViewType::Chat
+                icon="💬"
+                on_click=move |_| layout.active_view.set(ViewType::Chat)
+            />
+        </div>
+    }
+}
+
+#[component]
+fn RailIcon(
+    active: MaybeSignal<bool>,
+    icon: &'static str,
+    on_click: Callback<()>,
+) -> impl IntoView {
+    view! {
+        <div
+            class=move || if active.get() { "rail-icon active" } else { "rail-icon" }
+            on:click=move |_| on_click.call(())
+        >
+            {icon}
+        </div>
+    }
+}
+```
+
+### 3.3 DragHandle (Resizable Panels)
+
+**Dioxus (Current):**
+```rust
+#[component]
+pub fn DragHandle(on_drag_start: EventHandler<()>, side: ResizeSide) -> Element {
+    rsx! {
+        div {
+            class: "drag-handle",
+            onmousedown: move |e| {
+                e.stop_propagation();
+                on_drag_start.call(());
+            }
+        }
+    }
+}
+```
+
+**Leptos (Target):**
+```rust
+#[component]
+pub fn DragHandle(
+    on_drag_start: Callback<()>,
+    side: ResizeSide,
+) -> impl IntoView {
+    let position_class = match side {
+        ResizeSide::Left => "right-[-2px]",
+        ResizeSide::Right => "left-[-2px]",
+    };
+
+    view! {
+        <div
+            class=format!("drag-handle {}", position_class)
+            on:mousedown=move |e| {
+                e.stop_propagation();
+                on_drag_start.call(());
+            }
+        />
+    }
+}
+```
+
+### 3.4 NpcConversation (Chat with NPCs)
+
+**Dioxus (Current):**
+```rust
+#[component]
+pub fn NpcConversation(npc_id: String, npc_name: String, on_close: EventHandler<()>) -> Element {
+    let mut messages = use_signal(|| Vec::<ConversationMessage>::new());
+    let mut is_loading = use_signal(|| true);
+    let mut input_text = use_signal(|| String::new());
+
+    use_effect(move || {
+        spawn(async move {
+            match get_npc_conversation(npc_id.clone()).await {
+                Ok(conv) => messages.set(parse_messages(&conv)),
+                Err(e) => { /* handle */ }
+            }
+            is_loading.set(false);
+        });
+    });
+
+    // ... message handling, send logic
+}
+```
+
+**Leptos (Target):**
+```rust
+#[component]
+pub fn NpcConversation(
+    npc_id: String,
+    npc_name: String,
+    on_close: Callback<()>,
+) -> impl IntoView {
+    let (messages, set_messages) = signal(Vec::<ConversationMessage>::new());
+    let (is_loading, set_is_loading) = signal(true);
+    let (input_text, set_input_text) = signal(String::new());
+
+    // Load on mount
+    Effect::new(move |_| {
+        let npc_id = npc_id.clone();
+        spawn_local(async move {
+            match get_npc_conversation(npc_id).await {
+                Ok(conv) => set_messages.set(parse_messages(&conv)),
+                Err(e) => { /* handle */ }
+            }
+            set_is_loading.set(false);
+        });
+    });
+
+    view! {
+        <div class="npc-conversation">
+            <div class="header">
+                <h2>{npc_name.clone()}</h2>
+                <button on:click=move |_| on_close.call(())>"×"</button>
+            </div>
+            <div class="messages">
+                <For
+                    each=move || messages.get()
+                    key=|msg| msg.id.clone()
+                    children=|msg| view! { <MessageBubble message=msg /> }
+                />
+            </div>
+            <div class="input-area">
+                <Input value=input_text on_input=move |v| set_input_text.set(v) />
+                <Button on_click=handle_send>"Send"</Button>
+            </div>
+        </div>
+    }
+}
+```
+
+---
+
+## 4. Page Components
+
+### 4.1 Chat Component (High Complexity)
 
 **Pattern Translation:**
 
@@ -576,7 +838,7 @@ pub fn Chat() -> impl IntoView {
 
 ---
 
-### 3.2 Settings Component (High Complexity)
+### 4.2 Settings Component (High Complexity)
 
 **Key Patterns:**
 
@@ -611,7 +873,7 @@ let models = Resource::new(
 
 ---
 
-### 3.3 Session Component (High Complexity)
+### 4.3 Session Component (High Complexity)
 
 **Combat state pattern:**
 ```rust
@@ -655,9 +917,9 @@ pub fn Session(campaign_id: String) -> impl IntoView {
 
 ---
 
-## 4. Common Patterns Reference
+## 5. Common Patterns Reference
 
-### 4.1 Conditional Rendering
+### 5.1 Conditional Rendering
 
 | Pattern | Dioxus | Leptos |
 |---------|--------|--------|
@@ -665,14 +927,14 @@ pub fn Session(campaign_id: String) -> impl IntoView {
 | If-else | `if cond { } else { }` | `<Show when=... fallback=\|\| view!{}>` |
 | Match | `match val { }` | `{move \|\| match val.get() { }}` |
 
-### 4.2 List Rendering
+### 5.2 List Rendering
 
 | Pattern | Dioxus | Leptos |
 |---------|--------|--------|
 | Simple | `for item in items { }` | `<For each=... key=... children=...>` |
 | With index | `for (i, item) in items.iter().enumerate()` | `<For ... let:index>` |
 
-### 4.3 Event Handling
+### 5.3 Event Handling
 
 | Event | Dioxus | Leptos |
 |-------|--------|--------|
@@ -682,7 +944,7 @@ pub fn Session(campaign_id: String) -> impl IntoView {
 | Submit | `onsubmit: move \|e\| {}` | `on:submit=move \|e\| {}` |
 | Key | `onkeydown: move \|e\| {}` | `on:keydown=move \|e\| {}` |
 
-### 4.4 Async Operations
+### 5.4 Async Operations
 
 | Pattern | Dioxus | Leptos |
 |---------|--------|--------|
@@ -692,7 +954,7 @@ pub fn Session(campaign_id: String) -> impl IntoView {
 
 ---
 
-## 5. Migration Checklist per Component
+## 6. Migration Checklist per Component
 
 ### Generic Checklist
 
@@ -723,4 +985,5 @@ pub fn Session(campaign_id: String) -> impl IntoView {
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.1.0 | 2026-01-01 | Added layout components (MainShell, IconRail, DragHandle), NpcConversation, services |
 | 1.0.0 | 2026-01-01 | Initial component mapping |

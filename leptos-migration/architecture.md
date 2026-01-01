@@ -6,8 +6,9 @@ This document details the technical architecture for the Leptos-based frontend.
 
 | Field | Value |
 |-------|-------|
-| Version | 1.0.0 |
+| Version | 1.1.0 |
 | Created | 2026-01-01 |
+| Updated | 2026-01-01 |
 | Status | Draft |
 
 ---
@@ -117,9 +118,9 @@ frontend/
 │   ├── themes.css          # Unchanged
 │   └── favicon.ico
 ├── src/
-│   ├── main.rs             # App entry + routing
-│   ├── app.rs              # Root App component
-│   ├── bindings.rs         # Tauri IPC (types preserved)
+│   ├── main.rs             # App entry
+│   ├── app.rs              # Root App with MainShell
+│   ├── bindings.rs         # Tauri IPC (~1,150 LOC)
 │   ├── components/
 │   │   ├── mod.rs
 │   │   ├── design_system/
@@ -131,12 +132,31 @@ frontend/
 │   │   │   ├── select.rs
 │   │   │   ├── modal.rs
 │   │   │   └── loading.rs
+│   │   ├── layout/
+│   │   │   ├── mod.rs
+│   │   │   ├── main_shell.rs    # Grid-based app shell
+│   │   │   ├── icon_rail.rs     # Vertical nav rail
+│   │   │   └── media_bar.rs     # Footer audio controls
+│   │   ├── chat/
+│   │   │   ├── mod.rs
+│   │   │   └── chat_message.rs  # Message component
+│   │   ├── campaign_details/
+│   │   │   ├── mod.rs
+│   │   │   ├── session_list.rs
+│   │   │   ├── npc_list.rs
+│   │   │   ├── npc_conversation.rs  # NPC chat interface
+│   │   │   └── personality_manager.rs
+│   │   ├── resizable_panel.rs   # Drag handle for panels
 │   │   ├── chat.rs
 │   │   ├── settings.rs
 │   │   ├── library.rs
 │   │   ├── campaigns.rs
 │   │   ├── session.rs
 │   │   └── character.rs
+│   ├── services/
+│   │   ├── mod.rs
+│   │   ├── layout_service.rs    # LayoutState + ViewType
+│   │   └── theme_service.rs     # OKLCH theme interpolation
 │   └── utils/
 │       ├── mod.rs
 │       └── markdown.rs
@@ -167,37 +187,41 @@ fn main() {
 }
 ```
 
-### 2.3 App Component with Routing
+### 2.3 App Component with Layout Shell
+
+The app uses a `ViewType`-based navigation pattern with a grid-based `MainShell` layout:
 
 ```rust
 // src/app.rs
 use leptos::prelude::*;
-use leptos_router::*;
 
-use crate::components::{
-    Chat, Settings, Library, Campaigns, Session, CharacterCreator
-};
+use crate::services::layout_service::{LayoutState, ViewType};
+use crate::services::theme_service::ThemeState;
+use crate::components::layout::MainShell;
+use crate::components::{Chat, Settings, Library, Campaigns, Session};
 
 #[component]
 pub fn App() -> impl IntoView {
-    // Global theme signal
-    let (theme, set_theme) = signal("fantasy".to_string());
+    // Initialize services
+    let layout = LayoutState::new();
+    let theme = ThemeState::new();
+    provide_context(layout);
     provide_context(theme);
-    provide_context(set_theme);
 
     view! {
-        <Router>
-            <main class="app-container">
-                <Routes fallback=|| "Page not found">
-                    <Route path="/" view=Chat />
-                    <Route path="/settings" view=Settings />
-                    <Route path="/library" view=Library />
-                    <Route path="/campaigns" view=Campaigns />
-                    <Route path="/session/:campaign_id" view=Session />
-                    <Route path="/character" view=CharacterCreator />
-                </Routes>
-            </main>
-        </Router>
+        <MainShell
+            sidebar=view! { <SidebarContent /> }
+            info_panel=view! { <InfoPanelContent /> }
+        >
+            // Main content switches based on ViewType
+            {move || match layout.active_view.get() {
+                ViewType::Campaigns => view! { <Campaigns /> },
+                ViewType::Chat => view! { <Chat /> },
+                ViewType::Library => view! { <Library /> },
+                ViewType::Graph => view! { <GraphView /> },
+                ViewType::Settings => view! { <Settings /> },
+            }}
+        </MainShell>
     }
 }
 ```
@@ -228,38 +252,134 @@ pub fn App() -> impl IntoView {
 // Leptos:  let doubled = Memo::new(move |_| count.get() * 2);
 ```
 
-### 3.2 Context Pattern
+### 3.2 LayoutState Service
+
+The app uses a centralized layout state for managing the shell layout:
 
 ```rust
-// Global Theme Context
+// src/services/layout_service.rs
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ViewType {
+    Campaigns,
+    Chat,
+    Library,
+    Graph,
+    Settings,
+}
+
+#[derive(Clone, Copy)]
+pub struct LayoutState {
+    pub sidebar_visible: Signal<bool>,
+    pub sidebar_width: Signal<i32>,
+    pub infopanel_visible: Signal<bool>,
+    pub infopanel_width: Signal<i32>,
+    pub active_view: Signal<ViewType>,
+}
+
+impl LayoutState {
+    pub fn new() -> Self {
+        Self {
+            sidebar_visible: signal(true),
+            sidebar_width: signal(280),
+            infopanel_visible: signal(true),
+            infopanel_width: signal(320),
+            active_view: signal(ViewType::Campaigns),
+        }
+    }
+
+    pub fn toggle_sidebar(&self) {
+        self.sidebar_visible.update(|v| *v = !*v);
+    }
+
+    pub fn toggle_infopanel(&self) {
+        self.infopanel_visible.update(|v| *v = !*v);
+    }
+}
+
+// Consuming LayoutState
+#[component]
+pub fn IconRail() -> impl IntoView {
+    let layout = expect_context::<LayoutState>();
+    let active = layout.active_view;
+
+    view! {
+        <div class="icon-rail">
+            <RailIcon
+                active=move || active.get() == ViewType::Chat
+                on_click=move |_| layout.active_view.set(ViewType::Chat)
+                icon="💬"
+            />
+            // ...
+        </div>
+    }
+}
+```
+
+### 3.3 ThemeService with OKLCH Interpolation
+
+The theme system supports mixing multiple themes with weighted interpolation:
+
+```rust
+// src/services/theme_service.rs
+
+#[derive(Clone, Debug)]
+pub struct ThemeDefinition {
+    pub bg_deep: [f32; 4],      // OKLCH [L, C, H, A]
+    pub bg_surface: [f32; 4],
+    pub accent: [f32; 4],
+    // ... more colors
+    pub radius_sm: f32,
+    pub effect_blur: f32,
+    pub effect_glow: f32,
+}
+
+pub fn get_preset(name: &str) -> ThemeDefinition {
+    match name {
+        "fantasy" => ThemeDefinition::default(),
+        "cosmic" => ThemeDefinition { /* cosmic colors */ },
+        "terminal" => ThemeDefinition { /* terminal colors */ },
+        "noir" => ThemeDefinition { /* noir colors */ },
+        "neon" => ThemeDefinition { /* neon colors */ },
+        _ => ThemeDefinition::default(),
+    }
+}
+
+// Interpolate themes based on weights and generate CSS
+pub fn generate_css(weights: &ThemeWeights) -> String {
+    let mut mixed = ThemeDefinition::default();
+    // Blend colors based on weights
+    // Output CSS custom properties
+    format!(":root {{ --bg-deep: {}; ... }}", fmt_oklch(mixed.bg_deep))
+}
+```
+
+### 3.4 Context Pattern
+
+```rust
+// Providing services at App root
 #[component]
 pub fn App() -> impl IntoView {
-    let (theme, set_theme) = signal("fantasy".to_string());
-    provide_context(theme);
-    provide_context(set_theme);
+    let layout = LayoutState::new();
+    provide_context(layout);
     // ...
 }
 
 // Consuming Context
 #[component]
-pub fn ThemeSelector() -> impl IntoView {
-    let theme = expect_context::<ReadSignal<String>>();
-    let set_theme = expect_context::<WriteSignal<String>>();
+pub fn SomeComponent() -> impl IntoView {
+    let layout = expect_context::<LayoutState>();
+    let active_view = layout.active_view;
 
     view! {
-        <select on:change=move |ev| {
-            set_theme.set(event_target_value(&ev));
-        }>
-            <option value="fantasy" selected=move || theme.get() == "fantasy">
-                "Fantasy"
-            </option>
+        <div class=move || if active_view.get() == ViewType::Chat { "active" } else { "" }>
             // ...
-        </select>
+        </div>
     }
 }
 ```
 
-### 3.3 Resource Pattern (Async Data)
+### 3.5 Resource Pattern (Async Data)
 
 ```rust
 // Dioxus use_resource → Leptos Resource
@@ -683,4 +803,5 @@ fn test_button_renders() {
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.1.0 | 2026-01-01 | Added LayoutState, ThemeService, MainShell pattern, ViewType navigation |
 | 1.0.0 | 2026-01-01 | Initial architecture document |
