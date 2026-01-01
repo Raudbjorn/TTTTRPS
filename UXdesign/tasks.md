@@ -113,7 +113,7 @@
 ### Personality Management
 > Supports: REQ-005 (Personality Manager)
 
-- [ ] **[BE] B10**: Persist personality profiles to database (P1)
+- [x] **[BE] B10**: Persist personality profiles to database (P1)
   - Currently in-memory only (`PERSONALITY_STORE`)
   - Migration: `personalities` table
   - CRUD commands: `save_personality`, `delete_personality`, `list_personalities`
