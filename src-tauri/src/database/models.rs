@@ -120,6 +120,7 @@ pub struct NpcRecord {
     pub role: String,
     pub personality_id: Option<String>,
     pub personality_json: String,
+    pub data_json: Option<String>,
     pub stats_json: Option<String>,
     pub notes: Option<String>,
     pub created_at: String,

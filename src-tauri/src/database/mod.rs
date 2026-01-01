@@ -415,8 +415,8 @@ impl Database {
         sqlx::query(
             r#"
             INSERT OR REPLACE INTO npcs
-            (id, campaign_id, name, role, personality_id, personality_json, stats_json, notes, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, campaign_id, name, role, personality_id, personality_json, data_json, stats_json, notes, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#
         )
         .bind(&npc.id)
@@ -425,6 +425,7 @@ impl Database {
         .bind(&npc.role)
         .bind(&npc.personality_id)
         .bind(&npc.personality_json)
+        .bind(&npc.data_json)
         .bind(&npc.stats_json)
         .bind(&npc.notes)
         .bind(&npc.created_at)

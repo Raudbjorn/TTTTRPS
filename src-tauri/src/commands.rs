@@ -1085,7 +1085,7 @@ pub fn get_supported_systems() -> Vec<String> {
 // ============================================================================
 
 #[tauri::command]
-pub fn generate_npc(
+pub async fn generate_npc(
     options: NPCGenerationOptions,
     campaign_id: Option<String>,
     state: State<'_, AppState>,
@@ -1093,30 +1093,117 @@ pub fn generate_npc(
     let generator = NPCGenerator::new();
     let npc = generator.generate_quick(&options);
 
+    // Save to memory store
     state.npc_store.add(npc.clone(), campaign_id.as_deref());
+
+    // Save to Database
+    let personality_json = serde_json::to_string(&npc.personality).map_err(|e| e.to_string())?;
+    let stats_json = npc.stats.as_ref().map(|s| serde_json::to_string(s).unwrap_or_default());
+    let role_str = serde_json::to_string(&npc.role).unwrap_or_default().trim_matches('"').to_string();
+    let data_json = serde_json::to_string(&npc).map_err(|e| e.to_string())?;
+
+    let record = crate::database::models::NpcRecord {
+        id: npc.id.clone(),
+        campaign_id: campaign_id.clone(),
+        name: npc.name.clone(),
+        role: role_str,
+        personality_id: None,
+        personality_json,
+        data_json: Some(data_json),
+        stats_json,
+        notes: Some(npc.notes.clone()),
+        created_at: chrono::Utc::now().to_rfc3339(),
+        updated_at: chrono::Utc::now().to_rfc3339(),
+    };
+
+    state.database.save_npc(&record).await.map_err(|e| e.to_string())?;
 
     Ok(npc)
 }
 
 #[tauri::command]
-pub fn get_npc(id: String, state: State<'_, AppState>) -> Result<Option<NPC>, String> {
-    Ok(state.npc_store.get(&id))
+pub async fn get_npc(id: String, state: State<'_, AppState>) -> Result<Option<NPC>, String> {
+    if let Some(npc) = state.npc_store.get(&id) {
+        return Ok(Some(npc));
+    }
+
+    if let Some(record) = state.database.get_npc(&id).await.map_err(|e| e.to_string())? {
+        if let Some(json) = record.data_json {
+             let npc: NPC = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+             state.npc_store.add(npc.clone(), record.campaign_id.as_deref());
+             return Ok(Some(npc));
+        }
+    }
+    Ok(None)
 }
 
 #[tauri::command]
-pub fn list_npcs(campaign_id: Option<String>, state: State<'_, AppState>) -> Result<Vec<NPC>, String> {
-    Ok(state.npc_store.list(campaign_id.as_deref()))
+pub async fn list_npcs(campaign_id: Option<String>, state: State<'_, AppState>) -> Result<Vec<NPC>, String> {
+    let records = state.database.list_npcs(campaign_id.as_deref()).await.map_err(|e| e.to_string())?;
+    let mut npcs = Vec::new();
+
+    for r in records {
+        if let Some(json) = r.data_json {
+             if let Ok(npc) = serde_json::from_str::<NPC>(&json) {
+                 npcs.push(npc);
+             }
+        }
+    }
+
+    if npcs.is_empty() {
+        let mem_npcs = state.npc_store.list(campaign_id.as_deref());
+        if !mem_npcs.is_empty() {
+            return Ok(mem_npcs);
+        }
+    }
+
+    Ok(npcs)
 }
 
 #[tauri::command]
-pub fn update_npc(npc: NPC, state: State<'_, AppState>) -> Result<(), String> {
-    state.npc_store.update(npc);
+pub async fn update_npc(npc: NPC, state: State<'_, AppState>) -> Result<(), String> {
+    state.npc_store.update(npc.clone());
+
+    let personality_json = serde_json::to_string(&npc.personality).map_err(|e| e.to_string())?;
+    let stats_json = npc.stats.as_ref().map(|s| serde_json::to_string(s).unwrap_or_default());
+    let role_str = serde_json::to_string(&npc.role).unwrap_or_default().trim_matches('"').to_string();
+    let data_json = serde_json::to_string(&npc).map_err(|e| e.to_string())?;
+
+    let created_at = if let Some(old) = state.database.get_npc(&npc.id).await.map_err(|e| e.to_string())? {
+        old.created_at
+    } else {
+        chrono::Utc::now().to_rfc3339()
+    };
+
+    let campaign_id = if let Some(old) = state.database.get_npc(&npc.id).await.map_err(|e| e.to_string())? {
+        old.campaign_id
+    } else {
+        None
+    };
+
+    let record = crate::database::models::NpcRecord {
+        id: npc.id.clone(),
+        campaign_id,
+        name: npc.name.clone(),
+        role: role_str,
+        personality_id: None,
+        personality_json,
+        data_json: Some(data_json),
+        stats_json,
+        notes: Some(npc.notes.clone()),
+        created_at,
+        updated_at: chrono::Utc::now().to_rfc3339(),
+    };
+
+    state.database.save_npc(&record).await.map_err(|e| e.to_string())?;
+
     Ok(())
 }
 
 #[tauri::command]
-pub fn delete_npc(id: String, state: State<'_, AppState>) -> Result<(), String> {
+pub async fn delete_npc(id: String, state: State<'_, AppState>) -> Result<(), String> {
     state.npc_store.delete(&id);
+    state.database.delete_npc(&id).await.map_err(|e| e.to_string())?;
     Ok(())
 }
 
