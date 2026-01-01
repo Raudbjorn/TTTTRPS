@@ -55,6 +55,27 @@ pub struct Campaign {
     pub settings: CampaignSettings,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThemeWeights {
+    pub fantasy: f32,
+    pub cosmic: f32,
+    pub terminal: f32,
+    pub noir: f32,
+    pub neon: f32,
+}
+
+impl Default for ThemeWeights {
+    fn default() -> Self {
+        Self {
+            fantasy: 1.0,
+            cosmic: 0.0,
+            terminal: 0.0,
+            noir: 0.0,
+            neon: 0.0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CampaignSettings {
     /// Maximum number of auto-snapshots to keep
@@ -66,6 +87,9 @@ pub struct CampaignSettings {
     /// UI Theme (e.g., "fantasy", "scifi", "horror")
     #[serde(default = "default_theme")]
     pub theme: String,
+    /// Dynamic theme blending weights
+    #[serde(default)]
+    pub theme_weights: ThemeWeights,
 }
 
 fn default_theme() -> String {
@@ -179,6 +203,7 @@ impl CampaignManager {
                 auto_snapshot: true,
                 tags: vec![],
                 theme: "fantasy".to_string(),
+                theme_weights: ThemeWeights::default(),
             },
         };
 
