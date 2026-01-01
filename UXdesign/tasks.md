@@ -99,7 +99,7 @@
   - Store in `campaign_settings` as JSON
   - Files: `src-tauri/src/core/models.rs`, `campaign_manager.rs`
 
-- [ ] **[BE] B8**: Implement setting-to-theme mapping (P1)
+- [x] **[BE] B8**: Implement setting-to-theme mapping (P1)
   - `get_theme_preset(system: &str)` → ThemeWeights
   - Default mappings: "D&D 5e" → fantasy, "Call of Cthulhu" → cosmic, etc.
   - Fallback to fantasy for unknown systems
