@@ -86,7 +86,7 @@
 ### Dynamic Theme System
 > Supports: REQ-004 (Dynamic Theme System)
 
-- [ ] **[BE] B7**: Create `ThemeWeights` model and persistence (P0)
+- [x] **[BE] B7**: Create `ThemeWeights` model and persistence (P0)
   ```rust
   pub struct ThemeWeights {
       pub fantasy: f32,
