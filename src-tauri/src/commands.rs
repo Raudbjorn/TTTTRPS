@@ -1647,3 +1647,31 @@ pub async fn mark_npc_read(
     Ok(())
 }
 
+
+// ============================================================================
+// Theme Commands
+// ============================================================================
+
+#[tauri::command]
+pub fn get_campaign_theme(
+    campaign_id: String,
+    state: State<'_, AppState>,
+) -> Result<crate::core::models::ThemeWeights, String> {
+    state.campaign_manager.get_campaign(&campaign_id)
+        .map(|c| c.settings.theme_weights)
+        .ok_or_else(|| format!("Campaign not found: {}", campaign_id))
+}
+
+#[tauri::command]
+pub fn set_campaign_theme(
+    campaign_id: String,
+    weights: crate::core::models::ThemeWeights,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    if let Some(mut campaign) = state.campaign_manager.get_campaign(&campaign_id) {
+        campaign.settings.theme_weights = weights;
+        state.campaign_manager.update_campaign(campaign, false).map_err(|e| e.to_string())
+    } else {
+        Err(format!("Campaign not found: {}", campaign_id))
+    }
+}
