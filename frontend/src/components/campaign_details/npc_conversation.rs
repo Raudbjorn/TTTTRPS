@@ -84,7 +84,7 @@ pub fn NpcConversation(props: NpcConversationProps) -> Element {
 
     rsx! {
         div {
-            class: "flex flex-col h-full bg-zinc-900",
+            class: "flex flex-col h-full bg-zinc-950",
 
             // Header
             div { class: "flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/80 backdrop-blur-sm",
@@ -174,7 +174,7 @@ pub fn NpcConversation(props: NpcConversationProps) -> Element {
             }
 
             // Input Area
-            div { class: "p-4 border-t border-zinc-800 bg-zinc-900/80",
+            div { class: "p-4 border-t border-zinc-900 bg-zinc-900",
                 div { class: "flex gap-2",
                     textarea {
                         class: "flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-white placeholder-zinc-500 resize-none focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50 focus:border-[var(--accent)]",
