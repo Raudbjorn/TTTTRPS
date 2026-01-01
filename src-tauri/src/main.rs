@@ -111,6 +111,7 @@ fn main() {
             commands::delete_campaign,
             commands::get_campaign_theme,
             commands::set_campaign_theme,
+            commands::get_theme_preset,
 
             // Campaign Snapshots
             commands::create_snapshot,

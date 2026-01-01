@@ -5,6 +5,7 @@ use dioxus::prelude::*;
 pub mod bindings;
 pub mod services;
 pub mod components;
+pub mod theme;
 
 use components::chat::Chat;
 use components::settings::Settings;

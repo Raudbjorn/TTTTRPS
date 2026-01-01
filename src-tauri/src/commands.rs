@@ -19,8 +19,9 @@ use crate::database::{Database, NpcConversation, ConversationMessage};
 // Core modules
 use crate::core::llm::{LLMConfig, LLMClient, ChatMessage, ChatRequest, MessageRole};
 use crate::core::campaign_manager::{
-    CampaignManager, SessionNote, SnapshotSummary
+    CampaignManager, SessionNote, SnapshotSummary, ThemeWeights
 };
+use crate::core::theme;
 use crate::core::session_manager::{
     SessionManager, GameSession, SessionSummary, CombatState, Combatant,
     CombatantType, create_common_condition
@@ -816,6 +817,37 @@ pub fn update_campaign(
 pub fn delete_campaign(id: String, state: State<'_, AppState>) -> Result<(), String> {
     state.campaign_manager.delete_campaign(&id)
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_campaign_theme(
+    campaign_id: String,
+    state: State<'_, AppState>,
+) -> Result<ThemeWeights, String> {
+    state.campaign_manager
+        .get_campaign(&campaign_id)
+        .map(|c| c.settings.theme_weights)
+        .ok_or_else(|| "Campaign not found".to_string())
+}
+
+#[tauri::command]
+pub async fn set_campaign_theme(
+    campaign_id: String,
+    weights: ThemeWeights,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut campaign = state.campaign_manager
+        .get_campaign(&campaign_id)
+        .ok_or_else(|| "Campaign not found".to_string())?;
+
+    campaign.settings.theme_weights = weights;
+    state.campaign_manager.update_campaign(campaign, false)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_theme_preset(system: String) -> Result<ThemeWeights, String> {
+    Ok(theme::get_theme_preset(&system))
 }
 
 #[tauri::command]

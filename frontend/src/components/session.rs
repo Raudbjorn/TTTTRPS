@@ -111,40 +111,12 @@ pub fn Session(campaign_id: String) -> Element {
     // weighted theme blending via CSS custom property interpolation, e.g.:
     //   Delta Green = cosmic(0.4) + noir(0.6)
     // See ThemeWeights struct in design.md for full implementation plan.
+    // Theme Logic - Dynamic Class Selection based on Campaign System
+    // Supports: fantasy, cosmic, terminal, noir, neon (per design.md)
     let theme_class = use_memo(move || {
         match campaign.read().as_ref() {
-            Some(c) => {
-                let system = c.system.to_lowercase();
-                match system.as_str() {
-                    // Noir themes: 90s office paranoia
-                    s if s.contains("delta green") => "theme-noir",
-                    s if s.contains("night's black agents") || s.contains("nba") => "theme-noir",
-
-                    // Cosmic horror themes
-                    s if s.contains("cthulhu") || s.contains("coc") => "theme-cosmic",
-                    s if s.contains("kult") || s.contains("vaesen") => "theme-cosmic",
-
-                    // Terminal/Sci-Fi themes
-                    s if s.contains("mothership") => "theme-terminal",
-                    s if s.contains("alien") && s.contains("rpg") => "theme-terminal",
-                    s if s.contains("traveller") => "theme-terminal",
-                    s if s.contains("stars without number") || s.contains("swn") => "theme-terminal",
-
-                    // Neon/Cyberpunk themes
-                    s if s.contains("cyberpunk") => "theme-neon",
-                    s if s.contains("shadowrun") => "theme-neon",
-                    s if s.contains("the sprawl") => "theme-neon",
-
-                    // Fantasy (default)
-                    s if s.contains("d&d") || s.contains("dnd") || s.contains("5e") => "theme-fantasy",
-                    s if s.contains("pathfinder") => "theme-fantasy",
-                    s if s.contains("warhammer fantasy") => "theme-fantasy",
-
-                    // Default to fantasy for unknown systems
-                    _ => "theme-fantasy"
-                }
-            },
-            None => "theme-fantasy"
+            Some(c) => crate::theme::get_dominant_theme(&c.settings.theme_weights),
+            None => "theme-fantasy".to_string(),
         }
     }).read().clone();
 
