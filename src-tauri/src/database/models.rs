@@ -246,3 +246,14 @@ impl NpcConversation {
     }
 }
 
+
+/// Personality database record
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct PersonalityRecord {
+    pub id: String,
+    pub name: String,
+    pub source: Option<String>,
+    pub data_json: String,
+    pub created_at: String,
+    pub updated_at: String,
+}

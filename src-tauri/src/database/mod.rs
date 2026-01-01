@@ -449,4 +449,51 @@ impl Database {
         .await?;
         Ok(())
     }
+    // =========================================================================
+    // Personality Operations
+    // =========================================================================
+
+    pub async fn save_personality(&self, record: &PersonalityRecord) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT OR REPLACE INTO personalities
+            (id, name, source, data_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            "#
+        )
+        .bind(&record.id)
+        .bind(&record.name)
+        .bind(&record.source)
+        .bind(&record.data_json)
+        .bind(&record.created_at)
+        .bind(&record.updated_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn get_personality(&self, id: &str) -> Result<Option<PersonalityRecord>, sqlx::Error> {
+        sqlx::query_as::<_, PersonalityRecord>(
+            "SELECT * FROM personalities WHERE id = ?"
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn list_personalities(&self) -> Result<Vec<PersonalityRecord>, sqlx::Error> {
+        sqlx::query_as::<_, PersonalityRecord>(
+            "SELECT * FROM personalities ORDER BY name"
+        )
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn delete_personality(&self, id: &str) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM personalities WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
 }
