@@ -184,6 +184,9 @@ fn main() {
             commands::list_openai_tts_models,
             commands::list_elevenlabs_voices,
             commands::list_available_voices,
+            commands::queue_voice,
+            commands::get_voice_queue,
+            commands::cancel_voice,
 
             // Audio Commands
             commands::get_audio_volumes,

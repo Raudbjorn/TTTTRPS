@@ -1002,7 +1002,7 @@ pub struct NPC {
     pub appearance: AppearanceDescription,
     pub personality: NPCPersonality,
     pub voice: VoiceDescription,
-    pub stats: Option<Character>, 
+    pub stats: Option<Character>,
     pub relationships: Vec<NPCRelationship>,
     pub secrets: Vec<String>,
     pub hooks: Vec<PlotHook>,
@@ -1148,4 +1148,47 @@ pub async fn reply_as_npc(npc_id: String) -> Result<ConversationMessage, String>
         npc_id: String,
     }
     invoke("reply_as_npc", &Args { npc_id }).await
+}
+
+// ============================================================================
+// Voice Queue Types and Commands
+// ============================================================================
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum VoiceStatus {
+    Pending,
+    Processing,
+    Playing,
+    Completed,
+    Failed(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QueuedVoice {
+    pub id: String,
+    pub text: String,
+    pub voice_id: String,
+    pub status: VoiceStatus,
+    pub created_at: String,
+}
+
+pub async fn queue_voice(text: String, voice_id: Option<String>) -> Result<QueuedVoice, String> {
+    #[derive(Serialize)]
+    struct Args {
+        text: String,
+        voice_id: Option<String>,
+    }
+    invoke("queue_voice", &Args { text, voice_id }).await
+}
+
+pub async fn get_voice_queue() -> Result<Vec<QueuedVoice>, String> {
+    invoke_no_args("get_voice_queue").await
+}
+
+pub async fn cancel_voice(queue_id: String) -> Result<(), String> {
+    #[derive(Serialize)]
+    struct Args {
+        queue_id: String,
+    }
+    invoke("cancel_voice", &Args { queue_id }).await
 }

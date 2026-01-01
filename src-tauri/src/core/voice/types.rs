@@ -183,3 +183,21 @@ pub struct UsageInfo {
     pub characters_limit: u64,
     pub next_reset: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum VoiceStatus {
+    Pending,
+    Processing,
+    Playing,
+    Completed,
+    Failed(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QueuedVoice {
+    pub id: String,
+    pub text: String,
+    pub voice_id: String,
+    pub status: VoiceStatus,
+    pub created_at: String,
+}

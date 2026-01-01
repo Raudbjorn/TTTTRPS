@@ -15,6 +15,8 @@ pub struct VoiceManager {
     config: VoiceConfig,
     providers: HashMap<String, Box<dyn VoiceProvider>>,
     cache_dir: PathBuf,
+    pub queue: Vec<crate::core::voice::types::QueuedVoice>,
+    pub is_playing: bool,
 }
 
 impl VoiceManager {
@@ -44,11 +46,45 @@ impl VoiceManager {
             config,
             providers,
             cache_dir,
+            queue: Vec::new(),
+            is_playing: false,
         }
     }
 
     pub fn get_config(&self) -> &VoiceConfig {
         &self.config
+    }
+
+    pub fn add_to_queue(&mut self, text: String, voice_id: String) -> crate::core::voice::types::QueuedVoice {
+        let item = crate::core::voice::types::QueuedVoice {
+            id: uuid::Uuid::new_v4().to_string(),
+            text,
+            voice_id,
+            status: crate::core::voice::types::VoiceStatus::Pending,
+            created_at: chrono::Utc::now().to_rfc3339(),
+        };
+        self.queue.push(item.clone());
+        item
+    }
+
+    pub fn get_queue(&self) -> Vec<crate::core::voice::types::QueuedVoice> {
+        self.queue.clone()
+    }
+
+    pub fn remove_from_queue(&mut self, id: &str) {
+        self.queue.retain(|item| item.id != id);
+    }
+
+    pub fn update_status(&mut self, id: &str, status: crate::core::voice::types::VoiceStatus) {
+        if let Some(item) = self.queue.iter_mut().find(|i| i.id == id) {
+            item.status = status;
+        }
+    }
+
+    pub fn get_next_pending(&self) -> Option<crate::core::voice::types::QueuedVoice> {
+        self.queue.iter()
+            .find(|item| matches!(item.status, crate::core::voice::types::VoiceStatus::Pending))
+            .cloned()
     }
 
     pub async fn synthesize(&self, request: SynthesisRequest) -> Result<SynthesisResult> {

@@ -101,7 +101,6 @@ pub fn Session(campaign_id: String) -> Element {
             }
         });
     };
-    };
 
     // Theme Logic - Dynamic Class Selection based on Campaign System
     // Supports: fantasy, cosmic, terminal, noir, neon (per design.md)
