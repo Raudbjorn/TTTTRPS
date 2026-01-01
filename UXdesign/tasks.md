@@ -105,7 +105,7 @@
   - Fallback to fantasy for unknown systems
   - Files: `src-tauri/src/core/theme.rs` (new)
 
-- [ ] **[BE] B9**: Add theme configuration commands (P1)
+- [x] **[BE] B9**: Add theme configuration commands (P1)
   - `get_campaign_theme(campaign_id)` → ThemeWeights
   - `set_campaign_theme(campaign_id, weights)` → ()
   - Files: `src-tauri/src/commands.rs`
