@@ -2,11 +2,10 @@ use std::path::PathBuf;
 use tokio::fs;
 use std::collections::HashMap;
 use crate::core::voice::types::{Result, SynthesisRequest, SynthesisResult, VoiceConfig, VoiceProviderType, VoiceError, Voice};
-use crate::core::voice::providers::{VoiceProvider};
-use crate::core::voice::providers::elevenlabs::ElevenLabsProvider;
-use crate::core::voice::providers::fish_audio::FishAudioProvider;
-use crate::core::voice::providers::ollama::OllamaProvider;
-use crate::core::voice::providers::openai::OpenAIVoiceProvider;
+use crate::core::voice::providers::{
+    VoiceProvider, elevenlabs::ElevenLabsProvider, fish_audio::FishAudioProvider,
+    ollama::OllamaProvider, openai::OpenAIVoiceProvider, piper::PiperProvider
+};
 
 use rodio::{Decoder, OutputStream, Sink};
 use std::io::Cursor;
@@ -39,6 +38,10 @@ impl VoiceManager {
         if let Some(cfg) = &config.openai {
              providers.insert("openai".to_string(), Box::new(OpenAIVoiceProvider::new(cfg.clone())));
         }
+
+        // Initialize Piper
+        let piper_config = config.piper.clone().unwrap_or(crate::core::voice::types::PiperConfig { models_dir: None });
+        providers.insert("piper".to_string(), Box::new(PiperProvider::new(piper_config)));
 
         let cache_dir = config.cache_dir.clone().unwrap_or_else(|| PathBuf::from("./voice_cache"));
 
@@ -107,6 +110,7 @@ impl VoiceManager {
             VoiceProviderType::FishAudio => "fish_audio",
             VoiceProviderType::Ollama => "ollama",
             VoiceProviderType::OpenAI => "openai",
+            VoiceProviderType::Piper => "piper",
             VoiceProviderType::System => return Err(VoiceError::NotConfigured("System TTS not supported yet".to_string())),
             VoiceProviderType::Disabled => return Err(VoiceError::NotConfigured("Voice synthesis disabled".to_string())),
         };

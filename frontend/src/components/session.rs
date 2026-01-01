@@ -202,12 +202,13 @@ pub fn Session(campaign_id: String) -> Element {
                                                let cid = campaign_id_sig.read().clone();
                                                let s_num = campaign.read().as_ref().map(|c| c.session_count + 1).unwrap_or(1);
                                                spawn(async move {
-                                                   if let Ok(s) = start_session(cid.clone(), s_num).await {
+                                                   let cid_str = cid.to_string();
+                                                   if let Ok(s) = start_session(cid_str.clone(), s_num).await {
                                                        // Inline on_session_started behavior
                                                        active_session.set(Some(s.clone()));
                                                        selected_session_id.set(Some(s.id.clone()));
                                                        // Refresh list
-                                                       if let Ok(list) = list_sessions(cid).await {
+                                                       if let Ok(list) = list_sessions(cid_str).await {
                                                            sessions.set(list);
                                                        }
                                                    }

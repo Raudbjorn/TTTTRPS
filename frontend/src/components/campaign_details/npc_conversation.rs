@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 use crate::bindings::{
-    get_npc_conversation, add_npc_message, mark_npc_read, reply_as_npc,
+    get_npc_conversation, add_npc_message, mark_npc_read, reply_as_npc, queue_voice,
     NpcConversation as NpcConversationData, ConversationMessage,
 };
 use crate::components::design_system::{TypingIndicator, Markdown};
@@ -20,6 +20,7 @@ pub fn NpcConversation(props: NpcConversationProps) -> Element {
     let mut is_typing = use_signal(|| false); // Separate signal for NPC typing state
     let mut input_text = use_signal(|| String::new());
     let mut error_msg = use_signal(|| Option::<String>::None);
+    let mut playing_msg_id = use_signal(|| Option::<String>::None); // Track which message is playing
 
     let npc_id_sig = use_signal(|| props.npc_id.clone());
     let npc_name = props.npc_name.clone();
@@ -38,7 +39,7 @@ pub fn NpcConversation(props: NpcConversationProps) -> Element {
                     let _ = mark_npc_read(npc_id).await;
                 }
                 Err(e) => {
-                    // Conversation might not exist yet - that's OK
+                     // Conversation might not exist yet - that's OK
                     if !e.contains("not found") {
                         error_msg.set(Some(e));
                     }
@@ -48,7 +49,7 @@ pub fn NpcConversation(props: NpcConversationProps) -> Element {
         });
     });
 
-    let handle_send = move |_| {
+    let mut handle_send = move || {
         let text = input_text.read().trim().to_string();
         if text.is_empty() || is_sending.read().clone() {
             return;
@@ -69,7 +70,8 @@ pub fn NpcConversation(props: NpcConversationProps) -> Element {
                     is_typing.set(true);
                     match reply_as_npc(npc_id.clone()).await {
                          Ok(ai_msg) => {
-                             messages.with_mut(|m| m.push(ai_msg));
+                             messages.with_mut(|m| m.push(ai_msg.clone()));
+                             // Auto-play the reply? optional.
                          }
                          Err(e) => {
                              // Log error but don't crash UI
@@ -89,8 +91,22 @@ pub fn NpcConversation(props: NpcConversationProps) -> Element {
     let handle_keydown = move |e: KeyboardEvent| {
         if e.key() == Key::Enter && !e.modifiers().shift() {
             e.prevent_default();
-            handle_send(());
+            handle_send();
         }
+    };
+
+    let mut handle_play = move |text: String, msg_id: String| {
+        playing_msg_id.set(Some(msg_id));
+        spawn(async move {
+            // Queue voice
+            // TODO: Use specific NPC voice configuration
+            if let Err(e) = queue_voice(text, None).await {
+                println!("Error queuing voice: {}", e);
+            }
+            // Reset playing indicator after some time or by tracking status (simplified for now)
+             gloo_timers::future::TimeoutFuture::new(2000).await;
+             playing_msg_id.set(None);
+        });
     };
 
     rsx! {
@@ -152,20 +168,30 @@ pub fn NpcConversation(props: NpcConversationProps) -> Element {
 
                                 div {
                                     class: if is_user {
-                                        "max-w-[80%] bg-[var(--accent)]/20 border border-[var(--accent)]/30 rounded-lg p-3"
+                                        "max-w-[80%] bg-[var(--accent)]/20 border border-[var(--accent)]/30 rounded-lg p-3 group relative"
                                     } else {
-                                        "max-w-[80%] bg-zinc-800 border border-zinc-700 rounded-lg p-3"
+                                        "max-w-[80%] bg-zinc-800 border border-zinc-700 rounded-lg p-3 group relative"
                                     },
 
                                     if is_user {
                                         p { class: "text-zinc-100 whitespace-pre-wrap", "{msg_content}" }
                                     } else {
-                                        Markdown { content: msg_content }
+                                        Markdown { content: msg_content.clone() }
                                     }
 
-                                    p {
-                                        class: "text-xs text-zinc-500 mt-2",
-                                        "{format_timestamp(&timestamp)}"
+                                    div { class: "flex items-center justify-between mt-2",
+                                        p {
+                                            class: "text-xs text-zinc-500",
+                                            "{format_timestamp(&timestamp)}"
+                                        }
+                                        if !is_user {
+                                            button {
+                                                class: "opacity-0 group-hover:opacity-100 transition-opacity ml-2 p-1 hover:bg-zinc-700 rounded text-zinc-400 hover:text-white",
+                                                title: "Play Voice",
+                                                onclick: move |_| handle_play(msg_content.clone(), msg_id.clone()),
+                                                "🔊"
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -199,7 +225,7 @@ pub fn NpcConversation(props: NpcConversationProps) -> Element {
                     button {
                         class: "px-4 py-2 bg-[var(--accent)] hover:brightness-110 text-white rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed",
                         disabled: input_text.read().trim().is_empty() || is_sending.read().clone(),
-                        onclick: handle_send,
+                        onclick: move |_| handle_send(),
                         if is_sending.read().clone() {
                             "..."
                         } else {

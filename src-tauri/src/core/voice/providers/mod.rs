@@ -5,6 +5,7 @@ pub mod elevenlabs;
 pub mod fish_audio;
 pub mod ollama;
 pub mod openai;
+pub mod piper;
 
 #[async_trait]
 pub trait VoiceProvider: Send + Sync {

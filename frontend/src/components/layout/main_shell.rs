@@ -15,7 +15,7 @@ use crate::components::resizable_panel::{DragHandle, ResizeSide};
 
 #[component]
 pub fn MainShell(props: MainShellProps) -> Element {
-    let layout = use_context::<LayoutState>();
+    let mut layout = use_context::<LayoutState>();
     let mut dragging = use_signal(|| Option::<ResizeSide>::None);
 
     // Dynamic Grid Columns calculation
@@ -93,14 +93,16 @@ pub fn MainShell(props: MainShellProps) -> Element {
         dragging.set(None);
     };
 
+    let cursor_style = if dragging.read().is_some() { "col-resize" } else { "default" };
+    let grid_style = format!(
+        "display: grid; grid-template-columns: {}; grid-template-rows: 1fr 56px; grid-template-areas: 'rail sidebar main info' 'rail sidebar footer info'; cursor: {};",
+        grid_template_cols, cursor_style
+    );
+
     rsx! {
         div {
             class: "h-screen w-screen overflow-hidden bg-[var(--bg-deep)] text-[var(--text-primary)] font-ui transition-all duration-300 select-none",
-            style: "display: grid;
-                   grid-template-columns: {grid_template_cols};
-                   grid-template-rows: 1fr 56px;
-                   grid-template-areas: 'rail sidebar main info' 'rail sidebar footer info';
-                   cursor: {if dragging.read().is_some() { \"col-resize\" } else { \"default\" }}",
+            style: "{grid_style}",
 
             onmousemove: handle_move_container,
             onmouseup: handle_up,
@@ -120,7 +122,8 @@ pub fn MainShell(props: MainShellProps) -> Element {
                 if *layout.sidebar_visible.read() {
                     DragHandle {
                         side: ResizeSide::Left,
-                        on_drag_start: move |_| {
+                        on_drag_start: move |e: MouseEvent| {
+                            last_x.set(e.page_coordinates().x); // Init
                             dragging.set(Some(ResizeSide::Left));
                         }
                     }

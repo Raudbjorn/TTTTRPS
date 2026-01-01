@@ -8,7 +8,7 @@ pub enum ResizeSide {
 
 #[derive(Props, Clone, PartialEq)]
 pub struct DragHandleProps {
-    pub on_drag_start: EventHandler<()>,
+    pub on_drag_start: EventHandler<MouseEvent>,
     pub side: ResizeSide,
 }
 
@@ -25,7 +25,7 @@ pub fn DragHandle(props: DragHandleProps) -> Element {
             class: "absolute top-0 bottom-0 select-none z-50 w-2 cursor-col-resize flex justify-center group {position_class}",
             onmousedown: move |e| {
                 e.stop_propagation();
-                props.on_drag_start.call(());
+                props.on_drag_start.call(e);
             },
             // Visible line on hover/active
             div {

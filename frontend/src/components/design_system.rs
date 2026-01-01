@@ -153,6 +153,7 @@ pub enum BadgeVariant {
     Warning,
     Error,
     Info,
+    Outline,
 }
 
 #[derive(PartialEq, Clone, Props)]
@@ -170,6 +171,7 @@ pub fn Badge(props: BadgeProps) -> Element {
         BadgeVariant::Warning => "bg-yellow-900/50 text-yellow-300 border border-yellow-800",
         BadgeVariant::Error => "bg-red-900/50 text-red-300 border border-red-800",
         BadgeVariant::Info => "bg-blue-900/50 text-blue-300 border border-blue-800",
+        BadgeVariant::Outline => "bg-transparent border border-gray-500 text-gray-300",
     };
 
     rsx! {
@@ -273,7 +275,7 @@ pub fn Markdown(props: MarkdownProps) -> Element {
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_TASKLISTS);
-    
+
     let parser = Parser::new_ext(&props.content, options);
     let mut html_output = String::new();
     html::push_html(&mut html_output, parser);

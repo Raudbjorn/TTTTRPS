@@ -41,7 +41,7 @@ pub fn ChatMessage(props: ChatMessageProps) -> Element {
                  div {
                     class: "absolute -left-12 top-1 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-1",
                     // Play Button
-                    if let Some(handler) = &props.on_play {
+                    if let Some(handler) = props.on_play.clone() {
                         button {
                             class: "p-2 bg-zinc-800 rounded-full hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors shadow-sm",
                             title: "Read Aloud",
