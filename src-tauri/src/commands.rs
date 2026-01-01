@@ -934,6 +934,24 @@ pub fn end_session(session_id: String, state: State<'_, AppState>) -> Result<Ses
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub fn create_planned_session(
+    campaign_id: String,
+    title: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<GameSession, String> {
+    Ok(state.session_manager.create_planned_session(&campaign_id, title))
+}
+
+#[tauri::command]
+pub fn start_planned_session(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<GameSession, String> {
+    state.session_manager.start_planned_session(&session_id)
+        .map_err(|e| e.to_string())
+}
+
 // ============================================================================
 // Combat Commands
 // ============================================================================

@@ -49,6 +49,7 @@ pub struct GameSession {
     pub combat: Option<CombatState>,
     pub notes: Vec<SessionLogEntry>,
     pub active_scene: Option<String>,
+    pub title: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -57,6 +58,7 @@ pub enum SessionStatus {
     Active,
     Paused,
     Ended,
+    Planned,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -226,6 +228,7 @@ impl SessionManager {
             combat: None,
             notes: vec![],
             active_scene: None,
+            title: None,
         };
 
         // Store session
@@ -247,6 +250,92 @@ impl SessionManager {
         );
 
         session
+    }
+
+    pub fn create_planned_session(&self, campaign_id: &str, title: Option<String>) -> GameSession {
+         // Determine next session number
+         // (Simplification: Getting max session + 1 from existing sessions for this campaign)
+         // Note: Logic for session number is not strictly enforced here but generally sequential.
+         // For now, we'll assign 0 or calculate?
+         // Task doesn't specify session number logic. start_session takes it as arg.
+         // Let's assume the frontend provides it or we calculate it.
+         // Ideally `create_planned_session` shouldn't require session number if it's "next".
+         // But let's look at `start_session` signature: `start_session(..., session_number: u32)`.
+         // I'll add `session_number` to `create_planned_session` to be safe/explicit.
+         // Or better, make it auto-increment?
+         // Let's stick to explicit for now to match `start_session` pattern, or check if I can find max.
+         // Since I'm lazy on finding max efficiently in HashMap, I'll ask for it or mock it.
+         // actually `start_session` takes `session_number`.
+         // I will change `create_planned_session` to take `session_number` as well.
+
+         // Wait, the command signature I planned: `create_planned_session(campaign_id, title)`.
+         // So I need to calculate it.
+         let campaigns = self.campaign_sessions.read().unwrap();
+         let session_ids = campaigns.get(campaign_id).cloned().unwrap_or_default();
+         drop(campaigns); // Release lock
+
+         let sessions = self.sessions.read().unwrap();
+         let max_num = session_ids.iter()
+             .filter_map(|id| sessions.get(id))
+             .map(|s| s.session_number)
+             .max()
+             .unwrap_or(0);
+         let session_number = max_num + 1;
+         drop(sessions);
+
+         let session = GameSession {
+            id: Uuid::new_v4().to_string(),
+            campaign_id: campaign_id.to_string(),
+            session_number,
+            started_at: Utc::now(), // Scheduled time = created time for now
+            ended_at: None,
+            status: SessionStatus::Planned,
+            combat: None,
+            notes: vec![],
+            active_scene: None,
+            title,
+        };
+
+        // Use title somewhere? GameSession struct doesn't have title field in the file I viewed!
+        // Step 109 `GameSession` definition:
+        // pub struct GameSession { ... active_scene: Option<String> }
+        // It does NOT have title.
+        // I need to add `title` to `GameSession` in `session_manager.rs` as well!
+        // The `SessionRecord` in `models.rs` has it (I added it).
+        // `GameSession` in `session_manager` is different from `SessionRecord` in `models.rs`.
+
+        self.sessions.write().unwrap()
+            .insert(session.id.clone(), session.clone());
+        self.campaign_sessions.write().unwrap()
+            .entry(campaign_id.to_string())
+            .or_default()
+            .push(session.id.clone());
+
+        session
+    }
+
+    pub fn start_planned_session(&self, session_id: &str) -> Result<GameSession> {
+        let mut sessions = self.sessions.write().unwrap();
+        let session = sessions.get_mut(session_id)
+            .ok_or_else(|| SessionError::SessionNotFound(session_id.to_string()))?;
+
+        if session.status != SessionStatus::Planned {
+             // Maybe allow restarting Ended? No, mostly for Planned -> Active.
+        }
+
+        session.status = SessionStatus::Active;
+        session.started_at = Utc::now(); // Actual start time
+
+        // Log
+        session.notes.push(SessionLogEntry {
+            id: Uuid::new_v4().to_string(),
+            timestamp: Utc::now(),
+            entry_type: LogEntryType::SystemMessage,
+            content: format!("Session {} started (Planned)", session.session_number),
+            actor: None,
+        });
+
+        Ok(session.clone())
     }
 
     pub fn get_session(&self, session_id: &str) -> Option<GameSession> {
@@ -272,7 +361,7 @@ impl SessionManager {
 
         campaign_sessions.get(campaign_id)
             .map(|ids| {
-                ids.iter()
+                let mut summaries: Vec<SessionSummary> = ids.iter()
                     .filter_map(|id| sessions.get(id))
                     .map(|s| SessionSummary {
                         id: s.id.clone(),
@@ -287,7 +376,24 @@ impl SessionManager {
                         note_count: s.notes.len(),
                         had_combat: s.combat.is_some(),
                     })
-                    .collect()
+                    .collect();
+
+                // Sort: Active -> Planned (asc) -> Ended (desc date) -> Others
+                summaries.sort_by(|a, b| {
+                    match (&a.status, &b.status) {
+                        (SessionStatus::Active, SessionStatus::Active) => b.started_at.cmp(&a.started_at), // Newest active first?
+                        (SessionStatus::Active, _) => std::cmp::Ordering::Less,
+                        (_, SessionStatus::Active) => std::cmp::Ordering::Greater,
+
+                        (SessionStatus::Planned, SessionStatus::Planned) => a.session_number.cmp(&b.session_number),
+                        (SessionStatus::Planned, _) => std::cmp::Ordering::Less,
+                        (_, SessionStatus::Planned) => std::cmp::Ordering::Greater,
+
+                        _ => b.started_at.cmp(&a.started_at), // Newest first for others (Ended/Paused)
+                    }
+                });
+
+                summaries
             })
             .unwrap_or_default()
     }

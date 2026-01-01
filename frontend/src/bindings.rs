@@ -925,3 +925,66 @@ pub async fn get_session_usage() -> Result<SessionUsage, String> {
 pub async fn reset_usage_stats() -> Result<(), String> {
     invoke_no_args("reset_usage_stats").await
 }
+
+// ============================================================================
+// NPC Conversation Types
+// ============================================================================
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NpcConversation {
+    pub id: String,
+    pub npc_id: String,
+    pub campaign_id: String,
+    pub messages_json: String,
+    pub unread_count: u32,
+    pub last_message_at: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConversationMessage {
+    pub id: String,
+    pub role: String,
+    pub content: String,
+    pub parent_message_id: Option<String>,
+    pub created_at: String,
+}
+
+// ============================================================================
+// NPC Conversation Commands
+// ============================================================================
+
+pub async fn list_npc_conversations(campaign_id: String) -> Result<Vec<NpcConversation>, String> {
+    #[derive(Serialize)]
+    struct Args {
+        campaign_id: String,
+    }
+    invoke("list_npc_conversations", &Args { campaign_id }).await
+}
+
+pub async fn get_npc_conversation(npc_id: String) -> Result<NpcConversation, String> {
+    #[derive(Serialize)]
+    struct Args {
+        npc_id: String,
+    }
+    invoke("get_npc_conversation", &Args { npc_id }).await
+}
+
+pub async fn add_npc_message(npc_id: String, content: String, role: String) -> Result<ConversationMessage, String> {
+    #[derive(Serialize)]
+    struct Args {
+        npc_id: String,
+        content: String,
+        role: String,
+    }
+    invoke("add_npc_message", &Args { npc_id, content, role }).await
+}
+
+pub async fn mark_npc_read(npc_id: String) -> Result<(), String> {
+    #[derive(Serialize)]
+    struct Args {
+        npc_id: String,
+    }
+    invoke("mark_npc_read", &Args { npc_id }).await
+}
