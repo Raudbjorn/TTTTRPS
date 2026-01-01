@@ -8,6 +8,7 @@ use crate::bindings::{
 };
 use crate::components::campaign_details::session_list::SessionList;
 use crate::components::campaign_details::npc_list::NPCList;
+use crate::components::campaign_details::npc_conversation::NpcConversation;
 
 #[component]
 pub fn Session(campaign_id: String) -> Element {
@@ -20,6 +21,12 @@ pub fn Session(campaign_id: String) -> Element {
     let mut selected_session_id = use_signal(|| Option::<String>::None);
     let mut is_loading = use_signal(|| true);
 
+    // NPC Selection State
+    let mut selected_npc_id = use_signal(|| Option::<String>::None);
+    let mut selected_npc_name = use_signal(|| Option::<String>::None);
+
+    let campaign_id_sig = use_signal(|| campaign_id.clone());
+    let campaign_id_clone = campaign_id.clone();
     // Initial Load
     use_effect(move || {
         let cid = campaign_id.read().clone();
@@ -47,6 +54,27 @@ pub fn Session(campaign_id: String) -> Element {
 
     let handle_session_select = move |id: String| {
         selected_session_id.set(Some(id));
+        // Clear NPC selection when selecting a session
+        selected_npc_id.set(None);
+        selected_npc_name.set(None);
+    };
+
+    // NPC selection handler - maps mock IDs to names
+    let handle_npc_select = move |id: String| {
+        // Mock NPC name lookup - in production, would fetch from backend
+        let name = match id.as_str() {
+            "npc-1" => "Garrosh",
+            "npc-2" => "Elara",
+            "npc-3" => "Zoltan",
+            _ => "Unknown NPC",
+        };
+        selected_npc_id.set(Some(id));
+        selected_npc_name.set(Some(name.to_string()));
+    };
+
+    let handle_npc_close = move |_| {
+        selected_npc_id.set(None);
+        selected_npc_name.set(None);
     };
 
     // Callback when a new session is started via the Active View (if empty)
@@ -157,58 +185,69 @@ pub fn Session(campaign_id: String) -> Element {
                    }
 
                    // Workspace
-                   div { class: "flex-1 overflow-y-auto p-6 relative",
-                        if let Some(selected_id) = selected_session_id.read().as_ref() {
+                   div { class: "flex-1 overflow-y-auto relative",
+                        // NPC Conversation takes priority when selected
+                        if let (Some(npc_id), Some(npc_name)) = (selected_npc_id.read().clone(), selected_npc_name.read().clone()) {
+                            NpcConversation {
+                                npc_id: npc_id,
+                                npc_name: npc_name,
+                                on_close: handle_npc_close
+                            }
+                        } else if let Some(selected_id) = selected_session_id.read().as_ref() {
                             // Check if it is the active session
-                            if let Some(active) = active_session.read().as_ref() {
-                                if &active.id == selected_id {
-                                    ActiveSessionWorkspace {
-                                        session: active.clone(),
-                                        on_session_ended: on_session_ended
+                            div { class: "p-6",
+                                if let Some(active) = active_session.read().as_ref() {
+                                    if &active.id == selected_id {
+                                        ActiveSessionWorkspace {
+                                            session: active.clone(),
+                                            on_session_ended: on_session_ended
+                                        }
+                                    } else {
+                                        // Past Session View (Placeholder for now, implementation could be fetching logs)
+                                         div { class: "flex flex-col items-center justify-center h-full text-zinc-500",
+                                            h3 { class: "text-xl font-bold text-zinc-400 mb-2", "Historical Archive" }
+                                            p { "Reviewing past logs for session {selected_id}..." }
+                                            // Potential improvement: Fetch session details and show summary
+                                        }
                                     }
                                 } else {
-                                    // Past Session View (Placeholder for now, implementation could be fetching logs)
-                                     div { class: "flex flex-col items-center justify-center h-full text-zinc-500",
+                                    // Selected ID exists but no active session?
+                                    // Means we are viewing history while no session is active.
+                                    div { class: "flex flex-col items-center justify-center h-full text-zinc-500",
                                         h3 { class: "text-xl font-bold text-zinc-400 mb-2", "Historical Archive" }
                                         p { "Reviewing past logs for session {selected_id}..." }
-                                        // Potential improvement: Fetch session details and show summary
                                     }
-                                }
-                            } else {
-                                // Selected ID exists but no active session?
-                                // Means we are viewing history while no session is active.
-                                div { class: "flex flex-col items-center justify-center h-full text-zinc-500",
-                                    h3 { class: "text-xl font-bold text-zinc-400 mb-2", "Historical Archive" }
-                                    p { "Reviewing past logs for session {selected_id}..." }
                                 }
                             }
                         } else {
                             // No session selected
-                            if active_session.read().is_none() {
-                                // Prompt to start new
-                                div { class: "flex flex-col items-center justify-center h-full",
-                                    button {
-                                        class: "px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-lg shadow-lg font-bold transition-all transform hover:scale-105",
-                                        onclick: move |_| {
-                                           let cid = campaign_id.read().clone();
-                                           let s_num = campaign.read().as_ref().map(|c| c.session_count + 1).unwrap_or(1);
-                                           spawn(async move {
-                                               if let Ok(s) = start_session(cid.clone(), s_num).await {
-                                                   // Inline on_session_started behavior
-                                                   active_session.set(Some(s.clone()));
-                                                   selected_session_id.set(Some(s.id.clone()));
-                                                   // Refresh list
-                                                   if let Ok(list) = list_sessions(cid).await {
-                                                       sessions.set(list);
+                            div { class: "p-6",
+                                if active_session.read().is_none() {
+                                    // Prompt to start new
+                                    div { class: "flex flex-col items-center justify-center h-full",
+                                        button {
+                                            class: "px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-lg shadow-lg font-bold transition-all transform hover:scale-105",
+                                            onclick: move |_| {
+                                               let cid = campaign_id_sig.read().clone();
+                                               let s_num = campaign.read().as_ref().map(|c| c.session_count + 1).unwrap_or(1);
+                                               spawn(async move {
+                                                   if let Ok(s) = start_session(cid.clone(), s_num).await {
+                                                       // Inline on_session_started behavior
+                                                       active_session.set(Some(s.clone()));
+                                                       selected_session_id.set(Some(s.id.clone()));
+                                                       // Refresh list
+                                                       if let Ok(list) = list_sessions(cid).await {
+                                                           sessions.set(list);
+                                                       }
                                                    }
-                                               }
-                                           });
-                                        },
-                                        "Start New Session"
+                                               });
+                                            },
+                                            "Start New Session"
+                                        }
                                     }
+                                } else {
+                                    div { class: "text-center text-zinc-500 mt-20", "Select a session from the sidebar" }
                                 }
-                            } else {
-                                div { class: "text-center text-zinc-500 mt-20", "Select a session from the sidebar" }
                             }
                         }
                    }
@@ -216,7 +255,11 @@ pub fn Session(campaign_id: String) -> Element {
             }
 
             // Right Sidebar: NPCs
-            NPCList { campaign_id: campaign_id.read().clone() }
+            NPCList {
+                campaign_id: campaign_id_sig.read().clone(),
+                selected_npc_id: selected_npc_id.read().clone(),
+                on_select_npc: handle_npc_select
+            }
         }
     }
 }

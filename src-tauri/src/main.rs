@@ -128,6 +128,8 @@ fn main() {
             commands::get_session,
             commands::get_active_session,
             commands::list_sessions,
+            commands::create_planned_session,
+            commands::start_planned_session,
             commands::end_session,
 
             // Combat Commands
