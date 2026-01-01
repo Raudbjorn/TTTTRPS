@@ -182,7 +182,7 @@
 ### Campaign Hub (Album View)
 > Supports: REQ-001
 
-- [ ] **[FE] F4**: Redesign Campaign Cards as album covers (P0)
+- [x] **[FE] F4**: Redesign Campaign Cards as album covers (P0)
   - Cover art area (placeholder or generated)
   - Genre badge overlay
   - "Now Playing" pulse animation
