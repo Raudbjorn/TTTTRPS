@@ -336,7 +336,7 @@
 ### Chat Enhancements
 > Supports: REQ-003
 
-- [ ] **[FE] F25**: Update ChatMessage with play button integration (P1)
+- [x] **[FE] F25**: Update ChatMessage with play button integration (P1)
   - Play button queues to Media Bar
   - Only visible when voice configured
   - Files: `frontend/src/components/chat.rs`
