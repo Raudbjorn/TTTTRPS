@@ -406,4 +406,155 @@ impl Database {
             .await?;
         Ok(())
     }
+
+    // =========================================================================
+    // NPC Operations
+    // =========================================================================
+
+    pub async fn save_npc(&self, npc: &NpcRecord) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT OR REPLACE INTO npcs
+            (id, campaign_id, name, role, personality_id, personality_json, data_json, stats_json, notes, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "#
+        )
+        .bind(&npc.id)
+        .bind(&npc.campaign_id)
+        .bind(&npc.name)
+        .bind(&npc.role)
+        .bind(&npc.personality_id)
+        .bind(&npc.personality_json)
+        .bind(&npc.data_json)
+        .bind(&npc.stats_json)
+        .bind(&npc.notes)
+        .bind(&npc.created_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn get_npc(&self, id: &str) -> Result<Option<NpcRecord>, sqlx::Error> {
+        sqlx::query_as::<_, NpcRecord>(
+            "SELECT * FROM npcs WHERE id = ?"
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn list_npcs(&self, campaign_id: Option<&str>) -> Result<Vec<NpcRecord>, sqlx::Error> {
+        if let Some(cid) = campaign_id {
+            sqlx::query_as::<_, NpcRecord>(
+                "SELECT * FROM npcs WHERE campaign_id = ? ORDER BY name"
+            )
+            .bind(cid)
+            .fetch_all(&self.pool)
+            .await
+        } else {
+            sqlx::query_as::<_, NpcRecord>(
+                "SELECT * FROM npcs ORDER BY name"
+            )
+            .fetch_all(&self.pool)
+            .await
+        }
+    }
+
+    pub async fn delete_npc(&self, id: &str) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM npcs WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    // =========================================================================
+    // NPC Conversation Operations
+    // =========================================================================
+
+    pub async fn get_npc_conversation(&self, npc_id: &str) -> Result<Option<NpcConversation>, sqlx::Error> {
+        sqlx::query_as::<_, NpcConversation>(
+            "SELECT * FROM npc_conversations WHERE npc_id = ?"
+        )
+        .bind(npc_id)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn list_npc_conversations(&self, campaign_id: &str) -> Result<Vec<NpcConversation>, sqlx::Error> {
+        sqlx::query_as::<_, NpcConversation>(
+            "SELECT * FROM npc_conversations WHERE campaign_id = ? ORDER BY last_message_at DESC"
+        )
+        .bind(campaign_id)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn save_npc_conversation(&self, conversation: &NpcConversation) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT OR REPLACE INTO npc_conversations
+            (id, npc_id, campaign_id, messages_json, unread_count, last_message_at, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            "#
+        )
+        .bind(&conversation.id)
+        .bind(&conversation.npc_id)
+        .bind(&conversation.campaign_id)
+        .bind(&conversation.messages_json)
+        .bind(conversation.unread_count)
+        .bind(&conversation.last_message_at)
+        .bind(&conversation.created_at)
+        .bind(&conversation.updated_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+    // =========================================================================
+    // Personality Operations
+    // =========================================================================
+
+    pub async fn save_personality(&self, record: &PersonalityRecord) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT OR REPLACE INTO personalities
+            (id, name, source, data_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            "#
+        )
+        .bind(&record.id)
+        .bind(&record.name)
+        .bind(&record.source)
+        .bind(&record.data_json)
+        .bind(&record.created_at)
+        .bind(&record.updated_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn get_personality(&self, id: &str) -> Result<Option<PersonalityRecord>, sqlx::Error> {
+        sqlx::query_as::<_, PersonalityRecord>(
+            "SELECT * FROM personalities WHERE id = ?"
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn list_personalities(&self) -> Result<Vec<PersonalityRecord>, sqlx::Error> {
+        sqlx::query_as::<_, PersonalityRecord>(
+            "SELECT * FROM personalities ORDER BY name"
+        )
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn delete_personality(&self, id: &str) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM personalities WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
 }

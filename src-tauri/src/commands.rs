@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::collections::HashMap;
+use crate::database::{Database, NpcConversation, ConversationMessage};
 
 // Core modules
 use crate::core::llm::{LLMConfig, LLMClient, ChatMessage, ChatRequest, MessageRole};
@@ -51,6 +52,7 @@ pub struct AppState {
     pub search_client: Arc<SearchClient>,
     pub personality_store: Arc<PersonalityStore>,
     pub ingestion_pipeline: Arc<MeilisearchPipeline>,
+    pub database: Database,
 }
 
 // Helper init for default state components
@@ -932,6 +934,24 @@ pub fn end_session(session_id: String, state: State<'_, AppState>) -> Result<Ses
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub fn create_planned_session(
+    campaign_id: String,
+    title: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<GameSession, String> {
+    Ok(state.session_manager.create_planned_session(&campaign_id, title))
+}
+
+#[tauri::command]
+pub fn start_planned_session(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<GameSession, String> {
+    state.session_manager.start_planned_session(&session_id)
+        .map_err(|e| e.to_string())
+}
+
 // ============================================================================
 // Combat Commands
 // ============================================================================
@@ -1065,7 +1085,7 @@ pub fn get_supported_systems() -> Vec<String> {
 // ============================================================================
 
 #[tauri::command]
-pub fn generate_npc(
+pub async fn generate_npc(
     options: NPCGenerationOptions,
     campaign_id: Option<String>,
     state: State<'_, AppState>,
@@ -1073,30 +1093,117 @@ pub fn generate_npc(
     let generator = NPCGenerator::new();
     let npc = generator.generate_quick(&options);
 
+    // Save to memory store
     state.npc_store.add(npc.clone(), campaign_id.as_deref());
+
+    // Save to Database
+    let personality_json = serde_json::to_string(&npc.personality).map_err(|e| e.to_string())?;
+    let stats_json = npc.stats.as_ref().map(|s| serde_json::to_string(s).unwrap_or_default());
+    let role_str = serde_json::to_string(&npc.role).unwrap_or_default().trim_matches('"').to_string();
+    let data_json = serde_json::to_string(&npc).map_err(|e| e.to_string())?;
+
+    let record = crate::database::models::NpcRecord {
+        id: npc.id.clone(),
+        campaign_id: campaign_id.clone(),
+        name: npc.name.clone(),
+        role: role_str,
+        personality_id: None,
+        personality_json,
+        data_json: Some(data_json),
+        stats_json,
+        notes: Some(npc.notes.clone()),
+        created_at: chrono::Utc::now().to_rfc3339(),
+        updated_at: chrono::Utc::now().to_rfc3339(),
+    };
+
+    state.database.save_npc(&record).await.map_err(|e| e.to_string())?;
 
     Ok(npc)
 }
 
 #[tauri::command]
-pub fn get_npc(id: String, state: State<'_, AppState>) -> Result<Option<NPC>, String> {
-    Ok(state.npc_store.get(&id))
+pub async fn get_npc(id: String, state: State<'_, AppState>) -> Result<Option<NPC>, String> {
+    if let Some(npc) = state.npc_store.get(&id) {
+        return Ok(Some(npc));
+    }
+
+    if let Some(record) = state.database.get_npc(&id).await.map_err(|e| e.to_string())? {
+        if let Some(json) = record.data_json {
+             let npc: NPC = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+             state.npc_store.add(npc.clone(), record.campaign_id.as_deref());
+             return Ok(Some(npc));
+        }
+    }
+    Ok(None)
 }
 
 #[tauri::command]
-pub fn list_npcs(campaign_id: Option<String>, state: State<'_, AppState>) -> Result<Vec<NPC>, String> {
-    Ok(state.npc_store.list(campaign_id.as_deref()))
+pub async fn list_npcs(campaign_id: Option<String>, state: State<'_, AppState>) -> Result<Vec<NPC>, String> {
+    let records = state.database.list_npcs(campaign_id.as_deref()).await.map_err(|e| e.to_string())?;
+    let mut npcs = Vec::new();
+
+    for r in records {
+        if let Some(json) = r.data_json {
+             if let Ok(npc) = serde_json::from_str::<NPC>(&json) {
+                 npcs.push(npc);
+             }
+        }
+    }
+
+    if npcs.is_empty() {
+        let mem_npcs = state.npc_store.list(campaign_id.as_deref());
+        if !mem_npcs.is_empty() {
+            return Ok(mem_npcs);
+        }
+    }
+
+    Ok(npcs)
 }
 
 #[tauri::command]
-pub fn update_npc(npc: NPC, state: State<'_, AppState>) -> Result<(), String> {
-    state.npc_store.update(npc);
+pub async fn update_npc(npc: NPC, state: State<'_, AppState>) -> Result<(), String> {
+    state.npc_store.update(npc.clone());
+
+    let personality_json = serde_json::to_string(&npc.personality).map_err(|e| e.to_string())?;
+    let stats_json = npc.stats.as_ref().map(|s| serde_json::to_string(s).unwrap_or_default());
+    let role_str = serde_json::to_string(&npc.role).unwrap_or_default().trim_matches('"').to_string();
+    let data_json = serde_json::to_string(&npc).map_err(|e| e.to_string())?;
+
+    let created_at = if let Some(old) = state.database.get_npc(&npc.id).await.map_err(|e| e.to_string())? {
+        old.created_at
+    } else {
+        chrono::Utc::now().to_rfc3339()
+    };
+
+    let campaign_id = if let Some(old) = state.database.get_npc(&npc.id).await.map_err(|e| e.to_string())? {
+        old.campaign_id
+    } else {
+        None
+    };
+
+    let record = crate::database::models::NpcRecord {
+        id: npc.id.clone(),
+        campaign_id,
+        name: npc.name.clone(),
+        role: role_str,
+        personality_id: None,
+        personality_json,
+        data_json: Some(data_json),
+        stats_json,
+        notes: Some(npc.notes.clone()),
+        created_at,
+        updated_at: chrono::Utc::now().to_rfc3339(),
+    };
+
+    state.database.save_npc(&record).await.map_err(|e| e.to_string())?;
+
     Ok(())
 }
 
 #[tauri::command]
-pub fn delete_npc(id: String, state: State<'_, AppState>) -> Result<(), String> {
+pub async fn delete_npc(id: String, state: State<'_, AppState>) -> Result<(), String> {
     state.npc_store.delete(&id);
+    state.database.delete_npc(&id).await.map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -1552,5 +1659,234 @@ pub async fn speak(text: String, state: State<'_, AppState>) -> Result<(), Strin
     } else {
         log::info!("Speak request received (synthesis skipped/failed)");
         Ok(())
+    }
+}
+
+// ============================================================================
+// NPC Conversation Commands
+// ============================================================================
+
+#[tauri::command]
+pub async fn list_npc_conversations(
+    campaign_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<NpcConversation>, String> {
+    state.database.list_npc_conversations(&campaign_id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_npc_conversation(
+    npc_id: String,
+    state: State<'_, AppState>,
+) -> Result<NpcConversation, String> {
+    match state.database.get_npc_conversation(&npc_id).await.map_err(|e| e.to_string())? {
+        Some(c) => Ok(c),
+        None => Err(format!("Conversation not found for NPC {}", npc_id)),
+    }
+}
+
+#[tauri::command]
+pub async fn add_npc_message(
+    npc_id: String,
+    content: String,
+    role: String,
+    parent_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<ConversationMessage, String> {
+    // 1. Get Conversation - strict requirement, must exist
+    // (In future we might auto-create, but we need campaign_id)
+    let mut conv = match state.database.get_npc_conversation(&npc_id).await.map_err(|e| e.to_string())? {
+        Some(c) => c,
+        None => return Err("Conversation does not exist.".to_string()),
+    };
+
+    // 2. Add Message
+    let message = ConversationMessage {
+        id: uuid::Uuid::new_v4().to_string(),
+        role,
+        content,
+        parent_message_id: parent_id,
+        created_at: chrono::Utc::now().to_rfc3339(),
+    };
+
+    let mut messages: Vec<ConversationMessage> = serde_json::from_str(&conv.messages_json)
+        .unwrap_or_default();
+    messages.push(message.clone());
+
+    conv.messages_json = serde_json::to_string(&messages).map_err(|e| e.to_string())?;
+    conv.last_message_at = message.created_at.clone();
+    conv.unread_count += 1;
+
+    // 3. Save
+    state.database.save_npc_conversation(&conv).await.map_err(|e| e.to_string())?;
+
+    Ok(message)
+}
+
+#[tauri::command]
+pub async fn mark_npc_read(
+    npc_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    if let Some(mut conv) = state.database.get_npc_conversation(&npc_id).await.map_err(|e| e.to_string())? {
+        conv.unread_count = 0;
+        state.database.save_npc_conversation(&conv).await.map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct NpcSummary {
+    pub id: String,
+    pub name: String,
+    pub role: String,
+    pub avatar_url: String,
+    pub status: String,
+    pub last_message: String,
+    pub unread_count: u32,
+    pub last_active: String,
+}
+
+#[tauri::command]
+pub async fn list_npc_summaries(
+    campaign_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<NpcSummary>, String> {
+    // 1. Get NPCs
+    let npcs = state.database.list_npcs(Some(&campaign_id)).await.map_err(|e| e.to_string())?;
+
+    let mut summaries = Vec::new();
+
+    // 2. Build summaries
+    for npc in npcs {
+        let conv = state.database.get_npc_conversation(&npc.id).await.map_err(|e| e.to_string())?;
+
+        let (last_message, unread_count, last_active) = if let Some(c) = conv {
+             let msgs: Vec<ConversationMessage> = serde_json::from_str(&c.messages_json).unwrap_or_default();
+             let last_text = msgs.last().map(|m| m.content.clone()).unwrap_or_default();
+             // Truncate
+             let truncated = if last_text.len() > 50 {
+                 format!("{}...", &last_text[0..50])
+             } else {
+                 last_text
+             };
+             (truncated, c.unread_count, c.last_message_at)
+        } else {
+             ("".to_string(), 0, "".to_string())
+        };
+
+        summaries.push(NpcSummary {
+            id: npc.id,
+            name: npc.name.clone(),
+            role: npc.role,
+            avatar_url: npc.name.chars().next().unwrap_or('?').to_string(),
+            status: "online".to_string(), // Placeholder
+            last_message,
+            unread_count,
+            last_active,
+        });
+    }
+
+    Ok(summaries)
+}
+
+#[tauri::command]
+pub async fn reply_as_npc(
+    npc_id: String,
+    state: State<'_, AppState>,
+) -> Result<ConversationMessage, String> {
+    // 1. Load NPC
+    let npc = state.database.get_npc(&npc_id).await.map_err(|e| e.to_string())?
+        .ok_or_else(|| "NPC not found".to_string())?;
+
+    // 2. Load Personality
+    let system_prompt = if let Some(pid) = &npc.personality_id {
+         match state.database.get_personality(pid).await.map_err(|e| e.to_string())? {
+             Some(p) => {
+                 let profile: crate::core::personality::PersonalityProfile = serde_json::from_str(&p.data_json)
+                     .map_err(|e| format!("Invalid personality data: {}", e))?;
+                 profile.to_system_prompt()
+             },
+             None => "You are an NPC. Respond in character.".to_string(),
+         }
+    } else {
+        "You are an NPC. Respond in character.".to_string()
+    };
+
+    // 3. Load Conversation History
+    let conv = state.database.get_npc_conversation(&npc.id).await.map_err(|e| e.to_string())?
+         .ok_or_else(|| "Conversation not found".to_string())?;
+    let history: Vec<ConversationMessage> = serde_json::from_str(&conv.messages_json).unwrap_or_default();
+
+    // 4. Construct LLM Request
+    let llm_messages: Vec<crate::core::llm::ChatMessage> = history.iter().map(|m| crate::core::llm::ChatMessage {
+        role: if m.role == "user" { crate::core::llm::MessageRole::User } else { crate::core::llm::MessageRole::Assistant },
+        content: m.content.clone(),
+    }).collect();
+
+    if llm_messages.is_empty() {
+        return Err("No context to reply to.".to_string());
+    }
+
+    // 5. Call LLM
+    let config = state.llm_config.read().unwrap().clone().ok_or("LLM not configured")?;
+    let client = crate::core::llm::LLMClient::new(config);
+
+    let req = crate::core::llm::ChatRequest {
+        messages: llm_messages,
+        system_prompt: Some(system_prompt),
+        temperature: Some(0.8),
+        max_tokens: Some(250),
+    };
+
+    let resp = client.chat(req).await.map_err(|e| e.to_string())?;
+
+    // 6. Save Reply
+    let message = ConversationMessage {
+        id: uuid::Uuid::new_v4().to_string(),
+        role: "assistant".to_string(), // standard role
+        content: resp.content,
+        parent_message_id: history.last().map(|m| m.id.clone()),
+        created_at: chrono::Utc::now().to_rfc3339(),
+    };
+
+    let mut conv_update = conv.clone();
+    let mut msgs = history;
+    msgs.push(message.clone());
+    conv_update.messages_json = serde_json::to_string(&msgs).map_err(|e| e.to_string())?;
+    conv_update.last_message_at = message.created_at.clone();
+    conv_update.unread_count += 1;
+
+    state.database.save_npc_conversation(&conv_update).await.map_err(|e| e.to_string())?;
+
+    Ok(message)
+}
+
+
+// ============================================================================
+// Theme Commands
+// ============================================================================
+
+#[tauri::command]
+pub fn get_campaign_theme(
+    campaign_id: String,
+    state: State<'_, AppState>,
+) -> Result<crate::core::models::ThemeWeights, String> {
+    state.campaign_manager.get_campaign(&campaign_id)
+        .map(|c| c.settings.theme_weights)
+        .ok_or_else(|| format!("Campaign not found: {}", campaign_id))
+}
+
+#[tauri::command]
+pub fn set_campaign_theme(
+    campaign_id: String,
+    weights: crate::core::models::ThemeWeights,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    if let Some(mut campaign) = state.campaign_manager.get_campaign(&campaign_id) {
+        campaign.settings.theme_weights = weights;
+        state.campaign_manager.update_campaign(campaign, false).map_err(|e| e.to_string())
+    } else {
+        Err(format!("Campaign not found: {}", campaign_id))
     }
 }

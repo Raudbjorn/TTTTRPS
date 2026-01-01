@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 use dioxus::prelude::*;
 use crate::bindings::{list_campaigns, create_campaign, delete_campaign, Campaign};
-use crate::components::design_system::{Button, ButtonVariant, Input, Select, Card, CardHeader, CardBody, Badge, BadgeVariant, Modal, LoadingSpinner};
+use crate::components::design_system::{Button, ButtonVariant, Input, Select, Badge, BadgeVariant, Modal, LoadingSpinner};
 
 #[component]
 pub fn Campaigns() -> Element {
@@ -49,8 +49,6 @@ pub fn Campaigns() -> Element {
         new_campaign_system.set("D&D 5e".to_string());
     };
 
-
-
     let handle_create = move |_: MouseEvent| {
         let name = new_campaign_name.read().clone();
         let system = new_campaign_system.read().clone();
@@ -75,7 +73,8 @@ pub fn Campaigns() -> Element {
     };
 
     let handle_delete = move |id: String, name: String| {
-        move |_: MouseEvent| {
+        move |evt: MouseEvent| {
+            evt.stop_propagation(); // Prevent opening the campaign when clicking delete
             let id = id.clone();
             let name = name.clone();
             spawn(async move {
@@ -100,62 +99,64 @@ pub fn Campaigns() -> Element {
     let total_sessions: u32 = campaigns.read().iter().map(|c| c.session_count).sum();
     let total_players: usize = campaigns.read().iter().map(|c| c.player_count).sum();
 
+    // Helper to get system color/initials
+    let get_system_style = |system: &str| -> (&'static str, &'static str) {
+        let s = system.to_lowercase();
+        if s.contains("d&d") || s.contains("5e") || s.contains("pathfinder") {
+            ("bg-gradient-to-br from-amber-700 to-amber-900", "text-amber-200")
+        } else if s.contains("cthulhu") || s.contains("horror") || s.contains("vampire") {
+             ("bg-gradient-to-br from-slate-800 to-black", "text-red-400")
+        } else if s.contains("cyber") || s.contains("shadow") || s.contains("neon") {
+             ("bg-gradient-to-br from-fuchsia-900 to-purple-900", "text-neon-pink")
+        } else if s.contains("space") || s.contains("alien") || s.contains("scifi") {
+             ("bg-gradient-to-br from-cyan-900 to-blue-900", "text-cyan-200")
+        } else {
+             ("bg-gradient-to-br from-zinc-700 to-zinc-900", "text-zinc-300")
+        }
+    };
+
     rsx! {
         div {
-            class: "p-8 bg-theme-primary text-theme-primary min-h-screen font-sans transition-colors duration-300",
+            class: "p-8 bg-zinc-950 text-zinc-100 min-h-screen font-sans selection:bg-purple-500/30",
             div {
-                class: "max-w-6xl mx-auto space-y-8",
+                class: "max-w-7xl mx-auto space-y-8",
 
                 // Header & Quick Actions
                 div {
-                    class: "flex flex-col md:flex-row md:items-center justify-between gap-4",
+                    class: "flex flex-col md:flex-row md:items-end justify-between gap-4 pb-6 border-b border-zinc-900",
                     div {
-                        class: "flex items-center gap-4",
-                        Link { to: crate::Route::Chat {}, class: "text-gray-400 hover:text-white transition-colors", "← Back" }
-                        h1 { class: "text-3xl font-bold", "Campaign Dashboard" }
+                        class: "space-y-1",
+                        Link { to: crate::Route::Chat {}, class: "text-zinc-500 hover:text-white transition-colors text-sm font-medium", "← Back to Hub" }
+                        h1 { class: "text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-zinc-500", "Campaigns" }
+                        p { class: "text-zinc-400", "Manage your ongoing adventures and chronicles." }
                     }
                     div {
-                        class: "flex gap-2",
+                        class: "flex gap-3",
                          Button {
                             variant: ButtonVariant::Secondary,
                             onclick: refresh_campaigns,
-                            "Refresh"
+                            "↻"
                         }
                         Button {
                             variant: ButtonVariant::Primary,
                             onclick: open_create_modal,
-                            "+ New Campaign"
+                            "+ New Adventure"
                         }
                     }
                 }
 
-                // Summary Stats
-                div {
-                    class: "grid grid-cols-1 md:grid-cols-3 gap-6",
-                    Card {
-                        CardBody {
-                            div { class: "text-gray-400 text-sm", "Total Campaigns" }
-                            div { class: "text-3xl font-bold text-white", "{total_campaigns}" }
-                        }
-                    }
-                    Card {
-                         CardBody {
-                            div { class: "text-gray-400 text-sm", "Total Sessions" }
-                            div { class: "text-3xl font-bold text-purple-400", "{total_sessions}" }
-                        }
-                    }
-                    Card {
-                         CardBody {
-                            div { class: "text-gray-400 text-sm", "Active Players" }
-                            div { class: "text-3xl font-bold text-green-400", "{total_players}" }
-                        }
-                    }
+                // Stats Row
+                 div {
+                    class: "grid grid-cols-2 md:grid-cols-4 gap-4",
+                    StatCard { label: "Campaigns", value: total_campaigns.to_string() }
+                    StatCard { label: "Total Sessions", value: total_sessions.to_string() }
+                    StatCard { label: "Active Players", value: total_players.to_string() }
                 }
 
                 // Status Message
                 if !status.is_empty() {
-                     Badge {
-                        variant: if status.contains("Error") { BadgeVariant::Error } else { BadgeVariant::Info },
+                     div { class: "bg-zinc-900 text-zinc-300 px-4 py-2 rounded border border-zinc-800 flex items-center gap-2",
+                        div { class: "w-2 h-2 rounded-full bg-blue-500 animate-pulse" }
                         "{status}"
                     }
                 }
@@ -168,49 +169,79 @@ pub fn Campaigns() -> Element {
                     }
                 } else if campaigns.read().is_empty() {
                      div {
-                        class: "text-center py-20 bg-theme-secondary rounded-lg border border-theme",
-                        h3 { class: "text-xl text-gray-300 mb-2", "No campaigns found" }
-                        p { class: "text-gray-500 mb-6", "Start your journey by creating your first campaign." }
+                        class: "text-center py-24 bg-zinc-900/50 rounded-xl border border-dashed border-zinc-800 flex flex-col items-center justify-center",
+                        div { class: "text-6xl mb-4 opacity-20", "📜" }
+                        h3 { class: "text-2xl font-bold text-zinc-200 mb-2", "No campaigns found" }
+                        p { class: "text-zinc-500 mb-8 max-w-md", "Your library is empty. Start your first journey into the unknown." }
                         Button {
                             onclick: open_create_modal,
                             "Create Campaign"
                         }
                     }
                 } else {
+                    // Album Grid View
                     div {
-                        class: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6",
+                        class: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6",
                         for campaign in campaigns.read().iter() {
-                            Card {
-                                key: "{campaign.id}",
-                                class: "hover:border-blue-500 transition-colors cursor-pointer group",
-                                CardHeader {
-                                    div {
-                                        class: "flex justify-between items-start",
-                                        h3 { class: "text-xl font-bold text-white group-hover:text-blue-300", "{campaign.name}" }
-                                        Badge { variant: BadgeVariant::Default, "{campaign.system}" }
-                                    }
-                                }
-                                CardBody {
-                                    class: "space-y-4",
-                                    if let Some(desc) = &campaign.description {
-                                        p { class: "text-gray-400 text-sm line-clamp-2", "{desc}" }
-                                    }
-                                    div {
-                                        class: "flex justify-between text-sm text-gray-500",
-                                        span { "Sessions: {campaign.session_count}" }
-                                        span { "Players: {campaign.player_count}" }
-                                    }
-                                    div {
-                                        class: "flex gap-2 pt-2",
-                                        Link {
-                                            to: crate::Route::Session { campaign_id: campaign.id.clone() },
-                                            class: "flex-1 px-3 py-2 bg-purple-600 rounded hover:bg-purple-500 text-white text-center text-sm font-medium transition-colors",
-                                            "Play Session"
+                            {
+                                let (bg_class, text_class) = get_system_style(&campaign.system);
+                                let initials = campaign.name.chars().next().unwrap_or('?');
+                                let c_id = campaign.id.clone();
+                                let c_name = campaign.name.clone();
+                                let c_desc = campaign.description.clone().unwrap_or_default();
+                                let session_count = campaign.session_count;
+
+                                rsx! {
+                                    Link {
+                                        to: crate::Route::Session { campaign_id: campaign.id.clone() },
+                                        class: "group relative aspect-[3/4] bg-zinc-900 rounded-xl overflow-hidden shadow-2xl border border-zinc-800 hover:border-zinc-600 transition-all hover:-translate-y-1",
+
+                                        // "Cover Art" Background
+                                        div { class: "absolute inset-0 {bg_class} opacity-20 group-hover:opacity-30 transition-opacity" }
+
+                                        // Content Container
+                                        div { class: "relative h-full flex flex-col p-6",
+                                            // Top Badge
+                                            div { class: "flex justify-between items-start",
+                                                Badge { variant: BadgeVariant::Outline, "{campaign.system}" }
+
+                                                // Delete button (visible on hover)
+                                                button {
+                                                    class: "opacity-0 group-hover:opacity-100 p-2 text-zinc-400 hover:text-red-400 transition-all",
+                                                    onclick: handle_delete(c_id.clone(), c_name.clone()),
+                                                    "🗑"
+                                                }
+                                            }
+
+                                            // Center Initials (Placeholder Art)
+                                            div { class: "flex-1 flex items-center justify-center",
+                                                 span { class: "text-8xl font-black {text_class} opacity-20 select-none group-hover:scale-110 transition-transform duration-500", "{initials}" }
+                                            }
+
+                                            // Bottom Info
+                                            div { class: "space-y-2",
+                                                h3 { class: "text-xl font-bold text-white leading-tight group-hover:text-purple-300 transition-colors", "{c_name}" }
+                                                if !c_desc.is_empty() {
+                                                    p { class: "text-xs text-zinc-400 line-clamp-2", "{c_desc}" }
+                                                }
+
+                                                // Stats Row
+                                                div { class: "pt-4 flex items-center gap-4 text-xs font-medium text-zinc-500 border-t border-white/5",
+                                                     div { class: "flex items-center gap-1",
+                                                        span { "📜" }
+                                                        "{session_count} Sessions"
+                                                     }
+                                                     div { class: "flex items-center gap-1",
+                                                        span { "👥" }
+                                                        "{campaign.player_count} Players"
+                                                     }
+                                                }
+                                            }
                                         }
-                                        Button {
-                                            variant: ButtonVariant::Danger,
-                                            onclick: handle_delete(campaign.id.clone(), campaign.name.clone()),
-                                            "Delete"
+
+                                        // "Now Playing" Pulse (Mock logic: if session_count > 0)
+                                        if session_count > 0 {
+                                             div { class: "absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-purple-500 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" }
                                         }
                                     }
                                 }
@@ -224,48 +255,59 @@ pub fn Campaigns() -> Element {
             Modal {
                 is_open: modal_open,
                 onclose: move |_| show_create_modal.set(false),
-                title: "Create New Campaign",
+                title: "Begin New Adventure",
                 children: rsx! {
                     div {
-                        class: "space-y-4",
+                        class: "space-y-6 p-2",
                         div {
-                            label { class: "block text-sm text-gray-400 mb-1", "Campaign Name" }
+                            label { class: "block text-sm font-bold text-zinc-400 mb-2", "Campaign Name" }
                             Input {
-                                placeholder: "e.g. The Lost Mines",
+                                placeholder: "e.g. The Tomb of Horrors",
                                 value: "{new_campaign_name}",
                                 oninput: move |e| new_campaign_name.set(e)
                             }
                         }
                         div {
-                            label { class: "block text-sm text-gray-400 mb-1", "Game System" }
+                            label { class: "block text-sm font-bold text-zinc-400 mb-2", "Game System" }
                             Select {
                                 value: "{new_campaign_system}",
                                 onchange: move |e| new_campaign_system.set(e),
                                 option { value: "D&D 5e", "D&D 5e" }
                                 option { value: "Pathfinder 2e", "Pathfinder 2e" }
                                 option { value: "Call of Cthulhu", "Call of Cthulhu" }
-                                option { value: "Cyberpunk", "Cyberpunk" }
+                                option { value: "Delta Green", "Delta Green" }
+                                option { value: "Mothership", "Mothership" }
+                                option { value: "Cyberpunk Red", "Cyberpunk Red" }
                                 option { value: "Shadowrun", "Shadowrun" }
-                                option { value: "Fate Core", "Fate Core" }
-                                option { value: "World of Darkness", "World of Darkness" }
+                                option { value: "Vampire: The Masquerade", "Vampire: The Masquerade" }
                                 option { value: "Other", "Other" }
                             }
                         }
-                            div {
-                                class: "flex justify-end gap-2 mt-6",
-                                 Button {
-                                    variant: ButtonVariant::Secondary,
-                                    onclick: move |_| show_create_modal.set(false),
-                                    "Cancel"
-                                }
+                        div {
+                            class: "flex justify-end gap-3 mt-8 pt-4 border-t border-zinc-800",
+                             Button {
+                                variant: ButtonVariant::Secondary,
+                                onclick: move |_| show_create_modal.set(false),
+                                "Cancel"
+                            }
                             Button {
                                 onclick: handle_create,
-                                "Create Campaign"
+                                "Launch Campaign"
                             }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+#[component]
+fn StatCard(label: String, value: String) -> Element {
+    rsx! {
+        div { class: "bg-zinc-900 border border-zinc-800 p-4 rounded-lg",
+            div { class: "text-zinc-500 text-xs font-bold uppercase tracking-wider mb-1", "{label}" }
+            div { class: "text-2xl font-bold text-zinc-100", "{value}" }
         }
     }
 }

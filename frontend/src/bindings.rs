@@ -925,3 +925,227 @@ pub async fn get_session_usage() -> Result<SessionUsage, String> {
 pub async fn reset_usage_stats() -> Result<(), String> {
     invoke_no_args("reset_usage_stats").await
 }
+
+// ============================================================================
+// NPC Conversation Types
+// ============================================================================
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NpcConversation {
+    pub id: String,
+    pub npc_id: String,
+    pub campaign_id: String,
+    pub messages_json: String,
+    pub unread_count: u32,
+    pub last_message_at: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConversationMessage {
+    pub id: String,
+    pub role: String,
+    pub content: String,
+    pub parent_message_id: Option<String>,
+    pub created_at: String,
+}
+
+// ============================================================================
+// NPC Conversation Commands
+// ============================================================================
+
+pub async fn list_npc_conversations(campaign_id: String) -> Result<Vec<NpcConversation>, String> {
+    #[derive(Serialize)]
+    struct Args {
+        campaign_id: String,
+    }
+    invoke("list_npc_conversations", &Args { campaign_id }).await
+}
+
+pub async fn get_npc_conversation(npc_id: String) -> Result<NpcConversation, String> {
+    #[derive(Serialize)]
+    struct Args {
+        npc_id: String,
+    }
+    invoke("get_npc_conversation", &Args { npc_id }).await
+}
+
+pub async fn add_npc_message(npc_id: String, content: String, role: String, parent_id: Option<String>) -> Result<ConversationMessage, String> {
+    #[derive(Serialize)]
+    struct Args {
+        npc_id: String,
+        content: String,
+        role: String,
+        parent_id: Option<String>,
+    }
+    invoke("add_npc_message", &Args { npc_id, content, role, parent_id }).await
+}
+
+pub async fn mark_npc_read(npc_id: String) -> Result<(), String> {
+    #[derive(Serialize)]
+    struct Args {
+        npc_id: String,
+    }
+    invoke("mark_npc_read", &Args { npc_id }).await
+}
+
+// ============================================================================
+// NPC Types
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NPC {
+    pub id: String,
+    pub name: String,
+    pub role: String, // Stringified enum
+    pub appearance: AppearanceDescription,
+    pub personality: NPCPersonality,
+    pub voice: VoiceDescription,
+    pub stats: Option<Character>, 
+    pub relationships: Vec<NPCRelationship>,
+    pub secrets: Vec<String>,
+    pub hooks: Vec<PlotHook>,
+    pub notes: String,
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppearanceDescription {
+    pub age: String,
+    pub height: String,
+    pub build: String,
+    pub hair: String,
+    pub eyes: String,
+    pub skin: String,
+    pub distinguishing_features: Vec<String>,
+    pub clothing: String,
+    pub demeanor: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NPCPersonality {
+    pub traits: Vec<String>,
+    pub ideals: Vec<String>,
+    pub bonds: Vec<String>,
+    pub flaws: Vec<String>,
+    pub mannerisms: Vec<String>,
+    pub speech_patterns: Vec<String>,
+    pub motivations: Vec<String>,
+    pub fears: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceDescription {
+    pub pitch: String,
+    pub pace: String,
+    pub accent: Option<String>,
+    pub vocabulary: String,
+    pub sample_phrases: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NPCRelationship {
+    pub target_id: Option<String>,
+    pub target_name: String,
+    pub relationship_type: String,
+    pub disposition: i32,
+    pub notes: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlotHook {
+    pub description: String,
+    pub hook_type: String, // Enum stringified
+    pub urgency: String, // Enum stringified
+    pub reward_hint: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct NPCGenerationOptions {
+    pub system: Option<String>,
+    pub name: Option<String>,
+    pub role: Option<String>,
+    pub race: Option<String>,
+    pub occupation: Option<String>,
+    pub location: Option<String>,
+    pub theme: Option<String>,
+    pub generate_stats: bool,
+    pub generate_backstory: bool,
+    pub personality_depth: String,
+    pub include_hooks: bool,
+    pub include_secrets: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NpcSummary {
+    pub id: String,
+    pub name: String,
+    pub role: String,
+    pub avatar_url: String,
+    pub status: String,
+    pub last_message: String,
+    pub unread_count: u32,
+    pub last_active: String,
+}
+
+// ============================================================================
+// NPC Commands
+// ============================================================================
+
+pub async fn generate_npc(options: NPCGenerationOptions, campaign_id: Option<String>) -> Result<NPC, String> {
+    #[derive(Serialize)]
+    struct Args {
+        options: NPCGenerationOptions,
+        campaign_id: Option<String>,
+    }
+    invoke("generate_npc", &Args { options, campaign_id }).await
+}
+
+pub async fn get_npc(id: String) -> Result<Option<NPC>, String> {
+    #[derive(Serialize)]
+    struct Args {
+        id: String,
+    }
+    invoke("get_npc", &Args { id }).await
+}
+
+pub async fn list_npcs(campaign_id: Option<String>) -> Result<Vec<NPC>, String> {
+    #[derive(Serialize)]
+    struct Args {
+        campaign_id: Option<String>,
+    }
+    invoke("list_npcs", &Args { campaign_id }).await
+}
+
+pub async fn update_npc(npc: NPC) -> Result<(), String> {
+    #[derive(Serialize)]
+    struct Args {
+        npc: NPC,
+    }
+    invoke("update_npc", &Args { npc }).await
+}
+
+pub async fn delete_npc(id: String) -> Result<(), String> {
+    #[derive(Serialize)]
+    struct Args {
+        id: String,
+    }
+    invoke("delete_npc", &Args { id }).await
+}
+
+pub async fn list_npc_summaries(campaign_id: String) -> Result<Vec<NpcSummary>, String> {
+    #[derive(Serialize)]
+    struct Args {
+        campaign_id: String,
+    }
+    invoke("list_npc_summaries", &Args { campaign_id }).await
+}
+
+pub async fn reply_as_npc(npc_id: String) -> Result<ConversationMessage, String> {
+    #[derive(Serialize)]
+    struct Args {
+        npc_id: String,
+    }
+    invoke("reply_as_npc", &Args { npc_id }).await
+}

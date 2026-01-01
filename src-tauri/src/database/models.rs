@@ -22,7 +22,8 @@ pub struct SessionRecord {
     pub id: String,
     pub campaign_id: String,
     pub session_number: i32,
-    pub status: String, // "active", "completed", "paused"
+    pub title: Option<String>,
+    pub status: String, // "active", "completed", "paused", "planned"
     pub started_at: String,
     pub ended_at: Option<String>,
     pub notes: Option<String>,
@@ -117,7 +118,9 @@ pub struct NpcRecord {
     pub campaign_id: Option<String>,
     pub name: String,
     pub role: String,
+    pub personality_id: Option<String>,
     pub personality_json: String,
+    pub data_json: Option<String>,
     pub stats_json: Option<String>,
     pub notes: Option<String>,
     pub created_at: String,
@@ -143,6 +146,7 @@ impl SessionRecord {
             id,
             campaign_id,
             session_number,
+            title: None,
             status: "active".to_string(),
             started_at: chrono::Utc::now().to_rfc3339(),
             ended_at: None,
@@ -203,4 +207,55 @@ fn estimate_cost(provider: &str, model: &str, input_tokens: u32, output_tokens: 
     let output_cost = (output_tokens as f64 / 1_000_000.0) * output_price;
 
     input_cost + output_cost
+}
+
+/// NPC Conversation record
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct NpcConversation {
+    pub id: String,
+    pub npc_id: String,
+    pub campaign_id: String,
+    pub messages_json: String, // Vec<ConversationMessage>
+    pub unread_count: u32,
+    pub last_message_at: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Message within an NPC conversation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationMessage {
+    pub id: String,
+    pub role: String, // "user" or "npc"
+    pub content: String,
+    pub parent_message_id: Option<String>, // For threading (B3)
+    pub created_at: String,
+}
+
+impl NpcConversation {
+    pub fn new(id: String, npc_id: String, campaign_id: String) -> Self {
+        let now = chrono::Utc::now().to_rfc3339();
+        Self {
+            id,
+            npc_id,
+            campaign_id,
+            messages_json: "[]".to_string(),
+            unread_count: 0,
+            last_message_at: now.clone(),
+            created_at: now.clone(),
+            updated_at: now,
+        }
+    }
+}
+
+
+/// Personality database record
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct PersonalityRecord {
+    pub id: String,
+    pub name: String,
+    pub source: Option<String>,
+    pub data_json: String,
+    pub created_at: String,
+    pub updated_at: String,
 }

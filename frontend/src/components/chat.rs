@@ -4,6 +4,7 @@ use crate::bindings::{chat, ChatRequestPayload, check_llm_health, get_session_us
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 use crate::components::design_system::{Button, ButtonVariant, Input, LoadingSpinner, Badge, BadgeVariant, Markdown, TypingIndicator};
+use crate::components::chat::chat_message::ChatMessage;
 
 #[wasm_bindgen]
 extern "C" {
@@ -255,90 +256,30 @@ pub fn Chat() -> Element {
                 }
             }
 
+
+
             // Message Area
             div {
                 class: "flex-1 p-4 overflow-y-auto space-y-4",
                 for msg in messages.read().iter() {
-                    div {
-                        class: match msg.role.as_str() {
-                            "user" => "bg-blue-800 p-3 rounded-lg max-w-3xl ml-auto",
-                            "error" => "bg-red-900 p-3 rounded-lg max-w-3xl border border-red-700",
-                            _ => "bg-theme-secondary p-3 rounded-lg max-w-3xl group relative border border-theme", // Assistant with theme
-                        },
-                        if msg.role == "assistant" {
-                             div {
-                                class: "absolute -left-10 top-1 opacity-0 group-hover:opacity-100 transition-opacity",
-                                button {
-                                    class: "p-2 bg-gray-700 rounded-full hover:bg-gray-600 text-gray-300 hover:text-white",
-                                    title: "Read Aloud",
-                                    onclick: {
-                                        let c = msg.content.clone();
-                                        move |_| play_message(c.clone())
-                                    },
-                                    // Simple Play Icon SVG
-                                    svg {
-                                        class: "w-4 h-4",
-                                        view_box: "0 0 24 24",
-                                        fill: "none",
-                                        stroke: "currentColor",
-                                        "stroke-width": "2",
-                                        path {
-                                            d: "M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
-                                        }
-                                        path {
-                                            d: "M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                                        }
-                                    }
-                                }
-                                button {
-                                    class: "p-2 bg-gray-700 rounded-full hover:bg-gray-600 text-gray-300 hover:text-white ml-2",
-                                    title: "Copy",
-                                    onclick: {
-                                        let c = msg.content.clone();
-                                        move |_| {
-                                            let c = c.clone();
-                                            spawn(async move {
-                                                if let Some(window) = web_sys::window() {
-                                                    let navigator = window.navigator();
-                                                    let clipboard = navigator.clipboard();
-                                                    let _ = wasm_bindgen_futures::JsFuture::from(clipboard.write_text(&c)).await;
-                                                }
-                                            });
-                                        }
-                                    },
-                                    svg {
-                                        class: "w-4 h-4",
-                                        view_box: "0 0 24 24",
-                                        fill: "none",
-                                        stroke: "currentColor",
-                                        "stroke-width": "2",
-                                        path { d: "M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" }
-                                    }
-                                }
-                            }
-                        }
-                        div {
-                            class: "min-w-0 break-words", // Ensure container handles overflow
-                            if msg.role == "assistant" {
-                                Markdown { content: msg.content.clone() }
-                            } else {
-                                div { class: "whitespace-pre-wrap text-white", "{msg.content}" }
-                            }
-                        }
-                        if let Some((input, output)) = msg.tokens {
-                            div {
-                                class: "text-xs text-gray-500 mt-2",
-                                "Tokens: {input} in / {output} out"
-                            }
+                    ChatMessage {
+                        role: msg.role.clone(),
+                        content: msg.content.clone(),
+                        tokens: msg.tokens,
+                        on_play: if msg.role == "assistant" {
+                            let content = msg.content.clone();
+                            Some(EventHandler::new(move |_| play_message(content.clone())))
+                        } else {
+                            None
                         }
                     }
                 }
                 if *is_loading.read() {
                     div {
-                        class: "bg-gray-800 p-3 rounded-lg max-w-3xl",
+                        class: "bg-zinc-800/50 p-3 rounded-lg max-w-3xl border border-zinc-700/50",
                         div { class: "flex items-center gap-2",
                             TypingIndicator {}
-                            span { class: "text-xs text-gray-500", "Thinking..." }
+                            span { class: "text-xs text-zinc-500", "Thinking..." }
                         }
                     }
                 }

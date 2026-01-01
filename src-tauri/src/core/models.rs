@@ -5,7 +5,7 @@ use std::collections::HashMap;
 pub use crate::ingestion::chunker::ContentChunk;
 
 // Re-export Campaign types from campaign_manager
-pub use crate::core::campaign_manager::{Campaign, CampaignSettings, SessionNote, CampaignSnapshot};
+pub use crate::core::campaign_manager::{Campaign, CampaignSettings, SessionNote, CampaignSnapshot, ThemeWeights};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SourceDocument {

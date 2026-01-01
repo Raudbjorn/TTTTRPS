@@ -7,7 +7,7 @@ use sqlx::Row;
 use tracing::{info, warn};
 
 /// Current database schema version
-const SCHEMA_VERSION: i32 = 2;
+const SCHEMA_VERSION: i32 = 7;
 
 /// Run all pending migrations
 pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
@@ -59,6 +59,11 @@ async fn run_migration(pool: &SqlitePool, version: i32) -> Result<(), sqlx::Erro
     let (name, sql) = match version {
         1 => ("initial_schema", MIGRATION_V1),
         2 => ("extended_features", MIGRATION_V2),
+        3 => ("npc_conversations", MIGRATION_V3),
+        4 => ("session_title", MIGRATION_V4),
+        5 => ("personalities_table", MIGRATION_V5),
+        6 => ("npc_personality_link", MIGRATION_V6),
+        7 => ("npc_data_json", MIGRATION_V7),
         _ => {
             warn!("Unknown migration version: {}", version);
             return Ok(());
@@ -436,4 +441,56 @@ CREATE TABLE IF NOT EXISTS cost_predictions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_cost_predictions_period ON cost_predictions(period_start, period_end);
+"#;
+
+/// Migration v3: NPC Conversations
+const MIGRATION_V3: &str = r#"
+-- NPC Conversations table
+CREATE TABLE IF NOT EXISTS npc_conversations (
+    id TEXT PRIMARY KEY,
+    npc_id TEXT NOT NULL,
+    campaign_id TEXT NOT NULL,
+    messages_json TEXT NOT NULL DEFAULT '[]',
+    unread_count INTEGER NOT NULL DEFAULT 0,
+    last_message_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (npc_id) REFERENCES npcs(id) ON DELETE CASCADE,
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_npc_conversations_npc ON npc_conversations(npc_id);
+CREATE INDEX IF NOT EXISTS idx_npc_conversations_campaign ON npc_conversations(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_npc_conversations_last_msg ON npc_conversations(last_message_at DESC);
+"#;
+
+/// Migration v4: Session Title
+const MIGRATION_V4: &str = r#"
+ALTER TABLE sessions ADD COLUMN title TEXT;
+"#;
+
+/// Migration v5: Personalities table
+const MIGRATION_V5: &str = r#"
+CREATE TABLE IF NOT EXISTS personalities (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    source TEXT,
+    data_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_personalities_name ON personalities(name);
+"#;
+
+
+
+/// Migration v6: Link NPCs to Personalities
+const MIGRATION_V6: &str = r#"
+ALTER TABLE npcs ADD COLUMN personality_id TEXT REFERENCES personalities(id);
+CREATE INDEX IF NOT EXISTS idx_npcs_personality ON npcs(personality_id);
+"#;
+
+/// Migration v7: Add full data JSON to NPCs
+const MIGRATION_V7: &str = r#"
+ALTER TABLE npcs ADD COLUMN data_json TEXT;
 "#;

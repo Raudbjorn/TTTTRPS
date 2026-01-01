@@ -41,6 +41,12 @@ fn main() {
             let (cm, sm, ns, creds, vm, sidecar_manager, search_client, personality_store, pipeline) =
                 commands::AppState::init_defaults();
 
+            // Initialize Database
+            let app_data_dir = app.path().app_data_dir().expect("failed to get app data dir");
+            let database = tauri::async_runtime::block_on(async {
+                ttrpg_assistant::database::Database::new(&app_data_dir).await.expect("failed to init database")
+            });
+
             // Start Meilisearch Sidecar
             sidecar_manager.start(handle.clone());
 
@@ -71,6 +77,7 @@ fn main() {
                 search_client,
                 personality_store,
                 ingestion_pipeline: pipeline,
+                database,
             });
 
             Ok(())
@@ -102,6 +109,8 @@ fn main() {
             commands::get_campaign,
             commands::update_campaign,
             commands::delete_campaign,
+            commands::get_campaign_theme,
+            commands::set_campaign_theme,
 
             // Campaign Snapshots
             commands::create_snapshot,
@@ -121,6 +130,8 @@ fn main() {
             commands::get_session,
             commands::get_active_session,
             commands::list_sessions,
+            commands::create_planned_session,
+            commands::start_planned_session,
             commands::end_session,
 
             // Combat Commands
@@ -147,6 +158,14 @@ fn main() {
             commands::update_npc,
             commands::delete_npc,
             commands::search_npcs,
+
+            // NPC Conversation Commands
+            commands::list_npc_conversations,
+            commands::get_npc_conversation,
+            commands::add_npc_message,
+            commands::mark_npc_read,
+            commands::list_npc_summaries,
+            commands::reply_as_npc,
 
             // Document Ingestion & Search (Meilisearch)
             commands::ingest_document,

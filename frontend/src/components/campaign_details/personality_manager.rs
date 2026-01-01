@@ -1,5 +1,5 @@
 use dioxus::prelude::*;
-use crate::components::design_system::{Card, Button, ButtonVariant, Select};
+use crate::components::design_system::Select;
 
 #[derive(Clone, PartialEq)]
 struct MockPersonality {
@@ -56,17 +56,21 @@ pub fn PersonalityManager() -> Element {
             // Grid Layout (Spotify Style)
             div { class: "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6",
                 for p in personalities.read().clone() {
-                    {
-                        let p_id_edit = p.id.clone();
-                        let p_id_play = p.id.clone();
-                        let p_name = p.name.clone();
-                        rsx! {
+                    let p_id_edit = p.id.clone();
+                    let p_id_play = p.id.clone();
+                    let p_name = p.name.clone();
+                    let p_name_display = p.name.clone();
+                    let p_avatar_color = p.avatar_color.clone();
+                    let p_voice_provider = p.voice_provider.clone();
+                    let p_source_doc = p.source_doc.clone();
+                    let p_initial = p.name.chars().next().unwrap_or('?');
+                    rsx! {
                         div {
                             class: "group bg-zinc-800/40 p-4 rounded-lg hover:bg-zinc-800 transition-all relative",
 
                             // "Album Art" with action buttons
-                            div { class: "aspect-square w-full {p.avatar_color} rounded shadow-lg mb-4 flex items-center justify-center text-4xl font-bold text-white/20 group-hover:shadow-xl transition-shadow relative",
-                                "{p.name.chars().next().unwrap_or('?')}"
+                            div { class: "aspect-square w-full {p_avatar_color} rounded shadow-lg mb-4 flex items-center justify-center text-4xl font-bold text-white/20 group-hover:shadow-xl transition-shadow relative",
+                                "{p_initial}"
                                 // Action buttons overlay - separate from card click
                                 div { class: "absolute bottom-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity",
                                     // Play button
@@ -96,16 +100,15 @@ pub fn PersonalityManager() -> Element {
                             button {
                                 class: "w-full text-left",
                                 onclick: move |_| { selected_id.set(Some(p_id_play.clone())); is_editing.set(true); },
-                                div { class: "font-bold text-white truncate", "{p.name}" }
-                                div { class: "text-sm text-zinc-500", "{p.voice_provider}" }
-                                if let Some(doc) = &p.source_doc {
+                                div { class: "font-bold text-white truncate", "{p_name_display}" }
+                                div { class: "text-sm text-zinc-500", "{p_voice_provider}" }
+                                if let Some(doc) = &p_source_doc {
                                      div { class: "text-xs text-zinc-600 mt-1 flex items-center gap-1",
                                         span { "📄" }
                                         "{doc}"
                                      }
                                 }
                             }
-                        }
                         }
                     }
                 }
