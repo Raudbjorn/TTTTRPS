@@ -4,10 +4,10 @@
   "version": "1.0.0",
   "identifier": "com.ttrpg.assistant",
   "build": {
-    "beforeBuildCommand": "cd ../frontend && trunk build --release",
-    "beforeDevCommand": "cd ../frontend && trunk serve --port 3030",
+    "beforeBuildCommand": "cd frontend && trunk build --release",
+    "beforeDevCommand": "cd frontend && trunk serve --port 3030",
     "devUrl": "http://127.0.0.1:3030",
-    "frontendDist": "../frontend/dist"
+    "frontendDist": "frontend/dist"
   },
   "app": {
     "trayIcon": {
