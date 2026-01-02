@@ -44,7 +44,15 @@ fn main() {
             // Initialize Database
             let app_data_dir = app.path().app_data_dir().expect("failed to get app data dir");
             let database = tauri::async_runtime::block_on(async {
-                ttrpg_assistant::database::Database::new(&app_data_dir).await.expect("failed to init database")
+                match ttrpg_assistant::database::Database::new(&app_data_dir).await {
+                    Ok(db) => db,
+                    Err(e) => {
+                        let msg = format!("Failed to initialize database: {}", e);
+                        eprintln!("{}", msg);
+                        // TODO: Show native error dialog if possible
+                        panic!("{}", msg);
+                    }
+                }
             });
             // Start Meilisearch Sidecar
             sidecar_manager.start(handle.clone());

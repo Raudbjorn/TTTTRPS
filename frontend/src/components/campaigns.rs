@@ -98,9 +98,27 @@ pub fn Campaigns() -> Element {
     let modal_open = *show_create_modal.read();
 
     let total_campaigns = campaigns.read().len();
-    // Stats temporarily disabled or need fetching
-    let total_sessions = 0;
-    let total_players = 0;
+    let mut total_sessions = use_signal(|| 0);
+    let mut total_players = use_signal(|| 0);
+
+    let campaigns_sig = campaigns;
+    use_effect(move || {
+        spawn(async move {
+            let list = campaigns_sig.read();
+            if list.is_empty() { return; }
+
+            let mut s = 0;
+            let mut p = 0;
+            for c in list.iter() {
+                if let Ok(st) = crate::bindings::get_campaign_stats(c.id.clone()).await {
+                    s += st.session_count;
+                    p += st.npc_count;
+                }
+            }
+            total_sessions.set(s);
+            total_players.set(p);
+        });
+    });
 
     // Helper to get system color/initials
     let get_system_style = |system: &str| -> (&'static str, &'static str) {
@@ -165,8 +183,8 @@ pub fn Campaigns() -> Element {
                  div {
                     class: "grid grid-cols-2 md:grid-cols-4 gap-4",
                     StatCard { label: "Campaigns", value: total_campaigns.to_string() }
-                    StatCard { label: "Total Sessions", value: total_sessions.to_string() }
-                    StatCard { label: "Active Players", value: total_players.to_string() }
+                    StatCard { label: "Total Sessions", value: total_sessions.read().to_string() }
+                    StatCard { label: "Active Players", value: total_players.read().to_string() }
                 }
 
                 // Status Message
@@ -205,7 +223,7 @@ pub fn Campaigns() -> Element {
                                 let c_id = campaign.id.clone();
                                 let c_name = campaign.name.clone();
                                 let c_desc = campaign.description.clone().unwrap_or_default();
-                                // let session_count = campaign.session_count; // REMOVED
+
 
                                 rsx! {
                                     Link {

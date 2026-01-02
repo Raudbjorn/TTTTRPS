@@ -94,28 +94,7 @@ pub fn MainShell(props: MainShellProps) -> Element {
                     layout.sidebar_width.set(new_w);
                 }
                 ResizeSide::Right => {
-                    // InfoPanel resizing (delta based)
-                    // Note: Calculating absolute width from right is hard without window width.
-                    // Using movement metrics for right side resizing
-                    // If mouse moves left (negative), width increases.
-                    // If mouse moves right (positive), width decreases.
-                    // Ideally we'd use page_coords if we knew window width -> w = window_w - x.
-                    // Fallback to delta approach for now:
-                    // Dioxus MouseEvent doesn't expose movement_x directly in all versions reliably match web API?
-                    // Let's rely on standard web_sys access if needed, or just try to track previous X.
-                    // Actually, let's try a simpler approach:
-                    // We can't trust movement without lock.
-                    // Let's just use delta from previous frames?
-                    // Or keep it simple: assume we can't perfectly resize right panel without JS interop for generic window size.
-                    // Allow dragging ONLY Sidebar for now if Right is too hard?
-                    // No, user wants resizable panels (plural).
-
-                    // Hack: We don't have window width easily.
-                    // Let's assume user is dragging reasonably.
-                    // We can use `screen_x`? No.
-                    // Let's leave Right Panel resizing as "Todo" or try to implement if Dioxus provides `client_x` and we assume we can estimate?
-                    // Providing a delta approach based on `page_coordinates`:
-                    // We need to store `last_x` in signal.
+                    // TODO: Implement right-side resizing here, mirroring the delta-based logic in `handle_move_container`.
                 }
             }
         }

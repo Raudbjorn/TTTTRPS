@@ -2,7 +2,7 @@
 
 ## Project Overview
 This is a Tabletop RPG Assistant application utilizing a Rust-based stack for both backend and frontend.
-- **Root Path**: `/home/svnbjrn/dev/TTTRPS-GUI-OVERHAUL`
+- **Root Path**: `[PROJECT_ROOT]`
 - **Current Objective**: Complete the UX Overhaul (Feature "5-panel UX layout").
 
 ## Technology Stack

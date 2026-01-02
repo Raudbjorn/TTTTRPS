@@ -42,6 +42,12 @@ use crate::core::meilisearch_pipeline::MeilisearchPipeline;
 use crate::core::meilisearch_chat::{DMChatManager, ChatMessage as MeiliChatMessage};
 use crate::core::personality::PersonalityStore;
 
+fn serialize_enum_to_string<T: serde::Serialize>(value: &T) -> String {
+    serde_json::to_string(value)
+        .map(|s| s.trim_matches('"').to_string())
+        .unwrap_or_default()
+}
+
 // ============================================================================
 // Application State
 // ============================================================================
@@ -1248,7 +1254,7 @@ pub async fn generate_npc(
     // Save to Database
     let personality_json = serde_json::to_string(&npc.personality).map_err(|e| e.to_string())?;
     let stats_json = npc.stats.as_ref().map(|s| serde_json::to_string(s).unwrap_or_default());
-    let role_str = serde_json::to_string(&npc.role).unwrap_or_default().trim_matches('"').to_string();
+    let role_str = serialize_enum_to_string(&npc.role);
     let data_json = serde_json::to_string(&npc).map_err(|e| e.to_string())?;
 
     let record = crate::database::NpcRecord {
@@ -1314,7 +1320,7 @@ pub async fn update_npc(npc: NPC, state: State<'_, AppState>) -> Result<(), Stri
 
     let personality_json = serde_json::to_string(&npc.personality).map_err(|e| e.to_string())?;
     let stats_json = npc.stats.as_ref().map(|s| serde_json::to_string(s).unwrap_or_default());
-    let role_str = serde_json::to_string(&npc.role).unwrap_or_default().trim_matches('"').to_string();
+    let role_str = serialize_enum_to_string(&npc.role);
     let data_json = serde_json::to_string(&npc).map_err(|e| e.to_string())?;
 
     let created_at = if let Some(old) = state.database.get_npc(&npc.id).await.map_err(|e| e.to_string())? {
@@ -2152,9 +2158,15 @@ async fn process_voice_queue(state: State<'_, AppState>) -> Result<(), String> {
                             }
 
                             // Play (Blocking for now, inside spawn)
-                            let play_result = {
-                                let manager = vm_clone.read().await;
+                            let vm_for_clos = vm_clone.clone();
+                            let play_result = tokio::task::spawn_blocking(move || {
+                                let manager = vm_for_clos.blocking_read();
                                 manager.play_audio(audio_data)
+                            }).await;
+
+                            let play_result = match play_result {
+                                Ok(inner) => inner.map_err(|e| e.to_string()),
+                                Err(e) => Err(e.to_string()),
                             };
 
                             // Mark Completed

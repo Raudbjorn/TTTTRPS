@@ -106,6 +106,7 @@ fn NpcListItem(
     let id_click = npc.id.clone();
     let id_click_select = id_click.clone();
     let id_click_drop = id_click.clone();
+    let mut npc_drop = npc.clone();
 
     rsx! {
         button {
@@ -120,9 +121,16 @@ fn NpcListItem(
                  let msg_opt = drag_state.0.read().clone();
                  if let Some(msg) = msg_opt {
                      let id_target = id_click_drop.clone();
-                     // F14: Assign personality
                      spawn(async move {
                          println!("Dropped personality {} on NPC {}", msg, id_target);
+                         if let Ok(Some(mut full_npc)) = crate::bindings::get_npc(id_target.clone()).await {
+                             full_npc.personality_id = Some(msg);
+                             if let Err(e) = crate::bindings::update_npc(full_npc).await {
+                                 println!("Failed to update NPC: {}", e);
+                             } else {
+                                 println!("Updated personality for {}", id_target);
+                             }
+                         }
                      });
                  }
             },

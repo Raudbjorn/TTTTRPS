@@ -156,7 +156,7 @@ impl VoiceProvider for PiperProvider {
                 let path = entry.path();
                 if path.extension().map_or(false, |e| e == "onnx") {
                     // Found a model
-                    // Try to finding corresponding .json
+                    // Try to find corresponding .json
                     let json_path = path.with_extension("onnx.json");
                     if json_path.exists() {
                         // Parse JSON
