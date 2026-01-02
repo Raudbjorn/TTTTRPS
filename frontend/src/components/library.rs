@@ -269,8 +269,8 @@ pub fn Library() -> impl IntoView {
     };
 
     view! {
-        <div class="p-8 bg-gray-900 text-white min-h-screen font-sans">
-            <div class="max-w-4xl mx-auto">
+        <div class="p-6 bg-[var(--bg-deep)] text-[var(--text-primary)] min-h-full font-sans overflow-y-auto">
+            <div class="max-w-6xl">
                 // Header
                 <div class="flex items-center justify-between mb-8">
                     <div class="flex items-center">
@@ -341,7 +341,7 @@ pub fn Library() -> impl IntoView {
                 </div>
 
                 // Main Grid: Sources & Status
-                <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
                     // Sources List
                     <Card>
                         <CardHeader>
