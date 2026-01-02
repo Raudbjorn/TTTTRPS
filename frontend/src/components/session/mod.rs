@@ -17,6 +17,7 @@ use crate::bindings::{
     Campaign, GameSession, SessionSummary,
 };
 use crate::components::design_system::{Button, ButtonVariant};
+use crate::components::campaign_details::NpcConversation;
 
 use session_list::SessionList;
 use npc_list::NpcList;
@@ -297,32 +298,6 @@ pub fn Session() -> impl IntoView {
                     selected_npc_name.set(Some(name.to_string()));
                 })
             />
-        </div>
-    }
-}
-
-/// NPC Conversation placeholder component
-#[component]
-fn NpcConversation(
-    npc_id: String,
-    npc_name: String,
-    on_close: Callback<()>,
-) -> impl IntoView {
-    view! {
-        <div class="p-6 h-full flex flex-col">
-            <div class="flex items-center justify-between mb-4">
-                <h2 class="text-xl font-bold text-white">{npc_name}</h2>
-                <button
-                    class="px-3 py-1 text-zinc-400 hover:text-white transition-colors"
-                    on:click=move |_| on_close.run(())
-                >
-                    "Close"
-                </button>
-            </div>
-            <div class="flex-1 bg-zinc-800/50 rounded-lg p-4 text-zinc-400">
-                <p class="text-center mt-20">"NPC conversation interface coming soon..."</p>
-                <p class="text-center text-sm text-zinc-600 mt-2">{format!("NPC ID: {}", npc_id)}</p>
-            </div>
         </div>
     }
 }
