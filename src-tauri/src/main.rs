@@ -38,14 +38,21 @@ fn main() {
             }
 
             // Initialize managers (Meilisearch-based)
-            let (cm, sm, ns, creds, vm, sidecar_manager, search_client, personality_store, pipeline) =
+            let (cm, sm, ns, creds, vm, sidecar_manager, search_client, personality_store, pipeline, llm_router) =
                 commands::AppState::init_defaults();
 
             // Initialize Database
-            let app_data_dir = app.path().app_data_dir().expect("failed to get app data dir");
+            let app_handle = app.handle();
+            let app_dir = app_handle.path().app_data_dir().unwrap_or(std::path::PathBuf::from("."));
             let database = tauri::async_runtime::block_on(async {
-                ttrpg_assistant::database::Database::new(&app_data_dir).await.expect("failed to init database")
+                 ttrpg_assistant::core::database::Database::new(&app_dir).await.ok()
             });
+
+            if let Some(db) = &database {
+                log::info!("Database initialized at {:?}", db.path());
+            } else {
+                log::error!("Failed to initialize database");
+            }
 
             // Start Meilisearch Sidecar
             sidecar_manager.start(handle.clone());
@@ -66,8 +73,10 @@ fn main() {
             });
 
             app.manage(commands::AppState {
+                database,
                 llm_client: std::sync::RwLock::new(None),
                 llm_config: std::sync::RwLock::new(None),
+                llm_router,
                 campaign_manager: cm,
                 session_manager: sm,
                 npc_store: ns,
@@ -96,6 +105,7 @@ fn main() {
             commands::chat,
             commands::check_llm_health,
             commands::get_llm_config,
+            commands::get_router_stats,
             commands::list_ollama_models,
             commands::list_claude_models,
             commands::list_openai_models,
@@ -181,6 +191,7 @@ fn main() {
             commands::speak,
             commands::configure_voice,
             commands::get_voice_config,
+            commands::detect_voice_providers,
             commands::list_openai_voices,
             commands::list_openai_tts_models,
             commands::list_elevenlabs_voices,

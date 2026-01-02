@@ -5,7 +5,8 @@
 use tauri::State;
 use crate::core::voice::{
     VoiceManager, VoiceConfig, VoiceProviderType, ElevenLabsConfig,
-    OllamaConfig, SynthesisRequest, OutputFormat,
+    OllamaConfig, SynthesisRequest, OutputFormat, VoiceProviderDetection,
+    detect_providers,
     types::{QueuedVoice, VoiceStatus}
 };
 use crate::core::models::Campaign;
@@ -19,7 +20,9 @@ use std::collections::HashMap;
 use crate::database::{Database, NpcConversation, ConversationMessage};
 
 // Core modules
+use crate::core::database::Database;
 use crate::core::llm::{LLMConfig, LLMClient, ChatMessage, ChatRequest, MessageRole};
+use crate::core::llm::router::{LLMRouter, RouterConfig, ProviderStats};
 use crate::core::campaign_manager::{
     CampaignManager, SessionNote, SnapshotSummary, ThemeWeights
 };
@@ -44,8 +47,10 @@ use crate::core::personality::PersonalityStore;
 // ============================================================================
 
 pub struct AppState {
+    pub database: Option<Database>,
     pub llm_client: RwLock<Option<LLMClient>>,
     pub llm_config: RwLock<Option<LLMConfig>>,
+    pub llm_router: RwLock<LLMRouter>,
     pub campaign_manager: CampaignManager,
     pub session_manager: SessionManager,
     pub npc_store: NPCStore,
@@ -70,6 +75,7 @@ impl AppState {
         Arc<SearchClient>,
         Arc<PersonalityStore>,
         Arc<MeilisearchPipeline>,
+        RwLock<LLMRouter>,
     ) {
         let sidecar_config = MeilisearchConfig::default();
         let search_client = SearchClient::new(
@@ -90,6 +96,7 @@ impl AppState {
             Arc::new(search_client),
             Arc::new(PersonalityStore::new()),
             Arc::new(MeilisearchPipeline::with_defaults()),
+            RwLock::new(LLMRouter::new(RouterConfig::default())),
         )
     }
 }
@@ -201,9 +208,31 @@ pub fn configure_llm(
     let client = LLMClient::new(config.clone());
     let provider_name = client.provider_name().to_string();
 
-    *state.llm_config.write().unwrap() = Some(config);
+    // Get the previous provider name before overwriting config
+    let prev_provider = state.llm_config.read().unwrap()
+        .as_ref()
+        .map(|c| LLMClient::new(c.clone()).provider_name().to_string());
+
+    *state.llm_config.write().unwrap() = Some(config.clone());
+
+    // Update Router: remove old provider if different, then add new one
+    {
+        let mut router = state.llm_router.write().unwrap();
+        if let Some(ref prev) = prev_provider {
+            if prev != &provider_name {
+                router.remove_provider(prev);
+            }
+        }
+        router.remove_provider(&provider_name);
+        router.add_provider(&provider_name, config);
+    }
 
     Ok(format!("Configured {} provider successfully", provider_name))
+}
+
+#[tauri::command]
+pub fn get_router_stats(state: State<'_, AppState>) -> Result<HashMap<String, ProviderStats>, String> {
+    Ok(state.llm_router.read().unwrap().get_all_stats())
 }
 
 #[tauri::command]
@@ -292,8 +321,7 @@ pub async fn chat(
         });
     }
 
-    // Standard Mode: Direct LLM call
-    let client = LLMClient::new(config);
+    // Standard Mode: Router call
     let mut messages = vec![];
 
     if let Some(context) = &payload.context {
@@ -317,7 +345,8 @@ pub async fn chat(
         max_tokens: Some(2048),
     };
 
-    let response = client.chat(request).await.map_err(|e| e.to_string())?;
+    let router = state.llm_router.read().unwrap().clone();
+    let response = router.chat(request).await.map_err(|e| e.to_string())?;
 
     Ok(ChatResponsePayload {
         content: response.content,
@@ -701,6 +730,13 @@ pub async fn get_voice_config(state: State<'_, AppState>) -> Result<VoiceConfig,
         }
     }
     Ok(config)
+}
+
+/// Detect available voice providers on the system
+/// Returns status for each local TTS service (running/not running)
+#[tauri::command]
+pub async fn detect_voice_providers() -> Result<VoiceProviderDetection, String> {
+    Ok(detect_providers().await)
 }
 
 // ============================================================================

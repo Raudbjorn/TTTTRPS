@@ -9,6 +9,7 @@ use crate::bindings::{
 use crate::components::campaign_details::session_list::SessionList;
 use crate::components::campaign_details::npc_list::NPCList;
 use crate::components::campaign_details::npc_conversation::NpcConversation;
+use crate::theme::get_theme_class;
 
 #[component]
 pub fn Session(campaign_id: String) -> Element {
@@ -97,9 +98,25 @@ pub fn Session(campaign_id: String) -> Element {
         });
     };
 
+    // Theme Logic - Dynamic Class Selection based on Campaign System
+    // Uses centralized theme utility (see src/theme.rs for supported systems)
+    // Supports: fantasy, cosmic, terminal, noir, neon (per UXdesign/design.md)
+    //
+    // TODO [TASK-027]: Implement theme interpolation for blended settings
+    // Currently uses single theme detection. Design spec calls for weighted
+    // theme blending via CSS custom property interpolation, e.g.:
+    //   Delta Green = cosmic(0.4) + noir(0.6)
+    // See ThemeWeights struct in feature-parity/design.md for implementation plan.
     let theme_class = use_memo(move || {
+        // Try theme weights first, fallback to system-based theme
         match campaign.read().as_ref() {
-            Some(c) => crate::theme::get_dominant_theme(&c.settings.theme_weights),
+            Some(c) => {
+                if !c.settings.theme_weights.is_empty() {
+                    crate::theme::get_dominant_theme(&c.settings.theme_weights)
+                } else {
+                    get_theme_class(&c.system).to_string()
+                }
+            }
             None => "theme-fantasy".to_string(),
         }
     }).read().clone();

@@ -224,10 +224,17 @@ pub struct VoiceConfig {
     pub provider: String, // Enum locally handled as string
     pub cache_dir: Option<String>,
     pub default_voice_id: Option<String>,
+    // Cloud providers
     pub elevenlabs: Option<ElevenLabsConfig>,
     pub fish_audio: Option<FishAudioConfig>,
-    pub ollama: Option<OllamaConfig>,
     pub openai: Option<OpenAIVoiceConfig>,
+    // Self-hosted providers
+    pub ollama: Option<OllamaConfig>,
+    pub chatterbox: Option<ChatterboxConfig>,
+    pub gpt_sovits: Option<GptSoVitsConfig>,
+    pub xtts_v2: Option<XttsV2Config>,
+    pub fish_speech: Option<FishSpeechConfig>,
+    pub dia: Option<DiaConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -253,6 +260,61 @@ pub struct OpenAIVoiceConfig {
     pub api_key: String,
     pub model: String,
     pub voice: String,
+}
+
+// Self-hosted TTS provider configs
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatterboxConfig {
+    pub base_url: String,
+    pub reference_audio: Option<String>,
+    pub exaggeration: Option<f32>,
+    pub cfg_weight: Option<f32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GptSoVitsConfig {
+    pub base_url: String,
+    pub reference_audio: Option<String>,
+    pub reference_text: Option<String>,
+    pub language: Option<String>,
+    pub speaker_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct XttsV2Config {
+    pub base_url: String,
+    pub speaker_wav: Option<String>,
+    pub language: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FishSpeechConfig {
+    pub base_url: String,
+    pub reference_audio: Option<String>,
+    pub reference_text: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiaConfig {
+    pub base_url: String,
+    pub voice_id: Option<String>,
+    pub dialogue_mode: Option<bool>,
+}
+
+// Provider detection types
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderStatus {
+    pub provider: String,
+    pub available: bool,
+    pub endpoint: Option<String>,
+    pub version: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct VoiceProviderDetection {
+    pub providers: Vec<ProviderStatus>,
+    pub detected_at: Option<String>,
 }
 
 /// Voice information from a TTS provider
@@ -393,6 +455,12 @@ pub async fn configure_voice(config: VoiceConfig) -> Result<String, String> {
 
 pub async fn get_voice_config() -> Result<VoiceConfig, String> {
     invoke_no_args("get_voice_config").await
+}
+
+/// Detect available self-hosted voice providers on the local system.
+/// Cloud providers (ElevenLabs, OpenAI, FishAudio) require API keys and are not detected here.
+pub async fn detect_voice_providers() -> Result<VoiceProviderDetection, String> {
+    invoke_no_args("detect_voice_providers").await
 }
 
 pub async fn get_vector_store_status() -> Result<String, String> {

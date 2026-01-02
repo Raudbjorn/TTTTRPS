@@ -2,6 +2,8 @@
 
 This document defines the requirements for achieving feature parity between the original Python MCP server implementation and the Rust/Tauri desktop application.
 
+> **See also**: `UXdesign/design.md` for detailed visual specifications and mockups.
+
 ## Document Information
 
 | Field | Value |
@@ -613,6 +615,54 @@ The system SHALL provide a combat tracking interface.
 
 ---
 
+## 12. UX/Frontend Requirements
+
+*Based on UX Design Specification v2.0.0 (see `UXdesign/design.md`)*
+
+### Layout & Navigation
+
+| ID | Requirement | Description |
+|----|-------------|-------------|
+| REQ-LAYOUT-1 | 5-Panel Architecture | Implement responsive grid: Icon Rail, Context Sidebar, Main Content, Info Panel, Media Bar |
+| REQ-LAYOUT-2 | Collapsible Sidebars | Context Sidebar and Info Panel toggleable via hotkeys (`Cmd+.`, `Cmd+/`) |
+| REQ-NAV-1 | Icon Rail | Fixed 48-64px left rail with tooltips for global navigation |
+| REQ-NAV-2 | Context Switching | Sidebar content dynamically changes based on active view |
+
+### Design Metaphors
+
+| ID | Requirement | Description |
+|----|-------------|-------------|
+| REQ-META-SPOTIFY | Campaign/Session Presentation | Campaigns as "Albums" (cover art, genre); Sessions as "Tracks" (playable, duration) |
+| REQ-META-SLACK | NPC Interaction | NPCs as contact list with presence dots, unread badges, thread-capable chat |
+| REQ-META-OBSIDIAN | Knowledge Base | Library as graph with entity linking and backlink visualization |
+
+### Dynamic Theming
+
+| ID | Requirement | Description |
+|----|-------------|-------------|
+| REQ-THEME-1 | Extended Theme Set | 5 core themes: Fantasy, Cosmic, Terminal, Noir, Neon |
+| REQ-THEME-2 | CSS Variable Architecture | Core palette (`--bg-deep`, `--accent`, etc.) across all themes |
+| REQ-THEME-3 | Theme Interpolation | Weighted blending of themes (e.g., 60% Noir + 40% Cosmic) |
+| REQ-THEME-4 | Visual Effects | CSS effects: Film Grain, CRT Scanlines, Text Glow, Redaction |
+| REQ-THEME-5 | Auto-Adaptation | Default presets per game system with manual override |
+
+### Components
+
+| ID | Requirement | Description |
+|----|-------------|-------------|
+| REQ-COMP-MEDIA | Media Bar | Persistent 56px bottom bar with Play/Pause, Volume, "Now Speaking" |
+| REQ-COMP-CARD | Campaign Card | Rich visual card with "Now Playing" pulse animation |
+| REQ-COMP-CHAT | Chat Threading | Reply to specific messages with visual threading |
+
+### Non-Functional (Frontend)
+
+| ID | Requirement | Description |
+|----|-------------|-------------|
+| REQ-PERF-FE-1 | Animation | Purposeful, fast transitions (150-200ms). Respect `prefers-reduced-motion` |
+| REQ-A11Y-1 | Accessibility | All themes meet WCAG contrast ratios |
+
+---
+
 ## Requirement Priority Matrix
 
 | Priority | Category | Count |
@@ -644,4 +694,5 @@ The system SHALL provide a combat tracking interface.
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.1.0 | 2026-01-02 | Added UX/Frontend requirements section |
 | 1.0.0 | 2025-12-29 | Initial requirements document |

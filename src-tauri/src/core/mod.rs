@@ -1,7 +1,8 @@
+pub mod database;
 pub mod models;
 pub mod voice;
 pub mod llm;
-pub mod llm_router;
+// llm_router moved to llm::router
 pub mod campaign_manager;
 pub mod credentials;
 pub mod personality;

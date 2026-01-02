@@ -2,9 +2,14 @@ use std::path::PathBuf;
 use tokio::fs;
 use std::collections::HashMap;
 use crate::core::voice::types::{Result, SynthesisRequest, SynthesisResult, VoiceConfig, VoiceProviderType, VoiceError, Voice};
+use crate::core::voice::providers::{VoiceProvider};
+use crate::core::voice::providers::elevenlabs::ElevenLabsProvider;
+use crate::core::voice::providers::fish_audio::FishAudioProvider;
+use crate::core::voice::providers::ollama::OllamaProvider;
+use crate::core::voice::providers::openai::OpenAIVoiceProvider;
+use crate::core::voice::providers::piper::PiperProvider;
 use crate::core::voice::providers::{
-    VoiceProvider, elevenlabs::ElevenLabsProvider, fish_audio::FishAudioProvider,
-    ollama::OllamaProvider, openai::OpenAIVoiceProvider, piper::PiperProvider
+    ChatterboxProvider, GptSoVitsProvider, XttsV2Provider, FishSpeechProvider, DiaProvider,
 };
 
 use rodio::{Decoder, OutputStream, Sink};
@@ -22,17 +27,38 @@ impl VoiceManager {
     pub fn new(config: VoiceConfig) -> Self {
         let mut providers: HashMap<String, Box<dyn VoiceProvider>> = HashMap::new();
 
-        // Initialize providers based on config
+        // Initialize cloud providers
         if let Some(cfg) = &config.elevenlabs {
-             providers.insert("elevenlabs".to_string(), Box::new(ElevenLabsProvider::new(cfg.clone())));
+            providers.insert("elevenlabs".to_string(), Box::new(ElevenLabsProvider::new(cfg.clone())));
         }
 
         if let Some(cfg) = &config.fish_audio {
-             providers.insert("fish_audio".to_string(), Box::new(FishAudioProvider::new(cfg.clone())));
+            providers.insert("fish_audio".to_string(), Box::new(FishAudioProvider::new(cfg.clone())));
         }
 
+        // Initialize local/self-hosted providers
         if let Some(cfg) = &config.ollama {
-             providers.insert("ollama".to_string(), Box::new(OllamaProvider::new(cfg.clone())));
+            providers.insert("ollama".to_string(), Box::new(OllamaProvider::new(cfg.clone())));
+        }
+
+        if let Some(cfg) = &config.chatterbox {
+            providers.insert("chatterbox".to_string(), Box::new(ChatterboxProvider::new(cfg.clone())));
+        }
+
+        if let Some(cfg) = &config.gpt_sovits {
+            providers.insert("gpt_sovits".to_string(), Box::new(GptSoVitsProvider::new(cfg.clone())));
+        }
+
+        if let Some(cfg) = &config.xtts_v2 {
+            providers.insert("xtts_v2".to_string(), Box::new(XttsV2Provider::new(cfg.clone())));
+        }
+
+        if let Some(cfg) = &config.fish_speech {
+            providers.insert("fish_speech".to_string(), Box::new(FishSpeechProvider::new(cfg.clone())));
+        }
+
+        if let Some(cfg) = &config.dia {
+            providers.insert("dia".to_string(), Box::new(DiaProvider::new(cfg.clone())));
         }
 
         if let Some(cfg) = &config.openai {
@@ -108,9 +134,14 @@ impl VoiceManager {
         let provider_id = match self.config.provider {
             VoiceProviderType::ElevenLabs => "elevenlabs",
             VoiceProviderType::FishAudio => "fish_audio",
-            VoiceProviderType::Ollama => "ollama",
             VoiceProviderType::OpenAI => "openai",
             VoiceProviderType::Piper => "piper",
+            VoiceProviderType::Ollama => "ollama",
+            VoiceProviderType::Chatterbox => "chatterbox",
+            VoiceProviderType::GptSoVits => "gpt_sovits",
+            VoiceProviderType::XttsV2 => "xtts_v2",
+            VoiceProviderType::FishSpeech => "fish_speech",
+            VoiceProviderType::Dia => "dia",
             VoiceProviderType::System => return Err(VoiceError::NotConfigured("System TTS not supported yet".to_string())),
             VoiceProviderType::Disabled => return Err(VoiceError::NotConfigured("Voice synthesis disabled".to_string())),
         };

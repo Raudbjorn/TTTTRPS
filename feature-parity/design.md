@@ -1,5 +1,9 @@
 # Feature Parity Architecture Design
 
+> **Note**: This document is a technical implementation summary. For the full UX specification
+> including visual mockups, component designs, and theme definitions, refer to `UXdesign/design.md`.
+> This document focuses on backend architecture and Dioxus/Rust implementation details.
+
 This document describes the architecture and design decisions for achieving feature parity between the original Python MCP server and the Rust/Tauri desktop application.
 
 ## Document Information
@@ -102,6 +106,62 @@ This document describes the architecture and design decisions for achieving feat
 │           └───────────────┘            └─────────────┘      └────────┘  │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
+
+### 1.3 Frontend Architecture (Dioxus/WASM)
+
+The application uses a `Layout` based architecture where the root component is the **Main Shell**, managing the 5-panel grid per the UX design spec.
+
+```mermaid
+graph TD
+    App --> ThemeProvider
+    ThemeProvider --> MainShell
+    MainShell --> IconRail
+    MainShell --> ContextSidebar
+    MainShell --> RouterOutlet
+    MainShell --> InfoPanel
+    MainShell --> MediaBar
+```
+
+#### Theme Engine (`frontend/src/theme.rs`)
+
+To support theme interpolation, we use a hybrid approach:
+1. **Static**: Base classes (`.theme-fantasy`) define defaults
+2. **Dynamic**: Injected `style="..."` attribute overrides specific variables based on interpolation
+
+```rust
+pub struct ThemeState {
+    pub weights: HashMap<ThemeType, f32>, // e.g. Fantasy: 0.5, Noir: 0.5
+}
+
+impl ThemeState {
+    /// Linearly interpolates all defined variables and returns a CSS string
+    pub fn to_css_vars(&self) -> String { ... }
+}
+```
+
+#### Layout State (`frontend/src/services/layout.rs`)
+
+Global signal to manage panel visibility:
+```rust
+pub struct LayoutState {
+    pub sidebar_visible: bool,
+    pub infopanel_visible: bool,
+    pub active_view: ViewType, // Campaign, Library, Graph
+}
+```
+
+#### MainShell CSS Grid
+
+```css
+display: grid;
+grid-template-areas:
+  "rail sidebar main info"
+  "rail sidebar footer info";
+grid-template-columns: 64px auto 1fr auto;
+grid-template-rows: 1fr 56px;
+```
+
+*Note*: `auto` columns controlled by Dioxus state (0px when collapsed).
 
 ---
 

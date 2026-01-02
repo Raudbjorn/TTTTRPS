@@ -883,6 +883,99 @@ TASK-018 (Multi-System Gen)
 
 ---
 
+## Phase 7: Frontend/UX Overhaul (P1)
+
+*Per UXdesign/design.md v2.0.0*
+
+### TASK-026: Implement MainShell Layout
+**Requirement:** REQ-LAYOUT-1, REQ-LAYOUT-2
+
+**Status:** `[ ]`
+
+**Description:**
+Create the 5-panel CSS Grid layout architecture.
+
+**Subtasks:**
+- [ ] Create `MainShell` component with CSS Grid
+- [ ] Implement `IconRail` with navigation links and tooltips
+- [ ] Implement `LayoutService` signal for sidebar/panel toggling
+- [ ] Add keyboard shortcuts (`Cmd+.`, `Cmd+/`)
+- [ ] Create `MediaBar` skeleton anchored to bottom
+
+**Files to Create/Modify:**
+- `frontend/src/components/shell/main_shell.rs`
+- `frontend/src/components/shell/icon_rail.rs`
+- `frontend/src/components/shell/media_bar.rs`
+- `frontend/src/services/layout.rs`
+
+---
+
+### TASK-027: Dynamic Theme Engine
+**Requirement:** REQ-THEME-1, REQ-THEME-2, REQ-THEME-3
+
+**Status:** `[ ]`
+
+**Description:**
+Implement theme interpolation and the 5 core themes.
+
+**Subtasks:**
+- [ ] Define `ThemeDefinition` structs and color math utilities
+- [ ] Implement `ThemeState` with interpolation logic (`to_css_vars`)
+- [ ] Define 5 core themes (Fantasy, Cosmic, Terminal, Noir, Neon)
+- [ ] Create theme settings UI with weight sliders
+- [ ] Update `App.rs` to inject calculated CSS variables
+
+**Files to Create/Modify:**
+- `frontend/src/services/theme.rs`
+- `frontend/src/theme.rs` (enhance existing)
+- `frontend/src/components/settings/theme_editor.rs`
+
+---
+
+### TASK-028: Content Migration (Design Metaphors)
+**Requirement:** REQ-META-SPOTIFY, REQ-META-SLACK, REQ-META-OBSIDIAN
+
+**Status:** `[ ]`
+
+**Description:**
+Refactor existing components to match the Spotify/Slack/Obsidian metaphors.
+
+**Subtasks:**
+- [ ] Refactor `SessionList` into `ContextSidebar` (Campaign View)
+- [ ] Refactor `NPCList` into `InfoPanel` (Slack-style contact list)
+- [ ] Implement "Campaign Card" visual design (album cover style)
+- [ ] Create graph view placeholder for entity relationships
+
+**Files to Create/Modify:**
+- `frontend/src/components/campaign/campaign_card.rs`
+- `frontend/src/components/session/session_list.rs` (refactor)
+- `frontend/src/components/npc/npc_list.rs` (refactor)
+- `frontend/src/components/graph/entity_graph.rs`
+
+---
+
+### TASK-029: Visual Effects & Accessibility
+**Requirement:** REQ-THEME-4, REQ-A11Y-1
+
+**Status:** `[ ]`
+
+**Description:**
+Implement CSS effects and verify accessibility.
+
+**Subtasks:**
+- [ ] Implement Film Grain effect (pseudo-element overlay)
+- [ ] Implement CRT Scanlines effect
+- [ ] Implement Text Glow effect
+- [ ] Implement Redacted text effect (Noir theme)
+- [ ] Verify WCAG contrast ratios for all 5 themes
+- [ ] Add `prefers-reduced-motion` support
+
+**Files to Create/Modify:**
+- `frontend/public/themes.css`
+- `frontend/input.css`
+
+---
+
 ## Sprint Suggestions
 
 ### Sprint 1: Foundation
@@ -921,5 +1014,6 @@ TASK-018 (Multi-System Gen)
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.2.0 | 2026-01-02 | Added Frontend/UX tasks phase |
 | 1.1.0 | 2025-12-29 | Update TASK-009 to use dedicated entity_relationships table per design.md |
 | 1.0.0 | 2025-12-29 | Initial task breakdown |

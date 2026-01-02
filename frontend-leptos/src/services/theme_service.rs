@@ -440,6 +440,28 @@ pub fn try_use_theme_state() -> Option<ThemeState> {
 /// List of all available theme preset names
 pub const PRESET_NAMES: &[&str] = &["fantasy", "cosmic", "terminal", "noir", "neon"];
 
+/// Get the dominant theme class from a HashMap of weights (for campaign settings compatibility)
+pub fn get_dominant_theme(weights: &std::collections::HashMap<String, f32>) -> String {
+    let mut max = 0.0_f32;
+    let mut theme = "theme-fantasy";
+
+    for (name, weight) in weights.iter() {
+        if *weight > max {
+            max = *weight;
+            theme = match name.as_str() {
+                "fantasy" => "theme-fantasy",
+                "cosmic" => "theme-cosmic",
+                "terminal" => "theme-terminal",
+                "noir" => "theme-noir",
+                "neon" => "theme-neon",
+                _ => continue,
+            };
+        }
+    }
+
+    theme.to_string()
+}
+
 /// Get a human-readable description for a theme preset
 pub fn preset_description(name: &str) -> &'static str {
     match name {
