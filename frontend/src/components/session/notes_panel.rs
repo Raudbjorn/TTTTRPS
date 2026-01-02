@@ -169,7 +169,7 @@ impl NoteCategory {
 }
 
 /// A session note for display
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SessionNote {
     pub id: String,
     pub title: String,
@@ -948,7 +948,7 @@ fn NoteCard(
                         style:background-color=format!("{}20", category_color)
                         style:color=category_color
                     >
-                        {note.category.display()}
+                        {note.category.display().to_string()}
                     </span>
                     {if note.is_private {
                         Some(view! {

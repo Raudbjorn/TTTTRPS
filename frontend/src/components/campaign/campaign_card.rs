@@ -371,14 +371,14 @@ pub fn CampaignCard(
                                         <PlayerIcon />
                                         <span>{player_count}</span>
                                     </div>
-                                })
+                                }.into_any())
                             } else if entity_count > 0 {
                                 Some(view! {
                                     <div class="flex items-center gap-1.5">
                                         <EntityIcon />
                                         <span>{entity_count}</span>
                                     </div>
-                                })
+                                }.into_any())
                             } else {
                                 None
                             }}

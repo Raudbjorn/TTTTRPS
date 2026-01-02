@@ -1,0 +1,96 @@
+279:pub async fn chat(
+400:pub async fn check_llm_health(state: State<'_, AppState>) -> Result<HealthStatus, String> {
+514:pub async fn list_ollama_models(host: String) -> Result<Vec<crate::core::llm::OllamaModel>, String> {
+522:pub async fn list_claude_models(api_key: Option<String>) -> Result<Vec<crate::core::llm::ModelInfo>, String> {
+536:pub async fn list_openai_models(api_key: Option<String>) -> Result<Vec<crate::core::llm::ModelInfo>, String> {
+559:pub async fn list_gemini_models(api_key: Option<String>) -> Result<Vec<crate::core::llm::ModelInfo>, String> {
+573:pub async fn list_openrouter_models() -> Result<Vec<crate::core::llm::ModelInfo>, String> {
+583:pub async fn list_provider_models(provider: String) -> Result<Vec<crate::core::llm::ModelInfo>, String> {
+603:pub async fn get_router_health(
+612:pub async fn get_router_costs(
+621:pub async fn estimate_request_cost(
+634:pub async fn get_healthy_providers(
+643:pub async fn set_routing_strategy(
+662:pub async fn run_provider_health_checks(
+674:pub async fn stream_chat(
+740:pub async fn cancel_stream(
+750:pub async fn get_active_streams(
+775:pub async fn ingest_document(
+839:pub async fn search(
+965:pub async fn hybrid_search(
+1092:pub async fn configure_voice(
+1124:pub async fn get_voice_config(state: State<'_, AppState>) -> Result<VoiceConfig, String> {
+1139:pub async fn detect_voice_providers() -> Result<VoiceProviderDetection, String> {
+1149:pub async fn check_meilisearch_health(
+1175:pub async fn reindex_library(
+1254:pub async fn get_campaign_theme(
+1265:pub async fn set_campaign_theme(
+1280:pub async fn get_theme_preset(system: String) -> Result<ThemeWeights, String> {
+1326:pub async fn get_campaign_stats(
+1808:pub async fn generate_npc(
+1847:pub async fn get_npc(id: String, state: State<'_, AppState>) -> Result<Option<NPC>, String> {
+1863:pub async fn list_npcs(campaign_id: Option<String>, state: State<'_, AppState>) -> Result<Vec<NPC>, String> {
+1886:pub async fn update_npc(npc: NPC, state: State<'_, AppState>) -> Result<(), String> {
+1928:pub async fn delete_npc(id: String, state: State<'_, AppState>) -> Result<(), String> {
+1948:pub async fn ingest_pdf(
+1973:pub async fn get_vector_store_status(state: State<'_, AppState>) -> Result<String, String> {
+1999:pub async fn ingest_document_with_progress(
+2287:pub async fn list_elevenlabs_voices(api_key: String) -> Result<Vec<Voice>, String> {
+2302:pub async fn list_available_voices(state: State<'_, AppState>) -> Result<Vec<Voice>, String> {
+2315:pub async fn speak(text: String, state: State<'_, AppState>) -> Result<(), String> {
+2390:pub async fn transcribe_audio(
+2435:pub async fn list_npc_conversations(
+2443:pub async fn get_npc_conversation(
+2454:pub async fn add_npc_message(
+2492:pub async fn mark_npc_read(
+2516:pub async fn list_npc_summaries(
+2559:pub async fn reply_as_npc(
+2644:pub async fn queue_voice(
+2668:pub async fn get_voice_queue(state: State<'_, AppState>) -> Result<Vec<QueuedVoice>, String> {
+2674:pub async fn cancel_voice(queue_id: String, state: State<'_, AppState>) -> Result<(), String> {
+3476:pub async fn get_search_analytics_db(
+3487:pub async fn get_popular_queries_db(
+3498:pub async fn get_cache_stats_db(
+3508:pub async fn get_trending_queries_db(
+3519:pub async fn get_zero_result_queries_db(
+3530:pub async fn get_click_distribution_db(
+3540:pub async fn record_search_event(
+3571:pub async fn record_search_selection_db(
+3603:pub async fn cleanup_search_analytics(
+3804:pub async fn create_voice_profile(
+3835:pub async fn link_voice_profile_to_npc(
+3856:pub async fn get_npc_voice_profile(
+3933:pub async fn get_audio_cache_stats(state: State<'_, AppState>) -> Result<VoiceCacheStats, String> {
+3949:pub async fn clear_audio_cache_by_tag(
+3962:pub async fn clear_audio_cache(state: State<'_, AppState>) -> Result<(), String> {
+3978:pub async fn prune_audio_cache(
+3995:pub async fn list_audio_cache_entries(state: State<'_, AppState>) -> Result<Vec<crate::core::voice::CacheEntry>, String> {
+4010:pub async fn get_audio_cache_size(state: State<'_, AppState>) -> Result<AudioCacheSizeInfo, String> {
+4108:pub async fn submit_synthesis_job(
+4152:pub async fn get_synthesis_job(
+4161:pub async fn get_synthesis_job_status(
+4170:pub async fn get_synthesis_job_progress(
+4179:pub async fn cancel_synthesis_job(
+4191:pub async fn cancel_all_synthesis_jobs(
+4202:pub async fn pregen_session_voices(
+4218:pub async fn submit_synthesis_batch(
+4255:pub async fn get_synthesis_queue_stats(
+4263:pub async fn pause_synthesis_queue(
+4273:pub async fn resume_synthesis_queue(
+4283:pub async fn is_synthesis_queue_paused(
+4291:pub async fn list_pending_synthesis_jobs(
+4299:pub async fn list_processing_synthesis_jobs(
+4307:pub async fn list_synthesis_job_history(
+4316:pub async fn list_synthesis_jobs_by_session(
+4325:pub async fn list_synthesis_jobs_by_npc(
+4334:pub async fn list_synthesis_jobs_by_tag(
+4343:pub async fn clear_synthesis_job_history(
+4352:pub async fn get_synthesis_queue_length(
+4712:pub async fn categorize_note_ai(
+4802:pub async fn generate_backstory(
+4815:pub async fn edit_backstory(
+4907:pub async fn apply_personality_to_text(
+5050:pub async fn generate_personality_preview(
+5066:pub async fn test_personality(
+5183:pub async fn generate_location(
+5295:pub async fn save_location(

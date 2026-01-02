@@ -534,13 +534,13 @@ pub fn SearchAnalyticsDashboard() -> impl IntoView {
                                             </div>
                                         </div>
                                     </div>
-                                }
+                                }.into_any()
                             }).unwrap_or_else(|| {
                                 view! {
                                     <div class="text-center py-4 text-theme-secondary">
                                         "No performance data available"
                                     </div>
-                                }
+                                }.into_any()
                             })
                         }}
                     </CardBody>

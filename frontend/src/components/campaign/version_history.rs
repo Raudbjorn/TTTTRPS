@@ -383,7 +383,7 @@ pub fn VersionHistory(
                                                 version=v
                                                 is_selected=is_selected
                                                 on_select=handle_select
-                                                on_compare=Some(handle_compare)
+                                                on_compare=handle_compare
                                             />
                                         }
                                     }).collect_view()}

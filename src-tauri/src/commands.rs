@@ -31,16 +31,10 @@ use crate::core::session_manager::{
     CombatantType, create_common_condition
 };
 use crate::core::character_gen::{CharacterGenerator, GenerationOptions, Character, SystemInfo};
-use crate::core::character_gen::backstory::{
-    BackstoryGenerator, BackstoryRequest, GeneratedBackstory,
-    BackstoryStyle, RegenerationOptions, EditResult, BackstoryNPC,
-};
-use crate::core::character_gen::BackstoryLength;
 use crate::core::npc_gen::{NPCGenerator, NPCGenerationOptions, NPC, NPCStore};
-use crate::core::location_gen::{LocationGenerator, LocationGenerationOptions, Location, LocationType};
+use crate::core::location_gen::{LocationGenerator, LocationGenerationOptions, Location};
 use crate::core::personality::{
-    PersonalityApplicationManager, ActivePersonalityContext, SceneMood,
-    PersonalityApplicationOptions, ContentType, StyledContent, PersonalityPreview,
+    PersonalityApplicationManager, ActivePersonalityContext, SceneMood, ContentType, StyledContent, PersonalityPreview,
     NPCDialogueStyler, NarrationStyleManager, NarrationType, PersonalitySettings,
     ExtendedPersonalityPreview, PreviewResponse, NarrativeTone, VocabularyLevel,
     NarrativeStyle, VerbosityLevel, GenreConvention, PersonalityStore,
@@ -55,7 +49,7 @@ use crate::core::campaign::versioning::VersionManager;
 use crate::core::campaign::world_state::WorldStateManager;
 use crate::core::campaign::relationships::RelationshipManager;
 use crate::core::session::notes::{
-    NoteCategory, EntityType as NoteEntityType, EntityLink, NotesManager,
+    NoteCategory, EntityType as NoteEntityType,
     SessionNote as NoteSessionNote, CategorizationRequest, CategorizationResponse,
     build_categorization_prompt, parse_categorization_response,
 };
@@ -4342,8 +4336,7 @@ pub async fn get_synthesis_queue_length(
 // ============================================================================
 
 use crate::core::session::timeline::{
-    TimelineEvent, TimelineEventType, EventSeverity, EntityRef,
-    SessionTimeline, TimelineSummary,
+    TimelineEvent, TimelineEventType, EventSeverity, EntityRef, TimelineSummary,
 };
 
 /// Add a timeline event to a session
@@ -4457,8 +4450,7 @@ pub fn get_timeline_events_by_type(
 // ============================================================================
 
 use crate::core::session::conditions::{
-    AdvancedCondition, ConditionDuration, ConditionEffect, StackingRule,
-    ConditionTracker, ConditionTemplates,
+    AdvancedCondition, ConditionDuration, ConditionTemplates,
 };
 
 /// Apply an advanced condition to a combatant
@@ -5131,9 +5123,8 @@ pub fn clear_session_personality_context(
 // ============================================================================
 
 use crate::core::location_gen::{
-    Atmosphere, NotableFeature, Inhabitant, Secret, Encounter,
-    LocationConnection, LootPotential, MapReference, Difficulty,
-    Disposition, TreasureLevel, LocationSize,
+    Inhabitant, Secret, Encounter,
+    LocationConnection, MapReference, Difficulty,
 };
 
 /// Generate a new location using procedural templates or AI

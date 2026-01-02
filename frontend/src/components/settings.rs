@@ -1415,13 +1415,13 @@ pub fn AudioCacheCard() -> impl IntoView {
                                         <div
                                             class="h-2.5 rounded-full transition-all duration-300"
                                             style:width=format!("{}%", size.usage_percent.min(100.0))
-                                            style:background-color=if size.usage_percent > 90.0 {
+                                            style:background-color={if size.usage_percent > 90.0 {
                                                 "var(--error)"
                                             } else if size.usage_percent > 70.0 {
                                                 "var(--warning)"
                                             } else {
                                                 "var(--accent)"
-                                            }
+                                            }}
                                         ></div>
                                     </div>
                                     <div class="text-xs text-theme-secondary">
@@ -1540,7 +1540,7 @@ pub fn AudioCacheCard() -> impl IntoView {
                     </Button>
 
                     <Button
-                        variant=ButtonVariant::Warning
+                        variant=ButtonVariant::Secondary
                         on_click=prune_cache_action
                         loading=is_pruning.get()
                         disabled=is_loading.get() || is_clearing.get()

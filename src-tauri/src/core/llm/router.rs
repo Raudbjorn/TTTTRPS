@@ -11,12 +11,9 @@
 use super::cost::{CostSummary, CostTracker, CostTrackerConfig, ProviderPricing, TokenUsage};
 use super::health::{CircuitState, HealthTracker, HealthTrackerConfig, ProviderHealth, HealthSummary};
 use async_trait::async_trait;
-use futures_util::stream::BoxStream;
 use futures_util::StreamExt;
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, RwLock};

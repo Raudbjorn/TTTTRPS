@@ -18,16 +18,7 @@ use crate::bindings::{
 };
 use crate::components::design_system::{Button, ButtonVariant};
 
-/// Props for PersonalitySelector
-#[derive(Clone)]
-pub struct PersonalitySelectorProps {
-    /// Current session ID
-    pub session_id: RwSignal<Option<String>>,
-    /// Current campaign ID
-    pub campaign_id: RwSignal<Option<String>>,
-    /// Callback when personality changes
-    pub on_personality_change: Option<Callback<Option<String>>>,
-}
+
 
 /// Personality Selector component for the chat interface
 #[component]
@@ -144,7 +135,7 @@ pub fn PersonalitySelector(
 
             // Notify parent
             if let Some(cb) = on_personality_change {
-                cb.call(personality_id);
+                cb.run(personality_id);
             }
         }
     };

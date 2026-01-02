@@ -445,7 +445,7 @@ pub fn Campaigns() -> impl IntoView {
     });
 
     // Handle legacy campaign creation (from simple modal)
-    let handle_create = Callback::new(move |(name, system): (String, String)| {
+    let _handle_create = Callback::new(move |(name, system): (String, String)| {
         spawn_local(async move {
             match create_campaign(name, system).await {
                 Ok(campaign) => {
@@ -461,12 +461,12 @@ pub fn Campaigns() -> impl IntoView {
     });
 
     // Handle archive request
-    let handle_archive_request = Callback::new(move |(id, name): (String, String)| {
+    let _handle_archive_request = Callback::new(move |(id, name): (String, String)| {
         archive_confirm.set(Some((id, name, false)));
     });
 
     // Handle restore request
-    let handle_restore_request = Callback::new(move |(id, name): (String, String)| {
+    let _handle_restore_request = Callback::new(move |(id, name): (String, String)| {
         archive_confirm.set(Some((id, name, true)));
     });
 
@@ -563,9 +563,9 @@ pub fn Campaigns() -> impl IntoView {
     };
 
     // Navigate back to hub
+    let nav_hub_fn = navigate.clone();
     let nav_to_hub = move |_: ev::MouseEvent| {
-        let nav = navigate.clone();
-        nav("/", Default::default());
+        nav_hub_fn("/", Default::default());
     };
 
     view! {

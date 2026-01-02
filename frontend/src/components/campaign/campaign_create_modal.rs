@@ -107,7 +107,7 @@ fn StepIndicator(
                         })}
                         <div class="flex flex-col items-center gap-1">
                             <div class=format!("w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium {}", circle_class)>
-                                {if is_complete { "v" } else { &(i + 1).to_string() }}
+                                {if is_complete { "v".to_string() } else { (i + 1).to_string() }}
                             </div>
                             <span class=format!("text-xs {}", if is_current { "text-white" } else { "text-zinc-500" })>
                                 {step.label()}

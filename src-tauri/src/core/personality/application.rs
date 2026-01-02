@@ -10,7 +10,7 @@
 //! - Per-campaign/session default personalities
 //! - Personality preview before selection
 
-use crate::core::personality_base::{PersonalityProfile, PersonalityStore, PersonalityError, SpeechPatterns, BehavioralTendencies};
+use crate::core::personality_base::{PersonalityProfile, PersonalityStore, PersonalityError, SpeechPatterns};
 use crate::core::llm::{LLMClient, ChatMessage, ChatRequest, MessageRole};
 use std::collections::HashMap;
 use std::sync::RwLock;
@@ -763,7 +763,7 @@ impl PersonalityApplicationManager {
         patterns: &SpeechPatterns,
         content_type: &ContentType,
     ) -> String {
-        let mut result = content.to_string();
+        let result = content.to_string();
 
         // Only apply to dialogue
         if *content_type != ContentType::Dialogue {

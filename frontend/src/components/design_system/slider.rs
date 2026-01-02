@@ -9,6 +9,7 @@
 //!   - Optional percentage formatting
 
 use leptos::prelude::*;
+use wasm_bindgen::JsCast;
 
 /// Slider component props
 #[component]
@@ -66,18 +67,19 @@ pub fn Slider(
     });
 
     let extra_class = class.unwrap_or_default();
+    let label_for_display = label.clone();
 
     view! {
         <div class=format!("flex flex-col gap-1.5 {}", extra_class)>
             // Label and value row
             {move || {
-                let has_label = label.is_some();
+                let has_label = label_for_display.is_some();
                 let show_val = show_percentage || show_value;
 
                 if has_label || show_val {
                     Some(view! {
                         <div class="flex items-center justify-between">
-                            {label.clone().map(|l| view! {
+                            {label_for_display.clone().map(|l| view! {
                                 <label class="text-sm font-medium text-[var(--text-muted)]">
                                     {l}
                                 </label>
@@ -87,13 +89,13 @@ pub fn Slider(
                                     <span class="text-xs font-mono text-[var(--text-muted)]">
                                         {move || format!("{}%", (value.get() * 100.0) as i32)}
                                     </span>
-                                })
+                                }.into_any())
                             } else if show_value {
                                 Some(view! {
                                     <span class="text-xs font-mono text-[var(--text-muted)]">
                                         {move || format!("{:.2}", value.get())}
                                     </span>
-                                })
+                                }.into_any())
                             } else {
                                 None
                             }}
@@ -234,8 +236,8 @@ pub fn DiscreteSlider(
 
                 // Tick marks
                 <div class="absolute top-4 left-0 right-0 flex justify-between px-1">
-                    {ticks.iter().enumerate().map(|(i, tick)| {
-                        let is_active = move || value.get() >= *tick;
+                    {ticks.into_iter().enumerate().map(|(i, tick)| {
+                        let is_active = move || value.get() >= tick;
                         let label_text = tick_labels.as_ref().and_then(|l| l.get(i).cloned());
                         view! {
                             <div class="flex flex-col items-center">

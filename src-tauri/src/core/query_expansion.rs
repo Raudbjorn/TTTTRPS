@@ -5,10 +5,10 @@
 //! query enhancement.
 
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use crate::core::search::synonyms::{TTRPGSynonyms, ClarificationPrompt};
-use crate::core::spell_correction::{SpellCorrector, CorrectionResult};
+use crate::core::spell_correction::SpellCorrector;
 
 // ============================================================================
 // Types

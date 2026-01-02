@@ -160,6 +160,9 @@ pub fn SessionList(
                                         "Now Playing"
                                     </span>
                                 </div>
+                                {
+                                    let curr_id_clone = curr_id.clone();
+                                    view! {
                                 <button
                                     class="w-full group"
                                     on:click=move |_| {
@@ -170,13 +173,15 @@ pub fn SessionList(
                                     <SessionTrackItem
                                         session_number=sess_num
                                         is_active=true
-                                        is_selected=Signal::derive(move || selected_session_id.get() == Some(curr_id.clone()))
+                                        is_selected=Signal::derive(move || selected_session_id.get() == Some(curr_id_clone.clone()))
                                         duration=None
                                         note_count=note_count
                                         had_combat=had_combat
                                         date=String::new()
                                     />
                                 </button>
+                                    }
+                                }
                             </div>
                         }
                     })
@@ -241,6 +246,9 @@ pub fn SessionList(
                                 let had_combat = s.had_combat;
                                 let date = format_session_date(&s.started_at);
 
+
+                                let s_id_clone = s_id.clone();
+
                                 view! {
                                     <button
                                         class="w-full"
@@ -252,7 +260,7 @@ pub fn SessionList(
                                         <SessionTrackItem
                                             session_number=sess_num
                                             is_active=false
-                                            is_selected=Signal::derive(move || selected_session_id.get() == Some(s_id.clone()))
+                                            is_selected=Signal::derive(move || selected_session_id.get() == Some(s_id_clone.clone()))
                                             duration=duration
                                             note_count=note_count
                                             had_combat=had_combat

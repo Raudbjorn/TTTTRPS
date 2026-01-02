@@ -255,9 +255,9 @@ fn NpcContactItem(
                     <div class="flex items-center justify-between gap-2">
                         <p class=format!("text-xs truncate {}", message_class)>
                             {if last_message.is_empty() {
-                                "No messages yet"
+                                "No messages yet".to_string()
                             } else {
-                                &last_message
+                                last_message.clone()
                             }}
                         </p>
                         {(unread > 0).then(|| view! {

@@ -3,8 +3,7 @@
 //! Manages campaign locations with hierarchical relationships and full support
 //! for generated locations from the location_gen module.
 
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use chrono::Utc;
 use std::collections::HashMap;
 use std::sync::RwLock;
 use thiserror::Error;

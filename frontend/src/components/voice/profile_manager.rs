@@ -22,7 +22,7 @@ use crate::components::design_system::{Badge, BadgeVariant, Input};
 #[component]
 pub fn VoiceProfileCard(
     #[prop(into)] profile: VoiceProfile,
-    #[prop(optional)] on_select: Option<Callback<VoiceProfile>>,
+    #[prop(into)] on_select: Option<Callback<VoiceProfile>>,
     #[prop(default = false)] is_selected: bool,
 ) -> impl IntoView {
     let profile_clone = profile.clone();
@@ -134,7 +134,7 @@ pub fn VoiceProfileCard(
 #[component]
 pub fn VoiceProfileGrid(
     #[prop(into)] profiles: Signal<Vec<VoiceProfile>>,
-    #[prop(optional)] on_select: Option<Callback<VoiceProfile>>,
+    #[prop(into)] on_select: Option<Callback<VoiceProfile>>,
     #[prop(optional)] selected_id: Option<Signal<Option<String>>>,
 ) -> impl IntoView {
     view! {
@@ -513,9 +513,9 @@ pub fn VoiceProfileManager(
                 if !is_loading.get() {
                     view! {
                         <VoiceProfileGrid
-                            profiles=profiles.into()
+                            profiles=profiles
                             on_select=Some(on_select.clone())
-                            selected_id=Some(selected_profile_id.into())
+                            selected_id=selected_profile_id.into()
                         />
                     }.into_any()
                 } else {

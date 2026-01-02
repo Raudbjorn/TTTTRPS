@@ -75,14 +75,14 @@ Implement SQLite database layer for persistent structured data storage alongside
 Create a unified router for LLM providers with health monitoring and cost tracking.
 
 **Subtasks:**
-- [ ] Create `src-tauri/src/core/llm/router.rs`
-- [ ] Define `LLMProvider` trait with unified interface
-- [ ] Implement provider health tracking
-- [ ] Add cost calculation per provider
-- [ ] Implement request routing logic
-- [ ] Add fallback on provider failure
-- [ ] Create usage statistics tracking
-- [ ] Add Tauri commands for router operations
+- [x] Create `src-tauri/src/core/llm/router.rs`
+- [x] Define `LLMProvider` trait with unified interface
+- [x] Implement provider health tracking
+- [x] Add cost calculation per provider
+- [x] Implement request routing logic
+- [x] Add fallback on provider failure
+- [x] Create usage statistics tracking
+- [x] Add Tauri commands for router operations
 
 **Files to Create/Modify:**
 - `src-tauri/src/core/llm/router.rs`
@@ -108,13 +108,13 @@ Create a unified router for LLM providers with health monitoring and cost tracki
 Add streaming response support to chat UI for real-time token delivery.
 
 **Subtasks:**
-- [ ] Add streaming endpoint to LLMClient
-- [ ] Implement SSE parsing for each provider
-- [ ] Create Tauri event for streaming chunks
-- [ ] Update chat component to handle streaming
-- [ ] Add typing indicator during stream
-- [ ] Handle stream termination gracefully
-- [ ] Add cancel stream functionality
+- [x] Add streaming endpoint to LLMClient
+- [x] Implement SSE parsing for each provider
+- [x] Create Tauri event for streaming chunks
+- [x] Update chat component to handle streaming
+- [x] Add typing indicator during stream
+- [x] Handle stream termination gracefully
+- [x] Add cancel stream functionality
 
 **Files to Create/Modify:**
 - `src-tauri/src/core/llm.rs` (add streaming methods)
@@ -139,13 +139,13 @@ Add streaming response support to chat UI for real-time token delivery.
 Implement voice profile management with NPC linking.
 
 **Subtasks:**
-- [ ] Create `VoiceProfile` struct and database table
-- [ ] Add profile CRUD operations
-- [ ] Create 13+ preset DM personas
-- [ ] Implement NPC-to-profile linking
-- [ ] Add profile metadata (age, gender, personality)
-- [ ] Create profile selector component
-- [ ] Add Tauri commands for profile management
+- [x] Create `VoiceProfile` struct and database table
+- [x] Add profile CRUD operations
+- [x] Create 13+ preset DM personas
+- [x] Implement NPC-to-profile linking
+- [x] Add profile metadata (age, gender, personality)
+- [x] Create profile selector component
+- [x] Add Tauri commands for profile management
 
 **Files to Create/Modify:**
 - `src-tauri/src/core/voice/profiles.rs`
@@ -171,13 +171,13 @@ Implement voice profile management with NPC linking.
 Create disk-based audio cache with LRU eviction.
 
 **Subtasks:**
-- [ ] Create `AudioCache` struct
-- [ ] Implement cache key generation (text + voice + settings hash)
-- [ ] Add disk storage with size tracking
-- [ ] Implement LRU eviction policy
-- [ ] Add cache hit/miss tracking
-- [ ] Create cache management commands
-- [ ] Add cache statistics UI
+- [x] Create `AudioCache` struct
+- [x] Implement cache key generation (text + voice + settings hash)
+- [x] Add disk storage with size tracking
+- [x] Implement LRU eviction policy
+- [x] Add cache hit/miss tracking
+- [x] Create cache management commands
+- [x] Add cache statistics UI
 
 **Files to Create/Modify:**
 - `src-tauri/src/core/voice/cache.rs`
@@ -204,13 +204,13 @@ Create disk-based audio cache with LRU eviction.
 Add version history and rollback capability for campaigns.
 
 **Subtasks:**
-- [ ] Create campaign_versions table
-- [ ] Implement snapshot creation (manual and auto)
-- [ ] Add diff calculation between versions
-- [ ] Create rollback functionality
-- [ ] Add version listing command
-- [ ] Create version comparison command
-- [ ] Add version history UI component
+- [x] Create campaign_versions table
+- [x] Implement snapshot creation (manual and auto)
+- [x] Add diff calculation between versions
+- [x] Create rollback functionality
+- [x] Add version listing command
+- [x] Create version comparison command
+- [x] Add version history UI component
 
 **Files to Create/Modify:**
 - `src-tauri/src/core/campaign/versioning.rs`
@@ -236,13 +236,13 @@ Add version history and rollback capability for campaigns.
 Implement world state management for campaigns.
 
 **Subtasks:**
-- [ ] Add world_state JSON column to campaigns
-- [ ] Create in-game date tracking
-- [ ] Implement world events timeline
-- [ ] Add location state changes
-- [ ] Create NPC relationship tracking
-- [ ] Add custom state fields support
-- [ ] Create world state editor UI
+- [x] Add world_state JSON column to campaigns
+- [x] Create in-game date tracking
+- [x] Implement world events timeline
+- [x] Add location state changes
+- [x] Create NPC relationship tracking
+- [x] Add custom state fields support
+- [x] Create world state editor UI
 
 **Files to Create/Modify:**
 - `src-tauri/src/core/models.rs` (Campaign struct)
@@ -267,13 +267,13 @@ Implement world state management for campaigns.
 Build comprehensive campaign management dashboard.
 
 **Subtasks:**
-- [ ] Create campaign list view with cards
-- [ ] Add campaign creation wizard/modal
-- [ ] Build campaign details view
-- [ ] Add quick actions (start session, add NPC, etc.)
-- [ ] Create entity browser (characters, NPCs, locations)
-- [ ] Add campaign switcher in header
-- [ ] Implement campaign archive/restore
+- [x] Create campaign list view with cards
+- [x] Add campaign creation wizard/modal
+- [x] Build campaign details view
+- [x] Add quick actions (start session, add NPC, etc.)
+- [x] Create entity browser (characters, NPCs, locations)
+- [x] Add campaign switcher in header
+- [x] Implement campaign archive/restore
 
 **Files to Create/Modify:**
 - `frontend/src/components/campaign/mod.rs`
@@ -299,15 +299,15 @@ Build comprehensive campaign management dashboard.
 Add relationship tracking between campaign entities using a dedicated relationships table (see design.md §3.1 for schema). This replaces the previous JSON-based approach for better query performance and relational integrity.
 
 **Subtasks:**
-- [ ] Implement `entity_relationships` table migration (schema in design.md)
-- [ ] Create `EntityRelationship` struct with proper types
-- [ ] Implement CRUD operations for relationships
-- [ ] Add bidirectional relationship queries
-- [ ] Support relationship types: ally, enemy, family, employee, located_at, etc.
-- [ ] Implement relationship strength (0.0-1.0 scale)
-- [ ] Add Tauri commands for relationship management
-- [ ] Create relationship graph visualization component
-- [ ] Build relationship editor UI
+- [x] Implement `entity_relationships` table migration (schema in design.md)
+- [x] Create `EntityRelationship` struct with proper types
+- [x] Implement CRUD operations for relationships
+- [x] Add bidirectional relationship queries
+- [x] Support relationship types: ally, enemy, family, employee, located_at, etc.
+- [x] Implement relationship strength (0.0-1.0 scale)
+- [x] Add Tauri commands for relationship management
+- [x] Create relationship graph visualization component
+- [x] Build relationship editor UI
 
 **Files to Create/Modify:**
 - `src-tauri/src/core/database/schema.rs` (add migration)
@@ -338,13 +338,13 @@ Add relationship tracking between campaign entities using a dedicated relationsh
 Integrate embedding providers for vector search.
 
 **Subtasks:**
-- [ ] Define EmbeddingProvider trait
-- [ ] Implement Ollama embeddings provider
-- [ ] Add OpenAI embeddings support
-- [ ] Create embedding cache
-- [ ] Add batch embedding support
-- [ ] Implement embedding on document ingestion
-- [ ] Store embeddings in Meilisearch
+- [x] Define EmbeddingProvider trait
+- [x] Implement Ollama embeddings provider
+- [x] Add OpenAI embeddings support
+- [x] Create embedding cache
+- [x] Add batch embedding support
+- [x] Implement embedding on document ingestion
+- [x] Store embeddings in Meilisearch
 
 **Files to Create/Modify:**
 - `src-tauri/src/core/search/embeddings.rs`
@@ -369,13 +369,13 @@ Integrate embedding providers for vector search.
 Create hybrid search combining keyword and vector search with RRF.
 
 **Subtasks:**
-- [ ] Create HybridSearchEngine struct
-- [ ] Implement keyword search (Meilisearch)
-- [ ] Add vector similarity search
-- [ ] Implement Reciprocal Rank Fusion
-- [ ] Add configurable weights
-- [ ] Create search options struct
-- [ ] Add Tauri hybrid_search command
+- [x] Create HybridSearchEngine struct
+- [x] Implement keyword search (Meilisearch)
+- [x] Add vector similarity search
+- [x] Implement Reciprocal Rank Fusion
+- [x] Add configurable weights
+- [x] Create search options struct
+- [x] Add Tauri hybrid_search command
 
 **Files to Create/Modify:**
 - `src-tauri/src/core/search/hybrid.rs`
@@ -400,12 +400,12 @@ Create hybrid search combining keyword and vector search with RRF.
 Implement query expansion and correction for TTRPG searches.
 
 **Subtasks:**
-- [ ] Create TTRPG synonym dictionary
-- [ ] Implement query expansion
-- [ ] Add spell correction
-- [ ] Create query completion suggestions
-- [ ] Add clarification prompt system
-- [ ] Implement search hints UI
+- [x] Create TTRPG synonym dictionary
+- [x] Implement query expansion
+- [x] Add spell correction
+- [x] Create query completion suggestions
+- [x] Add clarification prompt system
+- [x] Implement search hints UI
 
 **Files to Create/Modify:**
 - `src-tauri/src/core/search/synonyms.rs`
@@ -430,13 +430,13 @@ Implement query expansion and correction for TTRPG searches.
 Build document library browser with search.
 
 **Subtasks:**
-- [ ] Create library route and layout
-- [ ] Add document list view
-- [ ] Implement source type filtering
-- [ ] Add search panel with filters
-- [ ] Create document detail view
-- [ ] Add ingestion from browser
-- [ ] Implement source management
+- [x] Create library route and layout
+- [x] Add document list view
+- [x] Implement source type filtering
+- [x] Add search panel with filters
+- [x] Create document detail view
+- [x] Add ingestion from browser
+- [x] Implement source management
 
 **Files to Create/Modify:**
 - `frontend/src/components/library/mod.rs`
@@ -464,13 +464,13 @@ Build document library browser with search.
 Add chronological event tracking within sessions.
 
 **Subtasks:**
-- [ ] Create session_events table
-- [ ] Define event types enum
-- [ ] Implement event recording
-- [ ] Add entity involvement tracking
-- [ ] Create timeline query functions
-- [ ] Add session summary generation
-- [ ] Build timeline view component
+- [x] Create session_events table
+- [x] Define event types enum
+- [x] Implement event recording
+- [x] Add entity involvement tracking
+- [x] Create timeline query functions
+- [x] Add session summary generation
+- [x] Build timeline view component
 
 **Files to Create/Modify:**
 - `src-tauri/src/core/session/timeline.rs`
@@ -495,13 +495,13 @@ Add chronological event tracking within sessions.
 Enhance condition system with duration and custom conditions.
 
 **Subtasks:**
-- [ ] Add duration field to conditions
-- [ ] Implement turn-based duration tracking
-- [ ] Create custom condition builder
-- [ ] Add condition effect descriptions
-- [ ] Implement auto-removal on expiry
-- [ ] Add condition stacking rules
-- [ ] Create condition manager UI
+- [x] Add duration field to conditions
+- [x] Implement turn-based duration tracking
+- [x] Create custom condition builder
+- [x] Add condition effect descriptions
+- [x] Implement auto-removal on expiry
+- [x] Add condition stacking rules
+- [x] Create condition manager UI
 
 **Files to Create/Modify:**
 - `src-tauri/src/core/session_manager.rs`
@@ -525,14 +525,14 @@ Enhance condition system with duration and custom conditions.
 Create visual combat tracking interface.
 
 **Subtasks:**
-- [ ] Create combat tracker layout
-- [ ] Add initiative order display
-- [ ] Implement current combatant highlight
-- [ ] Add HP bars with damage/heal
-- [ ] Create condition icons and tooltips
-- [ ] Add quick action buttons
-- [ ] Display round counter
-- [ ] Add combatant management
+- [x] Create combat tracker layout
+- [x] Add initiative order display
+- [x] Implement current combatant highlight
+- [x] Add HP bars with damage/heal
+- [x] Create condition icons and tooltips
+- [x] Add quick action buttons
+- [x] Display round counter
+- [x] Add combatant management
 
 **Files to Create/Modify:**
 - `frontend/src/components/session/combat_tracker.rs`
@@ -558,13 +558,13 @@ Create visual combat tracking interface.
 Add AI-assisted session note organization.
 
 **Subtasks:**
-- [ ] Create session_notes table
-- [ ] Implement note CRUD operations
-- [ ] Add tag-based organization
-- [ ] Create entity linking (NPC, location)
-- [ ] Implement search within notes
-- [ ] Add AI categorization of notes
-- [ ] Create notes panel UI
+- [x] Create session_notes table
+- [x] Implement note CRUD operations
+- [x] Add tag-based organization
+- [x] Create entity linking (NPC, location)
+- [x] Implement search within notes
+- [x] Add AI categorization of notes
+- [x] Create notes panel UI
 
 **Files to Create/Modify:**
 - `src-tauri/src/core/session/notes.rs`
@@ -590,14 +590,14 @@ Add AI-assisted session note organization.
 Implement character generation for multiple TTRPG systems.
 
 **Subtasks:**
-- [ ] Create SystemGenerator trait
-- [ ] Implement D&D 5e generator
-- [ ] Add Pathfinder 2e generator
-- [ ] Create generators for 6+ more systems
-- [ ] Define stat templates per system
-- [ ] Add class/race selection
-- [ ] Implement equipment generation
-- [ ] Create character generation UI
+- [x] Create SystemGenerator trait
+- [x] Implement D&D 5e generator
+- [x] Add Pathfinder 2e generator
+- [x] Create generators for 6+ more systems
+- [x] Define stat templates per system
+- [x] Add class/race selection
+- [x] Implement equipment generation
+- [x] Create character generation UI
 
 **Files to Create/Modify:**
 - `src-tauri/src/core/character_gen/mod.rs`
@@ -623,13 +623,13 @@ Implement character generation for multiple TTRPG systems.
 Add LLM-based character backstory generation.
 
 **Subtasks:**
-- [ ] Create backstory generation prompt template
-- [ ] Implement backstory request to LLM
-- [ ] Add style matching to campaign setting
-- [ ] Integrate with character traits
-- [ ] Create regenerate/edit functionality
-- [ ] Add backstory length options
-- [ ] Create backstory preview UI
+- [x] Create backstory generation prompt template
+- [x] Implement backstory request to LLM
+- [x] Add style matching to campaign setting
+- [x] Integrate with character traits
+- [x] Create regenerate/edit functionality
+- [x] Add backstory length options
+- [x] Create backstory preview UI
 
 **Files to Create/Modify:**
 - `src-tauri/src/core/character_gen/backstory.rs`
@@ -653,13 +653,13 @@ Add LLM-based character backstory generation.
 Implement location generation for campaigns.
 
 **Subtasks:**
-- [ ] Create location type definitions
-- [ ] Implement feature generation
-- [ ] Add inhabitant generation
-- [ ] Create connected locations logic
-- [ ] Generate secrets and encounters
-- [ ] Add map reference support
-- [ ] Build location generator UI
+- [x] Create location type definitions
+- [x] Implement feature generation
+- [x] Add inhabitant generation
+- [x] Create connected locations logic
+- [x] Generate secrets and encounters
+- [x] Add map reference support
+- [x] Build location generator UI
 
 **Files to Create/Modify:**
 - `src-tauri/src/core/character_gen/location.rs`
@@ -683,13 +683,13 @@ Implement location generation for campaigns.
 Implement personality application to generated content.
 
 **Subtasks:**
-- [ ] Create personality injection for chat
-- [ ] Add NPC dialogue styling
-- [ ] Implement narration tone matching
-- [ ] Create active personality management
-- [ ] Add personality per campaign/session
-- [ ] Build personality selector in chat
-- [ ] Add personality preview
+- [x] Create personality injection for chat
+- [x] Add NPC dialogue styling
+- [x] Implement narration tone matching
+- [x] Create active personality management
+- [x] Add personality per campaign/session
+- [x] Build personality selector in chat
+- [x] Add personality preview
 
 **Files to Create/Modify:**
 - `src-tauri/src/core/personality/application.rs`
@@ -716,13 +716,13 @@ Implement personality application to generated content.
 Add comprehensive usage analytics and cost tracking.
 
 **Subtasks:**
-- [ ] Create usage tracking module
-- [ ] Track tokens per request
-- [ ] Calculate costs per provider
-- [ ] Store historical usage data
-- [ ] Create usage statistics commands
-- [ ] Build usage dashboard UI
-- [ ] Add budget warning system
+- [x] Create usage tracking module
+- [x] Track tokens per request
+- [x] Calculate costs per provider
+- [x] Store historical usage data
+- [x] Create usage statistics commands
+- [x] Build usage dashboard UI
+- [x] Add budget warning system
 
 **Files to Create/Modify:**
 - `src-tauri/src/core/usage/tracking.rs`
@@ -747,12 +747,12 @@ Add comprehensive usage analytics and cost tracking.
 Implement search usage tracking and reporting.
 
 **Subtasks:**
-- [ ] Track query frequency
-- [ ] Record result selections
-- [ ] Calculate cache statistics
-- [ ] Identify popular searches
-- [ ] Create analytics commands
-- [ ] Add analytics UI section
+- [x] Track query frequency
+- [x] Record result selections
+- [x] Calculate cache statistics
+- [x] Identify popular searches
+- [x] Create analytics commands
+- [x] Add analytics UI section
 
 **Files to Create/Modify:**
 - `src-tauri/src/core/search/analytics.rs`
@@ -776,13 +776,13 @@ Implement search usage tracking and reporting.
 Implement security event logging and audit trail.
 
 **Subtasks:**
-- [ ] Create audit log module
-- [ ] Log API key usage
-- [ ] Track file operations
-- [ ] Record configuration changes
-- [ ] Add log rotation
-- [ ] Create log viewer UI
-- [ ] Add log export functionality
+- [x] Create audit log module
+- [x] Log API key usage
+- [x] Track file operations
+- [x] Record configuration changes
+- [x] Add log rotation
+- [x] Create log viewer UI
+- [x] Add log export functionality
 
 **Files to Create/Modify:**
 - `src-tauri/src/core/security/audit.rs`
@@ -807,13 +807,13 @@ Implement security event logging and audit trail.
 Add background voice synthesis for upcoming content.
 
 **Subtasks:**
-- [ ] Create synthesis job queue
-- [ ] Implement priority handling
-- [ ] Add progress tracking
-- [ ] Create session batch pre-gen
-- [ ] Implement queue management commands
-- [ ] Add queue status UI
-- [ ] Handle cancellation
+- [x] Create synthesis job queue
+- [x] Implement priority handling
+- [x] Add progress tracking
+- [x] Create session batch pre-gen
+- [x] Implement queue management commands
+- [x] Add queue status UI
+- [x] Handle cancellation
 
 **Files to Create/Modify:**
 - `src-tauri/src/core/voice/queue.rs`
@@ -904,11 +904,11 @@ TASK-018 (Multi-System Gen)
 Create the 5-panel CSS Grid layout architecture.
 
 **Subtasks:**
-- [ ] Create `MainShell` component with CSS Grid
-- [ ] Implement `IconRail` with navigation links and tooltips
-- [ ] Implement `LayoutService` signal for sidebar/panel toggling
-- [ ] Add keyboard shortcuts (`Cmd+.`, `Cmd+/`)
-- [ ] Create `MediaBar` skeleton anchored to bottom
+- [x] Create `MainShell` component with CSS Grid
+- [x] Implement `IconRail` with navigation links and tooltips
+- [x] Implement `LayoutService` signal for sidebar/panel toggling
+- [x] Add keyboard shortcuts (`Cmd+.`, `Cmd+/`)
+- [x] Create `MediaBar` skeleton anchored to bottom
 
 **Files to Create/Modify:**
 - `frontend/src/components/shell/main_shell.rs`
@@ -927,11 +927,11 @@ Create the 5-panel CSS Grid layout architecture.
 Implement theme interpolation and the 5 core themes.
 
 **Subtasks:**
-- [ ] Define `ThemeDefinition` structs and color math utilities
-- [ ] Implement `ThemeState` with interpolation logic (`to_css_vars`)
-- [ ] Define 5 core themes (Fantasy, Cosmic, Terminal, Noir, Neon)
-- [ ] Create theme settings UI with weight sliders
-- [ ] Update `App.rs` to inject calculated CSS variables
+- [x] Define `ThemeDefinition` structs and color math utilities
+- [x] Implement `ThemeState` with interpolation logic (`to_css_vars`)
+- [x] Define 5 core themes (Fantasy, Cosmic, Terminal, Noir, Neon)
+- [x] Create theme settings UI with weight sliders
+- [x] Update `App.rs` to inject calculated CSS variables
 
 **Files to Create/Modify:**
 - `frontend/src/services/theme.rs`
@@ -949,10 +949,10 @@ Implement theme interpolation and the 5 core themes.
 Refactor existing components to match the Spotify/Slack/Obsidian metaphors.
 
 **Subtasks:**
-- [ ] Refactor `SessionList` into `ContextSidebar` (Campaign View)
-- [ ] Refactor `NPCList` into `InfoPanel` (Slack-style contact list)
-- [ ] Implement "Campaign Card" visual design (album cover style)
-- [ ] Create graph view placeholder for entity relationships
+- [x] Refactor `SessionList` into `ContextSidebar` (Campaign View)
+- [x] Refactor `NPCList` into `InfoPanel` (Slack-style contact list)
+- [x] Implement "Campaign Card" visual design (album cover style)
+- [x] Create graph view placeholder for entity relationships
 
 **Files to Create/Modify:**
 - `frontend/src/components/campaign/campaign_card.rs`
@@ -971,12 +971,12 @@ Refactor existing components to match the Spotify/Slack/Obsidian metaphors.
 Implement CSS effects and verify accessibility.
 
 **Subtasks:**
-- [ ] Implement Film Grain effect (pseudo-element overlay)
-- [ ] Implement CRT Scanlines effect
-- [ ] Implement Text Glow effect
-- [ ] Implement Redacted text effect (Noir theme)
-- [ ] Verify WCAG contrast ratios for all 5 themes
-- [ ] Add `prefers-reduced-motion` support
+- [x] Implement Film Grain effect (pseudo-element overlay)
+- [x] Implement CRT Scanlines effect
+- [x] Implement Text Glow effect
+- [x] Implement Redacted text effect (Noir theme)
+- [x] Verify WCAG contrast ratios for all 5 themes
+- [x] Add `prefers-reduced-motion` support
 
 **Files to Create/Modify:**
 - `frontend/public/themes.css`

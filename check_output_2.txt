@@ -1,0 +1,621 @@
+    Checking ttrpg-assistant v1.0.0 (/home/svnbjrn/dev/AI-RPG/features/src-tauri)
+warning: unused import: `futures_util::stream::BoxStream`
+  --> src/core/llm/router.rs:14:5
+   |
+14 | use futures_util::stream::BoxStream;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `reqwest::Client`
+  --> src/core/llm/router.rs:16:5
+   |
+16 | use reqwest::Client;
+   |     ^^^^^^^^^^^^^^^
+
+warning: unused import: `std::pin::Pin`
+  --> src/core/llm/router.rs:19:5
+   |
+19 | use std::pin::Pin;
+   |     ^^^^^^^^^^^^^
+
+warning: unused import: `ChatMessage`
+ --> src/core/llm/providers/ollama.rs:7:16
+  |
+7 |     ChatChunk, ChatMessage, ChatRequest, ChatResponse, LLMError, LLMProvider, MessageRole, Result,
+  |                ^^^^^^^^^^^
+
+warning: unused import: `ChatMessage`
+ --> src/core/llm/providers/claude.rs:5:16
+  |
+5 |     ChatChunk, ChatMessage, ChatRequest, ChatResponse, LLMError, LLMProvider, MessageRole, Result,
+  |                ^^^^^^^^^^^
+
+warning: unused import: `ChatMessage`
+ --> src/core/llm/providers/openai.rs:7:16
+  |
+7 |     ChatChunk, ChatMessage, ChatRequest, ChatResponse, LLMError, LLMProvider, MessageRole, Result,
+  |                ^^^^^^^^^^^
+
+warning: unused import: `ChatMessage`
+ --> src/core/llm/providers/gemini.rs:5:16
+  |
+5 |     ChatChunk, ChatMessage, ChatRequest, ChatResponse, LLMError, LLMProvider, MessageRole, Result,
+  |                ^^^^^^^^^^^
+
+warning: unused import: `TokenUsage`
+ --> src/core/llm/providers/openrouter.rs:6:47
+  |
+6 | use crate::core::llm::cost::{ProviderPricing, TokenUsage};
+  |                                               ^^^^^^^^^^
+
+warning: unused import: `LLMError`
+ --> src/core/llm/providers/openrouter.rs:8:43
+  |
+8 |     ChatChunk, ChatRequest, ChatResponse, LLMError, LLMProvider, Result,
+  |                                           ^^^^^^^^
+
+warning: unused import: `TokenUsage`
+ --> src/core/llm/providers/mistral.rs:4:47
+  |
+4 | use crate::core::llm::cost::{ProviderPricing, TokenUsage};
+  |                                               ^^^^^^^^^^
+
+warning: unused import: `LLMError`
+ --> src/core/llm/providers/mistral.rs:6:43
+  |
+6 |     ChatChunk, ChatRequest, ChatResponse, LLMError, LLMProvider, Result,
+  |                                           ^^^^^^^^
+
+warning: unused import: `TokenUsage`
+ --> src/core/llm/providers/groq.rs:6:47
+  |
+6 | use crate::core::llm::cost::{ProviderPricing, TokenUsage};
+  |                                               ^^^^^^^^^^
+
+warning: unused import: `LLMError`
+ --> src/core/llm/providers/groq.rs:8:43
+  |
+8 |     ChatChunk, ChatRequest, ChatResponse, LLMError, LLMProvider, Result,
+  |                                           ^^^^^^^^
+
+warning: unused import: `TokenUsage`
+ --> src/core/llm/providers/together.rs:6:47
+  |
+6 | use crate::core::llm::cost::{ProviderPricing, TokenUsage};
+  |                                               ^^^^^^^^^^
+
+warning: unused import: `LLMError`
+ --> src/core/llm/providers/together.rs:8:43
+  |
+8 |     ChatChunk, ChatRequest, ChatResponse, LLMError, LLMProvider, Result,
+  |                                           ^^^^^^^^
+
+warning: unused import: `ChatMessage`
+ --> src/core/llm/providers/cohere.rs:7:16
+  |
+7 |     ChatChunk, ChatMessage, ChatRequest, ChatResponse, LLMError, LLMProvider, MessageRole, Result,
+  |                ^^^^^^^^^^^
+
+warning: unused import: `TokenUsage`
+ --> src/core/llm/providers/deepseek.rs:6:47
+  |
+6 | use crate::core::llm::cost::{ProviderPricing, TokenUsage};
+  |                                               ^^^^^^^^^^
+
+warning: unused import: `LLMError`
+ --> src/core/llm/providers/deepseek.rs:8:43
+  |
+8 |     ChatChunk, ChatRequest, ChatResponse, LLMError, LLMProvider, Result,
+  |                                           ^^^^^^^^
+
+warning: unused import: `BehavioralTendencies`
+  --> src/core/personality/application.rs:13:109
+   |
+13 | use crate::core::personality_base::{PersonalityProfile, PersonalityStore, PersonalityError, SpeechPatterns, BehavioralTendencies};
+   |                                                                                                             ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `ConditionEffect`, `SaveTiming`, and `StackingRule`
+  --> src/core/session_manager.rs:21:72
+   |
+21 |     AdvancedCondition, ConditionDuration as AdvancedConditionDuration, ConditionEffect, ConditionTracker,
+   |                                                                        ^^^^^^^^^^^^^^^
+22 |     ConditionTemplates, StackingRule, SaveTiming,
+   |                         ^^^^^^^^^^^^  ^^^^^^^^^^
+
+warning: unused import: `Character`
+ --> src/core/character_gen/prompts.rs:6:34
+  |
+6 | use crate::core::character_gen::{Character, GameSystem, BackstoryLength};
+  |                                  ^^^^^^^^^
+
+warning: unused import: `uuid::Uuid`
+  --> src/core/character_gen/mod.rs:21:5
+   |
+21 | use uuid::Uuid;
+   |     ^^^^^^^^^^
+
+warning: unused import: `std::collections::HashMap`
+  --> src/core/location_gen.rs:18:5
+   |
+18 | use std::collections::HashMap;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `rand::Rng`
+   --> src/core/location_gen.rs:386:13
+    |
+386 |         use rand::Rng;
+    |             ^^^^^^^^^
+
+warning: unused import: `std::collections::HashSet`
+  --> src/core/search/query.rs:11:5
+   |
+11 | use std::collections::HashSet;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `ExpansionInfo`
+  --> src/core/search/query.rs:14:81
+   |
+14 | use super::synonyms::{TTRPGSynonyms, ClarificationPrompt, QueryExpansionResult, ExpansionInfo};
+   |                                                                                 ^^^^^^^^^^^^^
+
+warning: unused import: `SpellingSuggestion`
+  --> src/core/search/query.rs:15:71
+   |
+15 | use crate::core::spell_correction::{SpellCorrector, CorrectionResult, SpellingSuggestion};
+   |                                                                       ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `HashMap`
+ --> src/core/query_expansion.rs:8:24
+  |
+8 | use std::collections::{HashMap, HashSet};
+  |                        ^^^^^^^
+
+warning: unused import: `CorrectionResult`
+  --> src/core/query_expansion.rs:11:53
+   |
+11 | use crate::core::spell_correction::{SpellCorrector, CorrectionResult};
+   |                                                     ^^^^^^^^^^^^^^^^
+
+warning: unused import: `DateTime`
+ --> src/core/location_manager.rs:6:14
+  |
+6 | use chrono::{DateTime, Utc};
+  |              ^^^^^^^^
+
+warning: unused imports: `Deserialize` and `Serialize`
+ --> src/core/location_manager.rs:7:13
+  |
+7 | use serde::{Deserialize, Serialize};
+  |             ^^^^^^^^^^^  ^^^^^^^^^
+
+warning: unused imports: `BackstoryGenerator`, `BackstoryNPC`, `BackstoryRequest`, `BackstoryStyle`, `EditResult`, `GeneratedBackstory`, and `RegenerationOptions`
+  --> src/commands.rs:36:5
+   |
+36 |     BackstoryGenerator, BackstoryRequest, GeneratedBackstory,
+   |     ^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^
+37 |     BackstoryStyle, RegenerationOptions, EditResult, BackstoryNPC,
+   |     ^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^  ^^^^^^^^^^^^
+
+warning: unused import: `crate::core::character_gen::BackstoryLength`
+  --> src/commands.rs:39:5
+   |
+39 | use crate::core::character_gen::BackstoryLength;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `LocationType`
+  --> src/commands.rs:41:89
+   |
+41 | use crate::core::location_gen::{LocationGenerator, LocationGenerationOptions, Location, LocationType};
+   |                                                                                         ^^^^^^^^^^^^
+
+warning: unused import: `PersonalityApplicationOptions`
+  --> src/commands.rs:44:5
+   |
+44 |     PersonalityApplicationOptions, ContentType, StyledContent, PersonalityPreview,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `EntityLink` and `NotesManager`
+  --> src/commands.rs:59:49
+   |
+59 |     NoteCategory, EntityType as NoteEntityType, EntityLink, NotesManager,
+   |                                                 ^^^^^^^^^^  ^^^^^^^^^^^^
+
+warning: unused import: `SessionTimeline`
+    --> src/commands.rs:4344:5
+     |
+4344 |     SessionTimeline, TimelineSummary,
+     |     ^^^^^^^^^^^^^^^
+
+warning: unused imports: `ConditionEffect`, `ConditionTracker`, and `StackingRule`
+    --> src/commands.rs:4458:43
+     |
+4458 |     AdvancedCondition, ConditionDuration, ConditionEffect, StackingRule,
+     |                                           ^^^^^^^^^^^^^^^  ^^^^^^^^^^^^
+4459 |     ConditionTracker, ConditionTemplates,
+     |     ^^^^^^^^^^^^^^^^
+
+warning: unused imports: `Atmosphere`, `Disposition`, `LocationSize`, `LootPotential`, `NotableFeature`, and `TreasureLevel`
+    --> src/commands.rs:5131:5
+     |
+5131 |     Atmosphere, NotableFeature, Inhabitant, Secret, Encounter,
+     |     ^^^^^^^^^^  ^^^^^^^^^^^^^^
+5132 |     LocationConnection, LootPotential, MapReference, Difficulty,
+     |                         ^^^^^^^^^^^^^
+5133 |     Disposition, TreasureLevel, LocationSize,
+     |     ^^^^^^^^^^^  ^^^^^^^^^^^^^  ^^^^^^^^^^^^
+
+warning: unused variable: `was_pending`
+   --> src/core/voice/queue.rs:697:14
+    |
+697 |         let (was_pending, was_processing, progress) = {
+    |              ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_was_pending`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `query_embedding`
+   --> src/core/search/hybrid.rs:478:13
+    |
+478 |         let query_embedding = provider
+    |             ^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_query_embedding`
+
+warning: unused variable: `filter`
+   --> src/core/search/hybrid.rs:564:9
+    |
+564 |         filter: Option<&str>,
+    |         ^^^^^^ help: if this is intentional, prefix it with an underscore: `_filter`
+
+error[E0308]: mismatched types
+   --> src/commands.rs:215:23
+    |
+215 |             base_url: "https://api.openai.com/v1".to_string(),
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Option<String>`, found `String`
+    |
+    = note: expected enum `std::option::Option<std::string::String>`
+             found struct `std::string::String`
+help: try wrapping the expression in `Some`
+    |
+215 |             base_url: Some("https://api.openai.com/v1".to_string()),
+    |                       +++++                                       +
+
+error[E0061]: this method takes 1 argument but 2 arguments were supplied
+   --> src/commands.rs:269:16
+    |
+269 |         router.add_provider(&provider_name, config);
+    |                ^^^^^^^^^^^^                 ------ unexpected argument #2 of type `ProviderConfig`
+    |
+note: expected `Arc<dyn LLMProvider>`, found `&String`
+   --> src/commands.rs:269:29
+    |
+269 |         router.add_provider(&provider_name, config);
+    |                             ^^^^^^^^^^^^^^
+    = note: expected struct `Arc<(dyn LLMProvider + 'static)>`
+            found reference `&std::string::String`
+note: method defined here
+   --> src/core/llm/router.rs:430:18
+    |
+430 |     pub async fn add_provider(&mut self, provider: Arc<dyn LLMProvider>) {
+    |                  ^^^^^^^^^^^^            ------------------------------
+help: remove the extra argument
+    |
+269 -         router.add_provider(&provider_name, config);
+269 +         router.add_provider(/* Arc<(dyn LLMProvider + 'static)> */);
+    |
+
+error[E0308]: mismatched types
+   --> src/commands.rs:277:8
+    |
+277 |     Ok(state.llm_router.read().unwrap().get_all_stats())
+    |     -- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `HashMap<String, ProviderStats>`, found future
+    |     |
+    |     arguments to this enum variant are incorrect
+    |
+help: the type constructed contains `impl futures_util::Future<Output = HashMap<std::string::String, ProviderStats>>` due to the type of the argument passed
+   --> src/commands.rs:277:5
+    |
+277 |     Ok(state.llm_router.read().unwrap().get_all_stats())
+    |     ^^^------------------------------------------------^
+    |        |
+    |        this argument influences the type of `Ok`
+note: tuple variant defined here
+   --> /rustc/f8297e351a40c1439a467bbbb6879088047f50b3/library/core/src/result.rs:554:5
+
+error[E0308]: mismatched types
+    --> src/commands.rs:1747:5
+     |
+1746 |   ) -> Result<(), String> {
+     |        ------------------ expected `std::result::Result<(), std::string::String>` because of return type
+1747 | /     state.session_manager.remove_advanced_condition(&session_id, &combatant_id, &condition_id)
+1748 | |         .map_err(|e| e.to_string())
+     | |___________________________________^ expected `Result<(), String>`, found `Result<Option<AdvancedCondition>, ...>`
+     |
+     = note: expected enum `std::result::Result<(), _>`
+                found enum `std::result::Result<std::option::Option<AdvancedCondition>, _>`
+
+error[E0277]: async commands that contain references as inputs must return a `Result`
+    --> src/commands.rs:4307:6
+     |
+4307 | ) -> Vec<SynthesisJob> {
+     |      ^^^ the trait `commands::_::AsyncCommandMustReturnResult` is not implemented for `Vec<SynthesisJob>`
+     |
+     = help: the trait `commands::_::AsyncCommandMustReturnResult` is implemented for `std::result::Result<A, B>`
+     = note: required for the cast from `&Vec<SynthesisJob>` to `&dyn commands::_::AsyncCommandMustReturnResult`
+
+error[E0277]: async commands that contain references as inputs must return a `Result`
+    --> src/commands.rs:4316:6
+     |
+4316 | ) -> Vec<SynthesisJob> {
+     |      ^^^ the trait `commands::_::AsyncCommandMustReturnResult` is not implemented for `Vec<SynthesisJob>`
+     |
+     = help: the trait `commands::_::AsyncCommandMustReturnResult` is implemented for `std::result::Result<A, B>`
+     = note: required for the cast from `&Vec<SynthesisJob>` to `&dyn commands::_::AsyncCommandMustReturnResult`
+
+error[E0277]: async commands that contain references as inputs must return a `Result`
+    --> src/commands.rs:4333:6
+     |
+4333 | ) -> usize {
+     |      ^^^^^ the trait `commands::_::AsyncCommandMustReturnResult` is not implemented for `usize`
+     |
+     = help: the trait `commands::_::AsyncCommandMustReturnResult` is implemented for `std::result::Result<A, B>`
+     = note: required for the cast from `&usize` to `&dyn commands::_::AsyncCommandMustReturnResult`
+
+error[E0308]: mismatched types
+    --> src/commands.rs:4521:8
+     |
+4521 |     Ok(state.session_manager.get_combatant_conditions(&session_id, &combatant_id))
+     |     -- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Vec<AdvancedCondition>`, found `Result<Vec<AdvancedCondition>, ...>`
+     |     |
+     |     arguments to this enum variant are incorrect
+     |
+     = note: expected struct `Vec<_>`
+                  found enum `std::result::Result<Vec<_>, SessionError>`
+help: the type constructed contains `std::result::Result<Vec<AdvancedCondition>, SessionError>` due to the type of the argument passed
+    --> src/commands.rs:4521:5
+     |
+4521 |     Ok(state.session_manager.get_combatant_conditions(&session_id, &combatant_id))
+     |     ^^^--------------------------------------------------------------------------^
+     |        |
+     |        this argument influences the type of `Ok`
+note: tuple variant defined here
+    --> /rustc/f8297e351a40c1439a467bbbb6879088047f50b3/library/core/src/result.rs:554:5
+help: use the `?` operator to extract the `std::result::Result<Vec<AdvancedCondition>, SessionError>` value, propagating a `Result::Err` value to the caller
+     |
+4521 |     Ok(state.session_manager.get_combatant_conditions(&session_id, &combatant_id)?)
+     |                                                                                  +
+
+error[E0308]: mismatched types
+    --> src/commands.rs:4531:5
+     |
+4530 |   ) -> Result<Vec<AdvancedCondition>, String> {
+     |        -------------------------------------- expected `std::result::Result<Vec<AdvancedCondition>, std::string::String>` because of return type
+4531 | /     state.session_manager.tick_conditions_end_of_turn(&session_id, &combatant_id)
+4532 | |         .map_err(|e| e.to_string())
+     | |___________________________________^ expected `Result<Vec<AdvancedCondition>, String>`, found `Result<Vec<String>, String>`
+     |
+     = note: expected enum `std::result::Result<Vec<AdvancedCondition>, _>`
+                found enum `std::result::Result<Vec<std::string::String>, _>`
+
+error[E0308]: mismatched types
+    --> src/commands.rs:4542:5
+     |
+4541 |   ) -> Result<Vec<AdvancedCondition>, String> {
+     |        -------------------------------------- expected `std::result::Result<Vec<AdvancedCondition>, std::string::String>` because of return type
+4542 | /     state.session_manager.tick_conditions_start_of_turn(&session_id, &combatant_id)
+4543 | |         .map_err(|e| e.to_string())
+     | |___________________________________^ expected `Result<Vec<AdvancedCondition>, String>`, found `Result<Vec<String>, String>`
+     |
+     = note: expected enum `std::result::Result<Vec<AdvancedCondition>, _>`
+                found enum `std::result::Result<Vec<std::string::String>, _>`
+
+warning: unused import: `futures_util::StreamExt`
+  --> src/core/llm/router.rs:15:5
+   |
+15 | use futures_util::StreamExt;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused variable: `patterns`
+   --> src/core/personality/application.rs:763:9
+    |
+763 |         patterns: &SpeechPatterns,
+    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_patterns`
+
+warning: variable does not need to be mutable
+   --> src/core/personality/application.rs:766:13
+    |
+766 |         let mut result = content.to_string();
+    |             ----^^^^^^
+    |             |
+    |             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `content_type`
+   --> src/core/personality/application.rs:785:9
+    |
+785 |         content_type: &ContentType,
+    |         ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_content_type`
+
+error[E0716]: temporary value dropped while borrowed
+   --> src/core/character_gen/prompts.rs:312:48
+    |
+312 |             Some(custom) => instructions.push(&format!("TONE: {}", custom)),
+    |                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^- temporary value is freed at the end of this statement
+    |                                                |
+    |                                                creates a temporary value which is freed while still in use
+...
+317 |             Some("first_person") => instructions.push(
+    |                                     ------------ borrow later used here
+    |
+    = note: consider using a `let` binding to create a longer lived value
+    = note: this error originates in the macro `format` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0716]: temporary value dropped while borrowed
+   --> src/core/character_gen/prompts.rs:353:48
+    |
+353 |             Some(custom) => instructions.push(&format!("FOCUS: {}", custom)),
+    |                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^- temporary value is freed at the end of this statement
+    |                                                |
+    |                                                creates a temporary value which is freed while still in use
+...
+357 |         if instructions.is_empty() {
+    |            ------------ borrow later used here
+    |
+    = note: consider using a `let` binding to create a longer lived value
+    = note: this error originates in the macro `format` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `options`
+   --> src/core/character_gen/mod.rs:319:32
+    |
+319 |     fn validate_options(&self, options: &GenerationOptions) -> Result<()> {
+    |                                ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_options`
+
+warning: unreachable pattern
+   --> src/core/location_gen.rs:140:13
+    |
+124 |             "prison" | "jail" | "dungeon" => Self::Prison,
+    |             ----------------------------- matches all the relevant values
+...
+140 |             "dungeon" => Self::Dungeon,
+    |             ^^^^^^^^^ no value can reach this
+    |
+    = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `rng`
+   --> src/core/location_gen.rs:544:85
+    |
+544 |     fn generate_description(&self, loc_type: &LocationType, theme: &Option<String>, rng: &mut impl rand::Rng) -> String {
+    |                                                                                     ^^^ help: if this is intentional, prefix it with an underscore: `_rng`
+
+warning: unused variable: `rng`
+   --> src/core/location_gen.rs:566:60
+    |
+566 |     fn generate_atmosphere(&self, loc_type: &LocationType, rng: &mut impl rand::Rng) -> Atmosphere {
+    |                                                            ^^^ help: if this is intentional, prefix it with an underscore: `_rng`
+
+warning: variable does not need to be mutable
+   --> src/core/location_gen.rs:673:13
+    |
+673 |         let mut selected: Vec<_> = features_pool.choose_multiple(rng, count).collect();
+    |             ----^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+error[E0499]: cannot borrow `*rng` as mutable more than once at a time
+   --> src/core/location_gen.rs:955:77
+    |
+955 |                 let items: Vec<String> = dungeon_items.choose_multiple(rng, rng.gen_range(2..=4))
+    |                                                        --------------- ---  ^^^ second mutable borrow occurs here
+    |                                                        |               |
+    |                                                        |               first mutable borrow occurs here
+    |                                                        first borrow later used by call
+    |
+help: try adding a local storing this argument...
+   --> src/core/location_gen.rs:955:77
+    |
+955 |                 let items: Vec<String> = dungeon_items.choose_multiple(rng, rng.gen_range(2..=4))
+    |                                                                             ^^^^^^^^^^^^^^^^^^^^
+help: ...and then using that local as the argument to this call
+   --> src/core/location_gen.rs:955:42
+    |
+955 |                 let items: Vec<String> = dungeon_items.choose_multiple(rng, rng.gen_range(2..=4))
+    |                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0499]: cannot borrow `*rng` as mutable more than once at a time
+   --> src/core/location_gen.rs:964:77
+    |
+964 |                 let items: Vec<String> = dungeon_items.choose_multiple(rng, rng.gen_range(1..=2))
+    |                                                        --------------- ---  ^^^ second mutable borrow occurs here
+    |                                                        |               |
+    |                                                        |               first mutable borrow occurs here
+    |                                                        first borrow later used by call
+    |
+help: try adding a local storing this argument...
+   --> src/core/location_gen.rs:964:77
+    |
+964 |                 let items: Vec<String> = dungeon_items.choose_multiple(rng, rng.gen_range(1..=2))
+    |                                                                             ^^^^^^^^^^^^^^^^^^^^
+help: ...and then using that local as the argument to this call
+   --> src/core/location_gen.rs:964:42
+    |
+964 |                 let items: Vec<String> = dungeon_items.choose_multiple(rng, rng.gen_range(1..=2))
+    |                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0499]: cannot borrow `*rng` as mutable more than once at a time
+   --> src/core/location_gen.rs:973:80
+    |
+973 |                 let items: Vec<String> = wilderness_items.choose_multiple(rng, rng.gen_range(1..=2))
+    |                                                           --------------- ---  ^^^ second mutable borrow occurs here
+    |                                                           |               |
+    |                                                           |               first mutable borrow occurs here
+    |                                                           first borrow later used by call
+    |
+help: try adding a local storing this argument...
+   --> src/core/location_gen.rs:973:80
+    |
+973 |                 let items: Vec<String> = wilderness_items.choose_multiple(rng, rng.gen_range(1..=2))
+    |                                                                                ^^^^^^^^^^^^^^^^^^^^
+help: ...and then using that local as the argument to this call
+   --> src/core/location_gen.rs:973:42
+    |
+973 |                 let items: Vec<String> = wilderness_items.choose_multiple(rng, rng.gen_range(1..=2))
+    |                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0499]: cannot borrow `*rng` as mutable more than once at a time
+   --> src/core/location_gen.rs:994:75
+    |
+994 |                 let items: Vec<String> = urban_items.choose_multiple(rng, rng.gen_range(0..=1))
+    |                                                      --------------- ---  ^^^ second mutable borrow occurs here
+    |                                                      |               |
+    |                                                      |               first mutable borrow occurs here
+    |                                                      first borrow later used by call
+    |
+help: try adding a local storing this argument...
+   --> src/core/location_gen.rs:994:75
+    |
+994 |                 let items: Vec<String> = urban_items.choose_multiple(rng, rng.gen_range(0..=1))
+    |                                                                           ^^^^^^^^^^^^^^^^^^^^
+help: ...and then using that local as the argument to this call
+   --> src/core/location_gen.rs:994:42
+    |
+994 |                 let items: Vec<String> = urban_items.choose_multiple(rng, rng.gen_range(0..=1))
+    |                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0502]: cannot borrow `*cache` as mutable because it is also borrowed as immutable
+   --> src/core/search/embeddings.rs:218:13
+    |
+209 |         let mut entries: Vec<_> = cache.iter().collect();
+    |                                   ----- immutable borrow occurs here
+...
+217 |         for (key, _) in entries.into_iter().take(to_remove) {
+    |                         ----------------------------------- immutable borrow later used here
+218 |             cache.remove(key);
+    |             ^^^^^^^^^^^^^^^^^ mutable borrow occurs here
+
+warning: unused variable: `words`
+   --> src/core/query_expansion.rs:195:13
+    |
+195 |         let words: Vec<&str> = query.split_whitespace().collect();
+    |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_words`
+
+warning: unused variable: `n`
+   --> src/core/session/conditions.rs:353:38
+    |
+353 |             ConditionDuration::Turns(n) if is_own_turn => {
+    |                                      ^ help: if this is intentional, prefix it with an underscore: `_n`
+
+warning: unused variable: `connection_type`
+    --> src/commands.rs:5306:5
+     |
+5306 |     connection_type: String,
+     |     ^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_connection_type`
+
+warning: unused variable: `description`
+    --> src/commands.rs:5307:5
+     |
+5307 |     description: Option<String>,
+     |     ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_description`
+
+Some errors have detailed explanations: E0061, E0277, E0308, E0499, E0502, E0716.
+For more information about an error, try `rustc --explain E0061`.
+warning: `ttrpg-assistant` (lib) generated 55 warnings
+error: could not compile `ttrpg-assistant` (lib) due to 17 previous errors; 55 warnings emitted

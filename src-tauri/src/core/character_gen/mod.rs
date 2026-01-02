@@ -18,7 +18,6 @@ pub mod prompts;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use rand::Rng;
-use uuid::Uuid;
 use thiserror::Error;
 
 // Re-export system generators

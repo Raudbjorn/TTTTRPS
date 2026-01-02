@@ -21,6 +21,7 @@
 //!   - Click to focus, double-click to open details
 
 use leptos::prelude::*;
+use crate::components::session::timeline_view::FilterToggle;
 
 /// Entity types for the graph
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -923,11 +924,11 @@ pub fn EntityGraph(
 }
 
 #[component]
-fn LegendItem(color: &'static str, label: &'static str) -> impl IntoView {
+fn LegendItem(entity_type: EntityType) -> impl IntoView {
     view! {
         <div class="flex items-center gap-2">
-            <span class=format!("w-3 h-3 rounded-full {}", color)></span>
-            <span class="text-[var(--text-muted)]">{label}</span>
+            <span class=format!("w-3 h-3 rounded-full {}", entity_type.bg_class())></span>
+            <span class="text-zinc-400">{entity_type.label()}</span>
         </div>
     }
 }
@@ -965,6 +966,51 @@ fn ResetIcon() -> impl IntoView {
             <path d="M21 12A9 9 0 0 0 6 5.3L3 8"></path>
             <path d="M21 22v-6h-6"></path>
             <path d="M3 12a9 9 0 0 0 15 6.7l3-2.7"></path>
+        </svg>
+    }
+}
+
+#[component]
+fn SearchIcon() -> impl IntoView {
+    view! {
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+    }
+}
+
+#[component]
+fn FitIcon() -> impl IntoView {
+    view! {
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <polyline points="9 21 3 21 3 15"></polyline>
+            <line x1="21" y1="3" x2="14" y2="10"></line>
+            <line x1="3" y1="21" x2="10" y2="14"></line>
+        </svg>
+    }
+}
+
+#[component]
+fn CloseIcon() -> impl IntoView {
+    view! {
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+    }
+}
+
+#[component]
+fn ConnectionIcon() -> impl IntoView {
+    view! {
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="18" cy="5" r="3"></circle>
+            <circle cx="6" cy="12" r="3"></circle>
+            <circle cx="18" cy="19" r="3"></circle>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
         </svg>
     }
 }

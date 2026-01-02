@@ -18,8 +18,8 @@ use uuid::Uuid;
 use thiserror::Error;
 
 use super::session::conditions::{
-    AdvancedCondition, ConditionDuration as AdvancedConditionDuration, ConditionEffect, ConditionTracker,
-    ConditionTemplates, StackingRule, SaveTiming,
+    AdvancedCondition, ConditionDuration as AdvancedConditionDuration, ConditionTracker,
+    ConditionTemplates,
 };
 
 // TASK-014: Timeline imports

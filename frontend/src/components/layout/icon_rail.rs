@@ -126,28 +126,28 @@ pub fn IconRail() -> impl IntoView {
                 })
                 icon="home"
                 label="Home"
-                shortcut=Some("Ctrl+1")
+                shortcut="Ctrl+1"
                 on_click=make_nav("/", ViewType::Home)
             />
             <RailIcon
                 active=Signal::derive(move || is_active("/campaigns"))
                 icon="folder"
                 label="Campaigns"
-                shortcut=Some("Ctrl+2")
+                shortcut="Ctrl+2"
                 on_click=make_nav("/campaigns", ViewType::Campaigns)
             />
             <RailIcon
                 active=Signal::derive(move || is_active("/library"))
                 icon="book"
                 label="Library"
-                shortcut=Some("Ctrl+3")
+                shortcut="Ctrl+3"
                 on_click=make_nav("/library", ViewType::Library)
             />
             <RailIcon
                 active=Signal::derive(move || is_active("/chat"))
                 icon="message"
                 label="Chat"
-                shortcut=Some("Ctrl+4")
+                shortcut="Ctrl+4"
                 on_click=make_nav("/chat", ViewType::Chat)
             />
 
@@ -198,7 +198,7 @@ pub fn IconRail() -> impl IntoView {
                 active=Signal::derive(move || is_active("/settings"))
                 icon="settings"
                 label="Settings"
-                shortcut=Some("Ctrl+,")
+                shortcut="Ctrl+,"
                 on_click=make_nav("/settings", ViewType::Settings)
             />
         </nav>

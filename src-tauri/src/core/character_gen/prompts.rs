@@ -3,7 +3,7 @@
 //! Provides structured prompt templates for generating backstories, personality traits,
 //! and character descriptions that match campaign settings and game system conventions.
 
-use crate::core::character_gen::{Character, GameSystem, BackstoryLength};
+use crate::core::character_gen::{GameSystem, BackstoryLength};
 use super::backstory::{BackstoryRequest, BackstoryStyle};
 
 /// System prompt builder for backstory generation

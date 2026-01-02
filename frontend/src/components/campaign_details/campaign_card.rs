@@ -99,7 +99,7 @@ pub fn CampaignCard(
             on:mouseleave=move |_| is_hovered.set(false)
             role="button"
             tabindex="0"
-            aria-label=format!("Open campaign: {}", campaign_name)
+            aria-label=format!("Open campaign: {}", campaign_name.clone())
         >
             // Cover Art Background
             <div class=format!(
@@ -151,7 +151,7 @@ pub fn CampaignCard(
                 <footer class="space-y-3">
                     // Title
                     <h3 class="text-lg font-bold text-[var(--text-primary)] leading-tight group-hover:text-[var(--accent)] transition-colors line-clamp-2">
-                        {campaign_name}
+                        {campaign_name.clone()}
                     </h3>
 
                     // Description (if available)

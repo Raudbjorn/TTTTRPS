@@ -2122,7 +2122,7 @@ pub struct NPCGenerationOptions {
     pub include_secrets: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NpcSummary {
     pub id: String,
     pub name: String,

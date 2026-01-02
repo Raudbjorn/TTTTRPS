@@ -3,9 +3,9 @@
 //! OpenRouter provides access to 400+ models from various providers through a unified API.
 
 use super::openai::OpenAICompatibleProvider;
-use crate::core::llm::cost::{ProviderPricing, TokenUsage};
+use crate::core::llm::cost::ProviderPricing;
 use crate::core::llm::router::{
-    ChatChunk, ChatRequest, ChatResponse, LLMError, LLMProvider, Result,
+    ChatChunk, ChatRequest, ChatResponse, LLMProvider, Result,
 };
 use async_trait::async_trait;
 use tokio::sync::mpsc;

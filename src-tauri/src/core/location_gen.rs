@@ -15,7 +15,6 @@
 
 use crate::core::llm::{LLMClient, LLMConfig, ChatMessage, ChatRequest, MessageRole};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use uuid::Uuid;
 use thiserror::Error;
 use chrono::{DateTime, Utc};
@@ -383,7 +382,7 @@ impl LocationGenerator {
     /// Generate a location without LLM (uses templates)
     pub fn generate_quick(&self, options: &LocationGenerationOptions) -> Location {
         let mut rng = rand::thread_rng();
-        use rand::Rng;
+        
 
         let location_type = options.location_type.as_deref()
             .map(LocationType::from_str)
@@ -670,7 +669,7 @@ impl LocationGenerator {
 
         // Select 3-5 random features
         let count = rng.gen_range(3..=5).min(features_pool.len());
-        let mut selected: Vec<_> = features_pool.choose_multiple(rng, count).collect();
+        let selected: Vec<_> = features_pool.choose_multiple(rng, count).collect();
 
         selected.iter().map(|(name, desc, interactive, hidden, effect)| {
             NotableFeature {

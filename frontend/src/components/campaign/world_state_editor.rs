@@ -419,7 +419,7 @@ fn EventsContent(
                         .map(|event| {
                             let cb = delete_cb.clone();
                             view! {
-                                <WorldEventCard event=event on_delete=Some(cb) />
+                                <WorldEventCard event=event on_delete=cb />
                             }
                         })
                         .collect_view()
@@ -774,7 +774,7 @@ pub fn WorldStateEditor(
                         }.into_any(),
                         WorldStateTab::Locations => view! {
                             <LocationsContent
-                                campaign_id=cid
+                                _campaign_id=cid
                                 locations=ws.locations.into_values().collect()
                             />
                         }.into_any(),

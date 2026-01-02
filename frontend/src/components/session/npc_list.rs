@@ -351,6 +351,7 @@ fn NpcSection(
     }
 
     let unread_count: u32 = npcs.iter().map(|n| n.unread_count).sum();
+    let npcs_store = StoredValue::new(npcs);
 
     view! {
         <div class="mb-1">
@@ -387,7 +388,7 @@ fn NpcSection(
             // NPC List
             <Show when=move || !collapsed.get()>
                 <div class="space-y-0.5 px-2">
-                    {npcs.into_iter().map(|npc| {
+                    {npcs_store.get_value().into_iter().map(|npc| {
                         let npc_id = npc.id.clone();
                         view! {
                             <NpcContactItem

@@ -8,11 +8,10 @@
 //! - Search hints for the UI
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::time::Instant;
 
-use super::synonyms::{TTRPGSynonyms, ClarificationPrompt, QueryExpansionResult, ExpansionInfo};
-use crate::core::spell_correction::{SpellCorrector, CorrectionResult, SpellingSuggestion};
+use super::synonyms::{TTRPGSynonyms, ClarificationPrompt, QueryExpansionResult};
+use crate::core::spell_correction::{SpellCorrector, CorrectionResult};
 
 // ============================================================================
 // Types

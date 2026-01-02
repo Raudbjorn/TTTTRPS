@@ -135,7 +135,7 @@ impl EventSeverityExt for TimelineEventSeverity {
             Self::Info => BadgeVariant::Default,
             Self::Notable => BadgeVariant::Info,
             Self::Important => BadgeVariant::Warning,
-            Self::Critical => BadgeVariant::Error,
+            Self::Critical => BadgeVariant::Danger,
         }
     }
 }
@@ -292,7 +292,7 @@ pub fn TimelineView(
 
 /// Filter toggle button
 #[component]
-fn FilterToggle(
+pub fn FilterToggle(
     label: &'static str,
     active: RwSignal<bool>,
     color: &'static str,

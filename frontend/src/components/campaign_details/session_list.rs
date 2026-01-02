@@ -58,6 +58,10 @@ pub fn ContextSidebar(
     let planned_expanded = RwSignal::new(true);
     let history_expanded = RwSignal::new(true);
 
+    let active_id_current = active_session_id.clone();
+    let active_id_planned = active_session_id.clone();
+    let active_id_past = active_session_id;
+
     view! {
         <aside
             class="flex flex-col h-full bg-[var(--bg-surface)] border-r border-[var(--border-subtle)]"
@@ -90,7 +94,7 @@ pub fn ContextSidebar(
                     let session_id = session.id.clone();
                     let sess_num = session.session_number;
                     let on_click = on_select_session.clone();
-                    let is_active = active_session_id.as_ref() == Some(&session_id);
+                    let is_active = active_id_current.as_ref() == Some(&session_id);
 
                     view! {
                         <SessionSection
@@ -114,7 +118,8 @@ pub fn ContextSidebar(
                 <SessionSection
                     title="Planned"
                     expanded=planned_expanded
-                    count=Some(planned_sessions.len())
+                    count=planned_sessions.len()
+                    indicator={Option::<&str>::None}
                 >
                     {if planned_sessions.is_empty() {
                         view! {
@@ -137,7 +142,7 @@ pub fn ContextSidebar(
                             <div class="space-y-1">
                                 {planned_sessions.iter().map(|s| {
                                     let session = s.clone();
-                                    let is_active = active_session_id.as_ref() == Some(&s.id);
+                                    let is_active = active_id_planned.as_ref() == Some(&s.id);
                                     let on_click = on_select_session.clone();
                                     view! {
                                         <SessionCard
@@ -157,7 +162,8 @@ pub fn ContextSidebar(
                 <SessionSection
                     title="History"
                     expanded=history_expanded
-                    count=Some(past_sessions.len())
+                    count=past_sessions.len()
+                    indicator={Option::<&str>::None}
                 >
                     {if past_sessions.is_empty() {
                         view! {
@@ -170,7 +176,7 @@ pub fn ContextSidebar(
                             <div class="space-y-1">
                                 {past_sessions.iter().map(|s| {
                                     let session = s.clone();
-                                    let is_active = active_session_id.as_ref() == Some(&s.id);
+                                    let is_active = active_id_past.as_ref() == Some(&s.id);
                                     let on_click = on_select_session.clone();
                                     view! {
                                         <SessionCard

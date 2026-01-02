@@ -115,6 +115,25 @@ pub fn DocumentDetail() -> impl IntoView {
             {move || {
                 match state.selected_document.get() {
                     Some(doc) => {
+                        let title = doc.title.clone();
+                        let source_type = doc.source_type.clone();
+                        let page_number = doc.page_number;
+                        let score = doc.score;
+                        let keyword_rank = doc.keyword_rank;
+                        let semantic_rank = doc.semantic_rank;
+                        let content = doc.content.clone();
+                        let snippet = doc.snippet.clone();
+                        let source = doc.source.clone();
+                        // For the second usage of values in logic blocks, we might need more clones.
+                        // But let's see. The view! macro captures by reference usually or by move if marked `move`.
+                        // The entire move closure `move ||` contains the match on `state.selected_document.get()`.
+                        // `state` is Copy (likely `Signal` or wrapper).
+                        // `doc` is a `SearchResult` likely.
+
+                        let content_len = content.len();
+                        let source_clone = source.clone();
+                        let source_clone2 = source.clone();
+
                         view! {
                             <div class="flex-1 flex flex-col overflow-hidden">
                                 // Header
@@ -122,12 +141,12 @@ pub fn DocumentDetail() -> impl IntoView {
                                     <div class="flex items-start justify-between gap-3">
                                         <div class="flex-1 min-w-0">
                                             <h2 class="text-lg font-semibold text-[var(--text-primary)] truncate">
-                                                {doc.title.clone()}
+                                                {title}
                                             </h2>
                                             <div class="flex items-center gap-2 mt-1">
-                                                <span class="text-lg">{doc.source_type.icon()}</span>
-                                                <Badge variant=BadgeVariant::Default>{doc.source_type.label()}</Badge>
-                                                {doc.page_number.map(|p| view! {
+                                                <span class="text-lg">{source_type.icon()}</span>
+                                                <Badge variant=BadgeVariant::Default>{source_type.label()}</Badge>
+                                                {page_number.map(|p| view! {
                                                     <span class="text-sm text-[var(--text-muted)]">
                                                         {format!("Page {}", p)}
                                                     </span>
@@ -152,10 +171,10 @@ pub fn DocumentDetail() -> impl IntoView {
                                         <div class="px-3 py-1.5 rounded-lg bg-[var(--accent)]/20 border border-[var(--accent)]/30">
                                             <span class="text-xs text-[var(--text-muted)]">"Score: "</span>
                                             <span class="text-sm font-mono text-[var(--accent)]">
-                                                {format!("{:.3}", doc.score)}
+                                                {format!("{:.3}", score)}
                                             </span>
                                         </div>
-                                        {doc.keyword_rank.map(|r| view! {
+                                        {keyword_rank.map(|r| view! {
                                             <div class="px-3 py-1.5 rounded-lg bg-blue-900/30 border border-blue-500/30">
                                                 <span class="text-xs text-[var(--text-muted)]">"Keyword: "</span>
                                                 <span class="text-sm font-mono text-blue-400">
@@ -163,7 +182,7 @@ pub fn DocumentDetail() -> impl IntoView {
                                                 </span>
                                             </div>
                                         })}
-                                        {doc.semantic_rank.map(|r| view! {
+                                        {semantic_rank.map(|r| view! {
                                             <div class="px-3 py-1.5 rounded-lg bg-purple-900/30 border border-purple-500/30">
                                                 <span class="text-xs text-[var(--text-muted)]">"Semantic: "</span>
                                                 <span class="text-sm font-mono text-purple-400">
@@ -193,9 +212,9 @@ pub fn DocumentDetail() -> impl IntoView {
                                             )>
                                                 <p class="whitespace-pre-wrap">
                                                     {if show_full_content.get() {
-                                                        doc.content.clone()
+                                                        content.clone()
                                                     } else {
-                                                        doc.snippet.clone()
+                                                        snippet.clone()
                                                     }}
                                                 </p>
                                                 {move || {

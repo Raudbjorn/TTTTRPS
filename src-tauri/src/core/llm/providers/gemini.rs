@@ -2,7 +2,7 @@
 
 use crate::core::llm::cost::{ProviderPricing, TokenUsage};
 use crate::core::llm::router::{
-    ChatChunk, ChatMessage, ChatRequest, ChatResponse, LLMError, LLMProvider, MessageRole, Result,
+    ChatChunk, ChatRequest, ChatResponse, LLMError, LLMProvider, MessageRole, Result,
 };
 use async_trait::async_trait;
 use futures_util::StreamExt;
