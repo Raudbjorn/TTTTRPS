@@ -1,0 +1,366 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =============================================================================
+   TTRPG Assistant - Tailwind Integration Layer
+   Version 2.0.0
+
+   Theme definitions are consolidated into /public/themes.css which is the
+   single source of truth for CSS custom properties.
+
+   Visual effects are defined in /src/styles/effects.css for modularity.
+
+   This file provides:
+   - Tailwind-specific utilities that reference theme variables
+   - Effect class integration with Tailwind's utility system
+   - Accessibility-aware custom utilities
+
+   See UXdesign/design.md for the full theme specification.
+   See src/services/theme_service.rs for Rust-side theme blending logic.
+============================================================================= */
+
+/* -----------------------------------------------------------------------------
+   Base Layer Overrides
+----------------------------------------------------------------------------- */
+@layer base {
+  /* Smooth scrolling by default, respects reduced motion */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+
+  /* Focus visible outline using theme accent */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* Selection color using theme colors */
+  ::selection {
+    background-color: var(--accent);
+    color: var(--bg-deep);
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   Component Layer - Reusable Themed Components
+----------------------------------------------------------------------------- */
+@layer components {
+  /* Themed Card */
+  .card-themed {
+    @apply transition-all duration-200;
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+  }
+
+  .card-themed:hover {
+    border-color: var(--border-strong);
+  }
+
+  /* Themed Button - Primary */
+  .btn-themed-primary {
+    @apply px-4 py-2 font-medium transition-all duration-150;
+    background-color: var(--accent);
+    color: var(--bg-deep);
+    border-radius: var(--radius-md);
+  }
+
+  .btn-themed-primary:hover {
+    background-color: var(--accent-hover);
+  }
+
+  .btn-themed-primary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px var(--glow-color);
+  }
+
+  /* Themed Button - Ghost */
+  .btn-themed-ghost {
+    @apply px-4 py-2 font-medium transition-all duration-150;
+    background-color: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+  }
+
+  .btn-themed-ghost:hover {
+    color: var(--text-primary);
+    border-color: var(--border-strong);
+    background-color: var(--bg-surface);
+  }
+
+  /* Themed Input */
+  .input-themed {
+    @apply w-full px-3 py-2 transition-colors duration-150;
+    background-color: var(--bg-deep);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+  }
+
+  .input-themed:focus {
+    border-color: var(--accent);
+    outline: none;
+    box-shadow: 0 0 0 2px var(--glow-color);
+  }
+
+  .input-themed::placeholder {
+    color: var(--text-muted);
+  }
+
+  /* Glass Panel */
+  .panel-glass {
+    background: var(--bg-surface);
+    backdrop-filter: blur(var(--effect-blur));
+    -webkit-backdrop-filter: blur(var(--effect-blur));
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+  }
+
+  /* Skip Link for Accessibility */
+  .skip-link {
+    @apply absolute z-50 px-6 py-3 font-bold no-underline;
+    top: -100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: var(--bg-elevated);
+    color: var(--text-primary);
+    border-radius: var(--radius-md);
+  }
+
+  .skip-link:focus {
+    top: 1rem;
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   Utility Layer - Theme-Aware Utilities
+----------------------------------------------------------------------------- */
+@layer utilities {
+  /* Text Glow Utilities */
+  .glow-text {
+    text-shadow:
+      0 0 10px var(--accent),
+      0 0 20px var(--accent);
+  }
+
+  .glow-text-subtle {
+    text-shadow:
+      0 0 2px var(--glow-color),
+      0 0 8px var(--glow-color);
+  }
+
+  /* Box Glow Utilities */
+  .glow-box {
+    box-shadow:
+      0 0 4px var(--glow-color),
+      0 0 12px var(--glow-color);
+  }
+
+  .glow-box-intense {
+    box-shadow:
+      0 0 8px var(--glow-color),
+      0 0 20px var(--glow-color),
+      0 0 40px var(--glow-color);
+  }
+
+  /* Theme Color Utilities */
+  .text-theme-primary {
+    color: var(--text-primary);
+  }
+
+  .text-theme-muted {
+    color: var(--text-muted);
+  }
+
+  .text-theme-accent {
+    color: var(--accent);
+  }
+
+  .text-theme-danger {
+    color: var(--danger);
+  }
+
+  .bg-theme-deep {
+    background-color: var(--bg-deep);
+  }
+
+  .bg-theme-surface {
+    background-color: var(--bg-surface);
+  }
+
+  .bg-theme-elevated {
+    background-color: var(--bg-elevated);
+  }
+
+  .border-theme-subtle {
+    border-color: var(--border-subtle);
+  }
+
+  .border-theme-strong {
+    border-color: var(--border-strong);
+  }
+
+  /* Border Radius Using Theme Variables */
+  .rounded-theme-sm {
+    border-radius: var(--radius-sm);
+  }
+
+  .rounded-theme-md {
+    border-radius: var(--radius-md);
+  }
+
+  .rounded-theme-lg {
+    border-radius: var(--radius-lg);
+  }
+
+  /* Font Family Utilities */
+  .font-theme-body {
+    font-family: var(--font-body);
+  }
+
+  .font-theme-header {
+    font-family: var(--font-header);
+  }
+
+  .font-theme-mono {
+    font-family: var(--font-mono);
+  }
+
+  /* Transition Using Theme Variables */
+  .transition-theme-fast {
+    transition: all var(--transition-fast);
+  }
+
+  .transition-theme-base {
+    transition: all var(--transition-base);
+  }
+
+  .transition-theme-slow {
+    transition: all var(--transition-slow);
+  }
+
+  /* Focus Ring Using Theme Accent */
+  .ring-theme-accent {
+    --tw-ring-color: var(--accent);
+  }
+
+  /* High Contrast Focus (WCAG AAA) */
+  .focus-high:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 3px;
+    box-shadow: 0 0 0 6px var(--glow-color);
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   Accessibility Utilities
+----------------------------------------------------------------------------- */
+@layer utilities {
+  /* Screen Reader Only */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+
+  /* Becomes visible on focus (for skip links) */
+  .sr-only-focusable:focus,
+  .sr-only-focusable:focus-within {
+    position: static;
+    width: auto;
+    height: auto;
+    padding: inherit;
+    margin: inherit;
+    overflow: visible;
+    clip: auto;
+    white-space: normal;
+  }
+
+  /* Reduced Motion Safe Animation */
+  .motion-safe\:animate-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .motion-safe\:animate-pulse {
+      animation: none;
+    }
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   Streaming Chat Animations (TASK-003)
+----------------------------------------------------------------------------- */
+@layer utilities {
+  /* Blinking cursor for streaming text */
+  .animate-blink {
+    animation: blink 1s step-end infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  /* Subtle pulse for streaming messages */
+  .animate-pulse-subtle {
+    animation: pulse-subtle 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-subtle {
+    0%, 100% {
+      opacity: 1;
+      border-color: oklch(60% 0.15 250 / 0.5);
+    }
+    50% {
+      opacity: 0.95;
+      border-color: oklch(65% 0.18 250 / 0.7);
+    }
+  }
+
+  /* Streaming content smooth text reveal */
+  .streaming-content {
+    /* Ensure text renders smoothly during streaming */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   Reduced Motion Support - Global Override
+----------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Disable streaming animations for reduced motion */
+  .animate-blink,
+  .animate-pulse-subtle {
+    animation: none !important;
+  }
+
+  .animate-blink {
+    opacity: 1 !important;
+  }
+}

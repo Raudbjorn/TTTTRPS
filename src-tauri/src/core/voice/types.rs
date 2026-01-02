@@ -328,7 +328,7 @@ pub struct SynthesisRequest {
     pub output_format: OutputFormat,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq, Hash)]
 pub enum OutputFormat {
     #[default]
     Mp3,

@@ -1,5 +1,6 @@
-// Design System Components for Leptos
-// Design system components
+//! Design System Components for Leptos
+//!
+//! A collection of reusable, theme-aware UI components.
 
 mod button;
 mod input;
@@ -9,6 +10,8 @@ mod select;
 mod modal;
 mod loading;
 mod markdown;
+mod slider;
+mod effects;
 
 pub use button::{Button, ButtonVariant};
 pub use input::Input;
@@ -18,3 +21,10 @@ pub use select::Select;
 pub use modal::Modal;
 pub use loading::{LoadingSpinner, TypingIndicator};
 pub use markdown::Markdown;
+pub use slider::{Slider, DiscreteSlider};
+pub use effects::{
+    BoxGlow, EffectsContainer, Flicker, FilmGrain, GlassPanel, GlitchText,
+    GlowIntensity, RedactedReveal, RedactedText, RedactedTextToggle, Scanlines,
+    ScanlineVariant, Stamp, StampStyle, TextGlow, Typewriter, Vignette,
+    VignetteIntensity, recommended_effects, recommended_glow,
+};

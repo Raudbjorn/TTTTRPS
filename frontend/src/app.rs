@@ -10,6 +10,7 @@ use crate::components::library::Library;
 use crate::components::campaigns::Campaigns;
 use crate::components::session::Session;
 use crate::components::character::CharacterCreator;
+use crate::components::analytics::{UsageDashboardPage, SearchAnalyticsPage, AuditLogsPage};
 use crate::services::layout_service::provide_layout_state;
 use crate::services::theme_service::{ThemeState, provide_theme_state};
 
@@ -63,11 +64,16 @@ pub fn App() -> impl IntoView {
             >
                 <Routes fallback=|| view! { <div>"404 - Page Not Found"</div> }>
                     <Route path=path!("/") view=Chat />
+                    <Route path=path!("/chat") view=Chat />
                     <Route path=path!("/settings") view=Settings />
                     <Route path=path!("/library") view=Library />
                     <Route path=path!("/campaigns") view=Campaigns />
                     <Route path=path!("/session/:campaign_id") view=Session />
                     <Route path=path!("/character") view=CharacterCreator />
+                    // Analytics routes (TASK-022, TASK-023, TASK-024)
+                    <Route path=path!("/analytics/usage") view=UsageDashboardPage />
+                    <Route path=path!("/analytics/search") view=SearchAnalyticsPage />
+                    <Route path=path!("/analytics/audit") view=AuditLogsPage />
                 </Routes>
             </MainShell>
         </Router>

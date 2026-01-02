@@ -28,33 +28,41 @@ This document contains actionable tasks for achieving feature parity, organized 
 ### TASK-001: Setup SQLite Database Layer
 **Requirement:** REQ-CAMP-001, REQ-CAMP-002, REQ-SESS-001
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 **Description:**
 Implement SQLite database layer for persistent structured data storage alongside Meilisearch.
 
 **Subtasks:**
-- [ ] Add rusqlite dependency to Cargo.toml
-- [ ] Create `src-tauri/src/core/database/mod.rs` module
-- [ ] Implement database connection pool
-- [ ] Create migration system for schema versioning
-- [ ] Implement initial schema (campaigns, sessions, characters, npcs, locations)
-- [ ] Add database initialization to AppState
-- [ ] Write unit tests for database operations
+- [x] Add sqlx (async SQLite) dependency to Cargo.toml
+- [x] Create `src-tauri/src/database/mod.rs` module
+- [x] Implement database connection pool (SqlitePool with WAL mode)
+- [x] Create migration system for schema versioning (16 migrations)
+- [x] Implement initial schema (campaigns, sessions, characters, npcs, locations, entity_relationships, voice_profiles, session_events, combat_states, session_notes, campaign_versions)
+- [x] Add database initialization to AppState
+- [x] Write unit tests for database operations
 
-**Files to Create/Modify:**
-- `src-tauri/Cargo.toml`
-- `src-tauri/src/core/database/mod.rs`
-- `src-tauri/src/core/database/migrations.rs`
-- `src-tauri/src/core/database/schema.rs`
-- `src-tauri/src/commands.rs` (add state)
-- `src-tauri/src/main.rs` (initialize)
+**Implementation Notes:**
+- Used `sqlx` instead of `rusqlite` for async compatibility with Tauri
+- Database module located at `src-tauri/src/database/` (not `core/database/`)
+- Full schema includes 30+ tables across 16 migrations
+- Connection pool with 5 max connections, WAL journal mode, 30s busy timeout
+
+**Files Created/Modified:**
+- `src-tauri/Cargo.toml` - sqlx dependency with sqlite, chrono, uuid, json features
+- `src-tauri/src/database/mod.rs` - Database struct with all CRUD operations
+- `src-tauri/src/database/migrations.rs` - 16 versioned migrations
+- `src-tauri/src/database/models.rs` - All record types with serde + sqlx derives
+- `src-tauri/src/database/backup.rs` - Backup/restore functionality
+- `src-tauri/src/lib.rs` - Module export
+- `src-tauri/src/main.rs` - Database initialization in AppState
+- `src-tauri/src/tests/database_tests.rs` - Comprehensive unit tests
 
 **Acceptance Criteria:**
-- Database file created in app data directory
-- Migrations run automatically on startup
-- All tables from design.md schema exist
-- CRUD operations work for all entity types
+- [x] Database file created in app data directory (`ttrpg_assistant.db`)
+- [x] Migrations run automatically on startup
+- [x] All tables from design.md schema exist (and more)
+- [x] CRUD operations work for all entity types
 
 ---
 

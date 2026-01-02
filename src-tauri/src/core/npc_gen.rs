@@ -286,6 +286,7 @@ impl NPCGenerator {
             system_prompt: Some("You are a creative TTRPG game master assistant specializing in NPC creation. Generate detailed, memorable NPCs with rich personalities and interesting hooks. Always respond with valid JSON.".to_string()),
             temperature: Some(0.8),
             max_tokens: Some(2000),
+            provider: None,
         };
 
         let response = llm.chat(request).await

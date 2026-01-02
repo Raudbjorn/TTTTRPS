@@ -7,7 +7,7 @@ use sqlx::Row;
 use tracing::{info, warn};
 
 /// Current database schema version
-const SCHEMA_VERSION: i32 = 8;
+const SCHEMA_VERSION: i32 = 17;
 
 /// Run all pending migrations
 pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
@@ -65,6 +65,15 @@ async fn run_migration(pool: &SqlitePool, version: i32) -> Result<(), sqlx::Erro
         6 => ("npc_personality_link", MIGRATION_V6),
         7 => ("npc_data_json", MIGRATION_V7),
         8 => ("session_ordering", MIGRATION_V8),
+        9 => ("campaign_extended_fields", MIGRATION_V9),
+        10 => ("npc_extended_fields", MIGRATION_V10),
+        11 => ("campaign_versions", MIGRATION_V11),
+        12 => ("entity_relationships", MIGRATION_V12),
+        13 => ("voice_profiles", MIGRATION_V13),
+        14 => ("session_notes", MIGRATION_V14),
+        15 => ("session_events", MIGRATION_V15),
+        16 => ("combat_states", MIGRATION_V16),
+        17 => ("search_analytics", MIGRATION_V17),
         _ => {
             warn!("Unknown migration version: {}", version);
             return Ok(());
@@ -500,4 +509,206 @@ ALTER TABLE npcs ADD COLUMN data_json TEXT;
 const MIGRATION_V8: &str = r#"
 ALTER TABLE sessions ADD COLUMN order_index INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS idx_sessions_order ON sessions(order_index);
+"#;
+
+/// Migration v9: Add extended fields to campaigns table
+const MIGRATION_V9: &str = r#"
+ALTER TABLE campaigns ADD COLUMN setting TEXT;
+ALTER TABLE campaigns ADD COLUMN current_in_game_date TEXT;
+ALTER TABLE campaigns ADD COLUMN house_rules TEXT;
+ALTER TABLE campaigns ADD COLUMN world_state TEXT;
+ALTER TABLE campaigns ADD COLUMN archived_at TEXT;
+"#;
+
+/// Migration v10: Add extended fields to NPCs table
+/// Note: voice_profile_id and location_id references are added but FK constraints
+/// are not enforced on existing columns in SQLite without table recreation
+const MIGRATION_V10: &str = r#"
+ALTER TABLE npcs ADD COLUMN location_id TEXT;
+ALTER TABLE npcs ADD COLUMN voice_profile_id TEXT;
+ALTER TABLE npcs ADD COLUMN quest_hooks TEXT;
+CREATE INDEX IF NOT EXISTS idx_npcs_location ON npcs(location_id);
+CREATE INDEX IF NOT EXISTS idx_npcs_voice_profile ON npcs(voice_profile_id);
+"#;
+
+/// Migration v11: Campaign versioning system
+const MIGRATION_V11: &str = r#"
+CREATE TABLE IF NOT EXISTS campaign_versions (
+    id TEXT PRIMARY KEY,
+    campaign_id TEXT NOT NULL,
+    version_number INTEGER NOT NULL,
+    snapshot_type TEXT NOT NULL,
+    description TEXT,
+    data TEXT NOT NULL,
+    diff_data TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_campaign_versions_campaign ON campaign_versions(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_campaign_versions_number ON campaign_versions(campaign_id, version_number DESC);
+"#;
+
+/// Migration v12: Entity relationships (many-to-many between campaign entities)
+const MIGRATION_V12: &str = r#"
+CREATE TABLE IF NOT EXISTS entity_relationships (
+    id TEXT PRIMARY KEY,
+    campaign_id TEXT NOT NULL,
+    source_entity_type TEXT NOT NULL,
+    source_entity_id TEXT NOT NULL,
+    target_entity_type TEXT NOT NULL,
+    target_entity_id TEXT NOT NULL,
+    relationship_type TEXT NOT NULL,
+    description TEXT,
+    strength REAL DEFAULT 1.0,
+    bidirectional INTEGER DEFAULT 0,
+    metadata TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
+    UNIQUE(source_entity_type, source_entity_id, target_entity_type, target_entity_id, relationship_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_entity_relationships_campaign ON entity_relationships(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_entity_relationships_source ON entity_relationships(source_entity_type, source_entity_id);
+CREATE INDEX IF NOT EXISTS idx_entity_relationships_target ON entity_relationships(target_entity_type, target_entity_id);
+CREATE INDEX IF NOT EXISTS idx_entity_relationships_type ON entity_relationships(relationship_type);
+"#;
+
+/// Migration v13: Voice profiles for NPCs
+const MIGRATION_V13: &str = r#"
+CREATE TABLE IF NOT EXISTS voice_profiles (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    voice_id TEXT NOT NULL,
+    settings TEXT,
+    age_range TEXT,
+    gender TEXT,
+    personality_traits TEXT,
+    is_preset INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_voice_profiles_name ON voice_profiles(name);
+CREATE INDEX IF NOT EXISTS idx_voice_profiles_provider ON voice_profiles(provider);
+"#;
+
+/// Migration v14: Session notes
+const MIGRATION_V14: &str = r#"
+CREATE TABLE IF NOT EXISTS session_notes (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    campaign_id TEXT NOT NULL,
+    content TEXT NOT NULL,
+    tags TEXT,
+    entity_links TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_notes_session ON session_notes(session_id);
+CREATE INDEX IF NOT EXISTS idx_session_notes_campaign ON session_notes(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_session_notes_created ON session_notes(created_at DESC);
+"#;
+
+/// Migration v15: Session events (timeline)
+const MIGRATION_V15: &str = r#"
+CREATE TABLE IF NOT EXISTS session_events (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    description TEXT,
+    entities TEXT,
+    metadata TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_events_session ON session_events(session_id);
+CREATE INDEX IF NOT EXISTS idx_session_events_timestamp ON session_events(timestamp);
+CREATE INDEX IF NOT EXISTS idx_session_events_type ON session_events(event_type);
+"#;
+
+/// Migration v16: Combat states (distinct from existing combats table)
+/// This table tracks detailed combat state for session continuity
+const MIGRATION_V16: &str = r#"
+CREATE TABLE IF NOT EXISTS combat_states (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    name TEXT,
+    round INTEGER NOT NULL DEFAULT 1,
+    current_turn INTEGER NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    combatants TEXT NOT NULL,
+    conditions TEXT,
+    environment TEXT,
+    notes TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    ended_at TEXT,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_combat_states_session ON combat_states(session_id);
+CREATE INDEX IF NOT EXISTS idx_combat_states_active ON combat_states(is_active);
+"#;
+
+/// Migration v17: Enhanced search analytics with SQLite persistence
+/// This replaces the basic search_records table from v2 with a more comprehensive schema
+const MIGRATION_V17: &str = r#"
+-- Enhanced search analytics table (per TASK-023 requirements)
+CREATE TABLE IF NOT EXISTS search_analytics (
+    id TEXT PRIMARY KEY,
+    query TEXT NOT NULL,
+    results_count INTEGER NOT NULL DEFAULT 0,
+    selected_result_id TEXT,
+    selected_result_index INTEGER,
+    response_time_ms INTEGER NOT NULL DEFAULT 0,
+    cache_hit INTEGER NOT NULL DEFAULT 0,
+    search_type TEXT NOT NULL DEFAULT 'hybrid',
+    source_filter TEXT,
+    campaign_id TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_search_analytics_query ON search_analytics(query);
+CREATE INDEX IF NOT EXISTS idx_search_analytics_created ON search_analytics(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_search_analytics_cache_hit ON search_analytics(cache_hit);
+CREATE INDEX IF NOT EXISTS idx_search_analytics_results ON search_analytics(results_count);
+
+-- Search result selections table (tracks which results users click)
+CREATE TABLE IF NOT EXISTS search_selections (
+    id TEXT PRIMARY KEY,
+    search_id TEXT NOT NULL,
+    query TEXT NOT NULL,
+    result_index INTEGER NOT NULL,
+    source TEXT NOT NULL,
+    was_helpful INTEGER,
+    selection_delay_ms INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (search_id) REFERENCES search_analytics(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_search_selections_search ON search_selections(search_id);
+CREATE INDEX IF NOT EXISTS idx_search_selections_query ON search_selections(query);
+CREATE INDEX IF NOT EXISTS idx_search_selections_created ON search_selections(created_at DESC);
+
+-- Aggregated query statistics (updated periodically for fast retrieval)
+CREATE TABLE IF NOT EXISTS search_query_stats (
+    query_normalized TEXT PRIMARY KEY,
+    total_count INTEGER NOT NULL DEFAULT 0,
+    total_clicks INTEGER NOT NULL DEFAULT 0,
+    avg_results REAL NOT NULL DEFAULT 0.0,
+    avg_time_ms REAL NOT NULL DEFAULT 0.0,
+    last_searched_at TEXT NOT NULL,
+    click_positions_json TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE INDEX IF NOT EXISTS idx_search_query_stats_count ON search_query_stats(total_count DESC);
+CREATE INDEX IF NOT EXISTS idx_search_query_stats_last ON search_query_stats(last_searched_at DESC);
 "#;

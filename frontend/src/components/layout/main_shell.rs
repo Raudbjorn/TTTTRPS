@@ -1,3 +1,17 @@
+//! MainShell Layout Component
+//!
+//! Implements a 5-panel CSS Grid layout with responsive behavior and keyboard shortcuts.
+//! Layout structure:
+//!   - Rail: 64px fixed icon navigation
+//!   - Sidebar: Collapsible context panel (280-500px)
+//!   - Main: Primary content area (1fr)
+//!   - Info: Collapsible info panel (250-600px)
+//!   - Footer: Media bar (56px fixed)
+//!
+//! Keyboard shortcuts:
+//!   - Cmd+. (or Ctrl+.) : Toggle sidebar
+//!   - Cmd+/ (or Ctrl+/) : Toggle info panel
+
 use leptos::prelude::*;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
@@ -16,6 +30,42 @@ pub fn MainShell(
     let dragging = RwSignal::new(Option::<ResizeSide>::None);
     let last_x = RwSignal::new(0.0_f64);
     let window_width = RwSignal::new(1920.0_f64);
+
+    // Keyboard shortcut effect
+    Effect::new(move |_| {
+        let layout_for_keys = layout;
+
+        let handle_keydown = Closure::wrap(Box::new(move |event: web_sys::KeyboardEvent| {
+            // Check for Cmd (Mac) or Ctrl (Windows/Linux)
+            let modifier = event.meta_key() || event.ctrl_key();
+
+            if modifier {
+                match event.key().as_str() {
+                    // Cmd+. or Ctrl+. toggles sidebar
+                    "." => {
+                        event.prevent_default();
+                        layout_for_keys.toggle_sidebar();
+                    }
+                    // Cmd+/ or Ctrl+/ toggles info panel
+                    "/" => {
+                        event.prevent_default();
+                        layout_for_keys.toggle_infopanel();
+                    }
+                    _ => {}
+                }
+            }
+        }) as Box<dyn FnMut(web_sys::KeyboardEvent)>);
+
+        if let Some(window) = web_sys::window() {
+            if let Some(document) = window.document() {
+                let _ = document.add_event_listener_with_callback(
+                    "keydown",
+                    handle_keydown.as_ref().unchecked_ref(),
+                );
+            }
+        }
+        handle_keydown.forget();
+    });
 
     // Responsive resize listener
     Effect::new(move |_| {

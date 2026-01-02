@@ -6,6 +6,18 @@ mod session_list;
 mod npc_list;
 mod active_session_workspace;
 
+// TASK-016: Combat Tracker UI components
+pub mod combat_tracker;
+pub mod combatant_card;
+pub mod initiative_list;
+pub mod condition_manager;
+
+// TASK-014: Timeline View
+pub mod timeline_view;
+
+// TASK-017: Notes Panel
+pub mod notes_panel;
+
 use leptos::prelude::*;
 use leptos::ev;
 use leptos_router::hooks::use_params;
@@ -26,6 +38,22 @@ use active_session_workspace::ActiveSessionWorkspace;
 pub use session_list::SessionList as SessionListComponent;
 pub use npc_list::NpcList as NpcListComponent;
 pub use active_session_workspace::ActiveSessionWorkspace as ActiveSessionWorkspaceComponent;
+
+// TASK-016: Combat Tracker exports
+pub use combat_tracker::{CombatTracker, CombatStatsBar};
+pub use combatant_card::{CombatantCard, CombatantRowCompact};
+pub use initiative_list::{InitiativeList, InitiativeOrderSummary};
+pub use condition_manager::{ConditionModal, ConditionBadge, ActiveConditionsList};
+
+// TASK-014: Timeline exports
+pub use timeline_view::{
+    TimelineView, TimelineCompact,
+    TimelineEvent, TimelineEventType, EventSeverity,
+    TimelineEventTypeExt, EventSeverityExt,
+};
+
+// TASK-017: Notes exports
+pub use notes_panel::{NotesPanel, SessionNote, NoteCategory};
 
 /// Route params for session page
 #[derive(Params, PartialEq, Clone, Default)]

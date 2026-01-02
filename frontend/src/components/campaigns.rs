@@ -1,15 +1,19 @@
 //! Campaigns Component - Leptos Migration
 //!
 //! Displays a list of campaigns with create/delete functionality.
-//! Campaign management components
+//! Campaign management components with archive/restore support.
 
 use leptos::ev;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::hooks::use_navigate;
 
-use crate::bindings::{list_campaigns, create_campaign, delete_campaign, Campaign};
+use crate::bindings::{list_campaigns, create_campaign, delete_campaign, archive_campaign, restore_campaign, list_archived_campaigns, Campaign};
 use crate::components::design_system::{Button, ButtonVariant, LoadingSpinner};
+use crate::components::campaign::CampaignCreateModal;
+
+#[allow(unused_imports)]
+use crate::components::campaign::{CampaignCard as CampaignCardFull, CampaignCardCompact, CampaignGenre};
 
 /// Helper function to get system-based styling
 fn get_system_style(system: &str) -> (&'static str, &'static str) {
@@ -294,6 +298,59 @@ fn CreateCampaignModal(
     }
 }
 
+/// View mode for campaign list
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CampaignViewMode {
+    Grid,
+    List,
+}
+
+/// Filter state for campaigns
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CampaignFilter {
+    Active,
+    Archived,
+    All,
+}
+
+/// Campaign switcher component for header
+#[component]
+pub fn CampaignSwitcher(
+    campaigns: Vec<Campaign>,
+    selected_id: Option<String>,
+    on_select: Callback<String>,
+) -> impl IntoView {
+    let handle_change = move |evt: ev::Event| {
+        let target = event_target::<web_sys::HtmlSelectElement>(&evt);
+        let value = target.value();
+        if !value.is_empty() {
+            on_select.run(value);
+        }
+    };
+
+    view! {
+        <div class="relative">
+            <select
+                class="appearance-none px-4 py-2 pr-8 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:border-purple-500 focus:outline-none cursor-pointer"
+                on:change=handle_change
+            >
+                <option value="">"Select Campaign"</option>
+                {campaigns.iter().map(|c| {
+                    let id = c.id.clone();
+                    let name = c.name.clone();
+                    let is_selected = selected_id.as_ref() == Some(&id);
+                    view! {
+                        <option value=id selected=is_selected>{name}</option>
+                    }
+                }).collect_view()}
+            </select>
+            <div class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-400">
+                "v"
+            </div>
+        </div>
+    }
+}
+
 /// Main Campaigns page component
 #[component]
 pub fn Campaigns() -> impl IntoView {
@@ -301,14 +358,19 @@ pub fn Campaigns() -> impl IntoView {
 
     // State signals
     let campaigns = RwSignal::new(Vec::<Campaign>::new());
+    let archived_campaigns = RwSignal::new(Vec::<Campaign>::new());
     let status_message = RwSignal::new(String::new());
     let show_create_modal = RwSignal::new(false);
     let is_loading = RwSignal::new(true);
     let delete_confirm = RwSignal::new(Option::<(String, String)>::None);
+    let view_mode = RwSignal::new(CampaignViewMode::Grid);
+    let filter = RwSignal::new(CampaignFilter::Active);
+    let archive_confirm = RwSignal::new(Option::<(String, String, bool)>::None); // (id, name, is_archived)
 
     // Load campaigns on mount
     Effect::new(move |_| {
         spawn_local(async move {
+            // Load active campaigns
             match list_campaigns().await {
                 Ok(list) => {
                     campaigns.set(list);
@@ -317,6 +379,17 @@ pub fn Campaigns() -> impl IntoView {
                     status_message.set(format!("Failed to load campaigns: {}", e));
                 }
             }
+
+            // Load archived campaigns
+            match list_archived_campaigns().await {
+                Ok(list) => {
+                    archived_campaigns.set(list);
+                }
+                Err(_) => {
+                    // Silently fail for archived - backend might not support it yet
+                }
+            }
+
             is_loading.set(false);
         });
     });
@@ -365,7 +438,13 @@ pub fn Campaigns() -> impl IntoView {
         show_create_modal.set(true);
     };
 
-    // Handle campaign creation
+    // Handle campaign creation (from wizard modal)
+    let handle_create_wizard = Callback::new(move |campaign: Campaign| {
+        campaigns.update(|c| c.push(campaign));
+        status_message.set("Campaign created!".to_string());
+    });
+
+    // Handle legacy campaign creation (from simple modal)
     let handle_create = Callback::new(move |(name, system): (String, String)| {
         spawn_local(async move {
             match create_campaign(name, system).await {
@@ -380,6 +459,81 @@ pub fn Campaigns() -> impl IntoView {
             }
         });
     });
+
+    // Handle archive request
+    let handle_archive_request = Callback::new(move |(id, name): (String, String)| {
+        archive_confirm.set(Some((id, name, false)));
+    });
+
+    // Handle restore request
+    let handle_restore_request = Callback::new(move |(id, name): (String, String)| {
+        archive_confirm.set(Some((id, name, true)));
+    });
+
+    // Handle confirmed archive/restore
+    let handle_confirm_archive = move |_: ev::MouseEvent| {
+        if let Some((id, name, is_restore)) = archive_confirm.get() {
+            spawn_local(async move {
+                let result = if is_restore {
+                    restore_campaign(id.clone()).await
+                } else {
+                    archive_campaign(id.clone()).await
+                };
+
+                match result {
+                    Ok(_) => {
+                        if is_restore {
+                            // Move from archived to active
+                            archived_campaigns.update(|c| c.retain(|campaign| campaign.id != id));
+                            // Reload to get the campaign
+                            if let Ok(list) = list_campaigns().await {
+                                campaigns.set(list);
+                            }
+                            status_message.set(format!("Restored campaign: {}", name));
+                        } else {
+                            // Move from active to archived
+                            if let Some(campaign) = campaigns.get().into_iter().find(|c| c.id == id) {
+                                archived_campaigns.update(|c| c.push(campaign));
+                            }
+                            campaigns.update(|c| c.retain(|campaign| campaign.id != id));
+                            status_message.set(format!("Archived campaign: {}", name));
+                        }
+                    }
+                    Err(e) => {
+                        status_message.set(format!("Error: {}", e));
+                    }
+                }
+                archive_confirm.set(None);
+            });
+        }
+    };
+
+    let handle_cancel_archive = move |_: ev::MouseEvent| {
+        archive_confirm.set(None);
+    };
+
+    // Toggle view mode
+    let toggle_view_mode = move |_: ev::MouseEvent| {
+        view_mode.update(|v| {
+            *v = match v {
+                CampaignViewMode::Grid => CampaignViewMode::List,
+                CampaignViewMode::List => CampaignViewMode::Grid,
+            };
+        });
+    };
+
+    // Set filter
+    let set_filter_active = move |_: ev::MouseEvent| {
+        filter.set(CampaignFilter::Active);
+    };
+
+    let set_filter_archived = move |_: ev::MouseEvent| {
+        filter.set(CampaignFilter::Archived);
+    };
+
+    let set_filter_all = move |_: ev::MouseEvent| {
+        filter.set(CampaignFilter::All);
+    };
 
     // Handle delete request (show confirmation)
     let handle_delete_request = Callback::new(move |(id, name): (String, String)| {
@@ -424,14 +578,74 @@ pub fn Campaigns() -> impl IntoView {
                             class="text-zinc-500 hover:text-white transition-colors text-sm font-medium"
                             on:click=nav_to_hub
                         >
-                            "Back to Hub"
+                            "< Back to Hub"
                         </button>
                         <h1 class="text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-zinc-500">
                             "Campaigns"
                         </h1>
                         <p class="text-zinc-400">"Manage your ongoing adventures and chronicles."</p>
                     </div>
-                    <div class="flex gap-3">
+                    <div class="flex items-center gap-3">
+                        // View mode toggle
+                        <div class="flex border border-zinc-700 rounded-lg overflow-hidden">
+                            <button
+                                class=move || if view_mode.get() == CampaignViewMode::Grid {
+                                    "px-3 py-2 bg-zinc-700 text-white"
+                                } else {
+                                    "px-3 py-2 bg-zinc-800 text-zinc-400 hover:text-white"
+                                }
+                                on:click=toggle_view_mode.clone()
+                                title="Grid View"
+                            >
+                                "Grid"
+                            </button>
+                            <button
+                                class=move || if view_mode.get() == CampaignViewMode::List {
+                                    "px-3 py-2 bg-zinc-700 text-white"
+                                } else {
+                                    "px-3 py-2 bg-zinc-800 text-zinc-400 hover:text-white"
+                                }
+                                on:click=toggle_view_mode.clone()
+                                title="List View"
+                            >
+                                "List"
+                            </button>
+                        </div>
+
+                        // Filter tabs
+                        <div class="flex border border-zinc-700 rounded-lg overflow-hidden">
+                            <button
+                                class=move || if filter.get() == CampaignFilter::Active {
+                                    "px-3 py-2 bg-zinc-700 text-white text-sm"
+                                } else {
+                                    "px-3 py-2 bg-zinc-800 text-zinc-400 hover:text-white text-sm"
+                                }
+                                on:click=set_filter_active
+                            >
+                                "Active"
+                            </button>
+                            <button
+                                class=move || if filter.get() == CampaignFilter::Archived {
+                                    "px-3 py-2 bg-zinc-700 text-white text-sm"
+                                } else {
+                                    "px-3 py-2 bg-zinc-800 text-zinc-400 hover:text-white text-sm"
+                                }
+                                on:click=set_filter_archived
+                            >
+                                "Archived"
+                            </button>
+                            <button
+                                class=move || if filter.get() == CampaignFilter::All {
+                                    "px-3 py-2 bg-zinc-700 text-white text-sm"
+                                } else {
+                                    "px-3 py-2 bg-zinc-800 text-zinc-400 hover:text-white text-sm"
+                                }
+                                on:click=set_filter_all
+                            >
+                                "All"
+                            </button>
+                        </div>
+
                         <Button
                             variant=ButtonVariant::Secondary
                             on_click=refresh_campaigns
@@ -482,7 +696,19 @@ pub fn Campaigns() -> impl IntoView {
                 // Content Area
                 {move || {
                     let loading = is_loading.get();
-                    let campaign_list = campaigns.get();
+                    let current_filter = filter.get();
+                    let current_view = view_mode.get();
+
+                    // Get the appropriate list based on filter
+                    let campaign_list: Vec<Campaign> = match current_filter {
+                        CampaignFilter::Active => campaigns.get(),
+                        CampaignFilter::Archived => archived_campaigns.get(),
+                        CampaignFilter::All => {
+                            let mut all = campaigns.get();
+                            all.extend(archived_campaigns.get());
+                            all
+                        }
+                    };
 
                     if loading {
                         view! {
@@ -491,41 +717,92 @@ pub fn Campaigns() -> impl IntoView {
                             </div>
                         }.into_any()
                     } else if campaign_list.is_empty() {
+                        let empty_message = match current_filter {
+                            CampaignFilter::Active => "Your library is empty. Start your first journey into the unknown.",
+                            CampaignFilter::Archived => "No archived campaigns. Campaigns you archive will appear here.",
+                            CampaignFilter::All => "No campaigns found.",
+                        };
                         view! {
                             <div class="text-center py-24 bg-zinc-900/50 rounded-xl border border-dashed border-zinc-800 flex flex-col items-center justify-center">
                                 <div class="text-6xl mb-4 opacity-20">"..."</div>
                                 <h3 class="text-2xl font-bold text-zinc-200 mb-2">"No campaigns found"</h3>
-                                <p class="text-zinc-500 mb-8 max-w-md">"Your library is empty. Start your first journey into the unknown."</p>
-                                <Button on_click=open_create_modal>
-                                    "Create Campaign"
-                                </Button>
+                                <p class="text-zinc-500 mb-8 max-w-md">{empty_message}</p>
+                                {(current_filter != CampaignFilter::Archived).then(|| view! {
+                                    <Button on_click=open_create_modal>
+                                        "Create Campaign"
+                                    </Button>
+                                })}
                             </div>
                         }.into_any()
                     } else {
-                        view! {
-                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                                <For
-                                    each=move || campaigns.get()
-                                    key=|campaign| campaign.id.clone()
-                                    children=move |campaign| {
+                        match current_view {
+                            CampaignViewMode::Grid => view! {
+                                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                    {campaign_list.into_iter().map(|campaign| {
                                         view! {
                                             <CampaignCard
                                                 campaign=campaign
                                                 on_delete=handle_delete_request
                                             />
                                         }
-                                    }
-                                />
-                            </div>
-                        }.into_any()
+                                    }).collect_view()}
+                                </div>
+                            }.into_any(),
+                            CampaignViewMode::List => view! {
+                                <div class="space-y-2">
+                                    {campaign_list.into_iter().map(|campaign| {
+                                        let campaign_id = campaign.id.clone();
+                                        let campaign_name = campaign.name.clone();
+                                        let campaign_system = campaign.system.clone();
+                                        let delete_id = campaign.id.clone();
+                                        let delete_name = campaign.name.clone();
+                                        let nav = navigate.clone();
+
+                                        let handle_click = move |_: ev::MouseEvent| {
+                                            let nav = nav.clone();
+                                            let id = campaign_id.clone();
+                                            nav(&format!("/session/{}", id), Default::default());
+                                        };
+
+                                        let handle_delete = move |evt: ev::MouseEvent| {
+                                            evt.stop_propagation();
+                                            handle_delete_request.run((delete_id.clone(), delete_name.clone()));
+                                        };
+
+                                        view! {
+                                            <div
+                                                class="flex items-center justify-between p-4 bg-zinc-900 border border-zinc-800 rounded-lg hover:border-zinc-700 cursor-pointer transition-colors"
+                                                on:click=handle_click
+                                            >
+                                                <div class="flex items-center gap-4">
+                                                    <div class="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center text-lg font-bold text-zinc-400">
+                                                        {campaign_name.chars().next().unwrap_or('?').to_string()}
+                                                    </div>
+                                                    <div>
+                                                        <div class="font-medium text-white">{campaign_name.clone()}</div>
+                                                        <div class="text-sm text-zinc-500">{campaign_system}</div>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    class="p-2 text-zinc-500 hover:text-red-400 transition-colors"
+                                                    on:click=handle_delete
+                                                >
+                                                    "X"
+                                                </button>
+                                            </div>
+                                        }
+                                    }).collect_view()}
+                                </div>
+                            }.into_any(),
+                        }
                     }
                 }}
             </div>
 
-            // Create Campaign Modal
-            <CreateCampaignModal
+            // Create Campaign Wizard Modal
+            <CampaignCreateModal
                 is_open=show_create_modal
-                on_create=handle_create
+                on_create=handle_create_wizard
             />
 
             // Delete Confirmation Modal
@@ -552,6 +829,53 @@ pub fn Campaigns() -> impl IntoView {
                                 on_click=handle_confirm_delete
                             >
                                 "Delete"
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </Show>
+
+            // Archive/Restore Confirmation Modal
+            <Show when=move || archive_confirm.get().is_some()>
+                <div class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center">
+                    <div class="bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl w-full max-w-sm mx-4 p-6">
+                        <h3 class="text-lg font-bold text-white mb-2">
+                            {move || {
+                                if archive_confirm.get().map(|(_, _, is_restore)| is_restore).unwrap_or(false) {
+                                    "Restore Campaign?"
+                                } else {
+                                    "Archive Campaign?"
+                                }
+                            }}
+                        </h3>
+                        <p class="text-zinc-400 mb-6">
+                            {move || {
+                                let (_, name, is_restore) = archive_confirm.get().unwrap_or_default();
+                                if is_restore {
+                                    format!("Restore \"{}\" to your active campaigns?", name)
+                                } else {
+                                    format!("Archive \"{}\"? You can restore it later from the archived view.", name)
+                                }
+                            }}
+                        </p>
+                        <div class="flex justify-end gap-3">
+                            <Button
+                                variant=ButtonVariant::Secondary
+                                on_click=handle_cancel_archive
+                            >
+                                "Cancel"
+                            </Button>
+                            <Button
+                                variant=ButtonVariant::Primary
+                                on_click=handle_confirm_archive
+                            >
+                                {move || {
+                                    if archive_confirm.get().map(|(_, _, is_restore)| is_restore).unwrap_or(false) {
+                                        "Restore"
+                                    } else {
+                                        "Archive"
+                                    }
+                                }}
                             </Button>
                         </div>
                     </div>

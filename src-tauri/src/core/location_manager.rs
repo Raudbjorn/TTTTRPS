@@ -1,300 +1,307 @@
 //! Location Manager Module
 //!
-//! Manages campaign locations with hierarchical relationships.
+//! Manages campaign locations with hierarchical relationships and full support
+//! for generated locations from the location_gen module.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::RwLock;
-use uuid::Uuid;
+use thiserror::Error;
+
+use crate::core::location_gen::{
+    Location, LocationType, LocationConnection, Inhabitant, Secret,
+    Encounter, MapReference,
+};
 
 // ============================================================================
-// Types
+// Error Types
 // ============================================================================
 
-/// Location type
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum LocationType {
-    City,
-    Town,
-    Village,
-    Dungeon,
-    Wilderness,
-    Building,
-    Room,
-    Region,
-    Continent,
-    Plane,
-    Other(String),
+#[derive(Debug, Error)]
+pub enum LocationManagerError {
+    #[error("Location not found: {0}")]
+    NotFound(String),
+    #[error("Campaign not found: {0}")]
+    CampaignNotFound(String),
+    #[error("Lock error: {0}")]
+    LockError(String),
+    #[error("Invalid operation: {0}")]
+    InvalidOperation(String),
 }
 
-/// A campaign location
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Location {
-    /// Unique identifier
-    pub id: String,
-    /// Campaign this location belongs to
-    pub campaign_id: String,
-    /// Location name
-    pub name: String,
-    /// Location type
-    pub location_type: LocationType,
-    /// Description
-    pub description: String,
-    /// Parent location ID (for hierarchy)
-    pub parent_id: Option<String>,
-    /// Connected location IDs
-    pub connections: Vec<String>,
-    /// NPCs present at this location
-    pub npcs_present: Vec<String>,
-    /// Notable features
-    pub features: Vec<String>,
-    /// Secrets (hidden from players)
-    pub secrets: Vec<String>,
-    /// Custom attributes
-    pub attributes: HashMap<String, String>,
-    /// Tags for categorization
-    pub tags: Vec<String>,
-    /// Created timestamp
-    pub created_at: DateTime<Utc>,
-    /// Updated timestamp
-    pub updated_at: DateTime<Utc>,
-}
-
-impl Location {
-    pub fn new(campaign_id: &str, name: &str, location_type: LocationType) -> Self {
-        let now = Utc::now();
-        Self {
-            id: Uuid::new_v4().to_string(),
-            campaign_id: campaign_id.to_string(),
-            name: name.to_string(),
-            location_type,
-            description: String::new(),
-            parent_id: None,
-            connections: Vec::new(),
-            npcs_present: Vec::new(),
-            features: Vec::new(),
-            secrets: Vec::new(),
-            attributes: HashMap::new(),
-            tags: Vec::new(),
-            created_at: now,
-            updated_at: now,
-        }
-    }
-}
+pub type Result<T> = std::result::Result<T, LocationManagerError>;
 
 // ============================================================================
 // Location Manager
 // ============================================================================
 
-/// Manages locations for campaigns
+/// Manages generated locations for campaigns
+/// Works with the rich Location type from location_gen
 pub struct LocationManager {
     /// Locations by ID
     locations: RwLock<HashMap<String, Location>>,
+    /// Index: campaign_id -> location_ids
+    campaign_index: RwLock<HashMap<String, Vec<String>>>,
 }
 
 impl LocationManager {
     pub fn new() -> Self {
         Self {
             locations: RwLock::new(HashMap::new()),
+            campaign_index: RwLock::new(HashMap::new()),
         }
     }
 
-    /// Create a new location
-    pub fn create(&self, location: Location) -> String {
+    /// Save a generated location
+    pub fn save_location(&self, location: Location) -> Result<String> {
         let id = location.id.clone();
-        let mut locations = self.locations.write().unwrap();
+        let campaign_id = location.campaign_id.clone();
+
+        let mut locations = self.locations.write()
+            .map_err(|e| LocationManagerError::LockError(e.to_string()))?;
         locations.insert(id.clone(), location);
-        id
+
+        // Update campaign index
+        if let Some(cid) = campaign_id {
+            let mut index = self.campaign_index.write()
+                .map_err(|e| LocationManagerError::LockError(e.to_string()))?;
+            index.entry(cid).or_insert_with(Vec::new).push(id.clone());
+        }
+
+        Ok(id)
     }
 
     /// Get a location by ID
-    pub fn get(&self, id: &str) -> Option<Location> {
-        let locations = self.locations.read().unwrap();
+    pub fn get_location(&self, id: &str) -> Option<Location> {
+        let locations = self.locations.read().ok()?;
         locations.get(id).cloned()
     }
 
     /// Update a location
-    pub fn update(&self, location: Location) -> bool {
-        let mut locations = self.locations.write().unwrap();
-        if locations.contains_key(&location.id) {
-            let mut updated = location;
-            updated.updated_at = Utc::now();
-            locations.insert(updated.id.clone(), updated);
-            true
-        } else {
-            false
+    pub fn update_location(&self, mut location: Location) -> Result<()> {
+        let mut locations = self.locations.write()
+            .map_err(|e| LocationManagerError::LockError(e.to_string()))?;
+
+        if !locations.contains_key(&location.id) {
+            return Err(LocationManagerError::NotFound(location.id));
         }
+
+        location.updated_at = Utc::now();
+        locations.insert(location.id.clone(), location);
+        Ok(())
     }
 
     /// Delete a location
-    pub fn delete(&self, id: &str) -> bool {
-        let mut locations = self.locations.write().unwrap();
+    pub fn delete_location(&self, id: &str) -> Result<()> {
+        let mut locations = self.locations.write()
+            .map_err(|e| LocationManagerError::LockError(e.to_string()))?;
 
-        // Remove from parent's children (not tracked explicitly, but clear connections)
-        if let Some(location) = locations.get(id) {
-            // Remove this location from connections of other locations
-            let location_id = location.id.clone();
-            for other in locations.values_mut() {
-                other.connections.retain(|c| c != &location_id);
+        if let Some(location) = locations.remove(id) {
+            // Remove from campaign index
+            if let Some(campaign_id) = &location.campaign_id {
+                if let Ok(mut index) = self.campaign_index.write() {
+                    if let Some(ids) = index.get_mut(campaign_id) {
+                        ids.retain(|lid| lid != id);
+                    }
+                }
             }
-        }
 
-        locations.remove(id).is_some()
+            // Remove connections from other locations
+            for other in locations.values_mut() {
+                other.connected_locations.retain(|c| c.target_id.as_deref() != Some(id));
+            }
+
+            Ok(())
+        } else {
+            Err(LocationManagerError::NotFound(id.to_string()))
+        }
     }
 
     /// List all locations for a campaign
-    pub fn list_by_campaign(&self, campaign_id: &str) -> Vec<Location> {
-        let locations = self.locations.read().unwrap();
+    pub fn list_locations_for_campaign(&self, campaign_id: &str) -> Vec<Location> {
+        let locations = match self.locations.read() {
+            Ok(l) => l,
+            Err(_) => return Vec::new(),
+        };
+
         locations
             .values()
-            .filter(|l| l.campaign_id == campaign_id)
+            .filter(|l| l.campaign_id.as_deref() == Some(campaign_id))
             .cloned()
             .collect()
     }
 
-    /// Get child locations (locations with this as parent)
-    pub fn get_children(&self, parent_id: &str) -> Vec<Location> {
-        let locations = self.locations.read().unwrap();
-        locations
-            .values()
-            .filter(|l| l.parent_id.as_deref() == Some(parent_id))
-            .cloned()
-            .collect()
-    }
+    /// Add a connection to a location
+    pub fn add_connection(&self, location_id: &str, connection: LocationConnection) -> Result<()> {
+        let mut locations = self.locations.write()
+            .map_err(|e| LocationManagerError::LockError(e.to_string()))?;
 
-    /// Get the location hierarchy (ancestors)
-    pub fn get_hierarchy(&self, location_id: &str) -> Vec<Location> {
-        let locations = self.locations.read().unwrap();
-        let mut hierarchy = Vec::new();
-        let mut current_id = Some(location_id.to_string());
-
-        while let Some(id) = current_id {
-            if let Some(location) = locations.get(&id) {
-                hierarchy.push(location.clone());
-                current_id = location.parent_id.clone();
-            } else {
-                break;
+        if let Some(location) = locations.get_mut(location_id) {
+            // Check if connection already exists
+            if !location.connected_locations.iter().any(|c| c.target_id == connection.target_id) {
+                location.connected_locations.push(connection);
+                location.updated_at = Utc::now();
             }
+            Ok(())
+        } else {
+            Err(LocationManagerError::NotFound(location_id.to_string()))
         }
+    }
 
-        hierarchy.reverse();
-        hierarchy
+    /// Remove a connection from a location
+    pub fn remove_connection(&self, location_id: &str, target_id: &str) -> Result<()> {
+        let mut locations = self.locations.write()
+            .map_err(|e| LocationManagerError::LockError(e.to_string()))?;
+
+        if let Some(location) = locations.get_mut(location_id) {
+            location.connected_locations.retain(|c| c.target_id.as_deref() != Some(target_id));
+            location.updated_at = Utc::now();
+            Ok(())
+        } else {
+            Err(LocationManagerError::NotFound(location_id.to_string()))
+        }
     }
 
     /// Get connected locations
-    pub fn get_connected(&self, location_id: &str) -> Vec<Location> {
-        let locations = self.locations.read().unwrap();
+    pub fn get_connected_locations(&self, location_id: &str) -> Vec<Location> {
+        let locations = match self.locations.read() {
+            Ok(l) => l,
+            Err(_) => return Vec::new(),
+        };
 
         if let Some(location) = locations.get(location_id) {
-            location
-                .connections
+            location.connected_locations
                 .iter()
-                .filter_map(|id| locations.get(id).cloned())
+                .filter_map(|conn| conn.target_id.as_ref().and_then(|id| locations.get(id)).cloned())
                 .collect()
         } else {
             Vec::new()
         }
     }
 
-    /// Add a connection between two locations
-    pub fn add_connection(&self, from_id: &str, to_id: &str) -> bool {
-        let mut locations = self.locations.write().unwrap();
-
-        // Verify both locations exist
-        if !locations.contains_key(from_id) || !locations.contains_key(to_id) {
-            return false;
-        }
-
-        // Add bidirectional connection
-        if let Some(from_loc) = locations.get_mut(from_id) {
-            if !from_loc.connections.contains(&to_id.to_string()) {
-                from_loc.connections.push(to_id.to_string());
-                from_loc.updated_at = Utc::now();
-            }
-        }
-
-        if let Some(to_loc) = locations.get_mut(to_id) {
-            if !to_loc.connections.contains(&from_id.to_string()) {
-                to_loc.connections.push(from_id.to_string());
-                to_loc.updated_at = Utc::now();
-            }
-        }
-
-        true
-    }
-
-    /// Remove a connection between two locations
-    pub fn remove_connection(&self, from_id: &str, to_id: &str) -> bool {
-        let mut locations = self.locations.write().unwrap();
-
-        let mut removed = false;
-
-        if let Some(from_loc) = locations.get_mut(from_id) {
-            let initial_len = from_loc.connections.len();
-            from_loc.connections.retain(|c| c != to_id);
-            if from_loc.connections.len() < initial_len {
-                from_loc.updated_at = Utc::now();
-                removed = true;
-            }
-        }
-
-        if let Some(to_loc) = locations.get_mut(to_id) {
-            let initial_len = to_loc.connections.len();
-            to_loc.connections.retain(|c| c != from_id);
-            if to_loc.connections.len() < initial_len {
-                to_loc.updated_at = Utc::now();
-                removed = true;
-            }
-        }
-
-        removed
-    }
-
-    /// Add an NPC to a location
-    pub fn add_npc(&self, location_id: &str, npc_id: &str) -> bool {
-        let mut locations = self.locations.write().unwrap();
+    /// Add an inhabitant to a location
+    pub fn add_inhabitant(&self, location_id: &str, inhabitant: Inhabitant) -> Result<()> {
+        let mut locations = self.locations.write()
+            .map_err(|e| LocationManagerError::LockError(e.to_string()))?;
 
         if let Some(location) = locations.get_mut(location_id) {
-            if !location.npcs_present.contains(&npc_id.to_string()) {
-                location.npcs_present.push(npc_id.to_string());
-                location.updated_at = Utc::now();
-                return true;
-            }
+            location.inhabitants.push(inhabitant);
+            location.updated_at = Utc::now();
+            Ok(())
+        } else {
+            Err(LocationManagerError::NotFound(location_id.to_string()))
         }
-
-        false
     }
 
-    /// Remove an NPC from a location
-    pub fn remove_npc(&self, location_id: &str, npc_id: &str) -> bool {
-        let mut locations = self.locations.write().unwrap();
+    /// Remove an inhabitant from a location by name
+    pub fn remove_inhabitant(&self, location_id: &str, name: &str) -> Result<()> {
+        let mut locations = self.locations.write()
+            .map_err(|e| LocationManagerError::LockError(e.to_string()))?;
 
         if let Some(location) = locations.get_mut(location_id) {
-            let initial_len = location.npcs_present.len();
-            location.npcs_present.retain(|n| n != npc_id);
-            if location.npcs_present.len() < initial_len {
-                location.updated_at = Utc::now();
-                return true;
-            }
+            location.inhabitants.retain(|i| i.name != name);
+            location.updated_at = Utc::now();
+            Ok(())
+        } else {
+            Err(LocationManagerError::NotFound(location_id.to_string()))
         }
-
-        false
     }
 
-    /// Search locations by name or description
-    pub fn search(&self, campaign_id: &str, query: &str) -> Vec<Location> {
-        let locations = self.locations.read().unwrap();
-        let query_lower = query.to_lowercase();
+    /// Add a secret to a location
+    pub fn add_secret(&self, location_id: &str, secret: Secret) -> Result<()> {
+        let mut locations = self.locations.write()
+            .map_err(|e| LocationManagerError::LockError(e.to_string()))?;
+
+        if let Some(location) = locations.get_mut(location_id) {
+            location.secrets.push(secret);
+            location.updated_at = Utc::now();
+            Ok(())
+        } else {
+            Err(LocationManagerError::NotFound(location_id.to_string()))
+        }
+    }
+
+    /// Add an encounter to a location
+    pub fn add_encounter(&self, location_id: &str, encounter: Encounter) -> Result<()> {
+        let mut locations = self.locations.write()
+            .map_err(|e| LocationManagerError::LockError(e.to_string()))?;
+
+        if let Some(location) = locations.get_mut(location_id) {
+            location.encounters.push(encounter);
+            location.updated_at = Utc::now();
+            Ok(())
+        } else {
+            Err(LocationManagerError::NotFound(location_id.to_string()))
+        }
+    }
+
+    /// Set map reference for a location
+    pub fn set_map_reference(&self, location_id: &str, map_ref: MapReference) -> Result<()> {
+        let mut locations = self.locations.write()
+            .map_err(|e| LocationManagerError::LockError(e.to_string()))?;
+
+        if let Some(location) = locations.get_mut(location_id) {
+            location.map_reference = Some(map_ref);
+            location.updated_at = Utc::now();
+            Ok(())
+        } else {
+            Err(LocationManagerError::NotFound(location_id.to_string()))
+        }
+    }
+
+    /// Search locations by various criteria
+    pub fn search_locations(
+        &self,
+        campaign_id: Option<String>,
+        location_type: Option<String>,
+        tags: Option<Vec<String>>,
+        query: Option<String>,
+    ) -> Vec<Location> {
+        let locations = match self.locations.read() {
+            Ok(l) => l,
+            Err(_) => return Vec::new(),
+        };
+
+        let query_lower = query.map(|q| q.to_lowercase());
+        let loc_type = location_type.map(|t| LocationType::from_str(&t));
 
         locations
             .values()
             .filter(|l| {
-                l.campaign_id == campaign_id
-                    && (l.name.to_lowercase().contains(&query_lower)
-                        || l.description.to_lowercase().contains(&query_lower)
-                        || l.tags.iter().any(|t| t.to_lowercase().contains(&query_lower)))
+                // Campaign filter
+                if let Some(ref cid) = campaign_id {
+                    if l.campaign_id.as_deref() != Some(cid.as_str()) {
+                        return false;
+                    }
+                }
+
+                // Location type filter
+                if let Some(ref lt) = loc_type {
+                    if &l.location_type != lt {
+                        return false;
+                    }
+                }
+
+                // Tags filter
+                if let Some(ref filter_tags) = tags {
+                    if !filter_tags.iter().any(|t| l.tags.contains(t)) {
+                        return false;
+                    }
+                }
+
+                // Query filter (search in name, description, notes)
+                if let Some(ref q) = query_lower {
+                    let matches = l.name.to_lowercase().contains(q)
+                        || l.description.to_lowercase().contains(q)
+                        || l.notes.to_lowercase().contains(q)
+                        || l.tags.iter().any(|t| t.to_lowercase().contains(q));
+                    if !matches {
+                        return false;
+                    }
+                }
+
+                true
             })
             .cloned()
             .collect()
@@ -302,22 +309,44 @@ impl LocationManager {
 
     /// Get locations by type
     pub fn get_by_type(&self, campaign_id: &str, location_type: &LocationType) -> Vec<Location> {
-        let locations = self.locations.read().unwrap();
+        let locations = match self.locations.read() {
+            Ok(l) => l,
+            Err(_) => return Vec::new(),
+        };
+
         locations
             .values()
-            .filter(|l| l.campaign_id == campaign_id && &l.location_type == location_type)
+            .filter(|l| l.campaign_id.as_deref() == Some(campaign_id) && &l.location_type == location_type)
             .cloned()
             .collect()
     }
 
-    /// Get all root locations (no parent)
-    pub fn get_root_locations(&self, campaign_id: &str) -> Vec<Location> {
-        let locations = self.locations.read().unwrap();
+    /// Get all locations (no campaign filter)
+    pub fn list_all(&self) -> Vec<Location> {
+        let locations = match self.locations.read() {
+            Ok(l) => l,
+            Err(_) => return Vec::new(),
+        };
+
+        locations.values().cloned().collect()
+    }
+
+    /// Get location count
+    pub fn count(&self) -> usize {
+        self.locations.read().map(|l| l.len()).unwrap_or(0)
+    }
+
+    /// Get location count for a campaign
+    pub fn count_for_campaign(&self, campaign_id: &str) -> usize {
+        let locations = match self.locations.read() {
+            Ok(l) => l,
+            Err(_) => return 0,
+        };
+
         locations
             .values()
-            .filter(|l| l.campaign_id == campaign_id && l.parent_id.is_none())
-            .cloned()
-            .collect()
+            .filter(|l| l.campaign_id.as_deref() == Some(campaign_id))
+            .count()
     }
 }
 
@@ -327,54 +356,101 @@ impl Default for LocationManager {
     }
 }
 
+// ============================================================================
+// Tests
+// ============================================================================
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::location_gen::{LocationGenerator, LocationGenerationOptions};
 
     #[test]
-    fn test_create_location() {
+    fn test_save_and_get_location() {
         let manager = LocationManager::new();
+        let generator = LocationGenerator::new();
 
-        let location = Location::new("campaign-1", "Waterdeep", LocationType::City);
-        let id = manager.create(location);
+        let options = LocationGenerationOptions {
+            location_type: Some("tavern".to_string()),
+            campaign_id: Some("campaign-1".to_string()),
+            include_inhabitants: true,
+            ..Default::default()
+        };
 
-        assert!(!id.is_empty());
+        let location = generator.generate_quick(&options);
+        let id = manager.save_location(location.clone()).unwrap();
 
-        let retrieved = manager.get(&id).unwrap();
-        assert_eq!(retrieved.name, "Waterdeep");
+        let retrieved = manager.get_location(&id).unwrap();
+        assert_eq!(retrieved.name, location.name);
+        assert_eq!(retrieved.location_type, LocationType::Tavern);
     }
 
     #[test]
-    fn test_hierarchy() {
+    fn test_list_by_campaign() {
         let manager = LocationManager::new();
+        let generator = LocationGenerator::new();
 
-        let mut region = Location::new("campaign-1", "Sword Coast", LocationType::Region);
-        let region_id = manager.create(region.clone());
+        // Create locations for different campaigns
+        for i in 0..3 {
+            let options = LocationGenerationOptions {
+                location_type: Some("tavern".to_string()),
+                campaign_id: Some("campaign-1".to_string()),
+                ..Default::default()
+            };
+            let location = generator.generate_quick(&options);
+            manager.save_location(location).unwrap();
+        }
 
-        let mut city = Location::new("campaign-1", "Neverwinter", LocationType::City);
-        city.parent_id = Some(region_id.clone());
-        let city_id = manager.create(city);
+        for i in 0..2 {
+            let options = LocationGenerationOptions {
+                location_type: Some("dungeon".to_string()),
+                campaign_id: Some("campaign-2".to_string()),
+                ..Default::default()
+            };
+            let location = generator.generate_quick(&options);
+            manager.save_location(location).unwrap();
+        }
 
-        let hierarchy = manager.get_hierarchy(&city_id);
-        assert_eq!(hierarchy.len(), 2);
-        assert_eq!(hierarchy[0].name, "Sword Coast");
-        assert_eq!(hierarchy[1].name, "Neverwinter");
+        let campaign1_locations = manager.list_locations_for_campaign("campaign-1");
+        assert_eq!(campaign1_locations.len(), 3);
+
+        let campaign2_locations = manager.list_locations_for_campaign("campaign-2");
+        assert_eq!(campaign2_locations.len(), 2);
     }
 
     #[test]
     fn test_connections() {
         let manager = LocationManager::new();
+        let generator = LocationGenerator::new();
 
-        let loc1 = Location::new("campaign-1", "Town A", LocationType::Town);
-        let loc2 = Location::new("campaign-1", "Town B", LocationType::Town);
+        let opt1 = LocationGenerationOptions {
+            location_type: Some("tavern".to_string()),
+            campaign_id: Some("campaign-1".to_string()),
+            ..Default::default()
+        };
+        let loc1 = generator.generate_quick(&opt1);
+        let id1 = manager.save_location(loc1).unwrap();
 
-        let id1 = manager.create(loc1);
-        let id2 = manager.create(loc2);
+        let opt2 = LocationGenerationOptions {
+            location_type: Some("shop".to_string()),
+            campaign_id: Some("campaign-1".to_string()),
+            ..Default::default()
+        };
+        let loc2 = generator.generate_quick(&opt2);
+        let id2 = manager.save_location(loc2).unwrap();
 
-        manager.add_connection(&id1, &id2);
+        // Add connection
+        let connection = LocationConnection {
+            target_id: Some(id2.clone()),
+            target_name: "Test Shop".to_string(),
+            connection_type: crate::core::location_gen::ConnectionType::Road,
+            travel_time: Some("5 minutes".to_string()),
+            hazards: vec![],
+        };
+        manager.add_connection(&id1, connection).unwrap();
 
-        let connected = manager.get_connected(&id1);
+        let connected = manager.get_connected_locations(&id1);
         assert_eq!(connected.len(), 1);
-        assert_eq!(connected[0].name, "Town B");
+        assert_eq!(connected[0].id, id2);
     }
 }

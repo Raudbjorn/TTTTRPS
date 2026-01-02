@@ -13,6 +13,9 @@ use crate::bindings::{
     list_openrouter_models, list_provider_models, reindex_library, save_api_key,
     ElevenLabsConfig, HealthStatus, LLMSettings, MeilisearchStatus, ModelInfo, OllamaConfig,
     OllamaModel, OpenAIVoiceConfig, Voice, VoiceConfig,
+    // Audio cache imports (TASK-005)
+    get_audio_cache_stats, get_audio_cache_size, clear_audio_cache, prune_audio_cache,
+    VoiceCacheStats, AudioCacheSizeInfo, format_bytes,
 };
 use crate::components::design_system::{Badge, BadgeVariant, Button, ButtonVariant, Card, CardBody, CardHeader, Input, Select};
 use crate::services::theme_service::ThemeState;
@@ -1057,15 +1060,19 @@ pub fn Settings() -> impl IntoView {
                     </CardBody>
                 </Card>
 
-                // Appearance Card
+                // Audio Cache Statistics Card (TASK-005)
+                <AudioCacheCard />
+
+                // Appearance Card - Enhanced with Theme Editor
                 <Card>
                     <CardHeader>
                         <h2 class="text-lg font-semibold">"Appearance"</h2>
                     </CardHeader>
-                    <CardBody>
+                    <CardBody class="space-y-4">
+                        // Quick theme select
                         <div>
                             <label class="block text-sm font-medium text-theme-secondary mb-1">
-                                "Theme"
+                                "Theme Preset"
                             </label>
                             <Select
                                 value=theme_value.get()
@@ -1077,7 +1084,21 @@ pub fn Settings() -> impl IntoView {
                                 <option value="noir">"Noir"</option>
                                 <option value="neon">"Neon Cyberpunk"</option>
                             </Select>
+                            <p class="text-xs text-theme-secondary mt-1">
+                                "Quick select a theme preset. For advanced blending, use the Theme Editor below."
+                            </p>
                         </div>
+
+                        // Advanced Theme Editor
+                        <details class="group">
+                            <summary class="cursor-pointer text-sm font-medium text-[var(--accent)] hover:underline list-none flex items-center gap-2">
+                                <span class="group-open:rotate-90 transition-transform">">"</span>
+                                "Advanced Theme Blending"
+                            </summary>
+                            <div class="mt-4 pt-4 border-t border-[var(--border-subtle)]">
+                                <crate::components::settings_components::ThemeEditor />
+                            </div>
+                        </details>
                     </CardBody>
                 </Card>
 
@@ -1167,6 +1188,50 @@ pub fn Settings() -> impl IntoView {
                     </CardBody>
                 </Card>
 
+                // Audit Logs Card
+                <Card>
+                    <CardHeader>
+                        <h2 class="text-lg font-semibold">"Security & Audit Logs"</h2>
+                    </CardHeader>
+                    <CardBody class="space-y-4">
+                        <p class="text-sm text-theme-secondary">
+                            "View security audit logs and analytics dashboards."
+                        </p>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            // Usage Dashboard link
+                            <a
+                                href="/analytics/usage"
+                                class="p-4 bg-theme-secondary rounded-lg hover:bg-theme-secondary/80 transition-colors cursor-pointer block"
+                            >
+                                <div class="font-medium text-theme-primary">"Usage & Costs"</div>
+                                <div class="text-xs text-theme-secondary mt-1">
+                                    "View token usage, costs by provider, and budget status"
+                                </div>
+                            </a>
+                            // Search Analytics link
+                            <a
+                                href="/analytics/search"
+                                class="p-4 bg-theme-secondary rounded-lg hover:bg-theme-secondary/80 transition-colors cursor-pointer block"
+                            >
+                                <div class="font-medium text-theme-primary">"Search Analytics"</div>
+                                <div class="text-xs text-theme-secondary mt-1">
+                                    "Popular queries, cache stats, and search performance"
+                                </div>
+                            </a>
+                            // Audit Logs link
+                            <a
+                                href="/analytics/audit"
+                                class="p-4 bg-theme-secondary rounded-lg hover:bg-theme-secondary/80 transition-colors cursor-pointer block"
+                            >
+                                <div class="font-medium text-theme-primary">"Audit Logs"</div>
+                                <div class="text-xs text-theme-secondary mt-1">
+                                    "Security events, API key usage, and configuration changes"
+                                </div>
+                            </a>
+                        </div>
+                    </CardBody>
+                </Card>
+
                 // Actions footer
                 <div class="flex justify-end gap-4 pt-4 border-t border-gray-700">
                     <Show when=move || !save_status.get().is_empty()>
@@ -1199,5 +1264,319 @@ pub fn Settings() -> impl IntoView {
                 </div>
             </div>
         </div>
+    }
+}
+
+// ============================================================================
+// Audio Cache Card Component (TASK-005)
+// ============================================================================
+
+/// Audio Cache Statistics and Management Card
+///
+/// Displays cache statistics including:
+/// - Hit/miss rate and counts
+/// - Current and max cache size with visual progress bar
+/// - Entry counts by format
+/// - Actions to clear or prune the cache
+#[component]
+pub fn AudioCacheCard() -> impl IntoView {
+    // Cache stats signal
+    let cache_stats: RwSignal<Option<VoiceCacheStats>> = RwSignal::new(None);
+    let cache_size: RwSignal<Option<AudioCacheSizeInfo>> = RwSignal::new(None);
+    let is_loading = RwSignal::new(false);
+    let is_clearing = RwSignal::new(false);
+    let is_pruning = RwSignal::new(false);
+    let action_status: RwSignal<Option<String>> = RwSignal::new(None);
+
+    // Load cache stats on mount
+    Effect::new(move || {
+        spawn_local(async move {
+            is_loading.set(true);
+            if let Ok(stats) = get_audio_cache_stats().await {
+                cache_stats.set(Some(stats));
+            }
+            if let Ok(size) = get_audio_cache_size().await {
+                cache_size.set(Some(size));
+            }
+            is_loading.set(false);
+        });
+    });
+
+    // Refresh cache stats
+    let refresh_stats = move || {
+        spawn_local(async move {
+            is_loading.set(true);
+            if let Ok(stats) = get_audio_cache_stats().await {
+                cache_stats.set(Some(stats));
+            }
+            if let Ok(size) = get_audio_cache_size().await {
+                cache_size.set(Some(size));
+            }
+            is_loading.set(false);
+        });
+    };
+
+    // Clear all cache
+    let clear_cache_action = move |_| {
+        spawn_local(async move {
+            is_clearing.set(true);
+            action_status.set(None);
+            match clear_audio_cache().await {
+                Ok(()) => {
+                    action_status.set(Some("Cache cleared successfully".to_string()));
+                    // Refresh stats
+                    if let Ok(stats) = get_audio_cache_stats().await {
+                        cache_stats.set(Some(stats));
+                    }
+                    if let Ok(size) = get_audio_cache_size().await {
+                        cache_size.set(Some(size));
+                    }
+                }
+                Err(e) => {
+                    action_status.set(Some(format!("Failed to clear cache: {}", e)));
+                }
+            }
+            is_clearing.set(false);
+        });
+    };
+
+    // Prune old entries (older than 7 days)
+    let prune_cache_action = move |_| {
+        spawn_local(async move {
+            is_pruning.set(true);
+            action_status.set(None);
+            let seven_days_secs = 7 * 24 * 60 * 60;
+            match prune_audio_cache(seven_days_secs).await {
+                Ok(count) => {
+                    action_status.set(Some(format!("Pruned {} old entries", count)));
+                    // Refresh stats
+                    if let Ok(stats) = get_audio_cache_stats().await {
+                        cache_stats.set(Some(stats));
+                    }
+                    if let Ok(size) = get_audio_cache_size().await {
+                        cache_size.set(Some(size));
+                    }
+                }
+                Err(e) => {
+                    action_status.set(Some(format!("Failed to prune cache: {}", e)));
+                }
+            }
+            is_pruning.set(false);
+        });
+    };
+
+    view! {
+        <Card>
+            <CardHeader>
+                <div class="flex items-center justify-between w-full">
+                    <h2 class="text-lg font-semibold">"Audio Cache"</h2>
+                    <div class="flex items-center gap-2">
+                        {move || {
+                            cache_size.get().map(|size| {
+                                let variant = if size.usage_percent > 90.0 {
+                                    BadgeVariant::Danger
+                                } else if size.usage_percent > 70.0 {
+                                    BadgeVariant::Warning
+                                } else {
+                                    BadgeVariant::Success
+                                };
+                                view! {
+                                    <Badge variant=variant>
+                                        {format!("{:.1}% used", size.usage_percent)}
+                                    </Badge>
+                                }
+                            })
+                        }}
+                    </div>
+                </div>
+            </CardHeader>
+            <CardBody class="space-y-4">
+                // Loading state
+                <Show when=move || is_loading.get()>
+                    <div class="flex items-center justify-center py-4">
+                        <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-[var(--accent)]"></div>
+                        <span class="ml-2 text-theme-secondary">"Loading cache statistics..."</span>
+                    </div>
+                </Show>
+
+                // Cache size progress bar
+                <Show when=move || cache_size.get().is_some() && !is_loading.get()>
+                    {move || {
+                        cache_size.get().map(|size| {
+                            view! {
+                                <div class="space-y-2">
+                                    <div class="flex justify-between text-sm">
+                                        <span class="text-theme-secondary">"Storage Used"</span>
+                                        <span class="font-mono">
+                                            {format!("{} / {}", format_bytes(size.current_size_bytes), format_bytes(size.max_size_bytes))}
+                                        </span>
+                                    </div>
+                                    <div class="w-full bg-[var(--bg-tertiary)] rounded-full h-2.5">
+                                        <div
+                                            class="h-2.5 rounded-full transition-all duration-300"
+                                            style:width=format!("{}%", size.usage_percent.min(100.0))
+                                            style:background-color=if size.usage_percent > 90.0 {
+                                                "var(--error)"
+                                            } else if size.usage_percent > 70.0 {
+                                                "var(--warning)"
+                                            } else {
+                                                "var(--accent)"
+                                            }
+                                        ></div>
+                                    </div>
+                                    <div class="text-xs text-theme-secondary">
+                                        {format!("{} entries cached", size.entry_count)}
+                                    </div>
+                                </div>
+                            }
+                        })
+                    }}
+                </Show>
+
+                // Cache statistics
+                <Show when=move || cache_stats.get().is_some() && !is_loading.get()>
+                    {move || {
+                        cache_stats.get().map(|stats| {
+                            view! {
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    // Hit rate
+                                    <div class="bg-[var(--bg-tertiary)] rounded-lg p-3">
+                                        <div class="text-xs text-theme-secondary uppercase tracking-wide">"Hit Rate"</div>
+                                        <div class="text-xl font-bold text-[var(--accent)]">
+                                            {format!("{:.1}%", stats.hit_rate * 100.0)}
+                                        </div>
+                                    </div>
+
+                                    // Hits
+                                    <div class="bg-[var(--bg-tertiary)] rounded-lg p-3">
+                                        <div class="text-xs text-theme-secondary uppercase tracking-wide">"Cache Hits"</div>
+                                        <div class="text-xl font-bold text-green-400">
+                                            {stats.hits.to_string()}
+                                        </div>
+                                    </div>
+
+                                    // Misses
+                                    <div class="bg-[var(--bg-tertiary)] rounded-lg p-3">
+                                        <div class="text-xs text-theme-secondary uppercase tracking-wide">"Cache Misses"</div>
+                                        <div class="text-xl font-bold text-yellow-400">
+                                            {stats.misses.to_string()}
+                                        </div>
+                                    </div>
+
+                                    // Evictions
+                                    <div class="bg-[var(--bg-tertiary)] rounded-lg p-3">
+                                        <div class="text-xs text-theme-secondary uppercase tracking-wide">"Evictions"</div>
+                                        <div class="text-xl font-bold text-red-400">
+                                            {stats.evictions.to_string()}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                // Format breakdown
+                                <Show when=move || !stats.entries_by_format.is_empty()>
+                                    <div class="mt-4">
+                                        <h3 class="text-sm font-medium text-theme-secondary mb-2">"Entries by Format"</h3>
+                                        <div class="flex flex-wrap gap-2">
+                                            {stats.entries_by_format.iter().map(|(format, count)| {
+                                                view! {
+                                                    <span class="px-2 py-1 bg-[var(--bg-tertiary)] rounded text-xs font-mono">
+                                                        {format!("{}: {}", format.to_uppercase(), count)}
+                                                    </span>
+                                                }
+                                            }).collect::<Vec<_>>()}
+                                        </div>
+                                    </div>
+                                </Show>
+
+                                // Additional info
+                                <div class="mt-4 text-xs text-theme-secondary space-y-1">
+                                    <Show when=move || stats.oldest_entry_age_secs > 0>
+                                        <div>
+                                            "Oldest entry: "
+                                            {format_duration(stats.oldest_entry_age_secs)}
+                                            " ago"
+                                        </div>
+                                    </Show>
+                                    <Show when=move || stats.avg_entry_size_bytes > 0>
+                                        <div>
+                                            "Average entry size: "
+                                            {format_bytes(stats.avg_entry_size_bytes)}
+                                        </div>
+                                    </Show>
+                                </div>
+                            }
+                        })
+                    }}
+                </Show>
+
+                // Action status message
+                <Show when=move || action_status.get().is_some()>
+                    {move || {
+                        action_status.get().map(|status| {
+                            let is_error = status.contains("Failed");
+                            view! {
+                                <div class=move || {
+                                    if is_error {
+                                        "text-sm text-red-400 bg-red-400/10 rounded px-3 py-2"
+                                    } else {
+                                        "text-sm text-green-400 bg-green-400/10 rounded px-3 py-2"
+                                    }
+                                }>
+                                    {status}
+                                </div>
+                            }
+                        })
+                    }}
+                </Show>
+
+                // Action buttons
+                <div class="flex flex-wrap gap-2 pt-2">
+                    <Button
+                        variant=ButtonVariant::Secondary
+                        on_click=move |_| refresh_stats()
+                        disabled=is_loading.get()
+                    >
+                        "Refresh"
+                    </Button>
+
+                    <Button
+                        variant=ButtonVariant::Warning
+                        on_click=prune_cache_action
+                        loading=is_pruning.get()
+                        disabled=is_loading.get() || is_clearing.get()
+                    >
+                        "Prune Old (7+ days)"
+                    </Button>
+
+                    <Button
+                        variant=ButtonVariant::Danger
+                        on_click=clear_cache_action
+                        loading=is_clearing.get()
+                        disabled=is_loading.get() || is_pruning.get()
+                    >
+                        "Clear All"
+                    </Button>
+                </div>
+
+                // Help text
+                <p class="text-xs text-theme-secondary">
+                    "Audio cache stores synthesized speech to avoid re-generating the same audio. "
+                    "Pruning removes entries older than 7 days. Clearing removes all cached audio."
+                </p>
+            </CardBody>
+        </Card>
+    }
+}
+
+/// Format duration in seconds to human-readable string
+fn format_duration(secs: i64) -> String {
+    if secs < 60 {
+        format!("{} seconds", secs)
+    } else if secs < 3600 {
+        format!("{} minutes", secs / 60)
+    } else if secs < 86400 {
+        format!("{:.1} hours", secs as f64 / 3600.0)
+    } else {
+        format!("{:.1} days", secs as f64 / 86400.0)
     }
 }

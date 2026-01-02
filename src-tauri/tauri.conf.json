@@ -7,7 +7,7 @@
     "beforeBuildCommand": "cd frontend && trunk build --release",
     "beforeDevCommand": "cd frontend && trunk serve --port 3030",
     "devUrl": "http://127.0.0.1:3030",
-    "frontendDist": "frontend/dist"
+    "frontendDist": "../frontend/dist"
   },
   "app": {
     "trayIcon": {

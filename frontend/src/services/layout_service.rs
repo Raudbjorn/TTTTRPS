@@ -10,6 +10,7 @@ use leptos::prelude::*;
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum ViewType {
     #[default]
+    Home,
     Campaigns,
     Chat,
     Library,
@@ -21,6 +22,7 @@ impl ViewType {
     /// Returns the display name for this view
     pub fn display_name(&self) -> &'static str {
         match self {
+            ViewType::Home => "Home",
             ViewType::Campaigns => "Campaigns",
             ViewType::Chat => "Chat",
             ViewType::Library => "Library",
@@ -32,6 +34,7 @@ impl ViewType {
     /// Returns the icon name for this view (for icon components)
     pub fn icon_name(&self) -> &'static str {
         match self {
+            ViewType::Home => "home",
             ViewType::Campaigns => "folder",
             ViewType::Chat => "message-circle",
             ViewType::Library => "book",

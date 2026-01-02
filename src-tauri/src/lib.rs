@@ -9,6 +9,7 @@ pub mod core;
 pub mod database;
 pub mod ingestion;
 pub mod commands;
+pub mod backstory_commands;
 
 // Test modules
 #[cfg(test)]

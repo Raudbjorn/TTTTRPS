@@ -10,12 +10,11 @@ use crate::core::voice::{
     types::{QueuedVoice, VoiceStatus}
 };
 use crate::core::models::Campaign;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 use tokio::sync::RwLock as AsyncRwLock;
 use std::path::Path;
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use std::collections::HashMap;
 use crate::database::{Database, NpcConversation, ConversationMessage};
 
@@ -31,15 +30,35 @@ use crate::core::session_manager::{
     SessionManager, GameSession, SessionSummary, CombatState, Combatant,
     CombatantType, create_common_condition
 };
-use crate::core::character_gen::{CharacterGenerator, GenerationOptions, Character};
+use crate::core::character_gen::{CharacterGenerator, GenerationOptions, Character, SystemInfo};
+use crate::core::character_gen::backstory::{
+    BackstoryGenerator, BackstoryRequest, GeneratedBackstory,
+    BackstoryStyle, RegenerationOptions, EditResult, BackstoryNPC,
+};
+use crate::core::character_gen::BackstoryLength;
 use crate::core::npc_gen::{NPCGenerator, NPCGenerationOptions, NPC, NPCStore};
+use crate::core::location_gen::{LocationGenerator, LocationGenerationOptions, Location, LocationType};
+use crate::core::personality::{
+    PersonalityApplicationManager, ActivePersonalityContext, SceneMood,
+    PersonalityApplicationOptions, ContentType, StyledContent, PersonalityPreview,
+    NPCDialogueStyler, NarrationStyleManager, NarrationType, PersonalitySettings,
+    ExtendedPersonalityPreview, PreviewResponse, NarrativeTone, VocabularyLevel,
+    NarrativeStyle, VerbosityLevel, GenreConvention, PersonalityStore,
+};
 use crate::core::credentials::CredentialManager;
 use crate::core::audio::AudioVolumes;
 use crate::core::sidecar_manager::{SidecarManager, MeilisearchConfig};
 use crate::core::search_client::SearchClient;
 use crate::core::meilisearch_pipeline::MeilisearchPipeline;
 use crate::core::meilisearch_chat::{DMChatManager, ChatMessage as MeiliChatMessage};
-use crate::core::personality::PersonalityStore;
+use crate::core::campaign::versioning::VersionManager;
+use crate::core::campaign::world_state::WorldStateManager;
+use crate::core::campaign::relationships::RelationshipManager;
+use crate::core::session::notes::{
+    NoteCategory, EntityType as NoteEntityType, EntityLink, NotesManager,
+    SessionNote as NoteSessionNote, CategorizationRequest, CategorizationResponse,
+    build_categorization_prompt, parse_categorization_response,
+};
 
 fn serialize_enum_to_string<T: serde::Serialize>(value: &T) -> String {
     serde_json::to_string(value)
@@ -55,7 +74,7 @@ pub struct AppState {
     // pub database: Option<Database>,
     pub llm_client: RwLock<Option<LLMClient>>,
     pub llm_config: RwLock<Option<LLMConfig>>,
-    pub llm_router: RwLock<LLMRouter>,
+    pub llm_router: AsyncRwLock<LLMRouter>,
     pub campaign_manager: CampaignManager,
     pub session_manager: SessionManager,
     pub npc_store: NPCStore,
@@ -64,8 +83,14 @@ pub struct AppState {
     pub sidecar_manager: Arc<SidecarManager>,
     pub search_client: Arc<SearchClient>,
     pub personality_store: Arc<PersonalityStore>,
+    pub personality_manager: Arc<PersonalityApplicationManager>,
     pub ingestion_pipeline: Arc<MeilisearchPipeline>,
     pub database: Database,
+    // Campaign management modules (TASK-006, TASK-007, TASK-009)
+    pub version_manager: VersionManager,
+    pub world_state_manager: WorldStateManager,
+    pub relationship_manager: RelationshipManager,
+    pub location_manager: crate::core::location_manager::LocationManager,
 }
 
 // Helper init for default state components
@@ -79,14 +104,21 @@ impl AppState {
         Arc<SidecarManager>,
         Arc<SearchClient>,
         Arc<PersonalityStore>,
+        Arc<PersonalityApplicationManager>,
         Arc<MeilisearchPipeline>,
-        RwLock<LLMRouter>,
+        AsyncRwLock<LLMRouter>,
+        VersionManager,
+        WorldStateManager,
+        RelationshipManager,
+        crate::core::location_manager::LocationManager,
     ) {
         let sidecar_config = MeilisearchConfig::default();
         let search_client = SearchClient::new(
             &sidecar_config.url(),
             Some(&sidecar_config.master_key),
         );
+        let personality_store = Arc::new(PersonalityStore::new());
+        let personality_manager = Arc::new(PersonalityApplicationManager::new(personality_store.clone()));
 
         (
             CampaignManager::new(),
@@ -99,9 +131,14 @@ impl AppState {
             }))),
             Arc::new(SidecarManager::with_config(sidecar_config)),
             Arc::new(search_client),
-            Arc::new(PersonalityStore::new()),
+            personality_store,
+            personality_manager,
             Arc::new(MeilisearchPipeline::with_defaults()),
-            RwLock::new(LLMRouter::new(RouterConfig::default())),
+            AsyncRwLock::new(LLMRouter::new(RouterConfig::default())),
+            VersionManager::default(),
+            WorldStateManager::default(),
+            RelationshipManager::default(),
+            crate::core::location_manager::LocationManager::new(),
         )
     }
 }
@@ -151,7 +188,7 @@ pub struct HealthStatus {
 // ============================================================================
 
 #[tauri::command]
-pub fn configure_llm(
+pub async fn configure_llm(
     settings: LLMSettings,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
@@ -159,7 +196,6 @@ pub fn configure_llm(
         "ollama" => LLMConfig::Ollama {
             host: settings.host.unwrap_or_else(|| "http://localhost:11434".to_string()),
             model: settings.model,
-            embedding_model: settings.embedding_model.or(Some("nomic-embed-text".to_string())),
         },
         "claude" => LLMConfig::Claude {
             api_key: settings.api_key.clone().ok_or("Claude requires an API key")?,
@@ -175,7 +211,7 @@ pub fn configure_llm(
             model: settings.model,
             max_tokens: 4096,
             organization_id: None,
-            base_url: "https://api.openai.com/v1".to_string(),
+            base_url: Some("https://api.openai.com/v1".to_string()),
         },
         "openrouter" => LLMConfig::OpenRouter {
             api_key: settings.api_key.clone().ok_or("OpenRouter requires an API key")?,
@@ -222,22 +258,24 @@ pub fn configure_llm(
 
     // Update Router: remove old provider if different, then add new one
     {
-        let mut router = state.llm_router.write().unwrap();
+        let mut router = state.llm_router.write().await;
         if let Some(ref prev) = prev_provider {
             if prev != &provider_name {
-                router.remove_provider(prev);
+                router.remove_provider(prev).await;
             }
         }
-        router.remove_provider(&provider_name);
-        router.add_provider(&provider_name, config);
+        router.remove_provider(&provider_name).await;
+
+        let provider = config.create_provider();
+        router.add_provider(provider).await;
     }
 
     Ok(format!("Configured {} provider successfully", provider_name))
 }
 
 #[tauri::command]
-pub fn get_router_stats(state: State<'_, AppState>) -> Result<HashMap<String, ProviderStats>, String> {
-    Ok(state.llm_router.read().unwrap().get_all_stats())
+pub async fn get_router_stats(state: State<'_, AppState>) -> Result<HashMap<String, ProviderStats>, String> {
+    Ok(state.llm_router.read().await.get_all_stats().await)
 }
 
 #[tauri::command]
@@ -348,9 +386,10 @@ pub async fn chat(
         system_prompt: Some(system_prompt),
         temperature: Some(0.7),
         max_tokens: Some(2048),
+        provider: None,
     };
 
-    let router = (*state.llm_router.read().unwrap()).clone();
+    let router = (*state.llm_router.read().await).clone();
     let response = router.chat(request).await.map_err(|e| e.to_string())?;
 
     Ok(ChatResponsePayload {
@@ -401,12 +440,12 @@ pub fn get_llm_config(state: State<'_, AppState>) -> Result<Option<LLMSettings>,
     let config = state.llm_config.read().unwrap();
 
     Ok(config.as_ref().map(|c| match c {
-        LLMConfig::Ollama { host, model, embedding_model } => LLMSettings {
+        LLMConfig::Ollama { host, model } => LLMSettings {
             provider: "ollama".to_string(),
             api_key: None,
             host: Some(host.clone()),
             model: model.clone(),
-            embedding_model: embedding_model.clone(),
+            embedding_model: None,
         },
         LLMConfig::Claude { model, .. } => LLMSettings {
             provider: "claude".to_string(),
@@ -556,6 +595,171 @@ pub async fn list_provider_models(provider: String) -> Result<Vec<crate::core::l
 }
 
 // ============================================================================
+// LLM Router Commands
+// ============================================================================
+
+use crate::core::llm::{
+    ChatChunk, CostSummary, ProviderHealth, RoutingStrategy,
+};
+
+/// Get health status of all providers
+#[tauri::command]
+pub async fn get_router_health(
+    state: State<'_, AppState>,
+) -> Result<HashMap<String, ProviderHealth>, String> {
+    let router = state.llm_router.read().await.clone();
+    Ok(router.get_all_health().await)
+}
+
+/// Get cost summary for the router
+#[tauri::command]
+pub async fn get_router_costs(
+    state: State<'_, AppState>,
+) -> Result<CostSummary, String> {
+    let router = state.llm_router.read().await.clone();
+    Ok(router.get_cost_summary().await)
+}
+
+/// Estimate cost for a request
+#[tauri::command]
+pub async fn estimate_request_cost(
+    provider: String,
+    model: String,
+    input_tokens: u32,
+    output_tokens: u32,
+    state: State<'_, AppState>,
+) -> Result<f64, String> {
+    let router = state.llm_router.read().await.clone();
+    Ok(router.estimate_cost(&provider, &model, input_tokens, output_tokens).await)
+}
+
+/// Get list of healthy providers
+#[tauri::command]
+pub async fn get_healthy_providers(
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, String> {
+    let router = state.llm_router.read().await.clone();
+    Ok(router.healthy_providers().await)
+}
+
+/// Set the routing strategy
+#[tauri::command]
+pub async fn set_routing_strategy(
+    strategy: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let strategy = match strategy.to_lowercase().as_str() {
+        "priority" => RoutingStrategy::Priority,
+        "cost" | "cost_optimized" | "costoptimized" => RoutingStrategy::CostOptimized,
+        "latency" | "latency_optimized" | "latencyoptimized" => RoutingStrategy::LatencyOptimized,
+        "round_robin" | "roundrobin" => RoutingStrategy::RoundRobin,
+        _ => return Err(format!("Unknown routing strategy: {}", strategy)),
+    };
+
+    let mut router = state.llm_router.write().await;
+    router.set_routing_strategy(strategy);
+    Ok(())
+}
+
+/// Run health checks on all providers
+#[tauri::command]
+pub async fn run_provider_health_checks(
+    state: State<'_, AppState>,
+) -> Result<HashMap<String, bool>, String> {
+    let router = state.llm_router.read().await;
+    let router_clone = router.clone();
+    drop(router); // Release the lock before async operation
+
+    Ok(router_clone.health_check_all().await)
+}
+
+/// Stream chat response - emits 'chat-chunk' events as chunks arrive
+#[tauri::command]
+pub async fn stream_chat(
+    app_handle: tauri::AppHandle,
+    messages: Vec<ChatMessage>,
+    system_prompt: Option<String>,
+    temperature: Option<f32>,
+    max_tokens: Option<u32>,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    use tauri::Emitter;
+
+    let request = ChatRequest {
+        messages,
+        system_prompt,
+        temperature,
+        max_tokens,
+        provider: None,
+    };
+
+    let router = state.llm_router.read().await;
+    let router_clone = router.clone();
+    drop(router);
+
+    let mut rx = router_clone.stream_chat(request).await
+        .map_err(|e| e.to_string())?;
+
+    let mut stream_id = String::new();
+    let mut full_content = String::new();
+
+    // Process chunks and emit events
+    while let Some(chunk_result) = rx.recv().await {
+        match chunk_result {
+            Ok(chunk) => {
+                if stream_id.is_empty() {
+                    stream_id = chunk.stream_id.clone();
+                }
+                full_content.push_str(&chunk.content);
+
+                // Emit the chunk event
+                let _ = app_handle.emit("chat-chunk", &chunk);
+
+                if chunk.is_final {
+                    break;
+                }
+            }
+            Err(e) => {
+                // Emit error event
+                let error_chunk = ChatChunk {
+                    stream_id: stream_id.clone(),
+                    content: String::new(),
+                    provider: String::new(),
+                    model: String::new(),
+                    is_final: true,
+                    finish_reason: Some("error".to_string()),
+                    usage: None,
+                    index: 0,
+                };
+                let _ = app_handle.emit("chat-chunk", &error_chunk);
+                return Err(e.to_string());
+            }
+        }
+    }
+
+    Ok(stream_id)
+}
+
+/// Cancel an active stream
+#[tauri::command]
+pub async fn cancel_stream(
+    stream_id: String,
+    state: State<'_, AppState>,
+) -> Result<bool, String> {
+    let router = state.llm_router.read().await.clone();
+    Ok(router.cancel_stream(&stream_id).await)
+}
+
+/// Get list of active stream IDs
+#[tauri::command]
+pub async fn get_active_streams(
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, String> {
+    let router = state.llm_router.read().await.clone();
+    Ok(router.active_stream_ids().await)
+}
+
+// ============================================================================
 // Document Ingestion Commands
 // ============================================================================
 
@@ -686,6 +890,203 @@ pub async fn search(
         .collect();
 
     Ok(formatted)
+}
+
+// ============================================================================
+// Hybrid Search Commands
+// ============================================================================
+
+use crate::core::search::{
+    HybridSearchEngine, HybridConfig,
+    hybrid::HybridSearchOptions as CoreHybridSearchOptions,
+};
+
+/// Options for hybrid search
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct HybridSearchOptions {
+    /// Maximum results to return
+    #[serde(default = "default_limit")]
+    pub limit: usize,
+    /// Source type filter
+    pub source_type: Option<String>,
+    /// Campaign ID filter
+    pub campaign_id: Option<String>,
+    /// Index to search (None = federated search)
+    pub index: Option<String>,
+    /// Override semantic weight (0.0 - 1.0)
+    pub semantic_weight: Option<f32>,
+    /// Override keyword weight (0.0 - 1.0)
+    pub keyword_weight: Option<f32>,
+    /// Fusion strategy preset: "balanced", "keyword_heavy", "semantic_heavy", etc.
+    pub fusion_strategy: Option<String>,
+    /// Enable/disable query expansion (default: true)
+    pub query_expansion: Option<bool>,
+    /// Enable/disable spell correction (default: true)
+    pub spell_correction: Option<bool>,
+}
+
+/// Hybrid search result for frontend
+#[derive(Debug, Serialize, Deserialize)]
+pub struct HybridSearchResultPayload {
+    pub content: String,
+    pub source: String,
+    pub source_type: String,
+    pub page_number: Option<u32>,
+    pub score: f32,
+    pub index: String,
+    pub keyword_rank: Option<usize>,
+    pub semantic_rank: Option<usize>,
+    /// Number of search methods that found this result (1 = single, 2 = both)
+    pub overlap_count: Option<usize>,
+}
+
+/// Hybrid search response for frontend
+#[derive(Debug, Serialize, Deserialize)]
+pub struct HybridSearchResponsePayload {
+    pub results: Vec<HybridSearchResultPayload>,
+    pub total_hits: usize,
+    pub original_query: String,
+    pub expanded_query: Option<String>,
+    pub corrected_query: Option<String>,
+    pub processing_time_ms: u64,
+    pub hints: Vec<String>,
+    /// Whether performance target was met (<500ms)
+    pub within_target: bool,
+}
+
+/// Perform hybrid search with RRF fusion
+///
+/// Combines keyword (Meilisearch BM25) and semantic (vector similarity) search
+/// using Reciprocal Rank Fusion (RRF) for optimal ranking.
+///
+/// # Arguments
+/// * `query` - The search query string
+/// * `options` - Optional search configuration
+/// * `state` - Application state containing search client
+///
+/// # Returns
+/// Search results with RRF-fused scores, timing, and query enhancement info
+#[tauri::command]
+pub async fn hybrid_search(
+    query: String,
+    options: Option<HybridSearchOptions>,
+    state: State<'_, AppState>,
+) -> Result<HybridSearchResponsePayload, String> {
+    let opts = options.unwrap_or_default();
+
+    // Build hybrid config from options
+    let mut config = HybridConfig::default();
+
+    // Apply fusion strategy if specified
+    if let Some(strategy) = &opts.fusion_strategy {
+        config.fusion_strategy = Some(strategy.clone());
+    }
+
+    // Apply query expansion setting
+    if let Some(expand) = opts.query_expansion {
+        config.query_expansion = expand;
+    }
+
+    // Apply spell correction setting
+    if let Some(correct) = opts.spell_correction {
+        config.spell_correction = correct;
+    }
+
+    // Create hybrid search engine with configured options
+    let engine = HybridSearchEngine::new(
+        state.search_client.clone(),
+        None, // Embedding provider - use Meilisearch's built-in for now
+        config,
+    );
+
+    // Convert options to core search options
+    let search_options = CoreHybridSearchOptions {
+        limit: opts.limit,
+        source_type: opts.source_type,
+        campaign_id: opts.campaign_id,
+        index: opts.index,
+        semantic_weight: opts.semantic_weight,
+        keyword_weight: opts.keyword_weight,
+    };
+
+    // Perform search
+    let response = engine
+        .search(&query, search_options)
+        .await
+        .map_err(|e| format!("Hybrid search failed: {}", e))?;
+
+    // Determine overlap count for each result
+    let results: Vec<HybridSearchResultPayload> = response
+        .results
+        .into_iter()
+        .map(|r| {
+            let overlap_count = match (r.keyword_rank.is_some(), r.semantic_rank.is_some()) {
+                (true, true) => Some(2),
+                (true, false) | (false, true) => Some(1),
+                (false, false) => None,
+            };
+
+            HybridSearchResultPayload {
+                content: r.document.content,
+                source: r.document.source,
+                source_type: r.document.source_type,
+                page_number: r.document.page_number,
+                score: r.score,
+                index: r.index,
+                keyword_rank: r.keyword_rank,
+                semantic_rank: r.semantic_rank,
+                overlap_count,
+            }
+        })
+        .collect();
+
+    // Check if within performance target
+    let within_target = response.processing_time_ms < 500;
+
+    Ok(HybridSearchResponsePayload {
+        results,
+        total_hits: response.total_hits,
+        original_query: response.original_query,
+        expanded_query: response.expanded_query,
+        corrected_query: response.corrected_query,
+        processing_time_ms: response.processing_time_ms,
+        hints: response.hints,
+        within_target,
+    })
+}
+
+/// Get search suggestions for autocomplete
+#[tauri::command]
+pub fn get_search_suggestions(
+    partial: String,
+    state: State<'_, AppState>,
+) -> Vec<String> {
+    let engine = HybridSearchEngine::with_defaults(state.search_client.clone());
+    engine.suggest(&partial)
+}
+
+/// Get search hints for a query
+#[tauri::command]
+pub fn get_search_hints(
+    query: String,
+    state: State<'_, AppState>,
+) -> Vec<String> {
+    let engine = HybridSearchEngine::with_defaults(state.search_client.clone());
+    engine.get_hints(&query)
+}
+
+/// Expand a query with TTRPG synonyms
+#[tauri::command]
+pub fn expand_query(query: String) -> crate::core::search::synonyms::QueryExpansionResult {
+    let synonyms = crate::core::search::TTRPGSynonyms::new();
+    synonyms.expand_query(&query)
+}
+
+/// Correct spelling in a query
+#[tauri::command]
+pub fn correct_query(query: String) -> crate::core::spell_correction::CorrectionResult {
+    let corrector = crate::core::spell_correction::SpellCorrector::new();
+    corrector.correct(&query)
 }
 
 // ============================================================================
@@ -1133,8 +1534,13 @@ pub fn add_combatant(
     name: String,
     initiative: i32,
     combatant_type: String,
+    hp_current: Option<i32>,
+    hp_max: Option<i32>,
+    armor_class: Option<i32>,
     state: State<'_, AppState>,
 ) -> Result<Combatant, String> {
+    use crate::core::session::ConditionTracker;
+
     let ctype = match combatant_type.as_str() {
         "player" => CombatantType::Player,
         "npc" => CombatantType::NPC,
@@ -1143,8 +1549,28 @@ pub fn add_combatant(
         _ => CombatantType::Monster,
     };
 
-    state.session_manager.add_combatant_quick(&session_id, &name, initiative, ctype)
-        .map_err(|e| e.to_string())
+    // Create full combatant with optional HP/AC
+    let combatant = Combatant {
+        id: uuid::Uuid::new_v4().to_string(),
+        name: name.clone(),
+        initiative,
+        initiative_modifier: 0,
+        combatant_type: ctype,
+        current_hp: hp_current.or(hp_max),
+        max_hp: hp_max,
+        temp_hp: None,
+        armor_class,
+        conditions: vec![],
+        condition_tracker: ConditionTracker::new(),
+        condition_immunities: vec![],
+        is_active: true,
+        notes: String::new(),
+    };
+
+    state.session_manager.add_combatant(&session_id, combatant.clone())
+        .map_err(|e| e.to_string())?;
+
+    Ok(combatant)
 }
 
 #[tauri::command]
@@ -1216,22 +1642,142 @@ pub fn remove_condition(
 }
 
 // ============================================================================
-// Character Generation Commands
+// Advanced Condition Commands (TASK-015)
 // ============================================================================
 
-// generate_character removed (duplicate)
+/// Request payload for adding a condition with full options
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddConditionRequest {
+    pub session_id: String,
+    pub combatant_id: String,
+    pub condition_name: String,
+    pub duration_type: Option<String>,
+    pub duration_value: Option<u32>,
+    pub source_id: Option<String>,
+    pub source_name: Option<String>,
+    pub save_type: Option<String>,
+    pub save_dc: Option<u32>,
+}
+
+/// Parse duration from request
+fn parse_condition_duration(
+    duration_type: Option<String>,
+    duration_value: Option<u32>,
+    save_type: Option<String>,
+    save_dc: Option<u32>,
+) -> Option<crate::core::session::conditions::ConditionDuration> {
+    use crate::core::session::conditions::{ConditionDuration, SaveTiming};
+
+    let duration_type = duration_type?;
+    match duration_type.as_str() {
+        "turns" => Some(ConditionDuration::Turns(duration_value.unwrap_or(1))),
+        "rounds" => Some(ConditionDuration::Rounds(duration_value.unwrap_or(1))),
+        "minutes" => Some(ConditionDuration::Minutes(duration_value.unwrap_or(1))),
+        "hours" => Some(ConditionDuration::Hours(duration_value.unwrap_or(1))),
+        "end_of_next_turn" => Some(ConditionDuration::EndOfNextTurn),
+        "start_of_next_turn" => Some(ConditionDuration::StartOfNextTurn),
+        "end_of_source_turn" => Some(ConditionDuration::EndOfSourceTurn),
+        "until_save" => Some(ConditionDuration::UntilSave {
+            save_type: save_type.unwrap_or_else(|| "CON".to_string()),
+            dc: save_dc.unwrap_or(10),
+            timing: SaveTiming::EndOfTurn,
+        }),
+        "until_removed" => Some(ConditionDuration::UntilRemoved),
+        "permanent" => Some(ConditionDuration::Permanent),
+        _ => None,
+    }
+}
+
+#[tauri::command]
+pub fn add_condition_advanced(
+    request: AddConditionRequest,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    use crate::core::session::conditions::{AdvancedCondition, ConditionTemplates};
+
+    let duration = parse_condition_duration(
+        request.duration_type,
+        request.duration_value,
+        request.save_type,
+        request.save_dc,
+    );
+
+    // Try to get a standard condition template, or create a custom one
+    let mut condition = ConditionTemplates::by_name(&request.condition_name)
+        .unwrap_or_else(|| {
+            use crate::core::session::conditions::ConditionDuration;
+            AdvancedCondition::new(
+                &request.condition_name,
+                format!("Custom condition: {}", request.condition_name),
+                duration.clone().unwrap_or(ConditionDuration::UntilRemoved),
+            )
+        });
+
+    // Override duration if specified
+    if let Some(dur) = duration {
+        condition.duration = dur.clone();
+        condition.remaining = match &dur {
+            crate::core::session::conditions::ConditionDuration::Turns(n) => Some(*n),
+            crate::core::session::conditions::ConditionDuration::Rounds(n) => Some(*n),
+            crate::core::session::conditions::ConditionDuration::Minutes(n) => Some(*n),
+            crate::core::session::conditions::ConditionDuration::Hours(n) => Some(*n),
+            _ => None,
+        };
+    }
+
+    // Set source if provided
+    if let (Some(src_id), Some(src_name)) = (request.source_id, request.source_name) {
+        condition.source_id = Some(src_id);
+        condition.source_name = Some(src_name);
+    }
+
+    state.session_manager.apply_advanced_condition(
+        &request.session_id,
+        &request.combatant_id,
+        condition,
+    ).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn remove_condition_by_id(
+    session_id: String,
+    combatant_id: String,
+    condition_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.session_manager.remove_advanced_condition(&session_id, &combatant_id, &condition_id)
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+// Duplicates removed
+
+
+// Duplicate removed
+
+
+// ============================================================================
+// Character Generation Commands (Enhanced for TASK-018)
+// ============================================================================
 
 #[tauri::command]
 pub fn get_supported_systems() -> Vec<String> {
-    vec![
-        "D&D 5e".to_string(),
-        "Pathfinder 2e".to_string(),
-        "Call of Cthulhu".to_string(),
-        "Cyberpunk".to_string(),
-        "Shadowrun".to_string(),
-        "Fate Core".to_string(),
-        "World of Darkness".to_string(),
-    ]
+    CharacterGenerator::supported_systems()
+}
+
+#[tauri::command]
+pub fn list_system_info() -> Vec<SystemInfo> {
+    CharacterGenerator::list_system_info()
+}
+
+#[tauri::command]
+pub fn get_system_info(system: String) -> Option<SystemInfo> {
+    CharacterGenerator::get_system_info(&system)
+}
+
+#[tauri::command]
+pub fn generate_character_advanced(options: GenerationOptions) -> Result<Character, String> {
+    CharacterGenerator::generate(&options).map_err(|e| e.to_string())
 }
 
 // ============================================================================
@@ -1266,6 +1812,9 @@ pub async fn generate_npc(
         data_json: Some(data_json),
         stats_json,
         notes: Some(npc.notes.clone()),
+        location_id: None,
+        voice_profile_id: None,
+        quest_hooks: None,
         created_at: chrono::Utc::now().to_rfc3339(),
     };
 
@@ -1328,10 +1877,10 @@ pub async fn update_npc(npc: NPC, state: State<'_, AppState>) -> Result<(), Stri
         chrono::Utc::now().to_rfc3339()
     };
 
-    let campaign_id = if let Some(old) = state.database.get_npc(&npc.id).await.map_err(|e| e.to_string())? {
-        old.campaign_id
+    let (campaign_id, location_id, voice_profile_id, quest_hooks) = if let Some(old) = state.database.get_npc(&npc.id).await.map_err(|e| e.to_string())? {
+        (old.campaign_id, old.location_id, old.voice_profile_id, old.quest_hooks)
     } else {
-        None
+        (None, None, None, None)
     };
 
     let record = crate::database::NpcRecord {
@@ -1344,6 +1893,9 @@ pub async fn update_npc(npc: NPC, state: State<'_, AppState>) -> Result<(), Stri
         data_json: Some(data_json),
         stats_json,
         notes: Some(npc.notes.clone()),
+        location_id,
+        voice_profile_id,
+        quest_hooks,
         created_at,
     };
 
@@ -1670,8 +2222,8 @@ pub fn get_app_version() -> String {
 }
 
 #[tauri::command]
-pub fn get_system_info() -> SystemInfo {
-    SystemInfo {
+pub fn get_app_system_info() -> AppSystemInfo {
+    AppSystemInfo {
         os: std::env::consts::OS.to_string(),
         arch: std::env::consts::ARCH.to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
@@ -1679,7 +2231,7 @@ pub fn get_system_info() -> SystemInfo {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct SystemInfo {
+pub struct AppSystemInfo {
     pub os: String,
     pub arch: String,
     pub version: String,
@@ -2030,6 +2582,7 @@ pub async fn reply_as_npc(
         system_prompt: Some(system_prompt),
         temperature: Some(0.8),
         max_tokens: Some(250),
+        provider: None,
     };
 
     let resp = client.chat(req).await.map_err(|e| e.to_string())?;
@@ -2198,4 +2751,2708 @@ async fn process_voice_queue(state: State<'_, AppState>) -> Result<(), String> {
     });
 
     Ok(())
+}
+
+// ============================================================================
+// Campaign Versioning Commands (TASK-006)
+// ============================================================================
+
+use crate::core::campaign::versioning::{
+    CampaignVersion, VersionType, CampaignDiff, VersionSummary,
+};
+use crate::core::campaign::world_state::{
+    WorldState, WorldEvent, WorldEventType, EventImpact, LocationState,
+    LocationCondition, InGameDate, CalendarConfig,
+};
+use crate::core::campaign::relationships::{
+    EntityRelationship, RelationshipType, EntityType, RelationshipStrength,
+    EntityGraph, RelationshipSummary,
+};
+
+/// Create a new campaign version
+#[tauri::command]
+pub fn create_campaign_version(
+    campaign_id: String,
+    description: String,
+    version_type: String,
+    state: State<'_, AppState>,
+) -> Result<VersionSummary, String> {
+    // Get current campaign data as JSON
+    let campaign = state.campaign_manager.get_campaign(&campaign_id)
+        .ok_or_else(|| "Campaign not found".to_string())?;
+
+    let data_snapshot = serde_json::to_string(&campaign)
+        .map_err(|e| format!("Failed to serialize campaign: {}", e))?;
+
+    let vtype = match version_type.as_str() {
+        "auto" => VersionType::Auto,
+        "milestone" => VersionType::Milestone,
+        "pre_rollback" => VersionType::PreRollback,
+        "import" => VersionType::Import,
+        _ => VersionType::Manual,
+    };
+
+    let version = state.version_manager.create_version(
+        &campaign_id,
+        &description,
+        vtype,
+        &data_snapshot,
+    ).map_err(|e| e.to_string())?;
+
+    Ok(VersionSummary::from(&version))
+}
+
+/// List all versions for a campaign
+#[tauri::command]
+pub fn list_campaign_versions(
+    campaign_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<VersionSummary>, String> {
+    Ok(state.version_manager.list_versions(&campaign_id))
+}
+
+/// Get a specific version
+#[tauri::command]
+pub fn get_campaign_version(
+    campaign_id: String,
+    version_id: String,
+    state: State<'_, AppState>,
+) -> Result<CampaignVersion, String> {
+    state.version_manager.get_version(&campaign_id, &version_id)
+        .ok_or_else(|| "Version not found".to_string())
+}
+
+/// Compare two versions
+#[tauri::command]
+pub fn compare_campaign_versions(
+    campaign_id: String,
+    from_version_id: String,
+    to_version_id: String,
+    state: State<'_, AppState>,
+) -> Result<CampaignDiff, String> {
+    state.version_manager.compare_versions(&campaign_id, &from_version_id, &to_version_id)
+        .map_err(|e| e.to_string())
+}
+
+/// Rollback a campaign to a previous version
+#[tauri::command]
+pub fn rollback_campaign(
+    campaign_id: String,
+    version_id: String,
+    state: State<'_, AppState>,
+) -> Result<Campaign, String> {
+    // Get current campaign data for pre-rollback snapshot
+    let current = state.campaign_manager.get_campaign(&campaign_id)
+        .ok_or_else(|| "Campaign not found".to_string())?;
+
+    let current_json = serde_json::to_string(&current)
+        .map_err(|e| format!("Failed to serialize current state: {}", e))?;
+
+    // Prepare rollback (creates pre-rollback snapshot and returns target data)
+    let target_data = state.version_manager.prepare_rollback(&campaign_id, &version_id, &current_json)
+        .map_err(|e| e.to_string())?;
+
+    // Deserialize and restore campaign
+    let restored: Campaign = serde_json::from_str(&target_data)
+        .map_err(|e| format!("Failed to deserialize version data: {}", e))?;
+
+    state.campaign_manager.update_campaign(restored.clone(), false)
+        .map_err(|e| e.to_string())?;
+
+    Ok(restored)
+}
+
+/// Delete a version
+#[tauri::command]
+pub fn delete_campaign_version(
+    campaign_id: String,
+    version_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.version_manager.delete_version(&campaign_id, &version_id)
+        .map_err(|e| e.to_string())
+}
+
+/// Add a tag to a version
+#[tauri::command]
+pub fn add_version_tag(
+    campaign_id: String,
+    version_id: String,
+    tag: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.version_manager.add_tag(&campaign_id, &version_id, &tag)
+        .map_err(|e| e.to_string())
+}
+
+/// Mark a version as a milestone
+#[tauri::command]
+pub fn mark_version_milestone(
+    campaign_id: String,
+    version_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.version_manager.mark_as_milestone(&campaign_id, &version_id)
+        .map_err(|e| e.to_string())
+}
+
+// ============================================================================
+// World State Commands (TASK-007)
+// ============================================================================
+
+/// Get world state for a campaign
+#[tauri::command]
+pub fn get_world_state(
+    campaign_id: String,
+    state: State<'_, AppState>,
+) -> Result<WorldState, String> {
+    Ok(state.world_state_manager.get_or_create(&campaign_id))
+}
+
+/// Update world state
+#[tauri::command]
+pub fn update_world_state(
+    world_state: WorldState,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.world_state_manager.update_state(world_state)
+        .map_err(|e| e.to_string())
+}
+
+/// Set current in-game date
+#[tauri::command]
+pub fn set_in_game_date(
+    campaign_id: String,
+    date: InGameDate,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.world_state_manager.set_current_date(&campaign_id, date)
+        .map_err(|e| e.to_string())
+}
+
+/// Advance in-game date by days
+#[tauri::command]
+pub fn advance_in_game_date(
+    campaign_id: String,
+    days: i32,
+    state: State<'_, AppState>,
+) -> Result<InGameDate, String> {
+    state.world_state_manager.advance_date(&campaign_id, days)
+        .map_err(|e| e.to_string())
+}
+
+/// Get current in-game date
+#[tauri::command]
+pub fn get_in_game_date(
+    campaign_id: String,
+    state: State<'_, AppState>,
+) -> Result<InGameDate, String> {
+    state.world_state_manager.get_current_date(&campaign_id)
+        .map_err(|e| e.to_string())
+}
+
+/// Add a world event
+#[tauri::command]
+pub fn add_world_event(
+    campaign_id: String,
+    title: String,
+    description: String,
+    date: InGameDate,
+    event_type: String,
+    impact: String,
+    state: State<'_, AppState>,
+) -> Result<WorldEvent, String> {
+    let etype = match event_type.as_str() {
+        "combat" => WorldEventType::Combat,
+        "political" => WorldEventType::Political,
+        "natural" => WorldEventType::Natural,
+        "economic" => WorldEventType::Economic,
+        "religious" => WorldEventType::Religious,
+        "magical" => WorldEventType::Magical,
+        "social" => WorldEventType::Social,
+        "personal" => WorldEventType::Personal,
+        "discovery" => WorldEventType::Discovery,
+        "session" => WorldEventType::Session,
+        _ => WorldEventType::Custom(event_type),
+    };
+
+    let eimpact = match impact.as_str() {
+        "personal" => EventImpact::Personal,
+        "local" => EventImpact::Local,
+        "regional" => EventImpact::Regional,
+        "national" => EventImpact::National,
+        "global" => EventImpact::Global,
+        "cosmic" => EventImpact::Cosmic,
+        _ => EventImpact::Local,
+    };
+
+    let event = WorldEvent::new(&campaign_id, &title, &description, date)
+        .with_type(etype)
+        .with_impact(eimpact);
+
+    state.world_state_manager.add_event(&campaign_id, event)
+        .map_err(|e| e.to_string())
+}
+
+/// List world events
+#[tauri::command]
+pub fn list_world_events(
+    campaign_id: String,
+    event_type: Option<String>,
+    limit: Option<usize>,
+    state: State<'_, AppState>,
+) -> Result<Vec<WorldEvent>, String> {
+    let etype = event_type.map(|et| match et.as_str() {
+        "combat" => WorldEventType::Combat,
+        "political" => WorldEventType::Political,
+        "natural" => WorldEventType::Natural,
+        "economic" => WorldEventType::Economic,
+        "religious" => WorldEventType::Religious,
+        "magical" => WorldEventType::Magical,
+        "social" => WorldEventType::Social,
+        "personal" => WorldEventType::Personal,
+        "discovery" => WorldEventType::Discovery,
+        "session" => WorldEventType::Session,
+        _ => WorldEventType::Custom(et),
+    });
+
+    Ok(state.world_state_manager.list_events(&campaign_id, etype, limit))
+}
+
+/// Delete a world event
+#[tauri::command]
+pub fn delete_world_event(
+    campaign_id: String,
+    event_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.world_state_manager.delete_event(&campaign_id, &event_id)
+        .map_err(|e| e.to_string())
+}
+
+/// Set location state
+#[tauri::command]
+pub fn set_location_state(
+    campaign_id: String,
+    location: LocationState,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.world_state_manager.set_location_state(&campaign_id, location)
+        .map_err(|e| e.to_string())
+}
+
+/// Get location state
+#[tauri::command]
+pub fn get_location_state(
+    campaign_id: String,
+    location_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<LocationState>, String> {
+    Ok(state.world_state_manager.get_location_state(&campaign_id, &location_id))
+}
+
+/// List all locations
+#[tauri::command]
+pub fn list_locations(
+    campaign_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<LocationState>, String> {
+    Ok(state.world_state_manager.list_locations(&campaign_id))
+}
+
+/// Update location condition
+#[tauri::command]
+pub fn update_location_condition(
+    campaign_id: String,
+    location_id: String,
+    condition: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let cond = match condition.as_str() {
+        "pristine" => LocationCondition::Pristine,
+        "normal" => LocationCondition::Normal,
+        "damaged" => LocationCondition::Damaged,
+        "ruined" => LocationCondition::Ruined,
+        "destroyed" => LocationCondition::Destroyed,
+        "occupied" => LocationCondition::Occupied,
+        "abandoned" => LocationCondition::Abandoned,
+        "under_siege" => LocationCondition::UnderSiege,
+        "cursed" => LocationCondition::Cursed,
+        "blessed" => LocationCondition::Blessed,
+        _ => LocationCondition::Custom(condition),
+    };
+
+    state.world_state_manager.update_location_condition(&campaign_id, &location_id, cond)
+        .map_err(|e| e.to_string())
+}
+
+/// Set a custom field on world state
+#[tauri::command]
+pub fn set_world_custom_field(
+    campaign_id: String,
+    key: String,
+    value: serde_json::Value,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.world_state_manager.set_custom_field(&campaign_id, &key, value)
+        .map_err(|e| e.to_string())
+}
+
+/// Get a custom field from world state
+#[tauri::command]
+pub fn get_world_custom_field(
+    campaign_id: String,
+    key: String,
+    state: State<'_, AppState>,
+) -> Result<Option<serde_json::Value>, String> {
+    Ok(state.world_state_manager.get_custom_field(&campaign_id, &key))
+}
+
+/// Get all custom fields
+#[tauri::command]
+pub fn list_world_custom_fields(
+    campaign_id: String,
+    state: State<'_, AppState>,
+) -> Result<HashMap<String, serde_json::Value>, String> {
+    Ok(state.world_state_manager.list_custom_fields(&campaign_id))
+}
+
+/// Set calendar configuration
+#[tauri::command]
+pub fn set_calendar_config(
+    campaign_id: String,
+    config: CalendarConfig,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.world_state_manager.set_calendar_config(&campaign_id, config)
+        .map_err(|e| e.to_string())
+}
+
+/// Get calendar configuration
+#[tauri::command]
+pub fn get_calendar_config(
+    campaign_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<CalendarConfig>, String> {
+    Ok(state.world_state_manager.get_calendar_config(&campaign_id))
+}
+
+// ============================================================================
+// Entity Relationship Commands (TASK-009)
+// ============================================================================
+
+/// Create an entity relationship
+#[tauri::command]
+pub fn create_entity_relationship(
+    campaign_id: String,
+    source_id: String,
+    source_type: String,
+    source_name: String,
+    target_id: String,
+    target_type: String,
+    target_name: String,
+    relationship_type: String,
+    strength: Option<String>,
+    description: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<EntityRelationship, String> {
+    let src_type = parse_entity_type(&source_type);
+    let tgt_type = parse_entity_type(&target_type);
+    let rel_type = parse_relationship_type(&relationship_type);
+    let str_level = strength.map(|s| parse_relationship_strength(&s)).unwrap_or_default();
+
+    let mut relationship = EntityRelationship::new(
+        &campaign_id,
+        &source_id,
+        src_type,
+        &source_name,
+        &target_id,
+        tgt_type,
+        &target_name,
+        rel_type,
+    ).with_strength(str_level);
+
+    if let Some(desc) = description {
+        relationship = relationship.with_description(&desc);
+    }
+
+    state.relationship_manager.create_relationship(relationship)
+        .map_err(|e| e.to_string())
+}
+
+/// Get a relationship by ID
+#[tauri::command]
+pub fn get_entity_relationship(
+    campaign_id: String,
+    relationship_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<EntityRelationship>, String> {
+    Ok(state.relationship_manager.get_relationship(&campaign_id, &relationship_id))
+}
+
+/// Update a relationship
+#[tauri::command]
+pub fn update_entity_relationship(
+    relationship: EntityRelationship,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.relationship_manager.update_relationship(relationship)
+        .map_err(|e| e.to_string())
+}
+
+/// Delete a relationship
+#[tauri::command]
+pub fn delete_entity_relationship(
+    campaign_id: String,
+    relationship_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.relationship_manager.delete_relationship(&campaign_id, &relationship_id)
+        .map_err(|e| e.to_string())
+}
+
+/// List all relationships for a campaign
+#[tauri::command]
+pub fn list_entity_relationships(
+    campaign_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<RelationshipSummary>, String> {
+    Ok(state.relationship_manager.list_relationships(&campaign_id))
+}
+
+/// Get relationships for a specific entity
+#[tauri::command]
+pub fn get_relationships_for_entity(
+    campaign_id: String,
+    entity_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<EntityRelationship>, String> {
+    Ok(state.relationship_manager.get_entity_relationships(&campaign_id, &entity_id))
+}
+
+/// Get relationships between two entities
+#[tauri::command]
+pub fn get_relationships_between_entities(
+    campaign_id: String,
+    entity_a: String,
+    entity_b: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<EntityRelationship>, String> {
+    Ok(state.relationship_manager.get_relationships_between(&campaign_id, &entity_a, &entity_b))
+}
+
+/// Get the full entity graph for visualization
+#[tauri::command]
+pub fn get_entity_graph(
+    campaign_id: String,
+    include_inactive: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<EntityGraph, String> {
+    Ok(state.relationship_manager.get_entity_graph(&campaign_id, include_inactive.unwrap_or(false)))
+}
+
+/// Get ego graph centered on an entity
+#[tauri::command]
+pub fn get_ego_graph(
+    campaign_id: String,
+    entity_id: String,
+    depth: Option<usize>,
+    state: State<'_, AppState>,
+) -> Result<EntityGraph, String> {
+    Ok(state.relationship_manager.get_ego_graph(&campaign_id, &entity_id, depth.unwrap_or(2)))
+}
+
+// Helper functions for parsing enum types from strings
+fn parse_entity_type(s: &str) -> EntityType {
+    match s.to_lowercase().as_str() {
+        "pc" | "player" => EntityType::PC,
+        "npc" => EntityType::NPC,
+        "location" => EntityType::Location,
+        "faction" => EntityType::Faction,
+        "item" => EntityType::Item,
+        "event" => EntityType::Event,
+        "quest" => EntityType::Quest,
+        "deity" => EntityType::Deity,
+        "creature" => EntityType::Creature,
+        _ => EntityType::Custom(s.to_string()),
+    }
+}
+
+fn parse_relationship_type(s: &str) -> RelationshipType {
+    match s.to_lowercase().as_str() {
+        "ally" => RelationshipType::Ally,
+        "enemy" => RelationshipType::Enemy,
+        "romantic" => RelationshipType::Romantic,
+        "family" => RelationshipType::Family,
+        "mentor" => RelationshipType::Mentor,
+        "acquaintance" => RelationshipType::Acquaintance,
+        "employee" => RelationshipType::Employee,
+        "business_partner" => RelationshipType::BusinessPartner,
+        "patron" => RelationshipType::Patron,
+        "teacher" => RelationshipType::Teacher,
+        "protector" => RelationshipType::Protector,
+        "member_of" => RelationshipType::MemberOf,
+        "leader_of" => RelationshipType::LeaderOf,
+        "allied_with" => RelationshipType::AlliedWith,
+        "at_war_with" => RelationshipType::AtWarWith,
+        "vassal_of" => RelationshipType::VassalOf,
+        "located_at" => RelationshipType::LocatedAt,
+        "connected_to" => RelationshipType::ConnectedTo,
+        "part_of" => RelationshipType::PartOf,
+        "controls" => RelationshipType::Controls,
+        "owns" => RelationshipType::Owns,
+        "seeks" => RelationshipType::Seeks,
+        "created" => RelationshipType::Created,
+        "destroyed" => RelationshipType::Destroyed,
+        "quest_giver" => RelationshipType::QuestGiver,
+        "quest_target" => RelationshipType::QuestTarget,
+        "related_to" => RelationshipType::RelatedTo,
+        "worships" => RelationshipType::Worships,
+        "blessed_by" => RelationshipType::BlessedBy,
+        "cursed_by" => RelationshipType::CursedBy,
+        _ => RelationshipType::Custom(s.to_string()),
+    }
+}
+
+fn parse_relationship_strength(s: &str) -> RelationshipStrength {
+    match s.to_lowercase().as_str() {
+        "weak" => RelationshipStrength::Weak,
+        "moderate" => RelationshipStrength::Moderate,
+        "strong" => RelationshipStrength::Strong,
+        "unbreakable" => RelationshipStrength::Unbreakable,
+        _ => {
+            if let Ok(v) = s.parse::<u8>() {
+                RelationshipStrength::Custom(v.min(100))
+            } else {
+                RelationshipStrength::Moderate
+            }
+        }
+    }
+}
+
+// ============================================================================
+// TASK-022: Usage Tracking Commands
+// ============================================================================
+
+use crate::core::usage::{
+    UsageTracker, UsageStats, CostBreakdown, BudgetLimit, BudgetStatus,
+    ProviderUsage,
+};
+
+/// Get total usage statistics
+#[tauri::command]
+pub fn get_usage_stats(state: State<'_, UsageTrackerState>) -> UsageStats {
+    state.tracker.get_total_stats()
+}
+
+/// Get usage statistics for a time period (in hours)
+#[tauri::command]
+pub fn get_usage_by_period(hours: i64, state: State<'_, UsageTrackerState>) -> UsageStats {
+    state.tracker.get_stats_by_period(hours)
+}
+
+/// Get detailed cost breakdown
+#[tauri::command]
+pub fn get_cost_breakdown(hours: Option<i64>, state: State<'_, UsageTrackerState>) -> CostBreakdown {
+    state.tracker.get_cost_breakdown(hours)
+}
+
+/// Get current budget status for all configured limits
+#[tauri::command]
+pub fn get_budget_status(state: State<'_, UsageTrackerState>) -> Vec<BudgetStatus> {
+    state.tracker.check_budget_status()
+}
+
+/// Set a budget limit
+#[tauri::command]
+pub fn set_budget_limit(limit: BudgetLimit, state: State<'_, UsageTrackerState>) -> Result<(), String> {
+    state.tracker.set_budget_limit(limit);
+    Ok(())
+}
+
+/// Get usage for a specific provider
+#[tauri::command]
+pub fn get_provider_usage(provider: String, state: State<'_, UsageTrackerState>) -> ProviderUsage {
+    state.tracker.get_provider_stats(&provider)
+}
+
+/// Reset usage tracking session
+#[tauri::command]
+pub fn reset_usage_session(state: State<'_, UsageTrackerState>) {
+    state.tracker.reset_session();
+}
+
+// ============================================================================
+// TASK-023: Search Analytics Commands
+// ============================================================================
+
+use crate::core::search_analytics::{
+    SearchAnalytics, AnalyticsSummary, PopularQuery, CacheStats,
+    ResultSelection, SearchRecord, DbSearchAnalytics,
+};
+
+// --- In-Memory Analytics (Fast, Session-Only) ---
+
+/// Get search analytics summary for a time period (in-memory)
+#[tauri::command]
+pub fn get_search_analytics(hours: i64, state: State<'_, SearchAnalyticsState>) -> AnalyticsSummary {
+    state.analytics.get_summary(hours)
+}
+
+/// Get popular queries with detailed stats (in-memory)
+#[tauri::command]
+pub fn get_popular_queries(limit: usize, state: State<'_, SearchAnalyticsState>) -> Vec<PopularQuery> {
+    state.analytics.get_popular_queries_detailed(limit)
+}
+
+/// Get cache statistics (in-memory)
+#[tauri::command]
+pub fn get_cache_stats(state: State<'_, SearchAnalyticsState>) -> CacheStats {
+    state.analytics.get_cache_stats()
+}
+
+/// Get trending queries (in-memory)
+#[tauri::command]
+pub fn get_trending_queries(limit: usize, state: State<'_, SearchAnalyticsState>) -> Vec<String> {
+    state.analytics.get_trending_queries(limit)
+}
+
+/// Get queries with zero results (in-memory)
+#[tauri::command]
+pub fn get_zero_result_queries(hours: i64, state: State<'_, SearchAnalyticsState>) -> Vec<String> {
+    state.analytics.get_zero_result_queries(hours)
+}
+
+/// Get click position distribution
+#[tauri::command]
+pub fn get_click_distribution(state: State<'_, SearchAnalyticsState>) -> std::collections::HashMap<usize, u32> {
+    state.analytics.get_click_position_distribution()
+}
+
+/// Record a search result selection (in-memory)
+#[tauri::command]
+pub fn record_search_selection(
+    search_id: String,
+    query: String,
+    result_index: usize,
+    source: String,
+    selection_delay_ms: u64,
+    state: State<'_, SearchAnalyticsState>,
+) {
+    state.analytics.record_selection(ResultSelection {
+        search_id,
+        query,
+        result_index,
+        source,
+        was_helpful: None,
+        selection_delay_ms,
+        timestamp: chrono::Utc::now(),
+    });
+}
+
+// --- Database-Backed Analytics (Persistent, Full History) ---
+
+/// Get search analytics summary from database
+#[tauri::command]
+pub async fn get_search_analytics_db(
+    hours: i64,
+    app_state: State<'_, AppState>,
+) -> Result<AnalyticsSummary, String> {
+    let db = Arc::new(app_state.database.clone());
+    let db_analytics = DbSearchAnalytics::new(db);
+    db_analytics.get_summary(hours).await
+}
+
+/// Get popular queries from database
+#[tauri::command]
+pub async fn get_popular_queries_db(
+    limit: usize,
+    app_state: State<'_, AppState>,
+) -> Result<Vec<PopularQuery>, String> {
+    let db = Arc::new(app_state.database.clone());
+    let db_analytics = DbSearchAnalytics::new(db);
+    db_analytics.get_popular_queries_detailed(limit).await
+}
+
+/// Get cache statistics from database
+#[tauri::command]
+pub async fn get_cache_stats_db(
+    app_state: State<'_, AppState>,
+) -> Result<CacheStats, String> {
+    let db = Arc::new(app_state.database.clone());
+    let db_analytics = DbSearchAnalytics::new(db);
+    db_analytics.get_cache_stats().await
+}
+
+/// Get trending queries from database
+#[tauri::command]
+pub async fn get_trending_queries_db(
+    limit: usize,
+    app_state: State<'_, AppState>,
+) -> Result<Vec<String>, String> {
+    let db = Arc::new(app_state.database.clone());
+    let db_analytics = DbSearchAnalytics::new(db);
+    db_analytics.get_trending_queries(limit).await
+}
+
+/// Get queries with zero results from database
+#[tauri::command]
+pub async fn get_zero_result_queries_db(
+    hours: i64,
+    app_state: State<'_, AppState>,
+) -> Result<Vec<String>, String> {
+    let db = Arc::new(app_state.database.clone());
+    let db_analytics = DbSearchAnalytics::new(db);
+    db_analytics.get_zero_result_queries(hours).await
+}
+
+/// Get click position distribution from database
+#[tauri::command]
+pub async fn get_click_distribution_db(
+    app_state: State<'_, AppState>,
+) -> Result<std::collections::HashMap<usize, u32>, String> {
+    let db = Arc::new(app_state.database.clone());
+    let db_analytics = DbSearchAnalytics::new(db);
+    db_analytics.get_click_position_distribution().await
+}
+
+/// Record a search event (to both in-memory and database)
+#[tauri::command]
+pub async fn record_search_event(
+    query: String,
+    result_count: usize,
+    execution_time_ms: u64,
+    search_type: String,
+    from_cache: bool,
+    source_filter: Option<String>,
+    campaign_id: Option<String>,
+    state: State<'_, SearchAnalyticsState>,
+    app_state: State<'_, AppState>,
+) -> Result<String, String> {
+    // Create search record
+    let mut record = SearchRecord::new(query, result_count, execution_time_ms, search_type);
+    record.from_cache = from_cache;
+    record.source_filter = source_filter;
+    record.campaign_id = campaign_id;
+    let search_id = record.id.clone();
+
+    // Record to in-memory analytics
+    state.analytics.record(record.clone());
+
+    // Record to database
+    let db = Arc::new(app_state.database.clone());
+    let db_analytics = DbSearchAnalytics::new(db);
+    db_analytics.record(record).await?;
+
+    Ok(search_id)
+}
+
+/// Record a result selection (to both in-memory and database)
+#[tauri::command]
+pub async fn record_search_selection_db(
+    search_id: String,
+    query: String,
+    result_index: usize,
+    source: String,
+    selection_delay_ms: u64,
+    was_helpful: Option<bool>,
+    state: State<'_, SearchAnalyticsState>,
+    app_state: State<'_, AppState>,
+) -> Result<(), String> {
+    // Create selection record
+    let selection = ResultSelection {
+        search_id: search_id.clone(),
+        query: query.clone(),
+        result_index,
+        source: source.clone(),
+        was_helpful,
+        selection_delay_ms,
+        timestamp: chrono::Utc::now(),
+    };
+
+    // Record to in-memory analytics
+    state.analytics.record_selection(selection.clone());
+
+    // Record to database
+    let db = Arc::new(app_state.database.clone());
+    let db_analytics = DbSearchAnalytics::new(db);
+    db_analytics.record_selection(selection).await
+}
+
+/// Clean up old search analytics records
+#[tauri::command]
+pub async fn cleanup_search_analytics(
+    days: i64,
+    app_state: State<'_, AppState>,
+) -> Result<u64, String> {
+    let db = Arc::new(app_state.database.clone());
+    let db_analytics = DbSearchAnalytics::new(db);
+    db_analytics.cleanup(days).await
+}
+
+// ============================================================================
+// TASK-024: Security Audit Logging Commands
+// ============================================================================
+
+use crate::core::security::{
+    SecurityAuditLogger, SecurityAuditEvent, AuditLogQuery, AuditSeverity, ExportFormat,
+};
+
+/// Get recent audit events
+#[tauri::command]
+pub fn get_audit_logs(
+    count: Option<usize>,
+    min_severity: Option<String>,
+    state: State<'_, AuditLoggerState>,
+) -> Vec<SecurityAuditEvent> {
+    let count = count.unwrap_or(100);
+
+    if let Some(severity_str) = min_severity {
+        let severity = match severity_str.to_lowercase().as_str() {
+            "debug" => AuditSeverity::Debug,
+            "info" => AuditSeverity::Info,
+            "warning" => AuditSeverity::Warning,
+            "security" => AuditSeverity::Security,
+            "critical" => AuditSeverity::Critical,
+            _ => AuditSeverity::Info,
+        };
+        state.logger.get_by_severity(severity).into_iter().take(count).collect()
+    } else {
+        state.logger.get_recent(count)
+    }
+}
+
+/// Query audit logs with filters
+#[tauri::command]
+pub fn query_audit_logs(
+    from_hours: Option<i64>,
+    min_severity: Option<String>,
+    event_types: Option<Vec<String>>,
+    search_text: Option<String>,
+    limit: Option<usize>,
+    state: State<'_, AuditLoggerState>,
+) -> Vec<SecurityAuditEvent> {
+    let from = from_hours.map(|h| chrono::Utc::now() - chrono::Duration::hours(h));
+    let min_sev = min_severity.map(|s| match s.to_lowercase().as_str() {
+        "debug" => AuditSeverity::Debug,
+        "info" => AuditSeverity::Info,
+        "warning" => AuditSeverity::Warning,
+        "security" => AuditSeverity::Security,
+        "critical" => AuditSeverity::Critical,
+        _ => AuditSeverity::Info,
+    });
+
+    state.logger.query(AuditLogQuery {
+        from,
+        to: None,
+        min_severity: min_sev,
+        event_types,
+        search_text,
+        limit,
+        offset: None,
+    })
+}
+
+/// Export audit logs
+#[tauri::command]
+pub fn export_audit_logs(
+    format: String,
+    from_hours: Option<i64>,
+    state: State<'_, AuditLoggerState>,
+) -> Result<String, String> {
+    let export_format = match format.to_lowercase().as_str() {
+        "json" => ExportFormat::Json,
+        "csv" => ExportFormat::Csv,
+        "jsonl" => ExportFormat::Jsonl,
+        _ => return Err(format!("Unsupported format: {}", format)),
+    };
+
+    let query = AuditLogQuery {
+        from: from_hours.map(|h| chrono::Utc::now() - chrono::Duration::hours(h)),
+        ..Default::default()
+    };
+
+    state.logger.export(query, export_format)
+}
+
+/// Clear old audit logs (older than specified days)
+#[tauri::command]
+pub fn clear_old_logs(days: i64, state: State<'_, AuditLoggerState>) -> usize {
+    state.logger.cleanup(days)
+}
+
+/// Get security event counts by severity
+#[tauri::command]
+pub fn get_audit_summary(state: State<'_, AuditLoggerState>) -> std::collections::HashMap<String, usize> {
+    state.logger.count_by_severity()
+}
+
+/// Get recent security-level events (last 24 hours)
+#[tauri::command]
+pub fn get_security_events(state: State<'_, AuditLoggerState>) -> Vec<SecurityAuditEvent> {
+    state.logger.get_security_events()
+}
+
+// ============================================================================
+// State Types for Analytics Modules
+// ============================================================================
+
+/// State wrapper for usage tracking
+pub struct UsageTrackerState {
+    pub tracker: UsageTracker,
+}
+
+impl Default for UsageTrackerState {
+    fn default() -> Self {
+        Self {
+            tracker: UsageTracker::new(),
+        }
+    }
+}
+
+/// State wrapper for search analytics
+pub struct SearchAnalyticsState {
+    pub analytics: SearchAnalytics,
+}
+
+impl Default for SearchAnalyticsState {
+    fn default() -> Self {
+        Self {
+            analytics: SearchAnalytics::new(),
+        }
+    }
+}
+
+/// State wrapper for audit logging
+pub struct AuditLoggerState {
+    pub logger: SecurityAuditLogger,
+}
+
+impl Default for AuditLoggerState {
+    fn default() -> Self {
+        // Initialize with file logging to the app data directory
+        let log_dir = dirs::data_local_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("ai-rpg")
+            .join("logs");
+
+        Self {
+            logger: SecurityAuditLogger::with_file_logging(log_dir),
+        }
+    }
+}
+
+impl AuditLoggerState {
+    /// Create with custom log directory
+    pub fn with_log_dir(log_dir: std::path::PathBuf) -> Self {
+        Self {
+            logger: SecurityAuditLogger::with_file_logging(log_dir),
+        }
+    }
+}
+
+// ============================================================================
+// Voice Profile Commands (TASK-004)
+// ============================================================================
+
+use crate::core::voice::{
+    VoiceProfile, ProfileMetadata, AgeRange, Gender,
+    CacheStats as VoiceCacheStats, get_dm_presets,
+    SynthesisJob, JobPriority, JobStatus, JobProgress,
+    QueueStats as VoiceQueueStats,
+};
+
+/// List all voice profile presets (built-in DM personas)
+#[tauri::command]
+pub fn list_voice_presets() -> Vec<VoiceProfile> {
+    get_dm_presets()
+}
+
+/// List voice presets filtered by tag
+#[tauri::command]
+pub fn list_voice_presets_by_tag(tag: String) -> Vec<VoiceProfile> {
+    crate::core::voice::get_presets_by_tag(&tag)
+}
+
+/// Get a specific voice preset by ID
+#[tauri::command]
+pub fn get_voice_preset(preset_id: String) -> Option<VoiceProfile> {
+    crate::core::voice::get_preset_by_id(&preset_id)
+}
+
+/// Create a new voice profile
+#[tauri::command]
+pub async fn create_voice_profile(
+    name: String,
+    provider: String,
+    voice_id: String,
+    metadata: Option<ProfileMetadata>,
+    _state: State<'_, AppState>,
+) -> Result<String, String> {
+    let provider_type = match provider.as_str() {
+        "elevenlabs" => VoiceProviderType::ElevenLabs,
+        "openai" => VoiceProviderType::OpenAI,
+        "fish_audio" => VoiceProviderType::FishAudio,
+        "piper" => VoiceProviderType::Piper,
+        "ollama" => VoiceProviderType::Ollama,
+        "chatterbox" => VoiceProviderType::Chatterbox,
+        "gpt_sovits" => VoiceProviderType::GptSoVits,
+        "xtts_v2" => VoiceProviderType::XttsV2,
+        "fish_speech" => VoiceProviderType::FishSpeech,
+        "dia" => VoiceProviderType::Dia,
+        _ => return Err(format!("Unknown provider: {}", provider)),
+    };
+
+    let mut profile = VoiceProfile::new(&name, provider_type, &voice_id);
+    if let Some(meta) = metadata {
+        profile = profile.with_metadata(meta);
+    }
+
+    Ok(profile.id)
+}
+
+/// Link a voice profile to an NPC
+#[tauri::command]
+pub async fn link_voice_profile_to_npc(
+    profile_id: String,
+    npc_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    if let Some(mut record) = state.database.get_npc(&npc_id).await.map_err(|e| e.to_string())? {
+        if let Some(json) = &record.data_json {
+            let mut npc: serde_json::Value = serde_json::from_str(json)
+                .map_err(|e| e.to_string())?;
+            npc["voice_profile_id"] = serde_json::json!(profile_id);
+            record.data_json = Some(serde_json::to_string(&npc).map_err(|e| e.to_string())?);
+            state.database.save_npc(&record).await.map_err(|e| e.to_string())?;
+        }
+    } else {
+        return Err(format!("NPC not found: {}", npc_id));
+    }
+    Ok(())
+}
+
+/// Get the voice profile linked to an NPC
+#[tauri::command]
+pub async fn get_npc_voice_profile(
+    npc_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<String>, String> {
+    if let Some(record) = state.database.get_npc(&npc_id).await.map_err(|e| e.to_string())? {
+        if let Some(json) = &record.data_json {
+            let npc: serde_json::Value = serde_json::from_str(json)
+                .map_err(|e| e.to_string())?;
+            if let Some(profile_id) = npc.get("voice_profile_id").and_then(|v| v.as_str()) {
+                return Ok(Some(profile_id.to_string()));
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// Search voice profiles by query
+#[tauri::command]
+pub fn search_voice_profiles(query: String) -> Vec<VoiceProfile> {
+    let query_lower = query.to_lowercase();
+    get_dm_presets()
+        .into_iter()
+        .filter(|p| {
+            p.name.to_lowercase().contains(&query_lower)
+                || p.metadata.personality_traits.iter().any(|t| t.to_lowercase().contains(&query_lower))
+                || p.metadata.tags.iter().any(|t| t.to_lowercase().contains(&query_lower))
+                || p.metadata.description.as_ref().map_or(false, |d| d.to_lowercase().contains(&query_lower))
+        })
+        .collect()
+}
+
+/// Get voice profiles by gender
+#[tauri::command]
+pub fn get_voice_profiles_by_gender(gender: String) -> Vec<VoiceProfile> {
+    let target_gender = match gender.to_lowercase().as_str() {
+        "male" => Gender::Male,
+        "female" => Gender::Female,
+        "neutral" => Gender::Neutral,
+        "nonbinary" | "non-binary" => Gender::NonBinary,
+        _ => return Vec::new(),
+    };
+    get_dm_presets()
+        .into_iter()
+        .filter(|p| p.metadata.gender == target_gender)
+        .collect()
+}
+
+/// Get voice profiles by age range
+#[tauri::command]
+pub fn get_voice_profiles_by_age(age_range: String) -> Vec<VoiceProfile> {
+    let target_age = match age_range.to_lowercase().as_str() {
+        "child" => AgeRange::Child,
+        "young_adult" | "youngadult" => AgeRange::YoungAdult,
+        "adult" => AgeRange::Adult,
+        "middle_aged" | "middleaged" => AgeRange::MiddleAged,
+        "elderly" => AgeRange::Elderly,
+        _ => return Vec::new(),
+    };
+    get_dm_presets()
+        .into_iter()
+        .filter(|p| p.metadata.age_range == target_age)
+        .collect()
+}
+
+// ============================================================================
+// Audio Cache Commands (TASK-005)
+// ============================================================================
+
+/// Get audio cache statistics
+///
+/// Returns comprehensive cache statistics including:
+/// - Hit/miss counts and rate
+/// - Current and max cache size
+/// - Entry counts by format
+/// - Average entry size
+/// - Oldest entry age
+#[tauri::command]
+pub async fn get_audio_cache_stats(state: State<'_, AppState>) -> Result<VoiceCacheStats, String> {
+    let voice_manager = state.voice_manager.read().await;
+    voice_manager.get_cache_stats().await.map_err(|e| e.to_string())
+}
+
+/// Clear audio cache entries by tag
+///
+/// Removes all cached audio entries that have the specified tag.
+/// Tags can be used to group entries by session_id, npc_id, campaign_id, etc.
+///
+/// # Arguments
+/// * `tag` - The tag to filter by (e.g., "session:abc123", "npc:wizard_01")
+///
+/// # Returns
+/// The number of entries removed
+#[tauri::command]
+pub async fn clear_audio_cache_by_tag(
+    tag: String,
+    state: State<'_, AppState>,
+) -> Result<usize, String> {
+    let voice_manager = state.voice_manager.read().await;
+    voice_manager.clear_cache_by_tag(&tag).await.map_err(|e| e.to_string())
+}
+
+/// Clear all audio cache entries
+///
+/// Removes all cached audio files and resets cache statistics.
+/// Use with caution as this will force re-synthesis of all audio.
+#[tauri::command]
+pub async fn clear_audio_cache(state: State<'_, AppState>) -> Result<(), String> {
+    let voice_manager = state.voice_manager.read().await;
+    voice_manager.clear_cache().await.map_err(|e| e.to_string())
+}
+
+/// Prune old audio cache entries
+///
+/// Removes cache entries older than the specified age.
+/// Useful for automatic cleanup of stale audio files.
+///
+/// # Arguments
+/// * `max_age_seconds` - Maximum age in seconds; entries older than this will be removed
+///
+/// # Returns
+/// The number of entries removed
+#[tauri::command]
+pub async fn prune_audio_cache(
+    max_age_seconds: i64,
+    state: State<'_, AppState>,
+) -> Result<usize, String> {
+    let voice_manager = state.voice_manager.read().await;
+    voice_manager.prune_cache(max_age_seconds).await.map_err(|e| e.to_string())
+}
+
+/// List cached audio entries
+///
+/// Returns all cache entries with metadata including:
+/// - File path and size
+/// - Creation and last access times
+/// - Access count
+/// - Associated tags
+/// - Audio format and duration
+#[tauri::command]
+pub async fn list_audio_cache_entries(state: State<'_, AppState>) -> Result<Vec<crate::core::voice::CacheEntry>, String> {
+    let cache_dir = state.voice_manager.read().await.get_config()
+        .cache_dir.clone().unwrap_or_else(|| std::path::PathBuf::from("./voice_cache"));
+
+    // For listing entries, we still need direct cache access since VoiceManager doesn't expose list_entries
+    match crate::core::voice::AudioCache::with_defaults(cache_dir).await {
+        Ok(cache) => Ok(cache.list_entries().await),
+        Err(e) => Err(format!("Failed to access cache: {}", e)),
+    }
+}
+
+/// Get cache size information
+///
+/// Returns the current cache size and maximum allowed size in bytes.
+#[tauri::command]
+pub async fn get_audio_cache_size(state: State<'_, AppState>) -> Result<AudioCacheSizeInfo, String> {
+    let voice_manager = state.voice_manager.read().await;
+    let stats = voice_manager.get_cache_stats().await.map_err(|e| e.to_string())?;
+
+    Ok(AudioCacheSizeInfo {
+        current_size_bytes: stats.current_size_bytes,
+        max_size_bytes: stats.max_size_bytes,
+        entry_count: stats.entry_count,
+        usage_percent: if stats.max_size_bytes > 0 {
+            (stats.current_size_bytes as f64 / stats.max_size_bytes as f64) * 100.0
+        } else {
+            0.0
+        },
+    })
+}
+
+/// Audio cache size information
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AudioCacheSizeInfo {
+    pub current_size_bytes: u64,
+    pub max_size_bytes: u64,
+    pub entry_count: usize,
+    pub usage_percent: f64,
+}
+
+// ============================================================================
+// Voice Synthesis Queue Commands (TASK-025)
+// ============================================================================
+
+use crate::core::voice::{SynthesisQueue, QueueConfig};
+
+/// State wrapper for the synthesis queue
+pub struct SynthesisQueueState {
+    pub queue: Arc<SynthesisQueue>,
+}
+
+impl Default for SynthesisQueueState {
+    fn default() -> Self {
+        Self {
+            queue: Arc::new(SynthesisQueue::with_defaults()),
+        }
+    }
+}
+
+impl SynthesisQueueState {
+    /// Create with custom configuration
+    pub fn with_config(config: QueueConfig) -> Self {
+        Self {
+            queue: Arc::new(SynthesisQueue::new(config)),
+        }
+    }
+}
+
+/// Helper to parse provider string to VoiceProviderType for queue commands
+fn parse_queue_provider(provider: &str) -> Result<VoiceProviderType, String> {
+    match provider {
+        "elevenlabs" => Ok(VoiceProviderType::ElevenLabs),
+        "openai" => Ok(VoiceProviderType::OpenAI),
+        "fish_audio" => Ok(VoiceProviderType::FishAudio),
+        "piper" => Ok(VoiceProviderType::Piper),
+        "ollama" => Ok(VoiceProviderType::Ollama),
+        "chatterbox" => Ok(VoiceProviderType::Chatterbox),
+        "gpt_sovits" => Ok(VoiceProviderType::GptSoVits),
+        "xtts_v2" => Ok(VoiceProviderType::XttsV2),
+        "fish_speech" => Ok(VoiceProviderType::FishSpeech),
+        "dia" => Ok(VoiceProviderType::Dia),
+        _ => Err(format!("Unknown provider: {}", provider)),
+    }
+}
+
+/// Helper to parse priority string to JobPriority
+fn parse_queue_priority(priority: Option<&str>) -> Result<JobPriority, String> {
+    match priority {
+        Some("immediate") => Ok(JobPriority::Immediate),
+        Some("high") => Ok(JobPriority::High),
+        Some("normal") | None => Ok(JobPriority::Normal),
+        Some("low") => Ok(JobPriority::Low),
+        Some("batch") => Ok(JobPriority::Batch),
+        Some(p) => Err(format!("Unknown priority: {}", p)),
+    }
+}
+
+/// Request type for batch job submission
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SynthesisJobRequest {
+    pub text: String,
+    pub profile_id: String,
+    pub voice_id: String,
+    pub provider: String,
+    pub priority: Option<String>,
+    pub session_id: Option<String>,
+    pub npc_id: Option<String>,
+    pub campaign_id: Option<String>,
+    pub tags: Option<Vec<String>>,
+}
+
+/// Submit a voice synthesis job to the queue
+#[tauri::command]
+pub async fn submit_synthesis_job(
+    app_handle: tauri::AppHandle,
+    text: String,
+    profile_id: String,
+    voice_id: String,
+    provider: String,
+    priority: Option<String>,
+    session_id: Option<String>,
+    npc_id: Option<String>,
+    campaign_id: Option<String>,
+    tags: Option<Vec<String>>,
+    state: State<'_, SynthesisQueueState>,
+) -> Result<SynthesisJob, String> {
+    let provider_type = parse_queue_provider(&provider)?;
+    let job_priority = parse_queue_priority(priority.as_deref())?;
+
+    let mut job = SynthesisJob::new(&text, &profile_id, provider_type, &voice_id)
+        .with_priority(job_priority);
+
+    if let Some(sid) = session_id {
+        job = job.for_session(&sid);
+    }
+    if let Some(nid) = npc_id {
+        job = job.for_npc(&nid);
+    }
+    if let Some(cid) = campaign_id {
+        job = job.for_campaign(&cid);
+    }
+    if let Some(t) = tags {
+        job = job.with_tags(t);
+    }
+
+    let job_id = state.queue.submit(job, Some(&app_handle))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let submitted_job = state.queue.get_job(&job_id).await
+        .ok_or_else(|| "Job not found after submission".to_string())?;
+
+    Ok(submitted_job)
+}
+
+/// Get a synthesis job by ID
+#[tauri::command]
+pub async fn get_synthesis_job(
+    job_id: String,
+    state: State<'_, SynthesisQueueState>,
+) -> Result<Option<SynthesisJob>, String> {
+    Ok(state.queue.get_job(&job_id).await)
+}
+
+/// Get status of a synthesis job
+#[tauri::command]
+pub async fn get_synthesis_job_status(
+    job_id: String,
+    state: State<'_, SynthesisQueueState>,
+) -> Result<Option<JobStatus>, String> {
+    Ok(state.queue.get_status(&job_id).await)
+}
+
+/// Get progress of a synthesis job
+#[tauri::command]
+pub async fn get_synthesis_job_progress(
+    job_id: String,
+    state: State<'_, SynthesisQueueState>,
+) -> Result<Option<JobProgress>, String> {
+    Ok(state.queue.get_progress(&job_id).await)
+}
+
+/// Cancel a synthesis job
+#[tauri::command]
+pub async fn cancel_synthesis_job(
+    app_handle: tauri::AppHandle,
+    job_id: String,
+    state: State<'_, SynthesisQueueState>,
+) -> Result<(), String> {
+    state.queue.cancel(&job_id, Some(&app_handle))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Cancel all synthesis jobs
+#[tauri::command]
+pub async fn cancel_all_synthesis_jobs(
+    app_handle: tauri::AppHandle,
+    state: State<'_, SynthesisQueueState>,
+) -> Result<usize, String> {
+    state.queue.cancel_all(Some(&app_handle))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Pre-generate voice audio for a session (batch queue)
+#[tauri::command]
+pub async fn pregen_session_voices(
+    app_handle: tauri::AppHandle,
+    session_id: String,
+    texts: Vec<(String, String, String)>,
+    provider: String,
+    state: State<'_, SynthesisQueueState>,
+) -> Result<Vec<String>, String> {
+    let provider_type = parse_queue_provider(&provider)?;
+
+    state.queue.pregen_session(&session_id, texts, provider_type, Some(&app_handle))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Submit a batch of synthesis jobs
+#[tauri::command]
+pub async fn submit_synthesis_batch(
+    app_handle: tauri::AppHandle,
+    jobs: Vec<SynthesisJobRequest>,
+    state: State<'_, SynthesisQueueState>,
+) -> Result<Vec<String>, String> {
+    let mut synthesis_jobs = Vec::with_capacity(jobs.len());
+
+    for req in jobs {
+        let provider_type = parse_queue_provider(&req.provider)?;
+        let priority = parse_queue_priority(req.priority.as_deref())?;
+
+        let mut job = SynthesisJob::new(&req.text, &req.profile_id, provider_type, &req.voice_id)
+            .with_priority(priority);
+
+        if let Some(sid) = req.session_id {
+            job = job.for_session(&sid);
+        }
+        if let Some(nid) = req.npc_id {
+            job = job.for_npc(&nid);
+        }
+        if let Some(cid) = req.campaign_id {
+            job = job.for_campaign(&cid);
+        }
+        if let Some(t) = req.tags {
+            job = job.with_tags(t);
+        }
+
+        synthesis_jobs.push(job);
+    }
+
+    state.queue.submit_batch(synthesis_jobs, Some(&app_handle))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Get synthesis queue statistics
+#[tauri::command]
+pub async fn get_synthesis_queue_stats(
+    state: State<'_, SynthesisQueueState>,
+) -> Result<VoiceQueueStats, String> {
+    Ok(state.queue.stats().await)
+}
+
+/// Pause the synthesis queue
+#[tauri::command]
+pub async fn pause_synthesis_queue(
+    app_handle: tauri::AppHandle,
+    state: State<'_, SynthesisQueueState>,
+) -> Result<(), String> {
+    state.queue.pause(Some(&app_handle)).await;
+    Ok(())
+}
+
+/// Resume the synthesis queue
+#[tauri::command]
+pub async fn resume_synthesis_queue(
+    app_handle: tauri::AppHandle,
+    state: State<'_, SynthesisQueueState>,
+) -> Result<(), String> {
+    state.queue.resume(Some(&app_handle)).await;
+    Ok(())
+}
+
+/// Check if synthesis queue is paused
+#[tauri::command]
+pub async fn is_synthesis_queue_paused(
+    state: State<'_, SynthesisQueueState>,
+) -> Result<bool, String> {
+    Ok(state.queue.is_paused().await)
+}
+
+/// List pending synthesis jobs
+#[tauri::command]
+pub async fn list_pending_synthesis_jobs(
+    state: State<'_, SynthesisQueueState>,
+) -> Result<Vec<SynthesisJob>, String> {
+    Ok(state.queue.list_pending().await)
+}
+
+/// List processing synthesis jobs
+#[tauri::command]
+pub async fn list_processing_synthesis_jobs(
+    state: State<'_, SynthesisQueueState>,
+) -> Result<Vec<SynthesisJob>, String> {
+    Ok(state.queue.list_processing().await)
+}
+
+/// List synthesis job history (completed/failed/cancelled)
+#[tauri::command]
+pub async fn list_synthesis_job_history(
+    limit: Option<usize>,
+    state: State<'_, SynthesisQueueState>,
+) -> Result<Vec<SynthesisJob>, String> {
+    Ok(state.queue.list_history(limit).await)
+}
+
+/// List synthesis jobs by session
+#[tauri::command]
+pub async fn list_synthesis_jobs_by_session(
+    session_id: String,
+    state: State<'_, SynthesisQueueState>,
+) -> Result<Vec<SynthesisJob>, String> {
+    Ok(state.queue.list_by_session(&session_id).await)
+}
+
+/// List synthesis jobs by NPC
+#[tauri::command]
+pub async fn list_synthesis_jobs_by_npc(
+    npc_id: String,
+    state: State<'_, SynthesisQueueState>,
+) -> Result<Vec<SynthesisJob>, String> {
+    Ok(state.queue.list_by_npc(&npc_id).await)
+}
+
+/// List synthesis jobs by tag
+#[tauri::command]
+pub async fn list_synthesis_jobs_by_tag(
+    tag: String,
+    state: State<'_, SynthesisQueueState>,
+) -> Result<Vec<SynthesisJob>, String> {
+    Ok(state.queue.list_by_tag(&tag).await)
+}
+
+/// Clear synthesis job history
+#[tauri::command]
+pub async fn clear_synthesis_job_history(
+    state: State<'_, SynthesisQueueState>,
+) -> Result<(), String> {
+    state.queue.clear_history().await;
+    Ok(())
+}
+
+/// Get total active jobs (pending + processing)
+#[tauri::command]
+pub async fn get_synthesis_queue_length(
+    state: State<'_, SynthesisQueueState>,
+) -> Result<usize, String> {
+    Ok(state.queue.total_active().await)
+}
+
+
+// ============================================================================
+// TASK-014: Session Timeline Commands
+// ============================================================================
+
+use crate::core::session::timeline::{
+    TimelineEvent, TimelineEventType, EventSeverity, EntityRef,
+    SessionTimeline, TimelineSummary,
+};
+
+/// Add a timeline event to a session
+#[tauri::command]
+pub fn add_timeline_event(
+    session_id: String,
+    event_type: String,
+    title: String,
+    description: String,
+    severity: Option<String>,
+    entity_refs: Option<Vec<EntityRef>>,
+    tags: Option<Vec<String>>,
+    metadata: Option<HashMap<String, serde_json::Value>>,
+    state: State<'_, AppState>,
+) -> Result<TimelineEvent, String> {
+    let etype = match event_type.as_str() {
+        "session_start" => TimelineEventType::SessionStart,
+        "session_end" => TimelineEventType::SessionEnd,
+        "combat_start" => TimelineEventType::CombatStart,
+        "combat_end" => TimelineEventType::CombatEnd,
+        "combat_round_start" => TimelineEventType::CombatRoundStart,
+        "combat_turn_start" => TimelineEventType::CombatTurnStart,
+        "combat_damage" => TimelineEventType::CombatDamage,
+        "combat_healing" => TimelineEventType::CombatHealing,
+        "combat_death" => TimelineEventType::CombatDeath,
+        "note_added" => TimelineEventType::NoteAdded,
+        "npc_interaction" => TimelineEventType::NPCInteraction,
+        "location_change" => TimelineEventType::LocationChange,
+        "player_action" => TimelineEventType::PlayerAction,
+        "condition_applied" => TimelineEventType::ConditionApplied,
+        "condition_removed" => TimelineEventType::ConditionRemoved,
+        "item_acquired" => TimelineEventType::ItemAcquired,
+        _ => TimelineEventType::Custom(event_type),
+    };
+
+    let eseverity = severity.map(|s| match s.as_str() {
+        "trace" => EventSeverity::Trace,
+        "info" => EventSeverity::Info,
+        "notable" => EventSeverity::Notable,
+        "important" => EventSeverity::Important,
+        "critical" => EventSeverity::Critical,
+        _ => EventSeverity::Info,
+    }).unwrap_or(EventSeverity::Info);
+
+    let mut event = TimelineEvent::new(&session_id, etype, &title, &description)
+        .with_severity(eseverity);
+
+    if let Some(refs) = entity_refs {
+        for r in refs {
+            event.entity_refs.push(r);
+        }
+    }
+
+    if let Some(t) = tags {
+        event.tags = t;
+    }
+
+    if let Some(m) = metadata {
+        event.metadata = m;
+    }
+
+    // Store in session manager's timeline
+    state.session_manager.add_timeline_event(&session_id, event.clone())
+        .map_err(|e| e.to_string())?;
+
+    Ok(event)
+}
+
+/// Get the timeline for a session
+#[tauri::command]
+pub fn get_session_timeline(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<TimelineEvent>, String> {
+    Ok(state.session_manager.get_timeline_events(&session_id))
+}
+
+/// Get timeline summary for a session
+#[tauri::command]
+pub fn get_timeline_summary(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<TimelineSummary, String> {
+    state.session_manager.get_timeline_summary(&session_id)
+        .map_err(|e| e.to_string())
+}
+
+/// Get timeline events by type
+#[tauri::command]
+pub fn get_timeline_events_by_type(
+    session_id: String,
+    event_type: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<TimelineEvent>, String> {
+    let etype = match event_type.as_str() {
+        "session_start" => TimelineEventType::SessionStart,
+        "session_end" => TimelineEventType::SessionEnd,
+        "combat_start" => TimelineEventType::CombatStart,
+        "combat_end" => TimelineEventType::CombatEnd,
+        "note_added" => TimelineEventType::NoteAdded,
+        "npc_interaction" => TimelineEventType::NPCInteraction,
+        "location_change" => TimelineEventType::LocationChange,
+        _ => TimelineEventType::Custom(event_type),
+    };
+
+    Ok(state.session_manager.get_timeline_events_by_type(&session_id, &etype))
+}
+
+// ============================================================================
+// TASK-015: Advanced Condition Commands
+// ============================================================================
+
+use crate::core::session::conditions::{
+    AdvancedCondition, ConditionDuration, ConditionEffect, StackingRule,
+    ConditionTracker, ConditionTemplates,
+};
+
+/// Apply an advanced condition to a combatant
+#[tauri::command]
+pub fn apply_advanced_condition(
+    session_id: String,
+    combatant_id: String,
+    condition_name: String,
+    duration_type: Option<String>,
+    duration_value: Option<u32>,
+    source_id: Option<String>,
+    source_name: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<AdvancedCondition, String> {
+    // Try to get a template condition first
+    let mut condition = ConditionTemplates::by_name(&condition_name)
+        .unwrap_or_else(|| {
+            // Create a custom condition
+            let duration = match duration_type.as_deref() {
+                Some("turns") => ConditionDuration::Turns(duration_value.unwrap_or(1)),
+                Some("rounds") => ConditionDuration::Rounds(duration_value.unwrap_or(1)),
+                Some("minutes") => ConditionDuration::Minutes(duration_value.unwrap_or(1)),
+                Some("hours") => ConditionDuration::Hours(duration_value.unwrap_or(1)),
+                Some("end_of_turn") => ConditionDuration::EndOfNextTurn,
+                Some("start_of_turn") => ConditionDuration::StartOfNextTurn,
+                _ => ConditionDuration::UntilRemoved,
+            };
+            AdvancedCondition::new(&condition_name, "Custom condition", duration)
+        });
+
+    // Set source if provided
+    if let (Some(sid), Some(sname)) = (source_id, source_name) {
+        condition = condition.from_source(sid, sname);
+    }
+
+    // Apply to combatant
+    state.session_manager.apply_advanced_condition(&session_id, &combatant_id, condition.clone())
+        .map_err(|e| e.to_string())?;
+
+    Ok(condition)
+}
+
+/// Remove an advanced condition from a combatant
+#[tauri::command]
+pub fn remove_advanced_condition(
+    session_id: String,
+    combatant_id: String,
+    condition_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<AdvancedCondition>, String> {
+    state.session_manager.remove_advanced_condition(&session_id, &combatant_id, &condition_id)
+        .map_err(|e| e.to_string())
+}
+
+/// Get all conditions for a combatant
+#[tauri::command]
+pub fn get_combatant_conditions(
+    session_id: String,
+    combatant_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<AdvancedCondition>, String> {
+    state.session_manager.get_combatant_conditions(&session_id, &combatant_id)
+        .map_err(|e| e.to_string())
+}
+
+/// Tick conditions at end of turn
+#[tauri::command]
+pub fn tick_conditions_end_of_turn(
+    session_id: String,
+    combatant_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, String> {
+    state.session_manager.tick_conditions_end_of_turn(&session_id, &combatant_id)
+        .map_err(|e| e.to_string())
+}
+
+/// Tick conditions at start of turn
+#[tauri::command]
+pub fn tick_conditions_start_of_turn(
+    session_id: String,
+    combatant_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, String> {
+    state.session_manager.tick_conditions_start_of_turn(&session_id, &combatant_id)
+        .map_err(|e| e.to_string())
+}
+
+/// List available condition templates
+#[tauri::command]
+pub fn list_condition_templates() -> Vec<String> {
+    ConditionTemplates::list_names().iter().map(|s| s.to_string()).collect()
+}
+
+// ============================================================================
+// TASK-017: Session Notes Commands
+// ============================================================================
+
+/// Create a new session note
+#[tauri::command]
+pub fn create_session_note(
+    session_id: String,
+    campaign_id: String,
+    title: String,
+    content: String,
+    category: Option<String>,
+    tags: Option<Vec<String>>,
+    is_pinned: Option<bool>,
+    is_private: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<NoteSessionNote, String> {
+    let note_category = category.map(|c| match c.as_str() {
+        "general" => NoteCategory::General,
+        "combat" => NoteCategory::Combat,
+        "character" => NoteCategory::Character,
+        "location" => NoteCategory::Location,
+        "plot" => NoteCategory::Plot,
+        "quest" => NoteCategory::Quest,
+        "loot" => NoteCategory::Loot,
+        "rules" => NoteCategory::Rules,
+        "meta" => NoteCategory::Meta,
+        "worldbuilding" => NoteCategory::Worldbuilding,
+        "dialogue" => NoteCategory::Dialogue,
+        "secret" => NoteCategory::Secret,
+        _ => NoteCategory::Custom(c),
+    }).unwrap_or(NoteCategory::General);
+
+    let mut note = NoteSessionNote::new(&session_id, &campaign_id, &title, &content)
+        .with_category(note_category);
+
+    if let Some(t) = tags {
+        note = note.with_tags(t);
+    }
+
+    if is_pinned.unwrap_or(false) {
+        note = note.pinned();
+    }
+
+    if is_private.unwrap_or(false) {
+        note = note.private();
+    }
+
+    state.session_manager.create_note(note.clone())
+        .map_err(|e| e.to_string())?;
+
+    Ok(note)
+}
+
+/// Get a session note by ID
+#[tauri::command]
+pub fn get_session_note(
+    note_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<NoteSessionNote>, String> {
+    Ok(state.session_manager.get_note(&note_id))
+}
+
+/// Update a session note
+#[tauri::command]
+pub fn update_session_note(
+    note: NoteSessionNote,
+    state: State<'_, AppState>,
+) -> Result<NoteSessionNote, String> {
+    state.session_manager.update_note(note)
+        .map_err(|e| e.to_string())
+}
+
+/// Delete a session note
+#[tauri::command]
+pub fn delete_session_note(
+    note_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.session_manager.delete_note(&note_id)
+        .map_err(|e| e.to_string())
+}
+
+/// List notes for a session
+#[tauri::command]
+pub fn list_session_notes(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<NoteSessionNote>, String> {
+    Ok(state.session_manager.list_notes_for_session(&session_id))
+}
+
+/// Search notes
+#[tauri::command]
+pub fn search_session_notes(
+    query: String,
+    session_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<NoteSessionNote>, String> {
+    Ok(state.session_manager.search_notes(&query, session_id.as_deref()))
+}
+
+/// Get notes by category
+#[tauri::command]
+pub fn get_notes_by_category(
+    category: String,
+    session_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<NoteSessionNote>, String> {
+    let note_category = match category.as_str() {
+        "general" => NoteCategory::General,
+        "combat" => NoteCategory::Combat,
+        "character" => NoteCategory::Character,
+        "location" => NoteCategory::Location,
+        "plot" => NoteCategory::Plot,
+        "quest" => NoteCategory::Quest,
+        "loot" => NoteCategory::Loot,
+        "rules" => NoteCategory::Rules,
+        "meta" => NoteCategory::Meta,
+        "worldbuilding" => NoteCategory::Worldbuilding,
+        "dialogue" => NoteCategory::Dialogue,
+        "secret" => NoteCategory::Secret,
+        _ => NoteCategory::Custom(category),
+    };
+
+    Ok(state.session_manager.get_notes_by_category(&note_category, session_id.as_deref()))
+}
+
+/// Get notes with a specific tag
+#[tauri::command]
+pub fn get_notes_by_tag(
+    tag: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<NoteSessionNote>, String> {
+    Ok(state.session_manager.get_notes_by_tag(&tag))
+}
+
+/// AI categorize a note
+#[tauri::command]
+pub async fn categorize_note_ai(
+    title: String,
+    content: String,
+    state: State<'_, AppState>,
+) -> Result<CategorizationResponse, String> {
+    // Build the categorization prompt
+    let request = CategorizationRequest {
+        title,
+        content,
+        available_categories: vec![
+            "General".to_string(),
+            "Combat".to_string(),
+            "Character".to_string(),
+            "Location".to_string(),
+            "Plot".to_string(),
+            "Quest".to_string(),
+            "Loot".to_string(),
+            "Rules".to_string(),
+            "Worldbuilding".to_string(),
+            "Dialogue".to_string(),
+            "Secret".to_string(),
+        ],
+    };
+
+    let prompt = build_categorization_prompt(&request);
+
+    // Call LLM
+    let config = state.llm_config.read().unwrap().clone()
+        .ok_or("LLM not configured")?;
+    let client = crate::core::llm::LLMClient::new(config);
+
+    let llm_request = crate::core::llm::ChatRequest {
+        messages: vec![crate::core::llm::ChatMessage {
+            role: crate::core::llm::MessageRole::User,
+            content: prompt,
+        }],
+        system_prompt: Some("You are a TTRPG session note analyzer. Respond only with valid JSON.".to_string()),
+        temperature: Some(0.3),
+        max_tokens: Some(500),
+        provider: None,
+    };
+
+    let response = client.chat(llm_request).await
+        .map_err(|e| e.to_string())?;
+
+    // Parse the response
+    parse_categorization_response(&response.content)
+}
+
+/// Link an entity to a note
+#[tauri::command]
+pub fn link_entity_to_note(
+    note_id: String,
+    entity_type: String,
+    entity_id: String,
+    entity_name: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let etype = match entity_type.as_str() {
+        "npc" => NoteEntityType::NPC,
+        "player" => NoteEntityType::Player,
+        "location" => NoteEntityType::Location,
+        "item" => NoteEntityType::Item,
+        "quest" => NoteEntityType::Quest,
+        "session" => NoteEntityType::Session,
+        "campaign" => NoteEntityType::Campaign,
+        "combat" => NoteEntityType::Combat,
+        _ => NoteEntityType::Custom(entity_type),
+    };
+
+    state.session_manager.link_entity_to_note(&note_id, etype, &entity_id, &entity_name)
+        .map_err(|e| e.to_string())
+}
+
+/// Unlink an entity from a note
+#[tauri::command]
+pub fn unlink_entity_from_note(
+    note_id: String,
+    entity_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.session_manager.unlink_entity_from_note(&note_id, &entity_id)
+        .map_err(|e| e.to_string())
+}
+
+// ============================================================================
+// Backstory Generation Commands (TASK-019)
+// ============================================================================
+
+
+
+/// Build NPC system prompt with personality - stub for compatibility
+/// (Actual implementation provided by personality_manager commands below)
+#[tauri::command]
+pub fn build_npc_system_prompt_stub(
+    npc_id: String,
+    campaign_id: String,
+    additional_context: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let manager = Arc::new(crate::core::personality::PersonalityApplicationManager::new(state.personality_store.clone()));
+    let styler = crate::core::personality::NPCDialogueStyler::new(manager);
+    styler.build_npc_system_prompt(&npc_id, &campaign_id, additional_context.as_deref())
+        .map_err(|e| e.to_string())
+}
+
+// Duplicate removed
+
+
+// ============================================================================
+// Personality Application Commands (TASK-021)
+// ============================================================================
+
+/// Request payload for setting active personality
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SetActivePersonalityRequest {
+    pub session_id: String,
+    pub personality_id: Option<String>,
+    pub campaign_id: String,
+}
+
+/// Request payload for personality settings update
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PersonalitySettingsRequest {
+    pub campaign_id: String,
+    pub tone: Option<String>,
+    pub vocabulary: Option<String>,
+    pub narrative_style: Option<String>,
+    pub verbosity: Option<String>,
+    pub genre: Option<String>,
+    pub custom_patterns: Option<Vec<String>>,
+    pub use_dialect: Option<bool>,
+    pub dialect: Option<String>,
+}
+
+/// Set the active personality for a session
+#[tauri::command]
+pub fn set_active_personality(
+    request: SetActivePersonalityRequest,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.personality_manager.set_active_personality(
+        &request.session_id,
+        request.personality_id,
+        &request.campaign_id,
+    );
+    Ok(())
+}
+
+/// Get the active personality ID for a session
+#[tauri::command]
+pub fn get_active_personality(
+    session_id: String,
+    campaign_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<String>, String> {
+    Ok(state.personality_manager.get_active_personality_id(&session_id, &campaign_id))
+}
+
+/// Get the system prompt for a personality
+#[tauri::command]
+pub fn get_personality_prompt(
+    personality_id: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    state.personality_manager.get_personality_prompt(&personality_id)
+        .map_err(|e| e.to_string())
+}
+
+/// Apply personality styling to text using LLM transformation
+#[tauri::command]
+pub async fn apply_personality_to_text(
+    text: String,
+    personality_id: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let config = state.llm_config.read().unwrap()
+        .clone()
+        .ok_or("LLM not configured")?;
+    let client = LLMClient::new(config);
+
+    state.personality_manager.apply_personality_to_text(&text, &personality_id, &client)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Get personality context for a campaign
+#[tauri::command]
+pub fn get_personality_context(
+    campaign_id: String,
+    state: State<'_, AppState>,
+) -> Result<ActivePersonalityContext, String> {
+    Ok(state.personality_manager.get_context(&campaign_id))
+}
+
+/// Get personality context for a session
+#[tauri::command]
+pub fn get_session_personality_context(
+    session_id: String,
+    campaign_id: String,
+    state: State<'_, AppState>,
+) -> Result<ActivePersonalityContext, String> {
+    Ok(state.personality_manager.get_session_context(&session_id, &campaign_id))
+}
+
+/// Update personality context for a campaign
+#[tauri::command]
+pub fn set_personality_context(
+    context: ActivePersonalityContext,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.personality_manager.set_context(context);
+    Ok(())
+}
+
+/// Set the narrator personality for a campaign
+#[tauri::command]
+pub fn set_narrator_personality(
+    campaign_id: String,
+    personality_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.personality_manager.set_narrator_personality(&campaign_id, personality_id);
+    Ok(())
+}
+
+/// Assign a personality to an NPC
+#[tauri::command]
+pub fn assign_npc_personality(
+    campaign_id: String,
+    npc_id: String,
+    personality_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.personality_manager.assign_npc_personality(&campaign_id, &npc_id, &personality_id);
+    Ok(())
+}
+
+/// Unassign personality from an NPC
+#[tauri::command]
+pub fn unassign_npc_personality(
+    campaign_id: String,
+    npc_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.personality_manager.unassign_npc_personality(&campaign_id, &npc_id);
+    Ok(())
+}
+
+/// Set scene mood for a campaign
+#[tauri::command]
+pub fn set_scene_mood(
+    campaign_id: String,
+    mood: Option<SceneMood>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.personality_manager.set_scene_mood(&campaign_id, mood);
+    Ok(())
+}
+
+/// Update personality settings for a campaign
+#[tauri::command]
+pub fn set_personality_settings(
+    request: PersonalitySettingsRequest,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let settings = PersonalitySettings {
+        tone: request.tone.map(|t| NarrativeTone::from_str(&t)).unwrap_or_default(),
+        vocabulary: request.vocabulary.map(|v| VocabularyLevel::from_str(&v)).unwrap_or_default(),
+        narrative_style: request.narrative_style.map(|n| NarrativeStyle::from_str(&n)).unwrap_or_default(),
+        verbosity: request.verbosity.map(|v| VerbosityLevel::from_str(&v)).unwrap_or_default(),
+        genre: request.genre.map(|g| GenreConvention::from_str(&g)).unwrap_or_default(),
+        custom_patterns: request.custom_patterns.unwrap_or_default(),
+        use_dialect: request.use_dialect.unwrap_or(false),
+        dialect: request.dialect,
+    };
+
+    state.personality_manager.set_personality_settings(&request.campaign_id, settings);
+    Ok(())
+}
+
+/// Toggle personality application on/off
+#[tauri::command]
+pub fn set_personality_active(
+    campaign_id: String,
+    active: bool,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.personality_manager.set_personality_active(&campaign_id, active);
+    Ok(())
+}
+
+/// Preview a personality
+#[tauri::command]
+pub fn preview_personality(
+    personality_id: String,
+    state: State<'_, AppState>,
+) -> Result<PersonalityPreview, String> {
+    state.personality_manager.preview_personality(&personality_id)
+        .map_err(|e| e.to_string())
+}
+
+/// Get extended personality preview with full details
+#[tauri::command]
+pub fn preview_personality_extended(
+    personality_id: String,
+    state: State<'_, AppState>,
+) -> Result<ExtendedPersonalityPreview, String> {
+    state.personality_manager.preview_personality_extended(&personality_id)
+        .map_err(|e| e.to_string())
+}
+
+/// Generate a preview response for personality selection UI
+#[tauri::command]
+pub async fn generate_personality_preview(
+    personality_id: String,
+    state: State<'_, AppState>,
+) -> Result<PreviewResponse, String> {
+    let config = state.llm_config.read().unwrap()
+        .clone()
+        .ok_or("LLM not configured")?;
+    let client = LLMClient::new(config);
+
+    state.personality_manager.generate_preview_response(&personality_id, &client)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Test a personality by generating a response
+#[tauri::command]
+pub async fn test_personality(
+    personality_id: String,
+    test_prompt: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let config = state.llm_config.read().unwrap()
+        .clone()
+        .ok_or("LLM not configured")?;
+    let client = LLMClient::new(config);
+
+    state.personality_manager.test_personality(&personality_id, &test_prompt, &client)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Get the session system prompt with personality applied
+#[tauri::command]
+pub fn get_session_system_prompt(
+    session_id: String,
+    campaign_id: String,
+    content_type: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let ct = match content_type.as_str() {
+        "dialogue" => ContentType::Dialogue,
+        "narration" => ContentType::Narration,
+        "internal_thought" => ContentType::InternalThought,
+        "description" => ContentType::Description,
+        "action" => ContentType::Action,
+        _ => ContentType::Narration,
+    };
+
+    state.personality_manager.get_session_system_prompt(&session_id, &campaign_id, ct)
+        .map_err(|e| e.to_string())
+}
+
+/// Style NPC dialogue with personality
+#[tauri::command]
+pub fn style_npc_dialogue(
+    npc_id: String,
+    campaign_id: String,
+    raw_dialogue: String,
+    state: State<'_, AppState>,
+) -> Result<StyledContent, String> {
+    let styler = NPCDialogueStyler::new(state.personality_manager.clone());
+    styler.style_npc_dialogue(&npc_id, &campaign_id, &raw_dialogue)
+        .map_err(|e| e.to_string())
+}
+
+/// Build NPC system prompt with personality
+#[tauri::command]
+pub fn build_npc_system_prompt(
+    npc_id: String,
+    campaign_id: String,
+    additional_context: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let styler = NPCDialogueStyler::new(state.personality_manager.clone());
+    styler.build_npc_system_prompt(&npc_id, &campaign_id, additional_context.as_deref())
+        .map_err(|e| e.to_string())
+}
+
+/// Build narration prompt with personality
+#[tauri::command]
+pub fn build_narration_prompt(
+    campaign_id: String,
+    narration_type: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let nt = match narration_type.as_str() {
+        "scene_description" => NarrationType::SceneDescription,
+        "action" => NarrationType::Action,
+        "transition" => NarrationType::Transition,
+        "atmosphere" => NarrationType::Atmosphere,
+        _ => NarrationType::SceneDescription,
+    };
+
+    let manager = NarrationStyleManager::new(state.personality_manager.clone());
+    manager.build_narration_prompt(&campaign_id, nt)
+        .map_err(|e| e.to_string())
+}
+
+/// List all available personalities from the store
+#[tauri::command]
+pub fn list_personalities(
+    state: State<'_, AppState>,
+) -> Result<Vec<PersonalityPreview>, String> {
+    let personalities = state.personality_store.list();
+    let previews: Vec<PersonalityPreview> = personalities
+        .iter()
+        .filter_map(|p| state.personality_manager.preview_personality(&p.id).ok())
+        .collect();
+    Ok(previews)
+}
+
+/// Clear session-specific personality context
+#[tauri::command]
+pub fn clear_session_personality_context(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.personality_manager.clear_session_context(&session_id);
+    Ok(())
+}
+
+// ============================================================================
+// TASK-020: Location Generation Commands
+// ============================================================================
+
+use crate::core::location_gen::{
+    Atmosphere, NotableFeature, Inhabitant, Secret, Encounter,
+    LocationConnection, LootPotential, MapReference, Difficulty,
+    Disposition, TreasureLevel, LocationSize,
+};
+
+/// Generate a new location using procedural templates or AI
+#[tauri::command]
+pub async fn generate_location(
+    location_type: String,
+    campaign_id: Option<String>,
+    options: Option<LocationGenerationOptions>,
+    state: State<'_, AppState>,
+) -> Result<Location, String> {
+    let mut gen_options = options.unwrap_or_default();
+    gen_options.location_type = Some(location_type);
+    gen_options.campaign_id = campaign_id;
+
+    if gen_options.use_ai {
+        // Use AI-enhanced generation if LLM is configured
+        let llm_config = state.llm_config.read()
+            .map_err(|e| e.to_string())?
+            .clone();
+
+        if let Some(config) = llm_config {
+            let generator = LocationGenerator::with_llm(config);
+            generator.generate_detailed(&gen_options).await
+                .map_err(|e| e.to_string())
+        } else {
+            // Fall back to quick generation if no LLM configured
+            let generator = LocationGenerator::new();
+            Ok(generator.generate_quick(&gen_options))
+        }
+    } else {
+        // Use quick procedural generation
+        let generator = LocationGenerator::new();
+        Ok(generator.generate_quick(&gen_options))
+    }
+}
+
+/// Generate a location quickly using procedural templates only
+#[tauri::command]
+pub fn generate_location_quick(
+    location_type: String,
+    campaign_id: Option<String>,
+    name: Option<String>,
+    theme: Option<String>,
+    include_inhabitants: Option<bool>,
+    include_secrets: Option<bool>,
+    include_encounters: Option<bool>,
+    include_loot: Option<bool>,
+    danger_level: Option<String>,
+) -> Location {
+    let options = LocationGenerationOptions {
+        location_type: Some(location_type),
+        name,
+        campaign_id,
+        theme,
+        include_inhabitants: include_inhabitants.unwrap_or(true),
+        include_secrets: include_secrets.unwrap_or(true),
+        include_encounters: include_encounters.unwrap_or(true),
+        include_loot: include_loot.unwrap_or(true),
+        danger_level: danger_level.map(|d| parse_difficulty(&d)),
+        ..Default::default()
+    };
+
+    let generator = LocationGenerator::new();
+    generator.generate_quick(&options)
+}
+
+/// Get all available location types
+#[tauri::command]
+pub fn get_location_types() -> Vec<LocationTypeInfo> {
+    vec![
+        LocationTypeInfo { id: "city".to_string(), name: "City".to_string(), category: "Urban".to_string(), description: "A large settlement with walls, markets, and political intrigue".to_string() },
+        LocationTypeInfo { id: "town".to_string(), name: "Town".to_string(), category: "Urban".to_string(), description: "A medium-sized settlement with basic amenities".to_string() },
+        LocationTypeInfo { id: "village".to_string(), name: "Village".to_string(), category: "Urban".to_string(), description: "A small rural community".to_string() },
+        LocationTypeInfo { id: "tavern".to_string(), name: "Tavern".to_string(), category: "Buildings".to_string(), description: "A place for drinking, dining, and gathering information".to_string() },
+        LocationTypeInfo { id: "inn".to_string(), name: "Inn".to_string(), category: "Buildings".to_string(), description: "Lodging for weary travelers".to_string() },
+        LocationTypeInfo { id: "shop".to_string(), name: "Shop".to_string(), category: "Buildings".to_string(), description: "A merchant's establishment".to_string() },
+        LocationTypeInfo { id: "market".to_string(), name: "Market".to_string(), category: "Buildings".to_string(), description: "An open marketplace with many vendors".to_string() },
+        LocationTypeInfo { id: "temple".to_string(), name: "Temple".to_string(), category: "Buildings".to_string(), description: "A place of worship and divine power".to_string() },
+        LocationTypeInfo { id: "shrine".to_string(), name: "Shrine".to_string(), category: "Buildings".to_string(), description: "A small sacred site".to_string() },
+        LocationTypeInfo { id: "guild".to_string(), name: "Guild Hall".to_string(), category: "Buildings".to_string(), description: "Headquarters of a professional organization".to_string() },
+        LocationTypeInfo { id: "castle".to_string(), name: "Castle".to_string(), category: "Fortifications".to_string(), description: "A noble's fortified residence".to_string() },
+        LocationTypeInfo { id: "stronghold".to_string(), name: "Stronghold".to_string(), category: "Fortifications".to_string(), description: "A military fortress".to_string() },
+        LocationTypeInfo { id: "manor".to_string(), name: "Manor".to_string(), category: "Fortifications".to_string(), description: "A wealthy estate".to_string() },
+        LocationTypeInfo { id: "tower".to_string(), name: "Tower".to_string(), category: "Fortifications".to_string(), description: "A wizard's tower or watchtower".to_string() },
+        LocationTypeInfo { id: "dungeon".to_string(), name: "Dungeon".to_string(), category: "Adventure Sites".to_string(), description: "An underground complex of danger and treasure".to_string() },
+        LocationTypeInfo { id: "cave".to_string(), name: "Cave".to_string(), category: "Adventure Sites".to_string(), description: "A natural underground cavern".to_string() },
+        LocationTypeInfo { id: "ruins".to_string(), name: "Ruins".to_string(), category: "Adventure Sites".to_string(), description: "The remains of an ancient civilization".to_string() },
+        LocationTypeInfo { id: "tomb".to_string(), name: "Tomb".to_string(), category: "Adventure Sites".to_string(), description: "A burial place for the dead".to_string() },
+        LocationTypeInfo { id: "mine".to_string(), name: "Mine".to_string(), category: "Adventure Sites".to_string(), description: "An excavation for precious resources".to_string() },
+        LocationTypeInfo { id: "lair".to_string(), name: "Monster Lair".to_string(), category: "Adventure Sites".to_string(), description: "The den of a dangerous creature".to_string() },
+        LocationTypeInfo { id: "forest".to_string(), name: "Forest".to_string(), category: "Wilderness".to_string(), description: "A vast woodland area".to_string() },
+        LocationTypeInfo { id: "mountain".to_string(), name: "Mountain".to_string(), category: "Wilderness".to_string(), description: "A towering peak or mountain range".to_string() },
+        LocationTypeInfo { id: "swamp".to_string(), name: "Swamp".to_string(), category: "Wilderness".to_string(), description: "A treacherous wetland".to_string() },
+        LocationTypeInfo { id: "desert".to_string(), name: "Desert".to_string(), category: "Wilderness".to_string(), description: "An arid wasteland".to_string() },
+        LocationTypeInfo { id: "plains".to_string(), name: "Plains".to_string(), category: "Wilderness".to_string(), description: "Open grassland terrain".to_string() },
+        LocationTypeInfo { id: "coast".to_string(), name: "Coast".to_string(), category: "Wilderness".to_string(), description: "Shoreline and coastal waters".to_string() },
+        LocationTypeInfo { id: "island".to_string(), name: "Island".to_string(), category: "Wilderness".to_string(), description: "An isolated landmass surrounded by water".to_string() },
+        LocationTypeInfo { id: "river".to_string(), name: "River".to_string(), category: "Wilderness".to_string(), description: "A major waterway".to_string() },
+        LocationTypeInfo { id: "lake".to_string(), name: "Lake".to_string(), category: "Wilderness".to_string(), description: "A body of fresh water".to_string() },
+        LocationTypeInfo { id: "portal".to_string(), name: "Portal".to_string(), category: "Magical".to_string(), description: "A gateway to another place or plane".to_string() },
+        LocationTypeInfo { id: "planar".to_string(), name: "Planar Location".to_string(), category: "Magical".to_string(), description: "A location on another plane of existence".to_string() },
+        LocationTypeInfo { id: "custom".to_string(), name: "Custom".to_string(), category: "Other".to_string(), description: "A unique location type".to_string() },
+    ]
+}
+
+/// Location type information for UI display
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocationTypeInfo {
+    pub id: String,
+    pub name: String,
+    pub category: String,
+    pub description: String,
+}
+
+/// Save a generated location to the location manager
+#[tauri::command]
+pub async fn save_location(
+    location: Location,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let location_id = location.id.clone();
+
+    // Save to location manager
+    state.location_manager.save_location(location)
+        .map_err(|e| e.to_string())?;
+
+    Ok(location_id)
+}
+
+/// Get a location by ID
+#[tauri::command]
+pub fn get_location(
+    location_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<Location>, String> {
+    Ok(state.location_manager.get_location(&location_id))
+}
+
+/// List all locations for a campaign
+#[tauri::command]
+pub fn list_campaign_locations(
+    campaign_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<Location>, String> {
+    Ok(state.location_manager.list_locations_for_campaign(&campaign_id))
+}
+
+/// Delete a location
+#[tauri::command]
+pub fn delete_location(
+    location_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.location_manager.delete_location(&location_id)
+        .map_err(|e| e.to_string())
+}
+
+/// Update a location
+#[tauri::command]
+pub fn update_location(
+    location: Location,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.location_manager.update_location(location)
+        .map_err(|e| e.to_string())
+}
+
+/// List available location types
+#[tauri::command]
+pub fn list_location_types() -> Vec<String> {
+    vec![
+        "Tavern", "Inn", "Shop", "Guild", "Temple", "Castle", "Manor", "Prison", "Slum", "Market", "City", "Town", "Village",
+        "Forest", "Mountain", "Swamp", "Desert", "Plains", "Coast", "Island", "River", "Lake", "Cave",
+        "Dungeon", "Ruins", "Tower", "Tomb", "Mine", "Stronghold", "Lair", "Camp", "Shrine", "Portal",
+        "Planar", "Underwater", "Aerial"
+    ].into_iter().map(String::from).collect()
+}
+
+/// Add a connection between two locations
+#[tauri::command]
+pub fn add_location_connection(
+    source_location_id: String,
+    target_location_id: String,
+    connection_type: String,
+    description: Option<String>,
+    travel_time: Option<String>,
+    bidirectional: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let connection = LocationConnection {
+        target_id: Some(target_location_id.clone()),
+        target_name: "Unknown".to_string(), // Placeholder
+        connection_type: crate::core::location_gen::ConnectionType::Path, // Placeholder/Default
+        travel_time,
+        hazards: vec![],
+    };
+
+    state.location_manager.add_connection(&source_location_id, connection.clone())
+        .map_err(|e| e.to_string())?;
+
+    // If bidirectional, add reverse connection
+    if bidirectional.unwrap_or(true) {
+        let reverse = LocationConnection {
+            target_id: Some(source_location_id),
+            target_name: "Unknown".to_string(),
+            connection_type: connection.connection_type.clone(),
+            travel_time: connection.travel_time,
+            hazards: vec![],
+        };
+        state.location_manager.add_connection(&target_location_id, reverse)
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+/// Remove a connection between locations
+#[tauri::command]
+pub fn remove_location_connection(
+    source_location_id: String,
+    target_location_id: String,
+    bidirectional: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.location_manager.remove_connection(&source_location_id, &target_location_id)
+        .map_err(|e| e.to_string())?;
+
+    if bidirectional.unwrap_or(true) {
+        state.location_manager.remove_connection(&target_location_id, &source_location_id)
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+/// Search locations by criteria
+#[tauri::command]
+pub fn search_locations(
+    campaign_id: Option<String>,
+    location_type: Option<String>,
+    tags: Option<Vec<String>>,
+    query: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<Location>, String> {
+    Ok(state.location_manager.search_locations(campaign_id, location_type, tags, query))
+}
+
+/// Get locations connected to a specific location
+#[tauri::command]
+pub fn get_connected_locations(
+    location_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<Location>, String> {
+    Ok(state.location_manager.get_connected_locations(&location_id))
+}
+
+/// Add an inhabitant to a location
+#[tauri::command]
+pub fn add_location_inhabitant(
+    location_id: String,
+    inhabitant: Inhabitant,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.location_manager.add_inhabitant(&location_id, inhabitant)
+        .map_err(|e| e.to_string())
+}
+
+/// Remove an inhabitant from a location
+#[tauri::command]
+pub fn remove_location_inhabitant(
+    location_id: String,
+    inhabitant_name: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.location_manager.remove_inhabitant(&location_id, &inhabitant_name)
+        .map_err(|e| e.to_string())
+}
+
+/// Add a secret to a location
+#[tauri::command]
+pub fn add_location_secret(
+    location_id: String,
+    secret: Secret,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.location_manager.add_secret(&location_id, secret)
+        .map_err(|e| e.to_string())
+}
+
+/// Add an encounter to a location
+#[tauri::command]
+pub fn add_location_encounter(
+    location_id: String,
+    encounter: Encounter,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.location_manager.add_encounter(&location_id, encounter)
+        .map_err(|e| e.to_string())
+}
+
+/// Set map reference for a location
+#[tauri::command]
+pub fn set_location_map_reference(
+    location_id: String,
+    map_reference: MapReference,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.location_manager.set_map_reference(&location_id, map_reference)
+        .map_err(|e| e.to_string())
+}
+
+/// Helper to parse difficulty from string
+fn parse_difficulty(s: &str) -> Difficulty {
+    match s.to_lowercase().as_str() {
+        "easy" => Difficulty::Easy,
+        "medium" => Difficulty::Medium,
+        "hard" => Difficulty::Hard,
+        "very_hard" | "veryhard" => Difficulty::VeryHard,
+        "nearly_impossible" | "nearlyimpossible" => Difficulty::NearlyImpossible,
+        _ => Difficulty::Medium,
+    }
 }

@@ -35,11 +35,15 @@ web-sys = { version = "0.3", features = [
     "CssStyleDeclaration",
     "HtmlTextAreaElement",
     "KeyboardEvent",
+    "Blob",
+    "BlobPropertyBag",
+    "Url",
 ] }
 
 # Utilities
 gloo-timers = { version = "0.3", features = ["futures"] }
 pulldown-cmark = "0.13.0"
+chrono = { version = "0.4", features = ["serde"] }
 
 [profile.release]
 lto = true

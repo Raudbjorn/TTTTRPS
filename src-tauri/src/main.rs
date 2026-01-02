@@ -6,6 +6,7 @@
 mod native_features;
 
 use ttrpg_assistant::commands;
+use ttrpg_assistant::backstory_commands;
 use tauri::Manager;
 use native_features::NativeFeaturesState;
 
@@ -37,7 +38,8 @@ fn main() {
             }
 
             // Initialize managers (Meilisearch-based)
-            let (cm, sm, ns, creds, vm, sidecar_manager, search_client, personality_store, pipeline, llm_router) =
+            // Initialize managers (Meilisearch-based)
+            let (cm, sm, ns, creds, vm, sidecar_manager, search_client, personality_store, personality_manager, pipeline, _llm_router, version_manager, world_state_manager, relationship_manager, location_manager) =
                 commands::AppState::init_defaults();
 
             // Initialize Database
@@ -75,10 +77,9 @@ fn main() {
             });
 
             app.manage(commands::AppState {
-
                 llm_client: std::sync::RwLock::new(None),
                 llm_config: std::sync::RwLock::new(None),
-                llm_router,
+                llm_router: tokio::sync::RwLock::new(ttrpg_assistant::core::llm::router::LLMRouter::with_defaults()),
                 campaign_manager: cm,
                 session_manager: sm,
                 npc_store: ns,
@@ -87,9 +88,22 @@ fn main() {
                 sidecar_manager,
                 search_client,
                 personality_store,
+                personality_manager,
                 ingestion_pipeline: pipeline,
                 database,
+                version_manager,
+                world_state_manager,
+                relationship_manager,
+                location_manager,
             });
+
+            // TASK-022, TASK-023, TASK-024: Initialize analytics state wrappers
+            app.manage(commands::UsageTrackerState::default());
+            app.manage(commands::SearchAnalyticsState::default());
+            app.manage(commands::AuditLoggerState::default());
+
+            // TASK-025: Initialize synthesis queue state
+            app.manage(commands::SynthesisQueueState::default());
 
             Ok(())
         })
@@ -147,6 +161,12 @@ fn main() {
             commands::start_planned_session,
             commands::end_session,
 
+            // TASK-014: Timeline Commands
+            commands::add_timeline_event,
+            commands::get_session_timeline,
+            commands::get_timeline_summary,
+            commands::get_timeline_events_by_type,
+
             // Combat Commands
             commands::start_combat,
             commands::end_combat,
@@ -160,9 +180,53 @@ fn main() {
             commands::add_condition,
             commands::remove_condition,
 
-            // Character Generation Commands
+            // Advanced Condition Commands (TASK-015)
+            commands::add_condition_advanced,
+            commands::remove_condition_by_id,
+            commands::get_combatant_conditions,
+            commands::tick_conditions_end_of_turn,
+            commands::tick_conditions_start_of_turn,
+            commands::list_condition_templates,
+
+            // Character Generation Commands (TASK-018)
             commands::generate_character,
+            commands::generate_character_advanced,
             commands::get_supported_systems,
+            commands::list_system_info,
+
+            // Backstory Generation Commands (TASK-019)
+            backstory_commands::generate_backstory,
+            backstory_commands::edit_backstory,
+
+            // Location Generation Commands (TASK-020)
+            commands::generate_location_quick,
+            commands::generate_location,
+            commands::list_location_types,
+
+            // Personality Application Commands (TASK-021)
+            commands::set_active_personality,
+            commands::get_active_personality,
+            commands::get_personality_prompt,
+            commands::apply_personality_to_text,
+            commands::get_personality_context,
+            commands::get_session_personality_context,
+            commands::set_personality_context,
+            commands::set_narrator_personality,
+            commands::assign_npc_personality,
+            commands::unassign_npc_personality,
+            commands::set_scene_mood,
+            commands::set_personality_settings,
+            commands::set_personality_active,
+            commands::preview_personality,
+            commands::preview_personality_extended,
+            commands::generate_personality_preview,
+            commands::test_personality,
+            commands::get_session_system_prompt,
+            commands::style_npc_dialogue,
+            commands::build_npc_system_prompt,
+            commands::build_narration_prompt,
+            commands::list_personalities,
+            commands::clear_session_personality_context,
 
             // NPC Commands
             commands::generate_npc,
@@ -202,6 +266,14 @@ fn main() {
             commands::get_voice_queue,
             commands::cancel_voice,
 
+            // Audio Cache Commands (TASK-005)
+            commands::get_audio_cache_stats,
+            commands::get_audio_cache_size,
+            commands::clear_audio_cache,
+            commands::clear_audio_cache_by_tag,
+            commands::prune_audio_cache,
+            commands::list_audio_cache_entries,
+
             // Audio Commands
             commands::get_audio_volumes,
             commands::get_sfx_categories,
@@ -219,6 +291,72 @@ fn main() {
             commands::get_campaign_stats,
             commands::generate_campaign_cover,
             commands::transcribe_audio,
+
+            // Campaign Versioning Commands (TASK-006)
+            commands::create_campaign_version,
+            commands::list_campaign_versions,
+            commands::get_campaign_version,
+            commands::compare_campaign_versions,
+            commands::rollback_campaign,
+            commands::delete_campaign_version,
+            commands::add_version_tag,
+            commands::mark_version_milestone,
+
+            // World State Commands (TASK-007)
+            commands::get_world_state,
+            commands::update_world_state,
+            commands::set_in_game_date,
+            commands::advance_in_game_date,
+            commands::get_in_game_date,
+            commands::add_world_event,
+            commands::list_world_events,
+            commands::delete_world_event,
+            commands::set_location_state,
+            commands::get_location_state,
+            commands::list_locations,
+            commands::update_location_condition,
+            commands::set_world_custom_field,
+            commands::get_world_custom_field,
+            commands::list_world_custom_fields,
+            commands::set_calendar_config,
+            commands::get_calendar_config,
+
+            // Entity Relationship Commands (TASK-009)
+            commands::create_entity_relationship,
+            commands::get_entity_relationship,
+            commands::update_entity_relationship,
+            commands::delete_entity_relationship,
+            commands::list_entity_relationships,
+            commands::get_relationships_for_entity,
+            commands::get_relationships_between_entities,
+            commands::get_entity_graph,
+            commands::get_ego_graph,
+
+            // TASK-022: Usage Tracking Commands
+            commands::get_usage_stats,
+            commands::get_usage_by_period,
+            commands::get_cost_breakdown,
+            commands::get_budget_status,
+            commands::set_budget_limit,
+            commands::get_provider_usage,
+            commands::reset_usage_session,
+
+            // TASK-023: Search Analytics Commands
+            commands::get_search_analytics,
+            commands::get_popular_queries,
+            commands::get_cache_stats,
+            commands::get_trending_queries,
+            commands::get_zero_result_queries,
+            commands::get_click_distribution,
+            commands::record_search_selection,
+
+            // TASK-024: Security Audit Commands
+            commands::get_audit_logs,
+            commands::query_audit_logs,
+            commands::export_audit_logs,
+            commands::clear_old_logs,
+            commands::get_audit_summary,
+            commands::get_security_events,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
