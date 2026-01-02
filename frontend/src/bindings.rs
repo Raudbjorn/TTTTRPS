@@ -46,9 +46,7 @@ pub async fn invoke<A: Serialize, R: for<'de> Deserialize<'de>>(
     let result = invoke_raw(cmd, args_js).await;
 
     // Check if result is an error
-    if result.is_undefined() || result.is_null() {
-        return Err("Command returned null/undefined".to_string());
-    }
+
 
     serde_wasm_bindgen::from_value(result)
         .map_err(|e| format!("Failed to deserialize response: {}", e))

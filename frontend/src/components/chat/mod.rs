@@ -4,7 +4,7 @@ pub use chat_message::ChatMessage;
 
 use leptos::ev;
 use leptos::prelude::*;
-use leptos_router::components::A;
+// use leptos_router::components::A; // Removed
 use wasm_bindgen_futures::spawn_local;
 
 use crate::bindings::{
@@ -207,18 +207,7 @@ pub fn Chat() -> impl IntoView {
                             None
                         }
                     }}
-                    <A href="/campaigns" attr:class="text-theme-secondary hover:text-theme-primary">
-                        "Campaigns"
-                    </A>
-                    <A href="/character" attr:class="text-theme-secondary hover:text-theme-primary">
-                        "Characters"
-                    </A>
-                    <A href="/library" attr:class="text-theme-secondary hover:text-theme-primary">
-                        "Library"
-                    </A>
-                    <A href="/settings" attr:class="text-theme-secondary hover:text-theme-primary">
-                        "Settings"
-                    </A>
+
                 </div>
             </div>
 

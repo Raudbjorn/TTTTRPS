@@ -1,17 +1,30 @@
 use leptos::prelude::*;
+use leptos_router::hooks::{use_navigate, use_location};
 use crate::services::layout_service::{LayoutState, ViewType};
 
 #[component]
 pub fn IconRail() -> impl IntoView {
     let layout = expect_context::<LayoutState>();
+    let navigate = use_navigate();
+    let location = use_location();
 
-    // Derived signal for active view
-    let active = Signal::derive(move || layout.active_view.get());
+    // Helper to check active path
+    let is_active = move |path: &str| {
+        location.pathname.get() == path
+    };
+
+
 
     view! {
         <div class="h-full w-full flex flex-col items-center py-4 gap-4 bg-[var(--bg-deep)] border-r border-[var(--border-subtle)]">
             // Logo / Home
-            <div class="mb-4">
+            <div class="mb-4 cursor-pointer" on:click={
+                let nav = navigate.clone();
+                move |_| {
+                    layout.active_view.set(ViewType::Chat);
+                    nav("/", Default::default());
+                }
+            }>
                 <div class="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center text-white font-bold">
                     "A"
                 </div>
@@ -19,37 +32,64 @@ pub fn IconRail() -> impl IntoView {
 
             // Nav Items
             <RailIcon
-                active=Signal::derive(move || active.get() == ViewType::Campaigns)
+                active=Signal::derive(move || is_active("/campaigns"))
                 icon="📚"
                 label="Campaigns"
-                on_click=Callback::new(move |_| layout.active_view.set(ViewType::Campaigns))
+                on_click=Callback::new({
+                    let nav = navigate.clone();
+                    move |_| {
+                        layout.active_view.set(ViewType::Campaigns);
+                        nav("/campaigns", Default::default());
+                    }
+                })
             />
             <RailIcon
-                active=Signal::derive(move || active.get() == ViewType::Chat)
+                active=Signal::derive(move || is_active("/"))
                 icon="💬"
                 label="Chat"
-                on_click=Callback::new(move |_| layout.active_view.set(ViewType::Chat))
+                on_click=Callback::new({
+                    let nav = navigate.clone();
+                    move |_| {
+                        layout.active_view.set(ViewType::Chat);
+                        nav("/", Default::default());
+                    }
+                })
             />
             <RailIcon
-                active=Signal::derive(move || active.get() == ViewType::Library)
+                active=Signal::derive(move || is_active("/library"))
                 icon="🧠"
                 label="Library"
-                on_click=Callback::new(move |_| layout.active_view.set(ViewType::Library))
+                on_click=Callback::new({
+                    let nav = navigate.clone();
+                    move |_| {
+                        layout.active_view.set(ViewType::Library);
+                        nav("/library", Default::default());
+                    }
+                })
             />
+            // Graph - currently disabled/hidden or point to library? Let's hide it if no route exists
+            /*
             <RailIcon
-                active=Signal::derive(move || active.get() == ViewType::Graph)
+                active=Signal::derive(move || is_active("/graph"))
                 icon="🔮"
                 label="Graph"
-                on_click=Callback::new(move |_| layout.active_view.set(ViewType::Graph))
+                on_click=Callback::new(move |_| handle_nav("/graph", ViewType::Graph))
             />
+            */
 
             <div class="flex-1"></div> // Spacer
 
             <RailIcon
-                active=Signal::derive(move || active.get() == ViewType::Settings)
+                active=Signal::derive(move || is_active("/settings"))
                 icon="⚙️"
                 label="Settings"
-                on_click=Callback::new(move |_| layout.active_view.set(ViewType::Settings))
+                on_click=Callback::new({
+                    let nav = navigate.clone();
+                    move |_| {
+                        layout.active_view.set(ViewType::Settings);
+                        nav("/settings", Default::default());
+                    }
+                })
             />
         </div>
     }
