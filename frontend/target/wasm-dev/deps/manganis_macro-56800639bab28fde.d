@@ -1,8 +1,0 @@
-/home/svnbjrn/dev/TTTRPS-2/frontend/target/wasm-dev/deps/manganis_macro-56800639bab28fde.d: /home/svnbjrn/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/manganis-macro-0.6.2/src/lib.rs /home/svnbjrn/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/manganis-macro-0.6.2/src/asset.rs /home/svnbjrn/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/manganis-macro-0.6.2/src/linker.rs /home/svnbjrn/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/manganis-macro-0.6.2/src/../README.md
-
-/home/svnbjrn/dev/TTTRPS-2/frontend/target/wasm-dev/deps/libmanganis_macro-56800639bab28fde.so: /home/svnbjrn/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/manganis-macro-0.6.2/src/lib.rs /home/svnbjrn/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/manganis-macro-0.6.2/src/asset.rs /home/svnbjrn/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/manganis-macro-0.6.2/src/linker.rs /home/svnbjrn/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/manganis-macro-0.6.2/src/../README.md
-
-/home/svnbjrn/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/manganis-macro-0.6.2/src/lib.rs:
-/home/svnbjrn/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/manganis-macro-0.6.2/src/asset.rs:
-/home/svnbjrn/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/manganis-macro-0.6.2/src/linker.rs:
-/home/svnbjrn/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/manganis-macro-0.6.2/src/../README.md:

@@ -1,1 +1,0 @@
-Callback<dioxus::prelude::Event<MouseData>>: SuperFrom<{closure@src/components/chat.rs:11:24: 11:32}, _>

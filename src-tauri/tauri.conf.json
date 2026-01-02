@@ -4,10 +4,10 @@
   "version": "1.0.0",
   "identifier": "com.ttrpg.assistant",
   "build": {
-    "beforeBuildCommand": "",
-    "beforeDevCommand": "sh -c 'cd ../frontend || cd frontend || { echo \"[Error] Could not find frontend dir from $PWD\"; exit 1; }; dx serve --port 3030'",
+    "beforeBuildCommand": "cd ../frontend-leptos && trunk build --release",
+    "beforeDevCommand": "cd ../frontend-leptos && trunk serve --port 3030",
     "devUrl": "http://127.0.0.1:3030",
-    "frontendDist": "../frontend/dist"
+    "frontendDist": "../frontend-leptos/dist"
   },
   "app": {
     "trayIcon": {
