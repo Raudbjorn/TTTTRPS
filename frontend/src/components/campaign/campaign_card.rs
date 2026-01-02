@@ -268,7 +268,7 @@ pub fn CampaignCard(
             on:click=handle_click
             role="button"
             tabindex="0"
-            aria-label=format!("Campaign: {}", campaign_name)
+            aria-label=format!("Campaign: {}", campaign_name.clone())
         >
             // Cover Art Background
             {match cover_image.clone() {
@@ -333,7 +333,7 @@ pub fn CampaignCard(
                 <div class="space-y-3 mt-auto">
                     // Title
                     <h3 class="text-xl font-bold text-white leading-tight group-hover:text-purple-300 transition-colors line-clamp-2">
-                        {campaign_name}
+                        {campaign_name.clone()}
                     </h3>
 
                     // System (as "artist" in Spotify metaphor)

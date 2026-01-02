@@ -511,8 +511,9 @@ pub fn NotesPanel(
 
         is_categorizing.set(true);
 
+        let content_ai = content.clone();
         spawn_local(async move {
-            match bindings::categorize_note_ai(title, content).await {
+            match bindings::categorize_note_ai(title, content_ai).await {
                 Ok(response) => {
                     let suggested_category = NoteCategory::from_string(&response.suggested_category);
                     let suggested_tags = response.suggested_tags;
@@ -641,7 +642,11 @@ pub fn NotesPanel(
                         "All"
                     </button>
                     {NoteCategory::all().into_iter().take(6).map(|cat| {
-                        let cat_clone = cat.clone();
+                        let cat_for_class = cat.clone();
+                        let cat_for_bg = cat.clone();
+                        let cat_for_border = cat.clone();
+                        let cat_for_color = cat.clone();
+                        let cat_for_click = cat.clone();
                         let cat_display = cat.display().to_string();
                         let cat_color = cat.color();
 
@@ -649,36 +654,45 @@ pub fn NotesPanel(
                             <button
                                 class=move || format!(
                                     "px-2 py-1 text-xs rounded transition-colors border {}",
-                                    if selected_category.get().as_ref() == Some(&cat_clone) {
+                                    if selected_category.get().as_ref() == Some(&cat_for_class) {
                                         "bg-opacity-30 border-opacity-50"
                                     } else {
                                         "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white"
                                     }
                                 )
-                                style:background-color=move || {
-                                    if selected_category.get().as_ref() == Some(&cat_clone) {
-                                        format!("{}30", cat_color)
-                                    } else {
-                                        String::new()
+                                style:background-color={
+                                    let cat = cat_for_bg.clone();
+                                    move || {
+                                        if selected_category.get().as_ref() == Some(&cat) {
+                                            format!("{}30", cat.color())
+                                        } else {
+                                            String::new()
+                                        }
                                     }
                                 }
-                                style:border-color=move || {
-                                    if selected_category.get().as_ref() == Some(&cat_clone) {
-                                        format!("{}50", cat_color)
-                                    } else {
-                                        String::new()
+                                style:border-color={
+                                    let cat = cat_for_border.clone();
+                                    move || {
+                                        if selected_category.get().as_ref() == Some(&cat) {
+                                            format!("{}50", cat.color())
+                                        } else {
+                                            String::new()
+                                        }
                                     }
                                 }
-                                style:color=move || {
-                                    if selected_category.get().as_ref() == Some(&cat_clone) {
-                                        cat_color.to_string()
-                                    } else {
-                                        String::new()
+                                style:color={
+                                    let cat = cat_for_color.clone();
+                                    move || {
+                                        if selected_category.get().as_ref() == Some(&cat) {
+                                            cat.color().to_string()
+                                        } else {
+                                            String::new()
+                                        }
                                     }
                                 }
                                 on:click={
-                                    let cat_for_click = cat.clone();
-                                    move |_| selected_category.set(Some(cat_for_click.clone()))
+                                    let cat = cat_for_click.clone();
+                                    move |_| selected_category.set(Some(cat.clone()))
                                 }
                             >
                                 {cat_display}
@@ -789,7 +803,7 @@ pub fn NotesPanel(
                                             let is_selected = move || editor_category.get() == cat;
                                             view! {
                                                 <option value=display.clone() selected=is_selected>
-                                                    {display}
+                                                    {display.clone()}
                                                 </option>
                                             }
                                         }).collect_view()}
@@ -859,7 +873,7 @@ pub fn NotesPanel(
                                                         style:background-color=format!("{}20", category.color())
                                                         style:color=category.color()
                                                     >
-                                                        {category.display()}
+                                                        {category.display().to_string()}
                                                     </span>
                                                 </div>
                                                 {if !tags.is_empty() {

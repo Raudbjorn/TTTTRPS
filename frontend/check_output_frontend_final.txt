@@ -1,0 +1,305 @@
+    Checking ttrpg-assistant-frontend v0.1.0 (/home/svnbjrn/dev/AI-RPG/features/frontend)
+warning: unused import: `SessionList as ContextSidebar`
+   --> src/components/session/session_list.rs:508:9
+    |
+508 | pub use SessionList as ContextSidebar;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `NpcList as InfoPanel`
+   --> src/components/session/npc_list.rs:653:9
+    |
+653 | pub use NpcList as InfoPanel;
+    |         ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `STANDARD_CONDITIONS`, `get_condition_description`, and `list_condition_templates`
+  --> src/components/session/condition_manager.rs:12:31
+   |
+12 |     get_combatant_conditions, list_condition_templates, AddConditionRequest,
+   |                               ^^^^^^^^^^^^^^^^^^^^^^^^
+13 |     AdvancedCondition, ConditionDurationType, get_condition_description, STANDARD_CONDITIONS,
+   |                                               ^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `TimelineSummaryData` and `get_timeline_summary`
+  --> src/components/session/timeline_view.rs:10:27
+   |
+10 |     get_session_timeline, get_timeline_summary,
+   |                           ^^^^^^^^^^^^^^^^^^^^
+11 |     TimelineEventData, TimelineEventType as BindingEventType,
+12 |     TimelineEventSeverity, TimelineSummaryData,
+   |                            ^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `BadgeVariant`, `Badge`, and `Input`
+  --> src/components/session/notes_panel.rs:11:91
+   |
+11 | use crate::components::design_system::{Button, ButtonVariant, Card, CardHeader, CardBody, Badge, BadgeVariant, Input};
+   |                                                                                           ^^^^^  ^^^^^^^^^^^^  ^^^^^
+
+warning: unused import: `CategorizationResponse`
+  --> src/components/session/notes_panel.rs:16:5
+   |
+16 |     CategorizationResponse,
+   |     ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `get_search_hints`
+  --> src/components/library/search_panel.rs:15:65
+   |
+15 |     hybrid_search, HybridSearchOptions, get_search_suggestions, get_search_hints,
+   |                                                                 ^^^^^^^^^^^^^^^^
+
+warning: unused import: `Slider`
+  --> src/components/library/search_panel.rs:17:63
+   |
+17 | use crate::components::design_system::{Button, ButtonVariant, Slider};
+   |                                                               ^^^^^^
+
+warning: unused import: `SourceType`
+  --> src/components/library/document_detail.rs:16:46
+   |
+16 | use super::{use_library_state, SearchResult, SourceType};
+   |                                              ^^^^^^^^^^
+
+warning: unused imports: `BadgeVariant` and `Badge`
+  --> src/components/library/source_manager.rs:18:5
+   |
+18 |     Badge, BadgeVariant, Button, ButtonVariant, Card, CardHeader, CardBody, Input, Modal,
+   |     ^^^^^  ^^^^^^^^^^^^
+
+warning: unused imports: `HybridSearchOptions` and `hybrid_search`
+  --> src/components/library/mod.rs:29:25
+   |
+29 |     pick_document_file, hybrid_search, HybridSearchOptions,
+   |                         ^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `Input`, `LoadingSpinner`, and `Modal`
+  --> src/components/library/mod.rs:32:112
+   |
+32 | ..., Button, ButtonVariant, Card, CardHeader, CardBody, Input, Modal, LoadingSpinner};
+   |                                                         ^^^^^  ^^^^^  ^^^^^^^^^^^^^^
+
+warning: unused imports: `CharacterAttributeValue`, `CharacterBackground`, `CharacterEquipment`, `CharacterTrait`, and `get_supported_systems`
+  --> src/components/character.rs:11:34
+   |
+11 |     generate_character_advanced, get_supported_systems, list_system_info,
+   |                                  ^^^^^^^^^^^^^^^^^^^^^
+12 |     get_game_system_info, Character, CharacterAttributeValue, CharacterTrait,
+   |                                      ^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^
+13 |     CharacterEquipment, CharacterBackground, GenerationOptions, GameSystemInfo,
+   |     ^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `leptos::prelude::*`
+  --> src/components/graph/entity_graph.rs:24:5
+   |
+24 | use leptos::prelude::*;
+   |     ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::collections::HashMap`
+ --> src/components/analytics/usage_dashboard.rs:8:5
+  |
+8 | use std::collections::HashMap;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `get_usage_stats`
+  --> src/components/analytics/usage_dashboard.rs:11:5
+   |
+11 |     get_usage_stats, get_usage_by_period, get_cost_breakdown, get_budget_status,
+   |     ^^^^^^^^^^^^^^^
+
+warning: unused import: `std::collections::HashMap`
+ --> src/components/analytics/search_analytics.rs:9:5
+  |
+9 | use std::collections::HashMap;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `cleanup_search_analytics`, `get_zero_result_queries_db`, and `get_zero_result_queries`
+  --> src/components/analytics/search_analytics.rs:14:27
+   |
+14 |     get_trending_queries, get_zero_result_queries,
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^
+...
+17 |     get_trending_queries_db, get_zero_result_queries_db,
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+18 |     cleanup_search_analytics,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `ButtonVariant` and `Button`
+  --> src/components/analytics/search_analytics.rs:21:40
+   |
+21 | use crate::components::design_system::{Button, ButtonVariant, Card, CardBody, CardHeader, Select};
+   |                                        ^^^^^^  ^^^^^^^^^^^^^
+
+warning: unused imports: `LocationState`, `NPC`, `VersionSummary`, `WorldEvent`, `list_campaign_versions`, `list_locations`, `list_npcs`, and `list_world_events`
+  --> src/components/campaign/campaign_dashboard.rs:10:5
+   |
+10 |     list_npcs, list_locations, list_world_events, list_campaign_versions,
+   |     ^^^^^^^^^  ^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^
+11 |     VersionSummary, LocationState, WorldEvent, NPC,
+   |     ^^^^^^^^^^^^^^  ^^^^^^^^^^^^^  ^^^^^^^^^^  ^^^
+
+warning: unused import: `super::campaign_card::CampaignCard`
+  --> src/components/campaign/campaign_dashboard.rs:13:5
+   |
+13 | use super::campaign_card::CampaignCard;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `ThemeWeights` and `get_theme_preset`
+  --> src/components/campaign/campaign_create_modal.rs:10:22
+   |
+10 |     create_campaign, get_theme_preset, Campaign, ThemeWeights,
+   |                      ^^^^^^^^^^^^^^^^            ^^^^^^^^^^^^
+
+warning: unused imports: `ButtonVariant`, `Button`, `Input`, and `Modal`
+  --> src/components/campaign/campaign_create_modal.rs:12:40
+   |
+12 | use crate::components::design_system::{Button, ButtonVariant, Input, Modal};
+   |                                        ^^^^^^  ^^^^^^^^^^^^^  ^^^^^  ^^^^^
+
+warning: unused imports: `DiffStats`, `delete_campaign_version`, `mark_version_milestone`, and `rollback_campaign`
+  --> src/components/campaign/version_history.rs:10:5
+   |
+10 |     rollback_campaign, delete_campaign_version, mark_version_milestone,
+   |     ^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^
+11 |     VersionSummary, CampaignDiff, DiffStats,
+   |                                   ^^^^^^^^^
+
+warning: unused variable: `icon_color`
+   --> src/components/session/npc_list.rs:340:5
+    |
+340 |     icon_color: &'static str,
+    |     ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_icon_color`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `cid`
+   --> src/components/session/initiative_list.rs:112:29
+    |
+112 |                         let cid = combatant.id.clone();
+    |                             ^^^ help: if this is intentional, prefix it with an underscore: `_cid`
+
+warning: unused variable: `condition_id`
+   --> src/components/session/condition_manager.rs:584:25
+    |
+584 |                     let condition_id = condition.id.clone();
+    |                         ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_condition_id`
+
+warning: unused variable: `refresh_interval`
+   --> src/components/session/timeline_view.rs:160:5
+    |
+160 |     refresh_interval: u32,
+    |     ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_refresh_interval`
+
+warning: unused variable: `cat_color`
+   --> src/components/session/notes_panel.rs:651:29
+    |
+651 |                         let cat_color = cat.color();
+    |                             ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_cat_color`
+
+warning: unused variable: `content_len`
+   --> src/components/library/document_detail.rs:133:29
+    |
+133 |                         let content_len = content.len();
+    |                             ^^^^^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+133 |                         let _content_len = content.len();
+    |                             +
+help: you might have meant to pattern match on the similarly named constant `_LEN`
+    |
+133 -                         let content_len = content.len();
+133 +                         let _::_LEN = content.len();
+    |
+
+warning: unused variable: `source_clone`
+   --> src/components/library/document_detail.rs:134:29
+    |
+134 |                         let source_clone = source.clone();
+    |                             ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_source_clone`
+
+warning: unused variable: `source_clone2`
+   --> src/components/library/document_detail.rs:135:29
+    |
+135 |                         let source_clone2 = source.clone();
+    |                             ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_source_clone2`
+
+warning: unused variable: `doc_id`
+   --> src/components/library/source_manager.rs:318:45
+    |
+318 | ...                   let doc_id = doc.id.clone();
+    |                           ^^^^^^ help: if this is intentional, prefix it with an underscore: `_doc_id`
+
+error[E0525]: expected a closure that implements the `Fn` trait, but this closure only implements `FnOnce`
+   --> src/components/graph/entity_graph.rs:899:38
+    |
+830 | /                         view! {
+831 | |                             <g
+832 | |                                 class="cursor-pointer"
+833 | |                                 on:click=move |_| {
+...   |
+899 | |                                     <text
+    | |                                      ^^^^ this closure implements `FnOnce`, not `Fn`
+...   |
+903 | |                                         class=move || if is_selected() || is_hovered() {
+    | |                                                          ----------- closure is `FnOnce` because it moves the variable `is_selected` out of its environment
+...   |
+913 | |                             </g>
+914 | |                         }.into_any()
+    | |_________________________- the requirement to implement `Fn` derives from here
+    |
+    = note: required for `TypedChildrenFn<HtmlElement<Text, (..., ..., ..., ..., ...), ...>>` to implement `leptos::prelude::ToChildren<{closure@src/components/graph/entity_graph.rs:899:38: 899:42}>`
+    = note: the full name for the type has been written to '/home/svnbjrn/dev/AI-RPG/features/frontend/target/wasm32-unknown-unknown/debug/deps/ttrpg_assistant_frontend-f60f5b3fea8126c3.long-type-12316593440548389400.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+warning: unused variable: `key`
+   --> src/components/analytics/usage_dashboard.rs:366:86
+    |
+366 | ...                   {breakdown.by_model.iter().map(|(key, details)| {
+    |                                                        ^^^ help: if this is intentional, prefix it with an underscore: `_key`
+
+warning: use of deprecated method `web_sys::BlobPropertyBag::type_`: Use `set_type()` instead.
+   --> src/components/analytics/audit_log_viewer.rs:138:37
+    |
+138 | ...                   options.type_(mime);
+    |                               ^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+error[E0382]: borrow of moved value: `campaign_name`
+   --> src/components/campaign/campaign_card.rs:271:48
+    |
+232 |       let campaign_name = campaign.name.clone();
+    |           ------------- move occurs because `campaign_name` has type `std::string::String`, which does not implement the `Copy` trait
+...
+262 | /     view! {
+263 | |         <div
+264 | |             class=format!(
+265 | |                 "group relative aspect-[3/4] bg-zinc-900 rounded-xl overflow-hidden shadow-2xl {} transition-all duration-300 hover:-tran...
+...   |
+271 | |             aria-label=format!("Campaign: {}", campaign_name.clone())
+    | |                                                ^^^^^^^^^^^^^ value borrowed here after move
+...   |
+430 | |         </div>
+431 | |     }
+    | |_____- `campaign_name` moved due to this method call
+    |
+note: `into_render` takes ownership of the receiver `self`, which moves `campaign_name`
+   --> /home/svnbjrn/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tachys-0.1.9/src/view/mod.rs:438:20
+    |
+438 |     fn into_render(self) -> Self::Output;
+    |                    ^^^^
+help: you can `clone` the value and consume it, but this might not be your desired behavior
+    |
+336 |                         {campaign_name.clone()}
+    |                                       ++++++++
+
+warning: unused variable: `node_id`
+   --> src/components/campaign/relationship_graph.rs:644:33
+    |
+644 | ...                   let node_id = pn.node.id.clone();
+    |                           ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_node_id`
+
+Some errors have detailed explanations: E0382, E0525.
+For more information about an error, try `rustc --explain E0382`.
+warning: `ttrpg-assistant-frontend` (lib) generated 36 warnings
+error: could not compile `ttrpg-assistant-frontend` (lib) due to 2 previous errors; 36 warnings emitted

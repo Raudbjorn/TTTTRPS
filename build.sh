@@ -184,6 +184,16 @@ run_dev() {
     cd "$BACKEND_DIR"
 
     print_info "Running cargo tauri dev..."
+
+    # Check and clean up ports
+    for port in 3030 1420; do
+        if lsof -i :$port > /dev/null 2>&1; then
+            print_warning "Port $port is in use. Attempting to cleanup..."
+            fuser -k $port/tcp > /dev/null 2>&1 || true
+            sleep 1
+        fi
+    done
+
     cargo tauri dev
 
     cd "$PROJECT_ROOT"

@@ -133,6 +133,7 @@ pub fn DocumentDetail() -> impl IntoView {
                         let content_len = content.len();
                         let source_clone = source.clone();
                         let source_clone2 = source.clone();
+                        let source_for_meta = source.clone();
 
                         view! {
                             <div class="flex-1 flex flex-col overflow-hidden">
@@ -277,7 +278,7 @@ pub fn DocumentDetail() -> impl IntoView {
                                         <CardBody class="space-y-2">
                                             <div class="flex justify-between items-center text-sm">
                                                 <span class="text-[var(--text-muted)]">"Source"</span>
-                                                <span class="text-[var(--text-primary)] truncate max-w-[200px]">{doc.source.clone()}</span>
+                                                <span class="text-[var(--text-primary)] truncate max-w-[200px]">{source_for_meta}</span>
                                             </div>
                                             <div class="flex justify-between items-center text-sm">
                                                 <span class="text-[var(--text-muted)]">"Type"</span>

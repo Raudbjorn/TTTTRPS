@@ -1,0 +1,19 @@
+    Checking ttrpg-assistant-frontend v0.1.0 (/home/svnbjrn/dev/AI-RPG/features/frontend)
+error: this file contains an unclosed delimiter
+   --> src/components/campaign/relationship_graph.rs:743:3
+    |
+388 | ) -> impl IntoView {
+    |                    - unclosed delimiter
+...
+490 |     view! {
+    |           - unclosed delimiter
+...
+545 |                 view! {
+    |                       - this delimiter might not be properly closed...
+...
+742 |     }
+    |     - ...as it matches this but it has different indentation
+743 | }
+    |  ^
+
+error: could not compile `ttrpg-assistant-frontend` (lib) due to 1 previous error

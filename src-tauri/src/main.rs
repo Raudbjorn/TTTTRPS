@@ -97,6 +97,46 @@ fn main() {
                 location_manager,
             });
 
+            // Auto-configure Ollama if no providers are present (User Request)
+            let handle_clone = handle.clone();
+            tauri::async_runtime::spawn(async move {
+                // Wait briefly for startup
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+                if let Some(app_state) = handle_clone.try_state::<commands::AppState>() {
+                    let has_providers = !app_state.llm_router.read().await.provider_ids().is_empty();
+
+                    if !has_providers {
+                        log::info!("No LLM providers configured. Attempting to auto-discover Ollama...");
+                        let client = reqwest::Client::new();
+                        // Try localhost default port
+                        if let Ok(resp) = client.get("http://localhost:11434/api/tags").send().await {
+                             if let Ok(json) = resp.json::<serde_json::Value>().await {
+                                let mut configured_model = None;
+
+                                if let Some(models) = json.get("models").and_then(|m| m.as_array()) {
+                                    if let Some(first) = models.first() {
+                                        if let Some(name) = first.get("name").and_then(|n| n.as_str()) {
+                                            configured_model = Some(name.to_string());
+                                        }
+                                    }
+                                }
+
+                                // Fallback if no models found but server is running
+                                let model_to_use = configured_model.unwrap_or_else(|| "llama3:latest".to_string());
+
+                                log::info!("Auto-configuring Ollama with model: {}", model_to_use);
+                                let provider = std::sync::Arc::new(
+                                    ttrpg_assistant::core::llm::providers::OllamaProvider::localhost(model_to_use)
+                                );
+                                app_state.llm_router.write().await.add_provider(provider).await;
+                             }
+                        } else {
+                            log::warn!("Could not connect to Ollama at localhost:11434");
+                        }
+                    }
+                }
+            });
             // TASK-022, TASK-023, TASK-024: Initialize analytics state wrappers
             app.manage(commands::UsageTrackerState::default());
             app.manage(commands::SearchAnalyticsState::default());

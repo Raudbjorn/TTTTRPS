@@ -159,7 +159,13 @@ impl SearchClient {
 
     /// Check if Meilisearch is healthy
     pub async fn health_check(&self) -> bool {
-        self.client.is_healthy().await
+        // Use raw reqwest to avoid SDK parsing errors if version mismatch
+        let url = format!("{}/health", self.host);
+        let client = reqwest::Client::new();
+        match client.get(&url).send().await {
+            Ok(resp) => resp.status().is_success(),
+            Err(_) => false,
+        }
     }
 
     /// Wait for Meilisearch to become healthy
@@ -202,6 +208,25 @@ impl SearchClient {
 
     /// Initialize all specialized indexes with appropriate settings
     pub async fn initialize_indexes(&self) -> Result<()> {
+        // Enable experimental features (vectorStore) required for hybrid search
+        let url = format!("{}/experimental-features", self.host);
+        let client = reqwest::Client::new();
+        let mut request = client.patch(&url)
+            .json(&serde_json::json!({
+                "vectorStore": true,
+                "scoreDetails": true
+            }));
+
+        if let Some(key) = &self.api_key {
+            request = request.header("Authorization", format!("Bearer {}", key));
+        }
+
+        if let Err(e) = request.send().await {
+            log::warn!("Failed to enable experimental features: {}", e);
+        } else {
+            log::info!("Enabled Meilisearch experimental features (vectorStore, scoreDetails)");
+        }
+
         // Create all indexes
         for index_name in [INDEX_RULES, INDEX_FICTION, INDEX_CHAT, INDEX_DOCUMENTS] {
             self.ensure_index(index_name, Some("id")).await?;

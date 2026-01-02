@@ -1473,7 +1473,10 @@ pub fn AudioCacheCard() -> impl IntoView {
                                 </div>
 
                                 // Format breakdown
-                                <Show when=move || !stats.entries_by_format.is_empty()>
+                                <Show when={
+                                    let stats = stats.clone();
+                                    move || !stats.entries_by_format.is_empty()
+                                }>
                                     <div class="mt-4">
                                         <h3 class="text-sm font-medium text-theme-secondary mb-2">"Entries by Format"</h3>
                                         <div class="flex flex-wrap gap-2">
@@ -1490,14 +1493,14 @@ pub fn AudioCacheCard() -> impl IntoView {
 
                                 // Additional info
                                 <div class="mt-4 text-xs text-theme-secondary space-y-1">
-                                    <Show when=move || stats.oldest_entry_age_secs > 0>
+                                    <Show when=move || { stats.oldest_entry_age_secs > 0 }>
                                         <div>
                                             "Oldest entry: "
                                             {format_duration(stats.oldest_entry_age_secs)}
                                             " ago"
                                         </div>
                                     </Show>
-                                    <Show when=move || stats.avg_entry_size_bytes > 0>
+                                    <Show when=move || { stats.avg_entry_size_bytes > 0 }>
                                         <div>
                                             "Average entry size: "
                                             {format_bytes(stats.avg_entry_size_bytes)}

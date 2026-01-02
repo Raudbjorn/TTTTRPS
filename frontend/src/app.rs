@@ -20,34 +20,38 @@ pub fn App() -> impl IntoView {
     provide_theme_state();
     provide_layout_state();
 
-    let theme_state = expect_context::<ThemeState>();
+    let theme_state = use_context::<ThemeState>();
 
-    // Effect to update body styles when theme changes
-    Effect::new(move |_| {
-        let css = theme_state.get_css();
-        if let Some(window) = web_sys::window() {
-            if let Some(document) = window.document() {
-                // Create or update the theme style element
-                let style_id = "dynamic-theme-styles";
-                let style_el = document.get_element_by_id(style_id).unwrap_or_else(|| {
-                    let el = document.create_element("style").unwrap();
-                    el.set_id(style_id);
-                    if let Some(head) = document.head() {
-                        let _ = head.append_child(&el);
-                    }
-                    el.into()
-                });
-                style_el.set_text_content(Some(&css));
+    if let Some(theme_state) = theme_state {
+        // Effect to update body styles when theme changes
+        Effect::new(move |_| {
+            let css = theme_state.get_css();
+            if let Some(window) = web_sys::window() {
+                if let Some(document) = window.document() {
+                    // Create or update the theme style element
+                    let style_id = "dynamic-theme-styles";
+                    let style_el = document.get_element_by_id(style_id).unwrap_or_else(|| {
+                        let el = document.create_element("style").unwrap();
+                        el.set_id(style_id);
+                        if let Some(head) = document.head() {
+                            let _ = head.append_child(&el);
+                        }
+                        el.into()
+                    });
+                    style_el.set_text_content(Some(&css));
 
-                // Also set the preset name as data attribute if available
-                if let Some(preset) = theme_state.current_preset.get() {
-                    if let Some(body) = document.body() {
-                        let _ = body.set_attribute("data-theme", &preset);
+                    // Also set the preset name as data attribute if available
+                    if let Some(preset) = theme_state.current_preset.get() {
+                        if let Some(body) = document.body() {
+                            let _ = body.set_attribute("data-theme", &preset);
+                        }
                     }
                 }
             }
-        }
-    });
+        });
+    } else {
+        web_sys::console::error_1(&"ThemeState context missing!".into());
+    }
 
     view! {
         <Router>

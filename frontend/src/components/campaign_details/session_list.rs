@@ -92,7 +92,7 @@ pub fn ContextSidebar(
                 // Current Session Section
                 {move || current_session.clone().map(|session| {
                     let session_id = session.id.clone();
-                    let sess_num = session.session_number;
+                    let _sess_num = session.session_number;
                     let on_click = on_select_session.clone();
                     let is_active = active_id_current.as_ref() == Some(&session_id);
 

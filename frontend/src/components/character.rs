@@ -186,7 +186,8 @@ pub fn CharacterCreator() -> impl IntoView {
                                                 children=move |system| {
                                                     let id = system.id.clone();
                                                     let name = system.name.clone();
-                                                    let is_selected = move || selected_system_id.get() == id;
+                                                    let id_clone = id.clone();
+                                                    let is_selected = move || selected_system_id.get() == id_clone;
                                                     view! {
                                                         <option value=id.clone() selected=is_selected>
                                                             {name}
@@ -253,7 +254,7 @@ pub fn CharacterCreator() -> impl IntoView {
                                                 key=|r| r.clone()
                                                 children=move |race| {
                                                     view! {
-                                                        <option value=race.clone()>{race}</option>
+                                                        <option value=race.clone()>{race.clone()}</option>
                                                     }
                                                 }
                                             />
@@ -273,7 +274,7 @@ pub fn CharacterCreator() -> impl IntoView {
                                                 key=|c| c.clone()
                                                 children=move |class| {
                                                     view! {
-                                                        <option value=class.clone()>{class}</option>
+                                                        <option value=class.clone()>{class.clone()}</option>
                                                     }
                                                 }
                                             />
@@ -293,7 +294,7 @@ pub fn CharacterCreator() -> impl IntoView {
                                                 key=|b| b.clone()
                                                 children=move |bg| {
                                                     view! {
-                                                        <option value=bg.clone()>{bg}</option>
+                                                        <option value=bg.clone()>{bg.clone()}</option>
                                                     }
                                                 }
                                             />

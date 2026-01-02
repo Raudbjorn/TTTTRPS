@@ -224,7 +224,7 @@ pub fn MainShell(
             on:mouseleave=handle_mouseleave
         >
             // Area: Rail
-            <div style:grid-area="rail">
+            <div style:grid-area="rail" class="relative z-50">
                 <IconRail />
             </div>
 

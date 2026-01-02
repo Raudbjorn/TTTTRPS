@@ -295,13 +295,13 @@ pub fn SearchAnalyticsDashboard() -> impl IntoView {
                                             </div>
                                         </div>
                                     </div>
-                                }
+                                }.into_any()
                             }).unwrap_or_else(|| {
                                 view! {
                                     <div class="text-center py-4 text-theme-secondary">
-                                        "No cache data available"
+                                        <span>"No cache data available"</span>
                                     </div>
-                                }
+                                }.into_any()
                             })
                         }}
                     </CardBody>

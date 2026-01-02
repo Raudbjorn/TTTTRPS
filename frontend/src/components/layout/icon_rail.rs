@@ -250,13 +250,14 @@ fn RailIcon(
             </span>
 
             // Tooltip with proper positioning and accessibility
+            // Tooltip with proper positioning and accessibility
             <div
-                class="absolute left-14 top-1/2 -translate-y-1/2 bg-[var(--bg-elevated)] text-[var(--text-primary)] text-xs px-3 py-1.5 rounded-md opacity-0 group-hover:opacity-100 group-focus:opacity-100 transition-opacity whitespace-nowrap border border-[var(--border-subtle)] shadow-lg z-50 pointer-events-none"
+                class="absolute left-16 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs px-3 py-1.5 rounded-md opacity-0 group-hover:opacity-100 group-hover:translate-x-0 -translate-x-2 group-focus:opacity-100 transition-all duration-200 whitespace-nowrap border border-white/10 shadow-xl z-[100] pointer-events-none"
                 role="tooltip"
             >
                 {tooltip_text}
                 // Tooltip arrow
-                <div class="absolute left-0 top-1/2 -translate-x-1 -translate-y-1/2 w-2 h-2 bg-[var(--bg-elevated)] border-l border-b border-[var(--border-subtle)] rotate-45"></div>
+                <div class="absolute left-0 top-1/2 -translate-x-1 -translate-y-1/2 w-2 h-2 bg-gray-900 rotate-45"></div>
             </div>
         </button>
     }

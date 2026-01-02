@@ -21,7 +21,33 @@
 //!   - Click to focus, double-click to open details
 
 use leptos::prelude::*;
-use crate::components::session::timeline_view::FilterToggle;
+use leptos::prelude::*;
+
+#[component]
+fn GraphFilterToggle(
+    entity_type: EntityType,
+    is_active: Signal<bool>,
+    on_toggle: Callback<()>,
+) -> impl IntoView {
+    view! {
+        <button
+            class=move || format!(
+                "px-2 py-1 text-xs rounded transition-all {}",
+                if is_active.get() {
+                    "bg-opacity-20 border border-opacity-50"
+                } else {
+                    "bg-zinc-800 border-zinc-700 opacity-50"
+                }
+            )
+            style:background-color=move || if is_active.get() { format!("{}20", entity_type.fill_class().replace("fill-", "#").replace("-500", "")) } else { String::new() }
+            style:border-color=move || if is_active.get() { format!("{}50", entity_type.fill_class().replace("fill-", "#").replace("-500", "")) } else { String::new() }
+            style:color=move || if is_active.get() { entity_type.fill_class().replace("fill-", "#").replace("-500", "") } else { "#71717a".to_string() }
+            on:click=move |_| on_toggle.run(())
+        >
+            {entity_type.label()}
+        </button>
+    }
+}
 
 /// Entity types for the graph
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -461,35 +487,35 @@ pub fn EntityGraph(
 
                     // Filter toggles
                     <div class="flex items-center gap-1 bg-zinc-900/90 border border-zinc-800 rounded-lg p-1 backdrop-blur-sm">
-                        <FilterToggle
+                        <GraphFilterToggle
                             entity_type=EntityType::Npc
                             is_active=Signal::derive(move || filter.get().show_npcs)
-                            on_toggle=move |_| toggle_filter(EntityType::Npc)
+                            on_toggle=Callback::new(move |_| toggle_filter(EntityType::Npc))
                         />
-                        <FilterToggle
+                        <GraphFilterToggle
                             entity_type=EntityType::Location
                             is_active=Signal::derive(move || filter.get().show_locations)
-                            on_toggle=move |_| toggle_filter(EntityType::Location)
+                            on_toggle=Callback::new(move |_| toggle_filter(EntityType::Location))
                         />
-                        <FilterToggle
+                        <GraphFilterToggle
                             entity_type=EntityType::Faction
                             is_active=Signal::derive(move || filter.get().show_factions)
-                            on_toggle=move |_| toggle_filter(EntityType::Faction)
+                            on_toggle=Callback::new(move |_| toggle_filter(EntityType::Faction))
                         />
-                        <FilterToggle
+                        <GraphFilterToggle
                             entity_type=EntityType::Item
                             is_active=Signal::derive(move || filter.get().show_items)
-                            on_toggle=move |_| toggle_filter(EntityType::Item)
+                            on_toggle=Callback::new(move |_| toggle_filter(EntityType::Item))
                         />
-                        <FilterToggle
+                        <GraphFilterToggle
                             entity_type=EntityType::Quest
                             is_active=Signal::derive(move || filter.get().show_quests)
-                            on_toggle=move |_| toggle_filter(EntityType::Quest)
+                            on_toggle=Callback::new(move |_| toggle_filter(EntityType::Quest))
                         />
-                        <FilterToggle
+                        <GraphFilterToggle
                             entity_type=EntityType::Event
                             is_active=Signal::derive(move || filter.get().show_events)
-                            on_toggle=move |_| toggle_filter(EntityType::Event)
+                            on_toggle=Callback::new(move |_| toggle_filter(EntityType::Event))
                         />
                     </div>
                 </div>
@@ -583,7 +609,9 @@ pub fn EntityGraph(
             </div>
 
             // Selected node info panel
-            {move || selected_node.get().map(|id| {
+            {
+                let nodes = nodes.clone();
+                move || selected_node.get().map(|id| {
                 let node = nodes.iter().find(|n| n.id == id);
                 node.map(|n| {
                     let node_id = n.id.clone();
@@ -639,9 +667,12 @@ pub fn EntityGraph(
                             <div class="px-4 py-3 border-t border-zinc-800 bg-zinc-900/50 flex gap-2">
                                 <button
                                     class="flex-1 px-3 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-medium rounded-lg transition-colors"
-                                    on:click=move |_| {
-                                        if let Some(ref cb) = on_open_node {
-                                            cb.run(node_id.clone());
+                                    on:click={
+                                        let node_id = node_id.clone();
+                                        move |_| {
+                                            if let Some(ref cb) = on_open_node {
+                                                cb.run(node_id.clone());
+                                            }
                                         }
                                     }
                                 >
@@ -649,9 +680,12 @@ pub fn EntityGraph(
                                 </button>
                                 <button
                                     class="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium rounded-lg transition-colors"
-                                    on:click=move |_| {
-                                        if let Some(ref cb) = on_select_node {
-                                            cb.run(node_id.clone());
+                                    on:click={
+                                        let node_id = node_id.clone();
+                                        move |_| {
+                                            if let Some(ref cb) = on_select_node {
+                                                cb.run(node_id.clone());
+                                            }
                                         }
                                     }
                                 >
@@ -738,25 +772,34 @@ pub fn EntityGraph(
                                             x2=t.x.to_string()
                                             y2=t.y.to_string()
                                             stroke-width=stroke_width.to_string()
-                                            class=move || if is_highlighted() {
+                                            class={
+                                                let is_h = is_highlighted.clone();
+                                                move || if is_h() {
                                                 "stroke-purple-400"
-                                            } else {
+                                                } else {
                                                 "stroke-zinc-700"
+                                                }
                                             }
                                             style=format!("opacity: {}", if is_highlighted() { 1.0 } else { opacity })
                                             marker-end={if !edge.is_bidirectional { "url(#arrowhead)" } else { "" }}
                                         />
                                         // Edge label
-                                        <Show when=move || show_edge_labels.get() && label.is_some()>
+                                        <Show when={
+                                            let label = label.clone();
+                                            move || show_edge_labels.get() && label.is_some()
+                                        }>
                                             {label.clone().map(|l| view! {
                                                 <text
                                                     x=mid_x.to_string()
                                                     y=(mid_y - 5.0).to_string()
                                                     text-anchor="middle"
-                                                    class=move || if is_highlighted() {
-                                                        "fill-zinc-300 text-[9px] select-none font-medium"
-                                                    } else {
-                                                        "fill-zinc-600 text-[8px] select-none"
+                                                    class={
+                                                        let is_h = is_highlighted.clone();
+                                                        move || if is_h() {
+                                                            "fill-zinc-300 text-[9px] select-none font-medium"
+                                                        } else {
+                                                            "fill-zinc-600 text-[8px] select-none"
+                                                        }
                                                     }
                                                 >
                                                     {l}
@@ -792,8 +835,14 @@ pub fn EntityGraph(
                         let is_hub = node.is_hub;
                         let text_y = y + radius + 14.0;
 
-                        let is_selected = move || selected_node.get().as_ref() == Some(&id);
-                        let is_hovered = move || hovered_node.get().as_ref() == Some(&id);
+                        let is_selected = {
+                            let id = id.clone();
+                            move || selected_node.get().as_ref() == Some(&id)
+                        };
+                        let is_hovered = {
+                            let id = id.clone();
+                            move || hovered_node.get().as_ref() == Some(&id)
+                        };
 
                         view! {
                             <g
@@ -811,7 +860,11 @@ pub fn EntityGraph(
                                 }
                             >
                                 // Outer glow when selected or hovered
-                                <Show when=move || is_selected() || is_hovered()>
+                                <Show when={
+                                    let is_sel = is_selected.clone();
+                                    let is_hov = is_hovered.clone();
+                                    move || is_sel() || is_hov()
+                                }>
                                     <circle
                                         cx=x.to_string()
                                         cy=y.to_string()
@@ -843,15 +896,19 @@ pub fn EntityGraph(
                                     cy=y.to_string()
                                     r=radius.to_string()
                                     class=format!("{} transition-all duration-200", fill_class)
-                                    style=move || if is_selected() || is_hovered() {
-                                        "filter: url(#glow); stroke: white; stroke-width: 2;"
-                                    } else {
-                                        "stroke: rgb(24 24 27); stroke-width: 3;"
+                                    style={
+                                        let is_sel = is_selected.clone();
+                                        let is_hov = is_hovered.clone();
+                                        move || if is_sel() || is_hov() {
+                                            "filter: url(#glow); stroke: white; stroke-width: 2;"
+                                        } else {
+                                            "stroke: rgb(24 24 27); stroke-width: 3;"
+                                        }
                                     }
                                 />
 
                                 // Selection ring
-                                <Show when=is_selected>
+                                <Show when=is_selected.clone()>
                                     <circle
                                         cx=x.to_string()
                                         cy=y.to_string()
@@ -868,14 +925,18 @@ pub fn EntityGraph(
                                         x=x.to_string()
                                         y=text_y.to_string()
                                         text-anchor="middle"
-                                        class=move || if is_selected() || is_hovered() {
+                                        class={
+                                            let is_sel = is_selected.clone();
+                                            let is_hov = is_hovered.clone();
+                                            move || if is_sel() || is_hov() {
                                             "fill-white text-[11px] font-bold select-none pointer-events-none"
-                                        } else {
+                                            } else {
                                             "fill-zinc-400 text-[10px] font-medium select-none pointer-events-none"
+                                            }
                                         }
                                         style="text-shadow: 0 1px 3px rgba(0,0,0,0.8);"
                                     >
-                                        {label}
+                                        {label.clone()}
                                     </text>
                                 </Show>
                             </g>

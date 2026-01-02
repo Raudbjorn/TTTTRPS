@@ -318,7 +318,7 @@ pub fn AdvancedConditionModal(
                                     variant=ButtonVariant::Primary
                                     class="w-full py-2 bg-purple-600 hover:bg-purple-500 text-white font-medium"
                                     on_click=handle_add_custom
-                                    disabled=Signal::derive(move || custom_condition.get().is_empty())
+                                    disabled=(move || custom_condition.get().is_empty())()
                                 >
                                     "Add Condition"
                                 </Button>
@@ -441,7 +441,9 @@ pub fn AdvancedConditionBadge(
         .find(|(n, _, _)| n.to_lowercase() == condition_name.to_lowercase())
         .map(|(_, desc, color)| (*desc, *color));
 
-    let (description, color) = condition_info.unwrap_or((&condition.description, "#94a3b8"));
+    let (description, color) = condition_info
+        .map(|(d, c)| (d.to_string(), c))
+        .unwrap_or((condition.description.clone(), "#94a3b8"));
 
     view! {
         <div class="group relative inline-block">
@@ -521,7 +523,7 @@ pub fn ActiveConditionsList(
                 view! {
                     <ConditionBadge
                         name=condition_name
-                        on_remove=Some(Callback::new(move |_| handle_remove()))
+                        on_remove=Callback::new(move |_| handle_remove())
                     />
                 }
             }).collect_view()}
@@ -583,7 +585,7 @@ pub fn AdvancedConditionsList(
                     view! {
                         <AdvancedConditionBadge
                             condition=condition
-                            on_remove=Some(Callback::new(move |id: String| handle_remove(id)))
+                            on_remove=Callback::new(move |id: String| handle_remove(id))
                         />
                     }
                 }
@@ -620,8 +622,11 @@ pub fn ConditionSummaryPanel(
     view! {
         <div class="space-y-2">
             // Simple conditions (legacy)
-            <Show when=move || !simple_conditions.is_empty()>
-                <div class="flex flex-wrap gap-1">
+            {
+                let simple_conditions_check = simple_conditions.clone();
+                view! {
+                    <Show when=move || !simple_conditions_check.is_empty()>
+                        <div class="flex flex-wrap gap-1">
                     {simple_conditions.iter().map(|condition| {
                         let condition_name = condition.clone();
                         let condition_for_remove = condition.clone();
@@ -642,12 +647,14 @@ pub fn ConditionSummaryPanel(
                         view! {
                             <ConditionBadge
                                 name=condition_name
-                                on_remove=Some(Callback::new(move |_| handle_remove()))
+                                on_remove=Callback::new(move |_| handle_remove())
                             />
                         }
                     }).collect_view()}
                 </div>
             </Show>
+        }
+            }
 
             // Advanced conditions
             <AdvancedConditionsList

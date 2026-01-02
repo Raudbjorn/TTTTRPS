@@ -405,63 +405,70 @@ pub fn RelationshipGraph(
 
     // Load graph data
     let campaign_id_load = campaign_id.clone();
-    Effect::new(move |_| {
-        let cid = campaign_id_load.clone();
-        let include_inactive = show_inactive.get();
-        let focus_id = focus_entity.get();
-        let layout_config = config.clone();
+    Effect::new({
+        let config = config.clone();
+        move |_| {
+            let cid = campaign_id_load.clone();
+            let include_inactive = show_inactive.get();
+            let focus_id = focus_entity.get();
+            let layout_config = config.clone();
 
-        spawn_local(async move {
-            is_loading.set(true);
-            error.set(None);
+            spawn_local(async move {
+                is_loading.set(true);
+                error.set(None);
 
-            let result = if let Some(entity_id) = focus_id {
-                get_ego_graph(cid, entity_id, Some(2)).await
-            } else {
-                get_entity_graph(cid, Some(include_inactive)).await
-            };
+                let result = if let Some(entity_id) = focus_id {
+                    get_ego_graph(cid, entity_id, Some(2)).await
+                } else {
+                    get_entity_graph(cid, Some(include_inactive)).await
+                };
 
-            match result {
-                Ok(g) => {
-                    let layout = calculate_layout(&g.nodes, &g.edges, &layout_config);
-                    positioned_nodes.set(layout);
-                    graph.set(Some(g));
+                match result {
+                    Ok(g) => {
+                        let layout = calculate_layout(&g.nodes, &g.edges, &layout_config);
+                        positioned_nodes.set(layout);
+                        graph.set(Some(g));
+                    }
+                    Err(e) => {
+                        error.set(Some(e));
+                    }
                 }
-                Err(e) => {
-                    error.set(Some(e));
-                }
-            }
-            is_loading.set(false);
-        });
+                is_loading.set(false);
+            });
+        }
     });
 
     // Refresh handler
     let campaign_id_refresh = campaign_id.clone();
-    let handle_refresh = Callback::new(move |_: ()| {
-        let cid = campaign_id_refresh.clone();
-        let include_inactive = show_inactive.get();
-        let focus_id = focus_entity.get();
+    let handle_refresh = Callback::new({
+        let config = config.clone();
+        move |_: ()| {
+            let cid = campaign_id_refresh.clone();
+            let include_inactive = show_inactive.get();
+            let focus_id = focus_entity.get();
+            let layout_config = config.clone();
 
-        spawn_local(async move {
-            is_loading.set(true);
-            let result = if let Some(entity_id) = focus_id {
-                get_ego_graph(cid, entity_id, Some(2)).await
-            } else {
-                get_entity_graph(cid, Some(include_inactive)).await
-            };
+            spawn_local(async move {
+                is_loading.set(true);
+                let result = if let Some(entity_id) = focus_id {
+                    get_ego_graph(cid, entity_id, Some(2)).await
+                } else {
+                    get_entity_graph(cid, Some(include_inactive)).await
+                };
 
-            match result {
-                Ok(g) => {
-                    let layout = calculate_layout(&g.nodes, &g.edges, &config);
-                    positioned_nodes.set(layout);
-                    graph.set(Some(g));
+                match result {
+                    Ok(g) => {
+                        let layout = calculate_layout(&g.nodes, &g.edges, &layout_config);
+                        positioned_nodes.set(layout);
+                        graph.set(Some(g));
+                    }
+                    Err(e) => {
+                        error.set(Some(e));
+                    }
                 }
-                Err(e) => {
-                    error.set(Some(e));
-                }
-            }
-            is_loading.set(false);
-        });
+                is_loading.set(false);
+            });
+        }
     });
 
     let handle_reset_view = Callback::new(move |_: ()| {
@@ -533,16 +540,19 @@ pub fn RelationshipGraph(
             })}
 
             // SVG Graph Canvas
-            <svg
-                class="w-full h-full cursor-move"
-                viewBox=move || format!("0 0 {} {}", config.width, config.height)
-                style=move || format!(
-                    "transform: scale({}) translate({}px, {}px);",
-                    zoom_level.get(),
-                    pan_offset.get().0,
-                    pan_offset.get().1
-                )
-            >
+            {
+                let config = config.clone();
+                view! {
+                    <svg
+                        class="w-full h-full cursor-move"
+                        viewBox=move || format!("0 0 {} {}", config.width, config.height)
+                        style=move || format!(
+                            "transform: scale({}) translate({}px, {}px);",
+                            zoom_level.get(),
+                            pan_offset.get().0,
+                            pan_offset.get().1
+                        )
+                    >
                 // Edges
                 <g>
                     {move || {
@@ -624,7 +634,6 @@ pub fn RelationshipGraph(
                         }).unwrap_or_default()
                     }}
                 </g>
-
                 // Nodes
                 <g>
                     {move || {
@@ -713,6 +722,8 @@ pub fn RelationshipGraph(
                     }}
                 </g>
             </svg>
+                }
+            }
 
             // Tooltip
             {move || hovered_node.get().map(|(node, x, y)| view! {
