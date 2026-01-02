@@ -1,0 +1,538 @@
+//! Campaigns Component - Leptos Migration
+//!
+//! Displays a list of campaigns with create/delete functionality.
+//! Migrated from Dioxus campaigns.rs
+
+use leptos::ev;
+use leptos::prelude::*;
+use leptos::task::spawn_local;
+use leptos_router::hooks::use_navigate;
+
+use crate::bindings::{list_campaigns, create_campaign, delete_campaign, Campaign};
+use crate::components::design_system::{Button, ButtonVariant, LoadingSpinner};
+
+/// Helper function to get system-based styling
+fn get_system_style(system: &str) -> (&'static str, &'static str) {
+    let s = system.to_lowercase();
+    if s.contains("d&d") || s.contains("5e") || s.contains("pathfinder") {
+        (
+            "bg-gradient-to-br from-amber-700 to-amber-900",
+            "text-amber-200",
+        )
+    } else if s.contains("cthulhu") || s.contains("horror") || s.contains("vampire") {
+        (
+            "bg-gradient-to-br from-slate-800 to-black",
+            "text-red-400",
+        )
+    } else if s.contains("cyber") || s.contains("shadow") || s.contains("neon") {
+        (
+            "bg-gradient-to-br from-fuchsia-900 to-purple-900",
+            "text-fuchsia-300",
+        )
+    } else if s.contains("space") || s.contains("alien") || s.contains("scifi") {
+        (
+            "bg-gradient-to-br from-cyan-900 to-blue-900",
+            "text-cyan-200",
+        )
+    } else {
+        (
+            "bg-gradient-to-br from-zinc-700 to-zinc-900",
+            "text-zinc-300",
+        )
+    }
+}
+
+/// Stat card component for displaying summary statistics
+#[component]
+fn StatCard(
+    /// Label for the stat
+    #[prop(into)]
+    label: String,
+    /// Value to display
+    #[prop(into)]
+    value: String,
+) -> impl IntoView {
+    view! {
+        <div class="bg-zinc-900 border border-zinc-800 p-4 rounded-lg">
+            <div class="text-zinc-500 text-xs font-bold uppercase tracking-wider mb-1">
+                {label}
+            </div>
+            <div class="text-2xl font-bold text-zinc-100">
+                {value}
+            </div>
+        </div>
+    }
+}
+
+/// Badge component for system type display
+#[component]
+fn SystemBadge(
+    #[prop(into)]
+    system: String,
+) -> impl IntoView {
+    view! {
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700">
+            {system}
+        </span>
+    }
+}
+
+/// Campaign card component
+#[component]
+fn CampaignCard(
+    campaign: Campaign,
+    on_delete: Callback<(String, String)>,
+) -> impl IntoView {
+    let navigate = use_navigate();
+    let (bg_class, text_class) = get_system_style(&campaign.system);
+    let initials = campaign.name.chars().next().unwrap_or('?');
+
+    let campaign_id = campaign.id.clone();
+    let campaign_name = campaign.name.clone();
+    let campaign_system = campaign.system.clone();
+    let campaign_desc = campaign.description.clone().unwrap_or_default();
+    let session_count = campaign.session_count;
+    let player_count = campaign.player_count;
+
+    // Clone for closures
+    let delete_id = campaign.id.clone();
+    let delete_name = campaign.name.clone();
+    let nav_id = campaign_id.clone();
+
+    let handle_click = move |_: ev::MouseEvent| {
+        let nav = navigate.clone();
+        let id = nav_id.clone();
+        nav(&format!("/session/{}", id), Default::default());
+    };
+
+    let handle_delete = move |evt: ev::MouseEvent| {
+        evt.stop_propagation();
+        on_delete.run((delete_id.clone(), delete_name.clone()));
+    };
+
+    view! {
+        <div
+            class="group relative aspect-[3/4] bg-zinc-900 rounded-xl overflow-hidden shadow-2xl border border-zinc-800 hover:border-zinc-600 transition-all hover:-translate-y-1 cursor-pointer"
+            on:click=handle_click
+        >
+            // "Cover Art" Background
+            <div class=format!("absolute inset-0 {} opacity-20 group-hover:opacity-30 transition-opacity", bg_class)></div>
+
+            // Content Container
+            <div class="relative h-full flex flex-col p-6">
+                // Top Badge
+                <div class="flex justify-between items-start">
+                    <SystemBadge system=campaign_system />
+
+                    // Delete button (visible on hover)
+                    <button
+                        class="opacity-0 group-hover:opacity-100 p-2 text-zinc-400 hover:text-red-400 transition-all"
+                        on:click=handle_delete
+                    >
+                        "X"
+                    </button>
+                </div>
+
+                // Center Initials (Placeholder Art)
+                <div class="flex-1 flex items-center justify-center">
+                    <span class=format!("text-8xl font-black {} opacity-20 select-none group-hover:scale-110 transition-transform duration-500", text_class)>
+                        {initials.to_string()}
+                    </span>
+                </div>
+
+                // Bottom Info
+                <div class="space-y-2">
+                    <h3 class="text-xl font-bold text-white leading-tight group-hover:text-purple-300 transition-colors">
+                        {campaign_name}
+                    </h3>
+                    {move || {
+                        if !campaign_desc.is_empty() {
+                            Some(view! {
+                                <p class="text-xs text-zinc-400 line-clamp-2">{campaign_desc.clone()}</p>
+                            })
+                        } else {
+                            None
+                        }
+                    }}
+
+                    // Stats Row
+                    <div class="pt-4 flex items-center gap-4 text-xs font-medium text-zinc-500 border-t border-white/5">
+                        <div class="flex items-center gap-1">
+                            <span>{session_count}</span>
+                            " Sessions"
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <span>{player_count}</span>
+                            " Players"
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            // "Now Playing" Pulse (if has sessions)
+            {move || {
+                if session_count > 0 {
+                    Some(view! {
+                        <div class="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-purple-500 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    })
+                } else {
+                    None
+                }
+            }}
+        </div>
+    }
+}
+
+/// Create Campaign Modal component
+#[component]
+fn CreateCampaignModal(
+    is_open: RwSignal<bool>,
+    on_create: Callback<(String, String)>,
+) -> impl IntoView {
+    let name = RwSignal::new(String::new());
+    let system = RwSignal::new("D&D 5e".to_string());
+
+    let handle_create = move |_: ev::MouseEvent| {
+        let n = name.get();
+        let s = system.get();
+        if !n.trim().is_empty() {
+            on_create.run((n, s));
+            name.set(String::new());
+            system.set("D&D 5e".to_string());
+        }
+    };
+
+    let handle_close = move |_: ev::MouseEvent| {
+        is_open.set(false);
+    };
+
+    let systems = vec![
+        "D&D 5e",
+        "Pathfinder 2e",
+        "Call of Cthulhu",
+        "Delta Green",
+        "Mothership",
+        "Cyberpunk Red",
+        "Shadowrun",
+        "Vampire: The Masquerade",
+        "Other",
+    ];
+
+    view! {
+        <Show when=move || is_open.get()>
+            // Backdrop
+            <div
+                class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center"
+                on:click=handle_close
+            >
+                // Modal Content
+                <div
+                    class="bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl w-full max-w-md mx-4"
+                    on:click=move |evt: ev::MouseEvent| evt.stop_propagation()
+                >
+                    // Header
+                    <div class="px-6 py-4 border-b border-zinc-800">
+                        <h2 class="text-xl font-bold text-white">"Begin New Adventure"</h2>
+                    </div>
+
+                    // Body
+                    <div class="p-6 space-y-6">
+                        <div>
+                            <label class="block text-sm font-bold text-zinc-400 mb-2">
+                                "Campaign Name"
+                            </label>
+                            <input
+                                type="text"
+                                class="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+                                placeholder="e.g. The Tomb of Horrors"
+                                prop:value=move || name.get()
+                                on:input=move |evt| {
+                                    name.set(event_target_value(&evt));
+                                }
+                            />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-zinc-400 mb-2">
+                                "Game System"
+                            </label>
+                            <select
+                                class="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+                                prop:value=move || system.get()
+                                on:change=move |evt| {
+                                    system.set(event_target_value(&evt));
+                                }
+                            >
+                                {systems.iter().map(|s| {
+                                    let s_owned = s.to_string();
+                                    view! {
+                                        <option value=s_owned.clone()>{s_owned.clone()}</option>
+                                    }
+                                }).collect::<Vec<_>>()}
+                            </select>
+                        </div>
+                    </div>
+
+                    // Footer
+                    <div class="px-6 py-4 border-t border-zinc-800 flex justify-end gap-3">
+                        <Button
+                            variant=ButtonVariant::Secondary
+                            on_click=handle_close
+                        >
+                            "Cancel"
+                        </Button>
+                        <Button
+                            variant=ButtonVariant::Primary
+                            on_click=handle_create
+                        >
+                            "Launch Campaign"
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        </Show>
+    }
+}
+
+/// Main Campaigns page component
+#[component]
+pub fn Campaigns() -> impl IntoView {
+    let navigate = use_navigate();
+
+    // State signals
+    let campaigns = RwSignal::new(Vec::<Campaign>::new());
+    let status_message = RwSignal::new(String::new());
+    let show_create_modal = RwSignal::new(false);
+    let is_loading = RwSignal::new(true);
+    let delete_confirm = RwSignal::new(Option::<(String, String)>::None);
+
+    // Load campaigns on mount
+    Effect::new(move |_| {
+        spawn_local(async move {
+            match list_campaigns().await {
+                Ok(list) => {
+                    campaigns.set(list);
+                }
+                Err(e) => {
+                    status_message.set(format!("Failed to load campaigns: {}", e));
+                }
+            }
+            is_loading.set(false);
+        });
+    });
+
+    // Refresh campaigns handler
+    let refresh_campaigns = move |_: ev::MouseEvent| {
+        is_loading.set(true);
+        spawn_local(async move {
+            match list_campaigns().await {
+                Ok(list) => {
+                    campaigns.set(list);
+                    status_message.set("Refreshed".to_string());
+                }
+                Err(e) => {
+                    status_message.set(format!("Error: {}", e));
+                }
+            }
+            is_loading.set(false);
+        });
+    };
+
+    // Open create modal
+    let open_create_modal = move |_: ev::MouseEvent| {
+        show_create_modal.set(true);
+    };
+
+    // Handle campaign creation
+    let handle_create = Callback::new(move |(name, system): (String, String)| {
+        spawn_local(async move {
+            match create_campaign(name, system).await {
+                Ok(campaign) => {
+                    campaigns.update(|c| c.push(campaign));
+                    show_create_modal.set(false);
+                    status_message.set("Campaign created!".to_string());
+                }
+                Err(e) => {
+                    status_message.set(format!("Error: {}", e));
+                }
+            }
+        });
+    });
+
+    // Handle delete request (show confirmation)
+    let handle_delete_request = Callback::new(move |(id, name): (String, String)| {
+        delete_confirm.set(Some((id, name)));
+    });
+
+    // Handle confirmed delete
+    let handle_confirm_delete = move |_: ev::MouseEvent| {
+        if let Some((id, name)) = delete_confirm.get() {
+            spawn_local(async move {
+                match delete_campaign(id.clone()).await {
+                    Ok(_) => {
+                        campaigns.update(|c| c.retain(|campaign| campaign.id != id));
+                        status_message.set(format!("Deleted campaign: {}", name));
+                    }
+                    Err(e) => {
+                        status_message.set(format!("Error deleting: {}", e));
+                    }
+                }
+                delete_confirm.set(None);
+            });
+        }
+    };
+
+    let handle_cancel_delete = move |_: ev::MouseEvent| {
+        delete_confirm.set(None);
+    };
+
+    // Navigate back to hub
+    let nav_to_hub = move |_: ev::MouseEvent| {
+        let nav = navigate.clone();
+        nav("/", Default::default());
+    };
+
+    view! {
+        <div class="p-8 bg-zinc-950 text-zinc-100 min-h-screen font-sans selection:bg-purple-500/30">
+            <div class="max-w-7xl mx-auto space-y-8">
+                // Header & Quick Actions
+                <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-6 border-b border-zinc-900">
+                    <div class="space-y-1">
+                        <button
+                            class="text-zinc-500 hover:text-white transition-colors text-sm font-medium"
+                            on:click=nav_to_hub
+                        >
+                            "Back to Hub"
+                        </button>
+                        <h1 class="text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-zinc-500">
+                            "Campaigns"
+                        </h1>
+                        <p class="text-zinc-400">"Manage your ongoing adventures and chronicles."</p>
+                    </div>
+                    <div class="flex gap-3">
+                        <Button
+                            variant=ButtonVariant::Secondary
+                            on_click=refresh_campaigns
+                        >
+                            "Refresh"
+                        </Button>
+                        <Button
+                            variant=ButtonVariant::Primary
+                            on_click=open_create_modal
+                        >
+                            "+ New Adventure"
+                        </Button>
+                    </div>
+                </div>
+
+                // Stats Row
+                {move || {
+                    let c = campaigns.get();
+                    let total_campaigns = c.len();
+                    let total_sessions: u32 = c.iter().map(|camp| camp.session_count).sum();
+                    let total_players: usize = c.iter().map(|camp| camp.player_count).sum();
+
+                    view! {
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <StatCard label="Campaigns" value=total_campaigns.to_string() />
+                            <StatCard label="Total Sessions" value=total_sessions.to_string() />
+                            <StatCard label="Active Players" value=total_players.to_string() />
+                        </div>
+                    }
+                }}
+
+                // Status Message
+                {move || {
+                    let status = status_message.get();
+                    if !status.is_empty() {
+                        Some(view! {
+                            <div class="bg-zinc-900 text-zinc-300 px-4 py-2 rounded border border-zinc-800 flex items-center gap-2">
+                                <div class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+                                {status}
+                            </div>
+                        })
+                    } else {
+                        None
+                    }
+                }}
+
+                // Content Area
+                {move || {
+                    let loading = is_loading.get();
+                    let campaign_list = campaigns.get();
+
+                    if loading {
+                        view! {
+                            <div class="flex justify-center py-20">
+                                <LoadingSpinner size="lg" />
+                            </div>
+                        }.into_any()
+                    } else if campaign_list.is_empty() {
+                        view! {
+                            <div class="text-center py-24 bg-zinc-900/50 rounded-xl border border-dashed border-zinc-800 flex flex-col items-center justify-center">
+                                <div class="text-6xl mb-4 opacity-20">"..."</div>
+                                <h3 class="text-2xl font-bold text-zinc-200 mb-2">"No campaigns found"</h3>
+                                <p class="text-zinc-500 mb-8 max-w-md">"Your library is empty. Start your first journey into the unknown."</p>
+                                <Button on_click=open_create_modal>
+                                    "Create Campaign"
+                                </Button>
+                            </div>
+                        }.into_any()
+                    } else {
+                        view! {
+                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                <For
+                                    each=move || campaigns.get()
+                                    key=|campaign| campaign.id.clone()
+                                    children=move |campaign| {
+                                        view! {
+                                            <CampaignCard
+                                                campaign=campaign
+                                                on_delete=handle_delete_request
+                                            />
+                                        }
+                                    }
+                                />
+                            </div>
+                        }.into_any()
+                    }
+                }}
+            </div>
+
+            // Create Campaign Modal
+            <CreateCampaignModal
+                is_open=show_create_modal
+                on_create=handle_create
+            />
+
+            // Delete Confirmation Modal
+            <Show when=move || delete_confirm.get().is_some()>
+                <div class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center">
+                    <div class="bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl w-full max-w-sm mx-4 p-6">
+                        <h3 class="text-lg font-bold text-white mb-2">"Delete Campaign?"</h3>
+                        <p class="text-zinc-400 mb-6">
+                            "Are you sure you want to delete "
+                            <span class="text-white font-medium">
+                                {move || delete_confirm.get().map(|(_, name)| name).unwrap_or_default()}
+                            </span>
+                            "? This action cannot be undone."
+                        </p>
+                        <div class="flex justify-end gap-3">
+                            <Button
+                                variant=ButtonVariant::Secondary
+                                on_click=handle_cancel_delete
+                            >
+                                "Cancel"
+                            </Button>
+                            <Button
+                                variant=ButtonVariant::Danger
+                                on_click=handle_confirm_delete
+                            >
+                                "Delete"
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </Show>
+        </div>
+    }
+}
