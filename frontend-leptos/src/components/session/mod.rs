@@ -249,7 +249,8 @@ pub fn Session() -> impl IntoView {
                                                     class="px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-lg shadow-lg font-bold transition-all transform hover:scale-105"
                                                     on_click=move |_: ev::MouseEvent| {
                                                         let cid = campaign_id_memo.get();
-                                                        let sess_num = campaign.get().map(|c| c.session_count + 1).unwrap_or(1);
+                                                        // Session number derived from sessions list instead of campaign stats
+                                                        let sess_num = sessions.get().iter().map(|s| s.session_number).max().unwrap_or(0) + 1;
                                                         spawn_local(async move {
                                                             if let Ok(s) = start_session(cid.clone(), sess_num).await {
                                                                 active_session.set(Some(s.clone()));

@@ -9,3 +9,5 @@ pub mod settings;
 pub mod character;
 pub mod resizable_panel;
 pub mod command_palette;
+pub mod context_menu;
+pub mod graph_view;

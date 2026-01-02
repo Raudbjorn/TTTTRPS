@@ -37,9 +37,15 @@ pub fn SessionList(
         // Mock a planned session
         let planned_sessions = vec![SessionSummary {
             id: "planned-1".to_string(),
+            campaign_id: String::new(),
             session_number: max_sess_num + 1,
-            duration_mins: 0,
-            combat_count: 0,
+            started_at: String::new(),
+            ended_at: None,
+            duration_minutes: Some(0),
+            status: "planned".to_string(),
+            note_count: 0,
+            had_combat: false,
+            order_index: 0,
         }];
 
         (past_sessions, current_session, planned_sessions)
@@ -109,7 +115,7 @@ pub fn SessionList(
                         children=move |s| {
                             let s_id = s.id.clone();
                             let sess_num = s.session_number;
-                            let duration = s.duration_mins;
+                            let duration = s.duration_minutes.unwrap_or(0);
                             view! {
                                 <button
                                     class="group flex items-center justify-between px-2 py-2 rounded text-zinc-400 hover:text-white hover:bg-zinc-800/50 cursor-pointer w-full text-left"

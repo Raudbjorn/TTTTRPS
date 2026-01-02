@@ -32,9 +32,15 @@ pub fn SessionList(
     // Mock a planned session - TODO: Remove when backend supports Planned status
     let planned_session = SessionSummary {
         id: "planned-1".to_string(),
+        campaign_id: String::new(),
         session_number: max_sess_num + 1,
-        duration_mins: 0,
-        combat_count: 0,
+        started_at: String::new(),
+        ended_at: None,
+        duration_minutes: Some(0),
+        status: "planned".to_string(),
+        note_count: 0,
+        had_combat: false,
+        order_index: 0,
     };
 
     view! {
@@ -92,7 +98,7 @@ pub fn SessionList(
                         children=move |s| {
                             let s_id = s.id.clone();
                             let sess_num = s.session_number;
-                            let duration = s.duration_mins;
+                            let duration = s.duration_minutes.unwrap_or(0);
                             let on_click = on_select_session.clone();
 
                             view! {

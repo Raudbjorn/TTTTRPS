@@ -91,8 +91,9 @@ fn CampaignCard(
     let campaign_name = campaign.name.clone();
     let campaign_system = campaign.system.clone();
     let campaign_desc = campaign.description.clone().unwrap_or_default();
-    let session_count = campaign.session_count;
-    let player_count = campaign.player_count;
+    // Note: session_count and player_count now require separate API call via get_campaign_stats
+    let session_count = 0_u32;
+    let player_count = 0_usize;
 
     // Clone for closures
     let delete_id = campaign.id.clone();
@@ -428,8 +429,9 @@ pub fn Campaigns() -> impl IntoView {
                 {move || {
                     let c = campaigns.get();
                     let total_campaigns = c.len();
-                    let total_sessions: u32 = c.iter().map(|camp| camp.session_count).sum();
-                    let total_players: usize = c.iter().map(|camp| camp.player_count).sum();
+                    // Note: These stats now require separate API calls via get_campaign_stats
+                    let total_sessions = 0_u32;
+                    let total_players = 0_usize;
 
                     view! {
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
