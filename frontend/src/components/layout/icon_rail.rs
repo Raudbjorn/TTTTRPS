@@ -1,18 +1,21 @@
 use leptos::prelude::*;
-use leptos_router::hooks::{use_navigate, use_location};
+use leptos_router::hooks::use_navigate;
+use leptos_router::NavigateOptions;
 use crate::services::layout_service::{LayoutState, ViewType};
 
 #[component]
 pub fn IconRail() -> impl IntoView {
     let layout = expect_context::<LayoutState>();
     let navigate = use_navigate();
-    let location = use_location();
 
-    // Helper to check active path
-    let is_active = move |path: &str| {
-        location.pathname.get() == path
+    // Helper to create navigation callback
+    let make_nav = move |path: &'static str, view: ViewType| {
+        let nav = navigate.clone();
+        Callback::new(move |_: ()| {
+            layout.active_view.set(view);
+            nav(path, NavigateOptions::default());
+        })
     };
-
 
 
     view! {
@@ -35,37 +38,19 @@ pub fn IconRail() -> impl IntoView {
                 active=Signal::derive(move || is_active("/campaigns"))
                 icon="📚"
                 label="Campaigns"
-                on_click=Callback::new({
-                    let nav = navigate.clone();
-                    move |_| {
-                        layout.active_view.set(ViewType::Campaigns);
-                        nav("/campaigns", Default::default());
-                    }
-                })
+                on_click=make_nav("/campaigns", ViewType::Campaigns)
             />
             <RailIcon
                 active=Signal::derive(move || is_active("/"))
                 icon="💬"
                 label="Chat"
-                on_click=Callback::new({
-                    let nav = navigate.clone();
-                    move |_| {
-                        layout.active_view.set(ViewType::Chat);
-                        nav("/", Default::default());
-                    }
-                })
+                on_click=make_nav("/", ViewType::Chat)
             />
             <RailIcon
                 active=Signal::derive(move || is_active("/library"))
                 icon="🧠"
                 label="Library"
-                on_click=Callback::new({
-                    let nav = navigate.clone();
-                    move |_| {
-                        layout.active_view.set(ViewType::Library);
-                        nav("/library", Default::default());
-                    }
-                })
+                on_click=make_nav("/library", ViewType::Library)
             />
             // Graph - currently disabled/hidden or point to library? Let's hide it if no route exists
             /*
@@ -73,7 +58,7 @@ pub fn IconRail() -> impl IntoView {
                 active=Signal::derive(move || is_active("/graph"))
                 icon="🔮"
                 label="Graph"
-                on_click=Callback::new(move |_| handle_nav("/graph", ViewType::Graph))
+                on_click=make_nav("/", ViewType::Graph)
             />
             */
 
@@ -83,13 +68,7 @@ pub fn IconRail() -> impl IntoView {
                 active=Signal::derive(move || is_active("/settings"))
                 icon="⚙️"
                 label="Settings"
-                on_click=Callback::new({
-                    let nav = navigate.clone();
-                    move |_| {
-                        layout.active_view.set(ViewType::Settings);
-                        nav("/settings", Default::default());
-                    }
-                })
+                on_click=make_nav("/settings", ViewType::Settings)
             />
         </div>
     }

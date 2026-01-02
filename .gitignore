@@ -3,3 +3,4 @@
 /src-tauri/target/
 dev-resources/
 src-tauri/bin/meilisearch-*
+data.ms/
