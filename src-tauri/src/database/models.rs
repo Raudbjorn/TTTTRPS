@@ -27,6 +27,8 @@ pub struct SessionRecord {
     pub started_at: String,
     pub ended_at: Option<String>,
     pub notes: Option<String>,
+    #[serde(default)]
+    pub order_index: i32,
 }
 
 /// Character database record
@@ -151,6 +153,7 @@ impl SessionRecord {
             started_at: chrono::Utc::now().to_rfc3339(),
             ended_at: None,
             notes: None,
+            order_index: 0,
         }
     }
 }

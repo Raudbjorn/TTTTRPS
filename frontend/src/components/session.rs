@@ -25,10 +25,14 @@ pub fn Session(campaign_id: String) -> Element {
     let mut selected_npc_id = use_signal(|| Option::<String>::None);
     let mut selected_npc_name = use_signal(|| Option::<String>::None);
 
+    let mut refresh_trigger = use_signal(|| 0);
+
     let campaign_id_sig = use_signal(|| campaign_id.clone());
     let campaign_id_clone = campaign_id.clone();
-    // Initial Load
+
+    // Initial Load & Refresh
     use_effect(move || {
+        let _ = *refresh_trigger.read(); // Dependency tracking
         let cid = campaign_id.read().clone();
         spawn(async move {
             // Parallel fetch could be better but sequential is fine for now
@@ -42,15 +46,19 @@ pub fn Session(campaign_id: String) -> Element {
 
             if let Ok(Some(s)) = get_active_session(cid.clone()).await {
                 active_session.set(Some(s.clone()));
-                // Default select the active session
-                selected_session_id.set(Some(s.id));
-            } else {
-                 // If no active session, maybe select the last one or none
+                // Default select the active session if none selected
+                if selected_session_id.read().is_none() {
+                     selected_session_id.set(Some(s.id));
+                }
             }
-
             is_loading.set(false);
         });
     });
+
+    let refresh_data = move |_| {
+        let val = *refresh_trigger.read();
+        refresh_trigger.set(val + 1);
+    };
 
     let handle_session_select = move |id: String| {
         selected_session_id.set(Some(id));
@@ -77,22 +85,9 @@ pub fn Session(campaign_id: String) -> Element {
         selected_npc_name.set(None);
     };
 
-    // Callback when a new session is started via the Active View (if empty)
-    let mut on_session_started = move |s: GameSession| {
-        active_session.set(Some(s.clone()));
-        selected_session_id.set(Some(s.id.clone()));
-        // Refresh list
-        let cid = campaign_id.read().clone();
-        spawn(async move {
-            if let Ok(list) = list_sessions(cid).await {
-                sessions.set(list);
-            }
-        });
-    };
-
     let on_session_ended = move |_| {
          active_session.set(None);
-         selected_session_id.set(None); // Or switch to "Summary" view of just ended
+         selected_session_id.set(None);
          // Refresh list
         let cid = campaign_id.read().clone();
         spawn(async move {
@@ -102,16 +97,6 @@ pub fn Session(campaign_id: String) -> Element {
         });
     };
 
-    // Theme Logic - Dynamic Class Selection based on Campaign System
-    // Supports: fantasy, cosmic, terminal, noir, neon (per design.md)
-    //
-    // TODO [FE F4]: Implement theme interpolation for blended settings
-    // Currently uses single theme detection. Design spec (design.md) calls for
-    // weighted theme blending via CSS custom property interpolation, e.g.:
-    //   Delta Green = cosmic(0.4) + noir(0.6)
-    // See ThemeWeights struct in design.md for full implementation plan.
-    // Theme Logic - Dynamic Class Selection based on Campaign System
-    // Supports: fantasy, cosmic, terminal, noir, neon (per design.md)
     let theme_class = use_memo(move || {
         match campaign.read().as_ref() {
             Some(c) => crate::theme::get_dominant_theme(&c.settings.theme_weights),
@@ -127,7 +112,8 @@ pub fn Session(campaign_id: String) -> Element {
             SessionList {
                 sessions: sessions.read().clone(),
                 active_session_id: active_session.read().as_ref().map(|s| s.id.clone()),
-                on_select_session: handle_session_select
+                on_select_session: handle_session_select,
+                on_refresh: refresh_data
             }
 
             // Center: Main Content
@@ -200,7 +186,7 @@ pub fn Session(campaign_id: String) -> Element {
                                             class: "px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-lg shadow-lg font-bold transition-all transform hover:scale-105",
                                             onclick: move |_| {
                                                let cid = campaign_id_sig.read().clone();
-                                               let s_num = campaign.read().as_ref().map(|c| c.session_count + 1).unwrap_or(1);
+                                               let s_num = sessions.read().iter().map(|s| s.session_number).max().unwrap_or(0) + 1;
                                                spawn(async move {
                                                    let cid_str = cid.to_string();
                                                    if let Ok(s) = start_session(cid_str.clone(), s_num).await {
@@ -241,6 +227,7 @@ pub fn Session(campaign_id: String) -> Element {
 fn ActiveSessionWorkspace(session: GameSession, on_session_ended: EventHandler<()>) -> Element {
     let mut combat = use_signal(|| Option::<CombatState>::None);
     let _status_message = use_signal(|| String::new());
+    let transcription_log = use_signal(|| Vec::<String>::new()); // F19: Storage for transcribed text
 
     // Combatant Form
     let mut new_combatant_name = use_signal(|| String::new());
@@ -467,6 +454,18 @@ fn ActiveSessionWorkspace(session: GameSession, on_session_ended: EventHandler<(
                     }
                 }
             }
+        }
+
+        // Transcription Log (F19)
+        if !transcription_log.read().is_empty() {
+             div { class: "mt-4 bg-zinc-900 border border-zinc-700 rounded p-4",
+                 h3 { class: "text-xs font-bold text-zinc-500 uppercase mb-2", "Live Transcription" }
+                 div { class: "space-y-1",
+                     for line in transcription_log.read().iter() {
+                         p { class: "text-zinc-300 text-sm", "{line}" }
+                     }
+                 }
+             }
         }
     }
 }

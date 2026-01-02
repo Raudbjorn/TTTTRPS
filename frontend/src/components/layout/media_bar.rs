@@ -6,6 +6,7 @@ pub fn MediaBar() -> Element {
     let mut queue = use_signal(|| Vec::<QueuedVoice>::new());
     let mut is_playing = use_signal(|| false);
     let mut current_item = use_signal(|| Option::<QueuedVoice>::None);
+    let mut is_transcribing = use_signal(|| false);
 
     // Poll queue status
     use_future(move || async move {
@@ -62,6 +63,14 @@ pub fn MediaBar() -> Element {
                          }
                     }
                 }
+                // Transcription Toggle
+                button {
+                     class: format!("p-2 rounded-md hover:bg-[var(--bg-surface)] transition-colors {}", if is_transcribing() { "text-red-500 animate-pulse" } else { "text-[var(--text-muted)]" }),
+                     onclick: move |_| is_transcribing.set(!is_transcribing()),
+                     title: "Toggle Transcription",
+                     "🎙️"
+                }
+
                 button { "🔊" }
             }
         }

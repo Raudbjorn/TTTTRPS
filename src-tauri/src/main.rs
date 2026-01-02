@@ -202,6 +202,10 @@ fn main() {
             // Utility Commands
             commands::get_app_version,
             commands::get_system_info,
+            commands::reorder_session,
+            commands::get_campaign_stats,
+            commands::generate_campaign_cover,
+            commands::transcribe_audio,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

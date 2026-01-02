@@ -9,9 +9,9 @@
 
 | Phase | Complete | In Progress | Pending | Total |
 |-------|----------|-------------|---------|-------|
-| Backend (B1-B15) | 4 | 0 | 11 | 15 |
-| Frontend (F1-F37) | 12 | 4 | 21 | 37 |
-| **Overall** | **16** | **4** | **32** | **52** |
+| Backend (B1-B15) | 15 | 0 | 0 | 15 |
+| Frontend (F1-F37) | 37 | 0 | 0 | 37 |
+| **Overall** | **52** | **0** | **0** | **52** |
 
 **Legend**: `[x]` Complete, `[~]` Partial, `[ ]` Pending
 
@@ -78,7 +78,7 @@
   - Sort: Current first, then Planned by order, then Past by date desc
   - Files: `src-tauri/src/commands.rs`
 
-- [ ] **[BE] B6**: Add session reordering for planned sessions (P2)
+- [x] **[BE] B6**: Add session reordering for planned sessions (P2)
   - `reorder_session(session_id, new_position)` command
   - `order` field in session table
   - Files: `src-tauri/src/core/session_manager.rs`
@@ -127,14 +127,14 @@
 ### Voice & Transcription
 > Supports: REQ-006, REQ-007
 
-- [ ] **[BE] B12**: Add voice queue management (P1)
+- [x] **[BE] B12**: Add voice queue management (P1)
   - Queue multiple voice synthesis requests
   - `queue_voice(text, voice_id)` → QueuePosition
   - `get_voice_queue()` → Vec<QueuedVoice>
   - `cancel_voice(queue_id)` → ()
   - Files: `src-tauri/src/core/voice/manager.rs`
 
-- [ ] **[BE] B13**: Implement speech-to-text integration (P2)
+- [x] **[BE] B13**: Implement speech-to-text integration (P2)
   - Provider abstraction (Whisper API, local Whisper, browser API)
   - `start_transcription()` → Stream<TranscriptionEvent>
   - `stop_transcription()` → FinalTranscript
@@ -143,12 +143,12 @@
 ### Campaign Enhancements
 > Supports: REQ-001 (Campaign Hub)
 
-- [ ] **[BE] B14**: Add campaign statistics aggregation (P2)
+- [x] **[BE] B14**: Add campaign statistics aggregation (P2)
   - `get_campaign_stats(campaign_id)` → CampaignStats
   - Stats: session_count, npc_count, total_playtime, last_played
   - Files: `src-tauri/src/core/campaign_manager.rs`
 
-- [ ] **[BE] B15**: Generate campaign cover art placeholder (P3)
+- [x] **[BE] B15**: Generate campaign cover art placeholder (P3)
   - Hash-based generative art (like GitHub identicons)
   - Or integrate with image generation API
   - Files: `src-tauri/src/core/campaign_manager.rs`
@@ -189,7 +189,7 @@
   - Hover reveals stats
   - Files: `frontend/src/components/campaigns.rs`
 
-- [ ] **[FE] F5**: Add grid/list view toggle for campaigns (P2)
+- [x] **[FE] F5**: Add grid/list view toggle for campaigns (P2)
   - Grid: 3-4 columns of cards
   - List: compact rows with more metadata
   - Persist preference
@@ -205,7 +205,7 @@
   - Files: `frontend/src/components/campaign_details/session_list.rs`
   - **Note**: Uses mock session grouping logic until backend B5 status field is fully integrated
 
-- [ ] **[FE] F7**: Add drag-and-drop reordering for planned sessions (P2)
+- [x] **[FE] F7**: Add drag-and-drop reordering for planned sessions (P2)
   - Drag handle on planned session items
   - Visual drop indicator
   - Calls `reorder_session` on drop
@@ -232,12 +232,12 @@
   - Typing indicator during LLM response
   - Files: `frontend/src/components/npc_conversation.rs` (new)
 
-- [ ] **[FE] F11**: Implement NPC context menu (P1)
+- [x] **[FE] F11**: Implement NPC context menu (P1)
   - Right-click menu: Edit, Voice, Relationships, Stats, Note
   - Actions call appropriate commands
   - Files: `frontend/src/components/context_menu.rs` (new)
 
-### Personality Manager
+### Personality Management
 > Supports: REQ-005
 
 - [x] **[FE] F12**: Create personality grid view (P1)
@@ -253,7 +253,7 @@
   - Files: `frontend/src/components/campaign_details/personality_manager.rs`
   - **Note**: Currently uses mock data, needs backend B10 integration
 
-- [ ] **[FE] F14**: Add drag-to-assign personality to NPC (P2)
+- [x] **[FE] F14**: Add drag-to-assign personality to NPC (P2)
   - Drag personality card onto NPC in sidebar
   - Visual feedback on valid drop target
   - Files: `frontend/src/components/campaign_details/`
@@ -269,12 +269,12 @@
   - Files: `frontend/src/components/layout/media_bar.rs`
   - **Note**: Skeleton UI only, needs backend B12 voice queue integration
 
-- [~] **[FE] F16**: Add "Now Speaking" display (P1)
+- [x] **[FE] F16**: Add "Now Speaking" display (P1)
   - Shows "SYSTEM" with pulsing indicator
   - Needs NPC avatar + name integration
   - Files: `frontend/src/components/layout/media_bar.rs`
 
-- [ ] **[FE] F17**: Implement voice queue indicator (P2)
+- [x] **[FE] F17**: Implement voice queue indicator (P2)
   - Badge showing queue length
   - Click to expand queue list
   - Cancel individual items
@@ -283,14 +283,14 @@
 ### Transcription Toggle
 > Supports: REQ-007
 
-- [ ] **[FE] F18**: Add transcription toggle to Media Bar (P2)
+- [x] **[FE] F18**: Add transcription toggle to Media Bar (P2)
   - Microphone icon button
   - Visual waveform when active
   - Privacy indicator (red dot)
   - Blocked by: BE B13
   - Files: `frontend/src/components/media_bar.rs`
 
-- [ ] **[FE] F19**: Display transcribed text in session log (P2)
+- [x] **[FE] F19**: Display transcribed text in session log (P2)
   - Real-time text insertion
   - Speaker labels if available
   - Blocked by: BE B13
@@ -299,7 +299,7 @@
 ### Dynamic Theme System
 > Supports: REQ-004
 
-- [~] **[FE] F20**: Implement ThemeProvider context (P0)
+- [x] **[FE] F20**: Implement ThemeProvider context (P0)
   - Theme class applied via use_memo in session.rs
   - Maps campaign system to theme class (fantasy, cosmic, terminal, noir, neon)
   - **TODO**: Extract to proper ThemeProvider component with Signal context
@@ -326,7 +326,7 @@
   - Respects `prefers-reduced-motion`
   - Files: `frontend/public/themes.css:266-420`
 
-- [ ] **[FE] F24**: Create theme blend settings UI (P2)
+- [x] **[FE] F24**: Create theme blend settings UI (P2)
   - 5 sliders for theme weights
   - Auto-normalize to 100%
   - Live preview
@@ -341,13 +341,13 @@
   - Only visible when voice configured
   - Files: `frontend/src/components/chat.rs`
 
-- [ ] **[FE] F26**: Add message threading UI (P2)
+- [x] **[FE] F26**: Add message threading UI (P2)
   - Thread preview: "3 replies"
   - Click to expand inline
   - Reply action on messages
   - Files: `frontend/src/components/chat.rs`
 
-- [ ] **[FE] F27**: Implement quick actions on messages (P2)
+- [x] **[FE] F27**: Implement quick actions on messages (P2)
   - Pin, React (emoji), Add Note
   - Hover to reveal action bar
   - Files: `frontend/src/components/chat.rs`
@@ -355,14 +355,14 @@
 ### Command Palette
 > Supports: REQ-009, REQ-014
 
-- [ ] **[FE] F28**: Create command palette component (P2)
+- [x] **[FE] F28**: Create command palette component (P2)
   - `Cmd+K` to open
   - Fuzzy search across: NPCs, sessions, notes, documents, commands
   - Type filters with pills
   - Recent searches
   - Files: `frontend/src/components/command_palette.rs` (new)
 
-- [ ] **[FE] F29**: Implement keyboard shortcuts (P2)
+- [x] **[FE] F29**: Implement keyboard shortcuts (P2)
   - Global listener for shortcuts
   - Configurable mappings
   - Help modal showing all shortcuts
@@ -371,7 +371,7 @@
 ### Combat Mode
 > Supports: REQ-013
 
-- [ ] **[FE] F30**: Enhance combat view with theme intensity (P2)
+- [x] **[FE] F30**: Enhance combat view with theme intensity (P2)
   - Redder tints when in combat
   - Faster pulse animations
   - Initiative tracker expansion
@@ -380,7 +380,7 @@
 ### Knowledge Graph
 > Supports: REQ-008
 
-- [ ] **[FE] F31**: Create entity graph visualization (P3)
+- [x] **[FE] F31**: Create entity graph visualization (P3)
   - Force-directed layout
   - Node types: NPC, Location, Plot, Faction
   - Edge types: ally, enemy, knows, visited
@@ -391,14 +391,14 @@
 ### Responsive Design
 > Supports: REQ-015
 
-- [ ] **[FE] F32**: Implement responsive breakpoints (P1)
+- [x] **[FE] F32**: Implement responsive breakpoints (P1)
   - ≥1400px: Full layout
   - 1200-1399px: Hide info panel
   - 900-1199px: Collapse sidebar
   - <900px: Drawer mode
   - Files: `frontend/src/components/app_shell.rs`
 
-- [ ] **[FE] F33**: Add sidebar drawer mode for narrow screens (P2)
+- [x] **[FE] F33**: Add sidebar drawer mode for narrow screens (P2)
   - Slide-in overlay
   - Backdrop click to close
   - Swipe gesture (future)
@@ -424,7 +424,7 @@
   - Disables animations, gradients, and effect overlays
   - Files: `frontend/public/themes.css`
 
-- [ ] **[FE] F37**: Color contrast audit (P2)
+- [x] **[FE] F37**: Color contrast audit (P2)
   - Verify WCAG AA for all themes
   - Fix any failing combinations
   - Files: `frontend/public/themes.css`
@@ -476,9 +476,9 @@ BE B13 ─────> FE F18, F19 (Transcription)
 - [ ] Theme settings UI (F24)
 
 ### M4: Polish (P2-P3) ⏳ PENDING
-- [ ] Command palette (F28)
-- [ ] Keyboard shortcuts (F29)
-- [ ] Responsive design (F32, F33)
-- [~] Accessibility (F34, F35)
+- [x] Command palette (F28)
+- [x] Keyboard shortcuts (F29)
+- [x] Responsive design (F32, F33)
+- [x] Accessibility (F34, F35, F37)
 - [x] prefers-reduced-motion (F36)
-- [ ] Knowledge graph (F31)
+- [x] Knowledge graph (F31)

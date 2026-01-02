@@ -6,39 +6,39 @@ pub struct SessionListProps {
     pub sessions: Vec<SessionSummary>,
     pub active_session_id: Option<String>,
     pub on_select_session: EventHandler<String>,
+    pub on_refresh: EventHandler<()>,
 }
 
 #[component]
 pub fn SessionList(props: SessionListProps) -> Element {
-    // Mocking status logic since it's missing from backend
-    // In real app, we'd sort these.
+    use crate::bindings::reorder_session;
 
-    // TODO [BE B5]: Replace this mock grouping logic with backend status field
-    // Currently using session_number heuristic - backend should return SessionSummary.status
-    // See tasks.md for proper implementation plan
-
-    let mut past_sessions = vec![];
-    let mut current_session = None;
+    // Partition sessions
+    let mut active_session = None;
     let mut planned_sessions = vec![];
-
-    let max_sess_num = props.sessions.iter().map(|s| s.session_number).max().unwrap_or(0);
+    let mut past_sessions = vec![];
 
     for s in &props.sessions {
-        if s.session_number == max_sess_num {
-            current_session = Some(s);
+        if s.status == "active" {
+            active_session = Some(s);
+        } else if s.status == "planned" {
+            planned_sessions.push(s);
         } else {
-            past_sessions.push(s);
+             past_sessions.push(s);
         }
     }
 
-    // Mock a planned session - TODO: Remove when backend supports Planned status
-    let planned_mock = SessionSummary {
-        id: "planned-1".to_string(),
-        session_number: max_sess_num + 1,
-        duration_mins: 0,
-        combat_count: 0
+    // Sort planned by order_index (should be sorted by backend, but ensure constraint)
+    // Actually we iterate over props order. Assuming props sorted.
+
+    let handle_swap = move |s1_id: String, s1_order: i32, s2_id: String, s2_order: i32| {
+        spawn(async move {
+            // Swap
+            let _ = reorder_session(s1_id, s2_order).await;
+            let _ = reorder_session(s2_id, s1_order).await;
+            props.on_refresh.call(());
+        });
     };
-    planned_sessions.push(&planned_mock);
 
     rsx! {
         div {
@@ -52,9 +52,8 @@ pub fn SessionList(props: SessionListProps) -> Element {
             // Lists
             div { class: "flex-1 overflow-y-auto p-2 space-y-6",
 
-                // Current
-                // Current
-                {if let Some(curr) = current_session {
+                // Active
+                {if let Some(curr) = active_session {
                     let curr_id = curr.id.clone();
                     let sess_num = curr.session_number;
                     rsx! {
@@ -74,12 +73,56 @@ pub fn SessionList(props: SessionListProps) -> Element {
                 } else { rsx!({}) }}
 
                 // Planned
-                div {
-                    div { class: "px-2 mb-2 text-zinc-500 text-xs font-semibold", "PLANNED" }
-                    for s in planned_sessions {
-                        div {
-                            class: "group flex items-center gap-3 px-2 py-2 rounded text-zinc-400 hover:text-white hover:bg-zinc-800/50 cursor-pointer border border-transparent hover:border-zinc-700 border-dashed",
-                             div { class: "text-sm font-medium", "Session {s.session_number}" }
+                if !planned_sessions.is_empty() {
+                    div {
+                        div { class: "px-2 mb-2 text-zinc-500 text-xs font-semibold", "PLANNED" }
+                        div { class: "space-y-2",
+                            for (i, s) in planned_sessions.iter().enumerate() {
+                                {
+                                    let s_order = s.order_index;
+                                    let prev = if i > 0 { Some(planned_sessions[i-1]) } else { None };
+                                    let next = if i < planned_sessions.len() - 1 { Some(planned_sessions[i+1]) } else { None };
+
+                                    let prev_info = prev.map(|p| (p.id.clone(), p.order_index));
+                                    let next_info = next.map(|n| (n.id.clone(), n.order_index));
+
+                                    let this_id_up = s.id.clone();
+                                    let this_id_down = s.id.clone();
+
+                                    rsx! {
+                                        div {
+                                            class: "group flex items-center justify-between px-2 py-2 rounded text-zinc-400 hover:text-white hover:bg-zinc-800/50 border border-transparent hover:border-zinc-700 border-dashed",
+                                            div { class: "flex items-center gap-3",
+                                                span { class: "text-sm font-medium", "Session {s.session_number}" }
+                                            }
+                                            // Controls
+                                            div { class: "flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity",
+                                                if let Some((p_id, p_order)) = prev_info {
+                                                    button {
+                                                        class: "p-1 hover:text-purple-400",
+                                                        title: "Move Up",
+                                                        onclick: move |_| handle_swap(this_id_up.clone(), s_order, p_id.clone(), p_order),
+                                                        "↑"
+                                                    }
+                                                }
+                                                if let Some((n_id, n_order)) = next_info {
+                                                     button {
+                                                        class: "p-1 hover:text-purple-400",
+                                                        title: "Move Down",
+                                                        onclick: move |_| handle_swap(this_id_down.clone(), s_order, n_id.clone(), n_order),
+                                                        "↓"
+                                                    }
+                                                }
+                                                button {
+                                                    class: "p-1 hover:text-green-400",
+                                                    title: "Start Session",
+                                                    "▶"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -87,19 +130,21 @@ pub fn SessionList(props: SessionListProps) -> Element {
                 // Past
                  div {
                     div { class: "px-2 mb-2 text-zinc-500 text-xs font-semibold", "HISTORY" }
-                    {past_sessions.into_iter().map(|s| {
-                         let s_id = s.id.clone();
-                         let sess_num = s.session_number;
-                         let duration = s.duration_mins;
-                         rsx! {
-                             button {
-                                class: "group flex items-center justify-between px-2 py-2 rounded text-zinc-400 hover:text-white hover:bg-zinc-800/50 cursor-pointer w-full text-left",
-                                onclick: move |_| props.on_select_session.call(s_id.clone()),
-                                div { class: "text-sm", "Session {sess_num}" }
-                                div { class: "text-xs text-zinc-600", "{duration}m" }
+                    for s in past_sessions {
+                         {
+                             let s_id = s.id.clone();
+                             let sess_num = s.session_number;
+                             let duration = s.duration_minutes.unwrap_or(0);
+                             rsx! {
+                                 button {
+                                    class: "group flex items-center justify-between px-2 py-2 rounded text-zinc-400 hover:text-white hover:bg-zinc-800/50 cursor-pointer w-full text-left",
+                                    onclick: move |_| props.on_select_session.call(s_id.clone()),
+                                    div { class: "text-sm", "Session {sess_num}" }
+                                    div { class: "text-xs text-zinc-600", "{duration}m" }
+                                }
                             }
                         }
-                    })}
+                    }
                 }
             }
         }

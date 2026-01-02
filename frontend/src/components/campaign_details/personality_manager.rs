@@ -58,6 +58,7 @@ pub fn PersonalityManager() -> Element {
                 {personalities.read().iter().map(|p| {
                     let p_id_edit = p.id.clone();
                     let p_id_play = p.id.clone();
+                    let p_id_drag = p.id.clone();
                     let p_name = p.name.clone();
                     let p_name_display = p.name.clone();
                     let p_avatar_color = p.avatar_color.clone();
@@ -67,7 +68,16 @@ pub fn PersonalityManager() -> Element {
                     rsx! {
                         div {
                             key: "{p_id_edit}",
-                            class: "group bg-zinc-800/40 p-4 rounded-lg hover:bg-zinc-800 transition-all relative",
+                            class: "group bg-zinc-800/40 p-4 rounded-lg hover:bg-zinc-800 transition-all relative cursor-grab active:cursor-grabbing",
+                            draggable: "true",
+                            ondragstart: move |_| {
+                                let mut drag_state = use_context::<crate::services::DragState>();
+                                drag_state.0.set(Some(p_id_drag.clone()));
+                            },
+                            ondragend: move |_| {
+                                let mut drag_state = use_context::<crate::services::DragState>();
+                                drag_state.0.set(None); // Reset
+                            },
 
                             // "Album Art" with action buttons
                             div { class: "aspect-square w-full {p_avatar_color} rounded shadow-lg mb-4 flex items-center justify-center text-4xl font-bold text-white/20 group-hover:shadow-xl transition-shadow relative",

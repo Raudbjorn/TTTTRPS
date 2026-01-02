@@ -145,6 +145,14 @@ pub struct CampaignExport {
     pub notes: Vec<SessionNote>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CampaignStats {
+    pub session_count: usize,
+    pub npc_count: usize,
+    pub total_playtime_minutes: i64,
+    pub last_played: Option<DateTime<Utc>>,
+}
+
 // ============================================================================
 // Campaign Manager
 // ============================================================================

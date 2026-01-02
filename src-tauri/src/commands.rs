@@ -885,6 +885,39 @@ pub fn import_campaign(
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub async fn get_campaign_stats(
+    campaign_id: String,
+    state: State<'_, AppState>,
+) -> Result<crate::core::campaign_manager::CampaignStats, String> {
+    // 1. Get Session Stats
+    let sessions = state.session_manager.list_sessions(&campaign_id);
+    let session_count = sessions.len();
+    let total_playtime_minutes: i64 = sessions.iter()
+        .filter_map(|s| s.duration_minutes)
+        .sum();
+
+    // Find last played (most recent active/ended session)
+    let last_played = sessions.iter()
+        .filter(|s| s.status != crate::core::session_manager::SessionStatus::Planned)
+        .map(|s| s.started_at) // Approximate default to started_at for sort
+        .max();
+
+    // 2. Get NPC Count
+    // Helper to get count from DB/Store
+    let npc_count = {
+        let npcs = state.database.list_npcs(Some(&campaign_id)).await.unwrap_or_default();
+        npcs.len()
+    };
+
+    Ok(crate::core::campaign_manager::CampaignStats {
+        session_count,
+        npc_count,
+        total_playtime_minutes,
+        last_played,
+    })
+}
+
 // ============================================================================
 // Session Notes Commands
 // ============================================================================
@@ -914,6 +947,50 @@ pub fn search_campaign_notes(
 ) -> Result<Vec<SessionNote>, String> {
     let tags_ref = tags.as_deref();
     Ok(state.campaign_manager.search_notes(&campaign_id, &query, tags_ref))
+}
+
+#[tauri::command]
+pub fn generate_campaign_cover(
+    campaign_id: String,
+    title: String,
+) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    use base64::Engine;
+
+    // Deterministic colors based on ID
+    let mut hasher = DefaultHasher::new();
+    campaign_id.hash(&mut hasher);
+    let h1 = hasher.finish();
+    let h2 = !h1;
+
+    let c1 = format!("#{:06x}", h1 & 0xFFFFFF);
+    let c2 = format!("#{:06x}", h2 & 0xFFFFFF);
+
+    // Initials
+    let initials: String = title.split_whitespace()
+        .take(2)
+        .filter_map(|w| w.chars().next())
+        .collect::<String>()
+        .to_uppercase();
+
+    // SVG
+    let svg = format!(
+        r#"<svg width="400" height="200" viewBox="0 0 400 200" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" style="stop-color:{};stop-opacity:1" />
+                    <stop offset="100%" style="stop-color:{};stop-opacity:1" />
+                </linearGradient>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#g)" />
+            <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="Arial, sans-serif" font-size="80" fill="rgba(255,255,255,0.8)" font-weight="bold">{}</text>
+        </svg>"#,
+        c1, c2, initials
+    );
+
+    let b64 = base64::engine::general_purpose::STANDARD.encode(svg);
+    format!("data:image/svg+xml;base64,{}", b64)
 }
 
 #[tauri::command]
@@ -975,6 +1052,16 @@ pub fn start_planned_session(
     state: State<'_, AppState>,
 ) -> Result<GameSession, String> {
     state.session_manager.start_planned_session(&session_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn reorder_session(
+    session_id: String,
+    new_order: i32,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.session_manager.reorder_session(&session_id, new_order)
         .map_err(|e| e.to_string())
 }
 
@@ -1684,6 +1771,47 @@ pub async fn speak(text: String, state: State<'_, AppState>) -> Result<(), Strin
         log::info!("Speak request received (synthesis skipped/failed)");
         Ok(())
     }
+}
+
+#[tauri::command]
+pub async fn transcribe_audio(
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<crate::core::transcription::TranscriptionResult, String> {
+    // 1. Check Config for OpenAI API Key
+    let api_key = if let Some(config) = state.llm_config.read().unwrap().clone() {
+        match config {
+            LLMConfig::OpenAI { api_key, .. } => api_key,
+            _ => return Err("Transcription requires OpenAI configuration (for now)".to_string()),
+        }
+    } else {
+        return Err("LLM not configured".to_string());
+    };
+
+    if api_key.is_empty() || api_key.starts_with('*') {
+        // Try getting from credentials if masked/empty
+        // (Assuming standard key name 'openai_api_key')
+        let creds = state.credentials.get_secret("openai_api_key")
+            .map_err(|_| "OpenAI API Key not found/configured".to_string())?;
+        if creds.is_empty() {
+             return Err("OpenAI API Key is empty".to_string());
+        }
+    }
+
+    // Unmasking logic is a bit duplicated here, ideally use a helper.
+    // For now, let's rely on stored secret if the config one is masked.
+    let effective_key = if api_key.starts_with('*') {
+         state.credentials.get_secret("openai_api_key")
+            .map_err(|_| "Invalid API Key state".to_string())?
+    } else {
+        api_key
+    };
+
+    // 2. Call Service
+    let service = crate::core::transcription::TranscriptionService::new();
+    service.transcribe_openai(&effective_key, Path::new(&path))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // ============================================================================

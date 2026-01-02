@@ -91,13 +91,16 @@ pub fn Campaigns() -> Element {
         }
     };
 
+    let mut view_mode = use_signal(|| "grid"); // "grid" or "list"
+
     let loading = *is_loading.read();
     let status = status_message.read().clone();
     let modal_open = *show_create_modal.read();
 
     let total_campaigns = campaigns.read().len();
-    let total_sessions: u32 = campaigns.read().iter().map(|c| c.session_count).sum();
-    let total_players: usize = campaigns.read().iter().map(|c| c.player_count).sum();
+    // Stats temporarily disabled or need fetching
+    let total_sessions = 0;
+    let total_players = 0;
 
     // Helper to get system color/initials
     let get_system_style = |system: &str| -> (&'static str, &'static str) {
@@ -132,6 +135,19 @@ pub fn Campaigns() -> Element {
                     }
                     div {
                         class: "flex gap-3",
+                        // View Toggle
+                        div { class: "flex bg-zinc-900 rounded-lg p-1 border border-zinc-800",
+                            button {
+                                class: format!("px-3 py-1 rounded transition-colors {}", if *view_mode.read() == "grid" { "bg-zinc-700 text-white" } else { "text-zinc-500 hover:text-zinc-300" }),
+                                onclick: move |_| view_mode.set("grid"),
+                                "Grid"
+                            }
+                            button {
+                                class: format!("px-3 py-1 rounded transition-colors {}", if *view_mode.read() == "list" { "bg-zinc-700 text-white" } else { "text-zinc-500 hover:text-zinc-300" }),
+                                onclick: move |_| view_mode.set("list"),
+                                "List"
+                            }
+                        }
                          Button {
                             variant: ButtonVariant::Secondary,
                             onclick: refresh_campaigns,
@@ -178,7 +194,7 @@ pub fn Campaigns() -> Element {
                             "Create Campaign"
                         }
                     }
-                } else {
+                } else if *view_mode.read() == "grid" {
                     // Album Grid View
                     div {
                         class: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6",
@@ -189,7 +205,7 @@ pub fn Campaigns() -> Element {
                                 let c_id = campaign.id.clone();
                                 let c_name = campaign.name.clone();
                                 let c_desc = campaign.description.clone().unwrap_or_default();
-                                let session_count = campaign.session_count;
+                                // let session_count = campaign.session_count; // REMOVED
 
                                 rsx! {
                                     Link {
@@ -225,23 +241,61 @@ pub fn Campaigns() -> Element {
                                                     p { class: "text-xs text-zinc-400 line-clamp-2", "{c_desc}" }
                                                 }
 
-                                                // Stats Row
+                                                // Stats Row (Disabled for now)
+                                                /*
                                                 div { class: "pt-4 flex items-center gap-4 text-xs font-medium text-zinc-500 border-t border-white/5",
                                                      div { class: "flex items-center gap-1",
                                                         span { "📜" }
                                                         "{session_count} Sessions"
                                                      }
-                                                     div { class: "flex items-center gap-1",
-                                                        span { "👥" }
-                                                        "{campaign.player_count} Players"
-                                                     }
                                                 }
+                                                */
                                             }
                                         }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // List View
+                    div {
+                        class: "space-y-2",
+                        for campaign in campaigns.read().iter() {
+                            {
+                                let (bg_class, text_class) = get_system_style(&campaign.system);
+                                let initials = campaign.name.chars().next().unwrap_or('?');
+                                let c_id = campaign.id.clone();
+                                let c_name = campaign.name.clone();
+                                let c_desc = campaign.description.clone().unwrap_or_default();
 
-                                        // "Now Playing" Pulse (Mock logic: if session_count > 0)
-                                        if session_count > 0 {
-                                             div { class: "absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-purple-500 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" }
+                                rsx! {
+                                    Link {
+                                        to: crate::Route::Session { campaign_id: campaign.id.clone() },
+                                        class: "group flex items-center gap-4 p-4 bg-zinc-900 rounded-lg border border-zinc-800 hover:border-zinc-600 transition-all hover:bg-zinc-800/50",
+
+                                        // Small Icon/Cover
+                                        div {
+                                            class: "w-12 h-12 rounded-lg {bg_class} flex items-center justify-center shrink-0",
+                                            span { class: "text-xl font-bold {text_class}", "{initials}" }
+                                        }
+
+                                        // Content
+                                        div { class: "flex-1 min-w-0",
+                                            h3 { class: "text-lg font-bold text-white group-hover:text-purple-300 truncate", "{c_name}" }
+                                            p { class: "text-sm text-zinc-500 truncate", "{c_desc}" }
+                                        }
+
+                                        // System Badge
+                                        div { class: "shrink-0",
+                                            Badge { variant: BadgeVariant::Outline, "{campaign.system}" }
+                                        }
+
+                                        // Delete Action
+                                        button {
+                                            class: "p-2 text-zinc-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100",
+                                            onclick: handle_delete(c_id.clone(), c_name.clone()),
+                                            "🗑"
                                         }
                                     }
                                 }

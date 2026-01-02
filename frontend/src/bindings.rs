@@ -493,10 +493,16 @@ pub struct Campaign {
     pub description: Option<String>,
     pub created_at: String,
     pub updated_at: String,
-    pub session_count: u32,
-    pub player_count: usize,
     #[serde(default)]
     pub settings: CampaignSettings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CampaignStats {
+    pub session_count: usize,
+    pub npc_count: usize,
+    pub total_playtime_minutes: i64,
+    pub last_played: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -619,6 +625,23 @@ pub async fn restore_snapshot(campaign_id: String, snapshot_id: String) -> Resul
     invoke("restore_snapshot", &Args { campaign_id, snapshot_id }).await
 }
 
+pub async fn get_campaign_stats(campaign_id: String) -> Result<CampaignStats, String> {
+    #[derive(Serialize)]
+    struct Args {
+        campaign_id: String,
+    }
+    invoke("get_campaign_stats", &Args { campaign_id }).await
+}
+
+pub async fn generate_campaign_cover(campaign_id: String, title: String) -> Result<String, String> {
+    #[derive(Serialize)]
+    struct Args {
+        campaign_id: String,
+        title: String,
+    }
+    invoke("generate_campaign_cover", &Args { campaign_id, title }).await
+}
+
 // ============================================================================
 // Session Types
 // ============================================================================
@@ -636,9 +659,15 @@ pub struct GameSession {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionSummary {
     pub id: String,
+    pub campaign_id: String,
     pub session_number: u32,
-    pub duration_mins: u64,
-    pub combat_count: usize,
+    pub started_at: String,
+    pub ended_at: Option<String>,
+    pub duration_minutes: Option<i64>,
+    pub status: String,
+    pub note_count: usize,
+    pub had_combat: bool,
+    pub order_index: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -705,6 +734,15 @@ pub async fn end_session(session_id: String) -> Result<SessionSummary, String> {
         session_id: String,
     }
     invoke("end_session", &Args { session_id }).await
+}
+
+pub async fn reorder_session(session_id: String, new_order: i32) -> Result<(), String> {
+    #[derive(Serialize)]
+    struct Args {
+        session_id: String,
+        new_order: i32,
+    }
+    invoke("reorder_session", &Args { session_id, new_order }).await
 }
 
 // ============================================================================

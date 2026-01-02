@@ -40,7 +40,11 @@ pub fn IconRail() -> Element {
                 active: active == ViewType::Graph,
                 icon: "🔮",
                 label: "Graph",
-                onclick: move |_| layout.active_view.set(ViewType::Graph)
+                onclick: move |_| {
+                     layout.active_view.set(ViewType::Graph);
+                     let nav = use_navigator();
+                     nav.push(crate::Route::GraphView {});
+                }
             }
 
             div { class: "flex-1" } // Spacer

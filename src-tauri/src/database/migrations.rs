@@ -7,7 +7,7 @@ use sqlx::Row;
 use tracing::{info, warn};
 
 /// Current database schema version
-const SCHEMA_VERSION: i32 = 7;
+const SCHEMA_VERSION: i32 = 8;
 
 /// Run all pending migrations
 pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
@@ -64,6 +64,7 @@ async fn run_migration(pool: &SqlitePool, version: i32) -> Result<(), sqlx::Erro
         5 => ("personalities_table", MIGRATION_V5),
         6 => ("npc_personality_link", MIGRATION_V6),
         7 => ("npc_data_json", MIGRATION_V7),
+        8 => ("session_ordering", MIGRATION_V8),
         _ => {
             warn!("Unknown migration version: {}", version);
             return Ok(());
@@ -493,4 +494,10 @@ CREATE INDEX IF NOT EXISTS idx_npcs_personality ON npcs(personality_id);
 /// Migration v7: Add full data JSON to NPCs
 const MIGRATION_V7: &str = r#"
 ALTER TABLE npcs ADD COLUMN data_json TEXT;
+"#;
+
+/// Migration v8: Add ordering to sessions
+const MIGRATION_V8: &str = r#"
+ALTER TABLE sessions ADD COLUMN order_index INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_sessions_order ON sessions(order_index);
 "#;

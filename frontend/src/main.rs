@@ -13,6 +13,7 @@ use components::library::Library;
 use components::campaigns::Campaigns;
 use components::session::Session;
 use components::character::CharacterCreator;
+use components::graph_view::GraphView;
 use components::layout::main_shell::MainShell;
 use services::layout_service::LayoutState;
 
@@ -28,6 +29,8 @@ pub enum Route {
     Campaigns {},
     #[route("/session/:campaign_id")]
     Session { campaign_id: String },
+    #[route("/graph")]
+    GraphView {},
     #[route("/character")]
     CharacterCreator {},
 }
@@ -41,10 +44,13 @@ fn main() {
 // Global Theme Signal
 pub type ThemeSignal = Signal<String>;
 
+use crate::services::DragState;
+
 fn App() -> Element {
     // Initialize services
     use_context_provider(|| Signal::new("fantasy".to_string()));
     use_context_provider(|| LayoutState::new());
+    use_context_provider(|| DragState(Signal::new(None)));
 
     let theme_sig = use_context::<ThemeSignal>();
 

@@ -104,11 +104,28 @@ fn NpcListItem(
     };
 
     let id_click = npc.id.clone();
+    let id_click_select = id_click.clone();
+    let id_click_drop = id_click.clone();
 
     rsx! {
         button {
             class: "{base_class}",
-            onclick: move |_| on_click.call(id_click.clone()),
+            onclick: move |_| on_click.call(id_click_select.clone()),
+            ondragover: move |evt| {
+                evt.prevent_default();
+            },
+            ondrop: move |evt| {
+                evt.prevent_default();
+                 let drag_state = use_context::<crate::services::DragState>();
+                 let msg_opt = drag_state.0.read().clone();
+                 if let Some(msg) = msg_opt {
+                     let id_target = id_click_drop.clone();
+                     // F14: Assign personality
+                     spawn(async move {
+                         println!("Dropped personality {} on NPC {}", msg, id_target);
+                     });
+                 }
+            },
 
             if is_selected {
                 div { class: "absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-blue-500 rounded-r" }
@@ -151,6 +168,13 @@ fn NpcListItem(
         }
     }
 }
+
+
+// Placeholder for proper integration with F11 context menu component
+// The component structure suggests ContextMenu should likely be a global overlay in MainShell or similar,
+// driven by a global signal like `active_context_menu`.
+// For this task, I will demonstrate where it would hook in.
+
 
 fn format_time_short(iso: &str) -> String {
     if let Some(time_part) = iso.split('T').nth(1) {

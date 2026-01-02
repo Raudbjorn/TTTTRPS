@@ -50,6 +50,7 @@ pub struct GameSession {
     pub notes: Vec<SessionLogEntry>,
     pub active_scene: Option<String>,
     pub title: Option<String>,
+    pub order_index: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -188,6 +189,7 @@ pub struct SessionSummary {
     pub status: SessionStatus,
     pub note_count: usize,
     pub had_combat: bool,
+    pub order_index: i32,
 }
 
 // ============================================================================
@@ -229,6 +231,7 @@ impl SessionManager {
             notes: vec![],
             active_scene: None,
             title: None,
+            order_index: 0,
         };
 
         // Store session
@@ -294,6 +297,7 @@ impl SessionManager {
             notes: vec![],
             active_scene: None,
             title,
+            order_index: session_number as i32, // Default order = session number
         };
 
         // Use title somewhere? GameSession struct doesn't have title field in the file I viewed!
@@ -375,17 +379,18 @@ impl SessionManager {
                         status: s.status.clone(),
                         note_count: s.notes.len(),
                         had_combat: s.combat.is_some(),
+                        order_index: s.order_index,
                     })
                     .collect();
 
-                // Sort: Active -> Planned (asc) -> Ended (desc date) -> Others
+                // Sort: Active -> Planned (asc order_index) -> Ended (desc date) -> Others
                 summaries.sort_by(|a, b| {
                     match (&a.status, &b.status) {
                         (SessionStatus::Active, SessionStatus::Active) => b.started_at.cmp(&a.started_at), // Newest active first?
                         (SessionStatus::Active, _) => std::cmp::Ordering::Less,
                         (_, SessionStatus::Active) => std::cmp::Ordering::Greater,
 
-                        (SessionStatus::Planned, SessionStatus::Planned) => a.session_number.cmp(&b.session_number),
+                        (SessionStatus::Planned, SessionStatus::Planned) => a.order_index.cmp(&b.order_index),
                         (SessionStatus::Planned, _) => std::cmp::Ordering::Less,
                         (_, SessionStatus::Planned) => std::cmp::Ordering::Greater,
 
@@ -444,6 +449,15 @@ impl SessionManager {
         };
 
         Ok(summary)
+    }
+
+    pub fn reorder_session(&self, session_id: &str, new_order: i32) -> Result<()> {
+        let mut sessions = self.sessions.write().unwrap();
+        let session = sessions.get_mut(session_id)
+            .ok_or_else(|| SessionError::SessionNotFound(session_id.to_string()))?;
+
+        session.order_index = new_order;
+        Ok(())
     }
 
     // ========================================================================
