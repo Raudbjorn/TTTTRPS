@@ -877,6 +877,8 @@ pub fn Settings() -> Element {
                                         rsx! {
                                             for provider_info in LOCAL_VOICE_PROVIDERS {
                                                 {
+                                                    // VoiceProviderType enum serializes to PascalCase strings
+                                                    // (e.g., "Ollama", "XttsV2") matching provider_info.id
                                                     let is_available = detection.providers.iter()
                                                         .find(|p| p.provider == provider_info.id)
                                                         .map(|p| p.available)

@@ -160,7 +160,9 @@ async fn check_gpt_sovits(client: &Client, base_url: &str) -> ProviderStatus {
 }
 
 /// XTTS-v2 (Coqui TTS server): /api/tts or /docs
-/// Uses check_provider_with_paths which distinguishes connection errors from HTTP errors.
+///
+/// Uses `check_provider_with_paths` for detailed error diagnostics:
+/// - Connection refused vs HTTP error vs timeout
 async fn check_xtts_v2(client: &Client, base_url: &str) -> ProviderStatus {
     check_provider_with_paths(
         client,
@@ -171,6 +173,8 @@ async fn check_xtts_v2(client: &Client, base_url: &str) -> ProviderStatus {
 }
 
 /// Fish Speech: /v1/tts or /health
+///
+/// Uses `check_provider_with_paths` for detailed error diagnostics.
 async fn check_fish_speech(client: &Client, base_url: &str) -> ProviderStatus {
     check_provider_with_paths(
         client,
@@ -181,6 +185,8 @@ async fn check_fish_speech(client: &Client, base_url: &str) -> ProviderStatus {
 }
 
 /// Dia: /health or /api/health
+///
+/// Uses `check_provider_with_paths` for detailed error diagnostics.
 async fn check_dia(client: &Client, base_url: &str) -> ProviderStatus {
     check_provider_with_paths(
         client,
@@ -191,6 +197,12 @@ async fn check_dia(client: &Client, base_url: &str) -> ProviderStatus {
 }
 
 /// Generic provider check that tries multiple paths and returns detailed errors.
+///
+/// Distinguishes between:
+/// - Connection refused → "Not running (connection refused)"
+/// - HTTP error → "HTTP {status} on {path}"
+/// - Timeout → "Timeout (service may be slow or unresponsive)"
+///
 /// Only marks provider as available if a successful HTTP response is received.
 async fn check_provider_with_paths(
     client: &Client,
