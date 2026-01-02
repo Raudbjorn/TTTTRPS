@@ -14,8 +14,8 @@ use crate::core::voice::types::{
 };
 use crate::core::voice::providers::{
     VoiceProvider, elevenlabs::ElevenLabsProvider, fish_audio::FishAudioProvider,
-    ollama::OllamaProvider, openai::OpenAIVoiceProvider, piper::PiperProvider,
-    ChatterboxProvider, GptSoVitsProvider, XttsV2Provider, FishSpeechProvider, DiaProvider,
+    OllamaProvider, openai::OpenAIVoiceProvider, piper::PiperProvider,
+    ChatterboxProvider, GptSoVitsProvider, XttsV2Provider, FishSpeechProvider, DiaProvider, CoquiProvider,
 };
 use crate::core::voice::cache::{AudioCache, CacheKeyParams, CacheConfig, CacheStats, CacheError};
 
@@ -75,6 +75,10 @@ impl VoiceManager {
 
         if let Some(cfg) = &config.openai {
             providers.insert("openai".to_string(), Box::new(OpenAIVoiceProvider::new(cfg.clone())));
+        }
+
+        if let Some(cfg) = &config.coqui {
+            providers.insert("coqui".to_string(), Box::new(CoquiProvider::new(cfg.clone())));
         }
 
         // Initialize Piper
@@ -293,6 +297,7 @@ impl VoiceManager {
             VoiceProviderType::XttsV2 => Ok("xtts_v2"),
             VoiceProviderType::FishSpeech => Ok("fish_speech"),
             VoiceProviderType::Dia => Ok("dia"),
+            VoiceProviderType::Coqui => Ok("coqui"),
             VoiceProviderType::System => Err(VoiceError::NotConfigured("System TTS not supported yet".to_string())),
             VoiceProviderType::Disabled => Err(VoiceError::NotConfigured("Voice synthesis disabled".to_string())),
         }

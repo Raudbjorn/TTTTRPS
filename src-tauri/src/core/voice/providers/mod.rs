@@ -14,6 +14,7 @@ pub mod gpt_sovits;
 pub mod xtts_v2;
 pub mod fish_speech;
 pub mod dia;
+pub mod coqui;
 
 // Re-exports
 pub use chatterbox::ChatterboxProvider;
@@ -21,6 +22,7 @@ pub use gpt_sovits::GptSoVitsProvider;
 pub use xtts_v2::XttsV2Provider;
 pub use fish_speech::FishSpeechProvider;
 pub use dia::DiaProvider;
+pub use coqui::CoquiProvider;
 
 #[async_trait]
 pub trait VoiceProvider: Send + Sync {

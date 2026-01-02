@@ -56,11 +56,17 @@ pub struct VoiceConfig {
     pub xtts_v2: Option<XttsV2Config>,
     pub fish_speech: Option<FishSpeechConfig>,
     pub dia: Option<DiaConfig>,
+    pub coqui: Option<CoquiConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PiperConfig {
     pub models_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CoquiConfig {
+    pub port: u16,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -77,6 +83,7 @@ pub enum VoiceProviderType {
     XttsV2,
     FishSpeech,
     Dia,
+    Coqui,
     // System/disabled
     System,
     Disabled,
@@ -90,9 +97,9 @@ impl VoiceProviderType {
             Self::Ollama => Some("http://localhost:11434"),
             Self::Chatterbox => Some("http://localhost:8000"),
             Self::GptSoVits => Some("http://localhost:9880"),
-            Self::XttsV2 => Some("http://localhost:5002"),     // coqui-ai/TTS default (not 8000 to avoid Chatterbox conflict)
             Self::FishSpeech => Some("http://localhost:7860"), // Fish Speech default
             Self::Dia => Some("http://localhost:8003"),
+            Self::Coqui => Some("http://localhost:5002"),
             _ => None,
         }
     }
@@ -101,7 +108,7 @@ impl VoiceProviderType {
     pub fn is_local(&self) -> bool {
         matches!(
             self,
-            Self::Ollama | Self::Chatterbox | Self::GptSoVits | Self::XttsV2 | Self::FishSpeech | Self::Dia | Self::Piper
+            Self::Ollama | Self::Chatterbox | Self::GptSoVits | Self::XttsV2 | Self::FishSpeech | Self::Dia | Self::Piper | Self::Coqui
         )
     }
 
@@ -117,12 +124,15 @@ impl VoiceProviderType {
             Self::XttsV2 => "XTTS-v2 (Coqui)",
             Self::FishSpeech => "Fish Speech",
             Self::Dia => "Dia",
+            Self::Coqui => "Coqui TTS Server",
             Self::Piper => "Piper (Local)",
             Self::System => "System TTS",
             Self::Disabled => "Disabled",
         }
     }
 }
+
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ElevenLabsConfig {
@@ -283,6 +293,7 @@ impl Default for VoiceConfig {
             xtts_v2: None,
             fish_speech: None,
             dia: None,
+            coqui: None,
         }
     }
 }

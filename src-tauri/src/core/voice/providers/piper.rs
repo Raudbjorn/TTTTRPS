@@ -1,11 +1,11 @@
 use async_trait::async_trait;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::process::Command;
 use tempfile::NamedTempFile;
-#[allow(unused_imports)]
-use std::io::Write;
-use tracing::warn;
+use tokio::io::AsyncWriteExt;
+use tracing::{info, warn, debug};
+use serde_json::Value;
 
 use super::super::types::{Result, SynthesisRequest, Voice, UsageInfo, PiperConfig, VoiceError};
 use super::VoiceProvider;
@@ -25,7 +25,7 @@ impl PiperProvider {
                 .join("ttrpg-assistant/voice/piper")
         });
 
-        // Simple discovery of piper executable
+        // robust discovery of piper executable
         let executable = if Self::check_command("piper") {
             Some("piper".to_string())
         } else if Self::check_command("piper-tts") {
@@ -35,7 +35,7 @@ impl PiperProvider {
         };
 
         if executable.is_none() {
-             warn!("Piper TTS not found. Please install 'piper' or 'piper-tts'.");
+             warn!("Piper TTS executable not found. Please install 'piper' or 'piper-tts'.");
         }
 
         Self {
@@ -47,13 +47,15 @@ impl PiperProvider {
     fn check_command(cmd: &str) -> bool {
         std::process::Command::new("which")
             .arg(cmd)
-            .output()
-            .map(|o| o.status.success())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
             .unwrap_or(false)
     }
 
     fn get_model_path(&self, voice_id: &str) -> Result<PathBuf> {
-        // Voice ID is expected to be the full path or relative path to onnx
+        // Voice ID might be the full path or relative path to onnx
         let path = PathBuf::from(voice_id);
         if path.exists() {
             return Ok(path);
@@ -70,13 +72,88 @@ impl PiperProvider {
              return Ok(system_path);
         }
 
-        // Try appending .onnx
-        let onnx_path = self.models_dir.join(format!("{}.onnx", voice_id));
-        if onnx_path.exists() {
-             return Ok(onnx_path);
+        // Try appending .onnx if not present
+        if !voice_id.ends_with(".onnx") {
+             let onnx_path = self.models_dir.join(format!("{}.onnx", voice_id));
+             if onnx_path.exists() {
+                  return Ok(onnx_path);
+             }
         }
 
         Err(VoiceError::InvalidVoiceId(format!("Piper model not found: {}", voice_id)))
+    }
+
+    fn parse_voice_from_model(&self, model_path: &Path, config_path: &Path) -> Option<Voice> {
+        let content = std::fs::read_to_string(config_path).ok()?;
+        let json: Value = serde_json::from_str(&content).ok()?;
+
+        let filename = model_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Unknown");
+
+        // Try to extract quality from path (e.g., /medium/ or /high/)
+        let quality = model_path
+            .parent()
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str())
+            .filter(|q| ["low", "medium", "high", "x_low"].contains(q))
+            .map(|q| match q {
+                "x_low" => "X-Low",
+                "low" => "Low",
+                "medium" => "Medium",
+                "high" => "High",
+                _ => q,
+            });
+
+        // Create a nice display name
+        let name = if let Some(q) = quality {
+            format!("{} ({})", filename, q)
+        } else {
+            filename.to_string()
+        };
+
+        let lang = json["language"]["name_english"]
+            .as_str()
+            .unwrap_or(json["language"]["code"].as_str().unwrap_or("Unknown"))
+            .to_string();
+
+        let description = json["dataset"].as_str().map(|s| s.to_string());
+
+        // Collect labels
+        let mut labels = vec![lang.clone()];
+        if let Some(q) = quality {
+            labels.push(q.to_string());
+        }
+
+        Some(Voice {
+            id: model_path.to_string_lossy().to_string(),
+            name,
+            provider: "piper".to_string(),
+            description,
+            preview_url: None,
+            labels,
+        })
+    }
+
+    fn scan_directory(&self, dir: &Path, voices: &mut Vec<Voice>) {
+        if !dir.exists() { return; }
+
+        // Use WalkDir for recursive scanning
+        let walker = walkdir::WalkDir::new(dir).into_iter();
+        for entry in walker.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.extension().map_or(false, |e| e == "onnx") {
+                let config_path = path.with_extension("onnx.json");
+                if config_path.exists() {
+                     if let Some(voice) = self.parse_voice_from_model(path, &config_path) {
+                         if !voices.iter().any(|v| v.id == voice.id) {
+                             voices.push(voice);
+                         }
+                     }
+                }
+            }
+        }
     }
 }
 
@@ -93,27 +170,36 @@ impl VoiceProvider for PiperProvider {
 
         let model_path = self.get_model_path(&request.voice_id)?;
 
-        // Create temp file for output because Piper writes to file or stdout.
-        // Stdout capture is cleaner if possible, but existing code used file.
-        // Let's try stdout capture to avoid disk I/O if possible, or use NamedTempFile if piper requires file.
-        // Reading Piper docs... it can output to stdout if --output_file is not correctly specified?
-        // Or usually --output_file - implies stdout.
+        // Piper settings logic mirroring audaio logic
+        // default settings
+        let length_scale = 1.0;
+        let noise_scale = 0.667;
+        let noise_w = 0.8;
+        let sentence_silence = 0.2;
 
-        // Let's use NamedTempFile as it matches the reference implementation provided.
+        // If settings are present in request, we could override them.
+        // Currently VoiceSettings has stability/similarity, not directly mapping to length/noise.
+        // We'll stick to defaults.
+
         let output_file = NamedTempFile::with_suffix(".wav")
             .map_err(|e| VoiceError::IoError(e))?;
         let output_path = output_file.path().to_path_buf();
 
+        debug!(
+            model = ?model_path,
+            text_len = request.text.len(),
+            "Synthesizing with Piper CLI"
+        );
+
         let mut cmd = Command::new(exe);
         cmd.arg("--model").arg(&model_path)
-           .arg("--output_file").arg(&output_path);
+           .arg("--output_file").arg(&output_path)
+           .arg("--length_scale").arg(length_scale.to_string())
+           .arg("--noise_scale").arg(noise_scale.to_string())
+           .arg("--noise_w").arg(noise_w.to_string())
+           .arg("--sentence_silence").arg(sentence_silence.to_string());
 
-        // Settings
-        if let Some(_settings) = &request.settings {
-             // Piper doesn't support stability/similarity directly map to its params mostly.
-             // But we can map speed?
-             // length_scale
-        }
+        // Potentially handle speaker ID if we ever parse multi-speaker models correctly into request.voice_id format
 
         cmd.stdin(Stdio::piped())
            .stdout(Stdio::piped())
@@ -122,7 +208,6 @@ impl VoiceProvider for PiperProvider {
         let mut child = cmd.spawn().map_err(|e| VoiceError::IoError(e))?;
 
         if let Some(mut stdin) = child.stdin.take() {
-            use tokio::io::AsyncWriteExt;
             stdin.write_all(request.text.as_bytes()).await.map_err(|e| VoiceError::IoError(e))?;
         }
 
@@ -134,55 +219,29 @@ impl VoiceProvider for PiperProvider {
         }
 
         let wav_data = tokio::fs::read(&output_path).await.map_err(|e| VoiceError::IoError(e))?;
+
+        info!(size = wav_data.len(), "Piper synthesis complete");
+
         Ok(wav_data)
     }
 
     async fn list_voices(&self) -> Result<Vec<Voice>> {
-        // Accessing 'audaio' implementation: it scanned directories.
-        // We should implement similar scanning logic.
         let mut voices = Vec::new();
 
-        // Scan internal logic helper
-        // Since we are inside async trait, we should probably run blocking fs operations in spawn_blocking
-        // if we were strict, but listing voices is infrequent.
+        // Scan standard locations
+        let locations = vec![
+            self.models_dir.clone(),
+            PathBuf::from(SYSTEM_VOICES_DIR),
+        ];
 
-        // For now, let's just implement a basic scan of models_dir and /usr/share/piper-voices
-        let dirs_to_scan = vec![self.models_dir.clone(), PathBuf::from(SYSTEM_VOICES_DIR)];
-
-        for dir in dirs_to_scan {
-            if !dir.exists() { continue; }
-            // Basic recursive scan
-            let walker = walkdir::WalkDir::new(&dir).into_iter();
-            for entry in walker.filter_map(|e| e.ok()) {
-                let path = entry.path();
-                if path.extension().map_or(false, |e| e == "onnx") {
-                    // Found a model
-                    // Try to find corresponding .json
-                    let json_path = path.with_extension("onnx.json");
-                    if json_path.exists() {
-                        // Parse JSON
-                         if let Ok(content) = std::fs::read_to_string(&json_path) {
-                             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                                 // Construct Voice object
-                                 let name = path.file_stem().unwrap().to_string_lossy().to_string();
-                                 let id = path.to_string_lossy().to_string();
-                                 // Try to get more info from json
-                                 let lang = json["language"]["name_english"].as_str().unwrap_or("Unknown").to_string();
-
-                                 voices.push(Voice {
-                                     id,
-                                     name,
-                                     provider: "piper".to_string(),
-                                     description: Some(format!("Language: {}", lang)),
-                                     preview_url: None,
-                                     labels: vec![lang],
-                                 });
-                             }
-                         }
-                    }
-                }
-            }
+        // Perform scanning
+        // For CLI providers, blocking FS scan is acceptable given usage pattern
+        for dir in locations {
+            self.scan_directory(&dir, &mut voices);
         }
+
+        // Sort by name
+        voices.sort_by(|a, b| a.name.cmp(&b.name));
 
         Ok(voices)
     }
