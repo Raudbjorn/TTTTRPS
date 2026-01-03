@@ -1,0 +1,9 @@
+{
+  "name": "sidecar-dm",
+  "version": "1.0.0",
+  "description": "Gemini CLI extension for Sidecar DM - AI-powered TTRPG assistant",
+  "contextFileName": "GEMINI.md",
+  "commands": [
+    "commands"
+  ]
+}

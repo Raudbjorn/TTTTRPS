@@ -435,6 +435,47 @@ pub async fn speak(text: String) -> Result<(), String> {
 }
 
 // ============================================================================
+// Claude Code CLI Commands
+// ============================================================================
+
+/// Status of Claude Code CLI installation and authentication
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ClaudeCodeStatus {
+    /// Whether the CLI binary is installed
+    pub installed: bool,
+    /// Whether the user is logged in
+    pub logged_in: bool,
+    /// Whether the claude-code-bridge skill is installed
+    pub skill_installed: bool,
+    /// CLI version if available
+    pub version: Option<String>,
+    /// User email if logged in
+    pub user_email: Option<String>,
+    /// Error message if any
+    pub error: Option<String>,
+}
+
+/// Get Claude Code CLI status (installed, logged in, version)
+pub async fn get_claude_code_status() -> Result<ClaudeCodeStatus, String> {
+    invoke_no_args("get_claude_code_status").await
+}
+
+/// Spawn the Claude Code login flow (opens browser for OAuth)
+pub async fn claude_code_login() -> Result<(), String> {
+    invoke_void_no_args("claude_code_login").await
+}
+
+/// Logout from Claude Code
+pub async fn claude_code_logout() -> Result<(), String> {
+    invoke_void_no_args("claude_code_logout").await
+}
+
+/// Install the claude-code-bridge skill to Claude Code
+pub async fn claude_code_install_skill() -> Result<(), String> {
+    invoke_void_no_args("claude_code_install_skill").await
+}
+
+// ============================================================================
 // Credential Commands
 // ============================================================================
 
@@ -3932,4 +3973,53 @@ pub async fn clear_session_personality_context(session_id: String) -> Result<(),
     invoke_void("clear_session_personality_context", &json!({
         "session_id": session_id
     })).await
+}
+
+// ============================================================================
+// Gemini CLI Status & Extension
+// ============================================================================
+
+/// Status of Gemini CLI installation and authentication
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeminiCliStatus {
+    pub is_installed: bool,
+    pub is_authenticated: bool,
+    pub message: String,
+}
+
+/// Status of Gemini CLI extension
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeminiCliExtensionStatus {
+    pub is_installed: bool,
+    pub message: String,
+}
+
+/// Check Gemini CLI installation and authentication status
+pub async fn check_gemini_cli_status() -> Result<GeminiCliStatus, String> {
+    invoke_no_args("check_gemini_cli_status").await
+}
+
+/// Launch Gemini CLI for authentication
+pub async fn launch_gemini_cli_login() -> Result<(), String> {
+    invoke_no_args("launch_gemini_cli_login").await
+}
+
+/// Check if the Sidecar DM extension is installed
+pub async fn check_gemini_cli_extension() -> Result<GeminiCliExtensionStatus, String> {
+    invoke_no_args("check_gemini_cli_extension").await
+}
+
+/// Install the Sidecar DM extension from a source
+pub async fn install_gemini_cli_extension(source: String) -> Result<String, String> {
+    invoke("install_gemini_cli_extension", &json!({ "source": source })).await
+}
+
+/// Link a local extension directory for development
+pub async fn link_gemini_cli_extension(path: String) -> Result<String, String> {
+    invoke("link_gemini_cli_extension", &json!({ "path": path })).await
+}
+
+/// Uninstall the Sidecar DM extension
+pub async fn uninstall_gemini_cli_extension() -> Result<String, String> {
+    invoke_no_args("uninstall_gemini_cli_extension").await
 }

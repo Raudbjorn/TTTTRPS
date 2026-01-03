@@ -236,6 +236,11 @@ pub async fn configure_llm(
             api_key: settings.api_key.clone().ok_or("DeepSeek requires an API key")?,
             model: settings.model,
         },
+        "claude-code" => LLMConfig::ClaudeCode {
+            timeout_secs: 300, // 5 minute default
+            model: if settings.model.is_empty() { None } else { Some(settings.model) },
+            working_dir: None, // Not needed for TTRPG prompts (no file operations)
+        },
         _ => return Err(format!("Unknown provider: {}", settings.provider)),
     };
 
@@ -320,7 +325,7 @@ pub async fn chat(
             LLMConfig::Together { api_key, .. } => api_key.clone(),
             LLMConfig::Cohere { api_key, .. } => api_key.clone(),
             LLMConfig::DeepSeek { api_key, .. } => api_key.clone(),
-            LLMConfig::Ollama { .. } | LLMConfig::ClaudeDesktop { .. } => String::new(),
+            LLMConfig::Ollama { .. } | LLMConfig::ClaudeDesktop { .. } | LLMConfig::ClaudeCode { .. } | LLMConfig::GeminiCli { .. } => String::new(),
         };
 
         let model = match &config {
@@ -335,6 +340,8 @@ pub async fn chat(
             LLMConfig::DeepSeek { model, .. } => model.clone(),
             LLMConfig::Ollama { model, .. } => model.clone(),
             LLMConfig::ClaudeDesktop { .. } => "claude-desktop".to_string(),
+            LLMConfig::ClaudeCode { model, .. } => model.clone().unwrap_or_else(|| "claude-code".to_string()),
+            LLMConfig::GeminiCli { model, .. } => model.clone(),
         };
 
         // Initialize the DM chat workspace (idempotent)
@@ -515,6 +522,20 @@ pub fn get_llm_config(state: State<'_, AppState>) -> Result<Option<LLMSettings>,
             api_key: None, // No API key needed - uses Claude Desktop auth
             host: Some(format!("localhost:{}", port)),
             model: "claude-desktop".to_string(),
+            embedding_model: None,
+        },
+        LLMConfig::ClaudeCode { model, .. } => LLMSettings {
+            provider: "claude-code".to_string(),
+            api_key: None, // No API key needed - uses Claude Code auth
+            host: None,
+            model: model.clone().unwrap_or_else(|| "claude-code".to_string()),
+            embedding_model: None,
+        },
+        LLMConfig::GeminiCli { model, .. } => LLMSettings {
+            provider: "gemini-cli".to_string(),
+            api_key: None, // No API key needed - uses Google account auth
+            host: None,
+            model: model.clone(),
             embedding_model: None,
         },
     }))
@@ -2339,7 +2360,9 @@ pub async fn speak(text: String, state: State<'_, AppState>) -> Result<(), Strin
                 LLMConfig::Together { .. } |
                 LLMConfig::Cohere { .. } |
                 LLMConfig::DeepSeek { .. } |
-                LLMConfig::ClaudeDesktop { .. } => VoiceConfig::default(),
+                LLMConfig::ClaudeDesktop { .. } |
+                LLMConfig::ClaudeCode { .. } |
+                LLMConfig::GeminiCli { .. } => VoiceConfig::default(),
             }
         } else {
              VoiceConfig::default()
@@ -5614,4 +5637,217 @@ pub async fn configure_claude_desktop(
     let guard = manager.read().await;
     guard.update_config(port, timeout_secs).await;
     Ok(())
+}
+
+// ============================================================================
+// Claude Code CLI Commands
+// ============================================================================
+
+/// Get Claude Code CLI status (installed, logged in, version).
+#[tauri::command]
+pub async fn get_claude_code_status() -> crate::core::llm::providers::ClaudeCodeStatus {
+    crate::core::llm::providers::ClaudeCodeProvider::get_status().await
+}
+
+/// Spawn the Claude Code login flow (opens browser for OAuth).
+#[tauri::command]
+pub async fn claude_code_login() -> Result<(), String> {
+    crate::core::llm::providers::ClaudeCodeProvider::login().await
+}
+
+/// Logout from Claude Code.
+#[tauri::command]
+pub async fn claude_code_logout() -> Result<(), String> {
+    crate::core::llm::providers::ClaudeCodeProvider::logout().await
+}
+
+/// Install the claude-code-bridge skill to Claude Code.
+#[tauri::command]
+pub async fn claude_code_install_skill() -> Result<(), String> {
+    crate::core::llm::providers::ClaudeCodeProvider::install_skill().await
+}
+
+// ============================================================================
+// Gemini CLI Status and Extension Commands
+// ============================================================================
+
+/// Status of Gemini CLI installation and authentication.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeminiCliStatus {
+    pub is_installed: bool,
+    pub is_authenticated: bool,
+    pub message: String,
+}
+
+/// Status of Gemini CLI extension installation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeminiCliExtensionStatus {
+    pub is_installed: bool,
+    pub message: String,
+}
+
+/// Check Gemini CLI installation and authentication status.
+#[tauri::command]
+pub async fn check_gemini_cli_status() -> GeminiCliStatus {
+    use crate::core::llm::providers::GeminiCliProvider;
+
+    let (is_installed, is_authenticated, message) = GeminiCliProvider::check_status().await;
+    GeminiCliStatus {
+        is_installed,
+        is_authenticated,
+        message,
+    }
+}
+
+/// Launch Gemini CLI for authentication.
+#[tauri::command]
+pub fn launch_gemini_cli_login() -> Result<(), String> {
+    use crate::core::llm::providers::GeminiCliProvider;
+
+    GeminiCliProvider::launch_login()
+        .map(|_| ())
+        .map_err(|e| format!("Failed to launch Gemini CLI: {}", e))
+}
+
+/// Check if the Sidecar DM extension is installed.
+#[tauri::command]
+pub async fn check_gemini_cli_extension() -> GeminiCliExtensionStatus {
+    use crate::core::llm::providers::GeminiCliProvider;
+
+    let (is_installed, message) = GeminiCliProvider::check_extension_status().await;
+    GeminiCliExtensionStatus {
+        is_installed,
+        message,
+    }
+}
+
+/// Install the Sidecar DM extension from a source (git URL or local path).
+#[tauri::command]
+pub async fn install_gemini_cli_extension(source: String) -> Result<String, String> {
+    use crate::core::llm::providers::GeminiCliProvider;
+
+    GeminiCliProvider::install_extension(&source).await
+}
+
+/// Link a local extension directory for development.
+#[tauri::command]
+pub async fn link_gemini_cli_extension(path: String) -> Result<String, String> {
+    use crate::core::llm::providers::GeminiCliProvider;
+
+    GeminiCliProvider::link_extension(&path).await
+}
+
+/// Uninstall the Sidecar DM extension.
+#[tauri::command]
+pub async fn uninstall_gemini_cli_extension() -> Result<String, String> {
+    use crate::core::llm::providers::GeminiCliProvider;
+
+    GeminiCliProvider::uninstall_extension().await
+}
+
+// ============================================================================
+// Meilisearch Chat Provider Commands
+// ============================================================================
+
+use crate::core::meilisearch_chat::{
+    ChatProviderConfig, ChatProviderInfo, ChatPrompts, ChatWorkspaceSettings,
+    list_chat_providers as get_chat_providers,
+};
+
+/// List available chat providers with their capabilities.
+#[tauri::command]
+pub fn list_chat_providers() -> Vec<ChatProviderInfo> {
+    get_chat_providers()
+}
+
+/// Configure a Meilisearch chat workspace with a specific LLM provider.
+///
+/// This command:
+/// 1. Starts the LLM proxy if needed (for non-native providers)
+/// 2. Registers the provider with the proxy
+/// 3. Configures the Meilisearch chat workspace
+#[tauri::command]
+pub async fn configure_chat_workspace(
+    workspace_id: String,
+    provider: ChatProviderConfig,
+    custom_prompts: Option<ChatPrompts>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    use crate::core::llm::LLMManager;
+    use std::sync::OnceLock;
+    use tokio::sync::RwLock as AsyncRwLock;
+
+    // Get or create the LLM manager (stored statically for now)
+    static LLM_MANAGER: OnceLock<AsyncRwLock<LLMManager>> = OnceLock::new();
+    let manager = LLM_MANAGER.get_or_init(|| AsyncRwLock::new(LLMManager::new()));
+
+    // Ensure Meilisearch client is configured
+    {
+        let manager_guard = manager.read().await;
+        let host = state.search_client.host();
+        // Note: We're setting the chat client fresh each time to ensure it's configured
+        drop(manager_guard);
+
+        let manager_guard = manager.write().await;
+        // TODO: Get API key from credentials if needed
+        drop(manager_guard);
+    }
+
+    // Configure with Meilisearch host from search client
+    {
+        let manager_guard = manager.read().await;
+        manager_guard.set_chat_client(state.search_client.host(), None).await;
+    }
+
+    // Configure the workspace
+    let manager_guard = manager.read().await;
+    manager_guard
+        .configure_chat_workspace(&workspace_id, provider, custom_prompts)
+        .await
+}
+
+/// Get the current settings for a Meilisearch chat workspace.
+#[tauri::command]
+pub async fn get_chat_workspace_settings(
+    workspace_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<ChatWorkspaceSettings>, String> {
+    use crate::core::meilisearch_chat::MeilisearchChatClient;
+
+    let client = MeilisearchChatClient::new(state.search_client.host(), None);
+    client.get_workspace_settings(&workspace_id).await
+}
+
+/// Check if the LLM proxy is running.
+#[tauri::command]
+pub async fn is_llm_proxy_running() -> bool {
+    use crate::core::llm::LLMManager;
+    use std::sync::OnceLock;
+    use tokio::sync::RwLock as AsyncRwLock;
+
+    static LLM_MANAGER: OnceLock<AsyncRwLock<LLMManager>> = OnceLock::new();
+    let manager = LLM_MANAGER.get_or_init(|| AsyncRwLock::new(LLMManager::new()));
+
+    let guard = manager.read().await;
+    guard.is_proxy_running().await
+}
+
+/// Get the LLM proxy URL.
+#[tauri::command]
+pub fn get_llm_proxy_url() -> String {
+    "http://127.0.0.1:8787".to_string()
+}
+
+/// List providers currently registered with the LLM proxy.
+#[tauri::command]
+pub async fn list_proxy_providers() -> Vec<String> {
+    use crate::core::llm::LLMManager;
+    use std::sync::OnceLock;
+    use tokio::sync::RwLock as AsyncRwLock;
+
+    static LLM_MANAGER: OnceLock<AsyncRwLock<LLMManager>> = OnceLock::new();
+    let manager = LLM_MANAGER.get_or_init(|| AsyncRwLock::new(LLMManager::new()));
+
+    let guard = manager.read().await;
+    guard.list_proxy_providers().await
 }

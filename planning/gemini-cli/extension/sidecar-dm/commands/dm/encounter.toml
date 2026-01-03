@@ -1,0 +1,19 @@
+# Generate a combat or social encounter
+description = "Generate a balanced encounter with tactics and terrain"
+
+prompt = """Design a tabletop RPG encounter.
+
+{{#if args}}
+Parameters: {{args}}
+{{/if}}
+
+Include:
+- **Setup** (how the encounter begins)
+- **Environment** (terrain, lighting, hazards)
+- **Opposition** (enemies or challenges, with suggested stats/CR if combat)
+- **Tactics** (how enemies behave, what they prioritize)
+- **Complications** (mid-encounter twists or escalations)
+- **Resolution Options** (combat, negotiation, escape, etc.)
+- **Rewards** (loot, information, reputation)
+
+Balance for a typical party of 4-5 adventurers unless specified otherwise."""

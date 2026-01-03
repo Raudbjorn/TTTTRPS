@@ -60,6 +60,8 @@ pub enum AddProviderRequest {
     Together { api_key: String, model: String },
     Cohere { api_key: String, model: String },
     DeepSeek { api_key: String, model: String },
+    /// Gemini CLI - uses Google account auth, no API key needed
+    GeminiCli { model: Option<String>, timeout_secs: Option<u64> },
 }
 
 impl AddProviderRequest {
@@ -104,6 +106,12 @@ impl AddProviderRequest {
             }
             AddProviderRequest::DeepSeek { api_key, model } => {
                 ProviderConfig::DeepSeek { api_key: api_key.clone(), model: model.clone() }
+            }
+            AddProviderRequest::GeminiCli { model, timeout_secs } => {
+                ProviderConfig::GeminiCli {
+                    model: model.clone().unwrap_or_else(|| "gemini-2.5-pro".to_string()),
+                    timeout_secs: timeout_secs.unwrap_or(120),
+                }
             }
         }
     }
@@ -389,6 +397,87 @@ pub async fn cancel_stream(router: &RwLock<LLMRouter>, stream_id: &str) -> Resul
 pub async fn get_active_streams(router: &RwLock<LLMRouter>) -> Result<Vec<String>, String> {
     let r = router.read().await;
     Ok(r.active_stream_ids().await)
+}
+
+// ============================================================================
+// Gemini CLI Status Commands
+// ============================================================================
+
+/// Response for Gemini CLI status check
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeminiCliStatus {
+    /// Whether the CLI is installed
+    pub is_installed: bool,
+    /// Whether the user is authenticated
+    pub is_authenticated: bool,
+    /// Human-readable status message
+    pub message: String,
+}
+
+/// Check the Gemini CLI installation and authentication status
+pub async fn check_gemini_cli_status() -> GeminiCliStatus {
+    use super::providers::GeminiCliProvider;
+
+    let (is_installed, is_authenticated, message) = GeminiCliProvider::check_status().await;
+    GeminiCliStatus {
+        is_installed,
+        is_authenticated,
+        message,
+    }
+}
+
+/// Launch Gemini CLI for authentication
+pub fn launch_gemini_cli_login() -> Result<(), String> {
+    use super::providers::GeminiCliProvider;
+
+    GeminiCliProvider::launch_login()
+        .map(|_| ())
+        .map_err(|e| format!("Failed to launch Gemini CLI: {}", e))
+}
+
+// ============================================================================
+// Gemini CLI Extension Commands
+// ============================================================================
+
+/// Response for Gemini CLI extension status check
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeminiCliExtensionStatus {
+    /// Whether the extension is installed
+    pub is_installed: bool,
+    /// Status message (version or error)
+    pub message: String,
+}
+
+/// Check if the Sidecar DM extension is installed
+pub async fn check_gemini_cli_extension() -> GeminiCliExtensionStatus {
+    use super::providers::GeminiCliProvider;
+
+    let (is_installed, message) = GeminiCliProvider::check_extension_status().await;
+    GeminiCliExtensionStatus {
+        is_installed,
+        message,
+    }
+}
+
+/// Install the Sidecar DM extension from a source (git URL or local path)
+pub async fn install_gemini_cli_extension(source: String) -> Result<String, String> {
+    use super::providers::GeminiCliProvider;
+
+    GeminiCliProvider::install_extension(&source).await
+}
+
+/// Link a local extension directory for development
+pub async fn link_gemini_cli_extension(path: String) -> Result<String, String> {
+    use super::providers::GeminiCliProvider;
+
+    GeminiCliProvider::link_extension(&path).await
+}
+
+/// Uninstall the Sidecar DM extension
+pub async fn uninstall_gemini_cli_extension() -> Result<String, String> {
+    use super::providers::GeminiCliProvider;
+
+    GeminiCliProvider::uninstall_extension().await
 }
 
 // ============================================================================

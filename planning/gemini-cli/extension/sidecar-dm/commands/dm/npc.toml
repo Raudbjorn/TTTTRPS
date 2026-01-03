@@ -1,0 +1,19 @@
+# Generate an NPC for the current game system
+description = "Generate a random NPC with personality, motivation, and secrets"
+
+prompt = """Generate a memorable NPC for a tabletop RPG session.
+
+{{#if args}}
+Additional requirements: {{args}}
+{{/if}}
+
+Include:
+- **Name** (appropriate to setting)
+- **Appearance** (2-3 distinctive features)
+- **Personality** (one dominant trait, one quirk)
+- **Motivation** (what do they want?)
+- **Secret** (something the players might discover)
+- **Voice/Mannerism** (how to roleplay them)
+- **Potential Plot Hook** (how they might involve the party)
+
+Keep it concise but evocative. Make them memorable."""

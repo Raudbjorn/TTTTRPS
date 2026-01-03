@@ -5,9 +5,11 @@
 
 mod ollama;
 mod claude;
+mod claude_code;
 mod claude_desktop;
 mod openai;
 mod gemini;
+mod gemini_cli;
 mod openrouter;
 mod mistral;
 mod groq;
@@ -17,9 +19,11 @@ mod deepseek;
 
 pub use ollama::OllamaProvider;
 pub use claude::ClaudeProvider;
+pub use claude_code::{ClaudeCodeProvider, ClaudeCodeStatus};
 pub use claude_desktop::ClaudeDesktopProvider;
 pub use openai::OpenAIProvider;
 pub use gemini::GeminiProvider;
+pub use gemini_cli::GeminiCliProvider;
 pub use openrouter::OpenRouterProvider;
 pub use mistral::MistralProvider;
 pub use groq::GroqProvider;
@@ -82,6 +86,17 @@ pub enum ProviderConfig {
         port: u16,          // CDP port (default 9333)
         timeout_secs: u64,  // Response timeout (default 120s)
     },
+    /// Claude Code via CLI (no API key needed, uses existing Claude Code auth)
+    ClaudeCode {
+        timeout_secs: u64,          // Response timeout (default 300s)
+        model: Option<String>,      // Optional model override
+        working_dir: Option<String>, // Optional working directory
+    },
+    /// Gemini CLI (no API key needed, uses Google account auth)
+    GeminiCli {
+        model: String,      // Model to use (default: gemini-2.5-pro)
+        timeout_secs: u64,  // Response timeout (default 120s)
+    },
 }
 
 impl ProviderConfig {
@@ -127,6 +142,12 @@ impl ProviderConfig {
             ProviderConfig::ClaudeDesktop { port, timeout_secs } => {
                 Arc::new(ClaudeDesktopProvider::with_config(*port, *timeout_secs))
             }
+            ProviderConfig::ClaudeCode { timeout_secs, model, working_dir } => {
+                Arc::new(ClaudeCodeProvider::with_config(*timeout_secs, model.clone(), working_dir.clone()))
+            }
+            ProviderConfig::GeminiCli { model, timeout_secs } => {
+                Arc::new(GeminiCliProvider::with_config(model.clone(), *timeout_secs))
+            }
         }
     }
 
@@ -144,6 +165,8 @@ impl ProviderConfig {
             ProviderConfig::Cohere { .. } => "cohere",
             ProviderConfig::DeepSeek { .. } => "deepseek",
             ProviderConfig::ClaudeDesktop { .. } => "claude-desktop",
+            ProviderConfig::ClaudeCode { .. } => "claude-code",
+            ProviderConfig::GeminiCli { .. } => "gemini-cli",
         }
     }
 }

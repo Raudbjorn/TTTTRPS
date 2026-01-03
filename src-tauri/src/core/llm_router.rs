@@ -890,6 +890,8 @@ impl LLMRouter {
             LLMConfig::Together { model, .. } => model.clone(),
             LLMConfig::Cohere { model, .. } => model.clone(),
             LLMConfig::DeepSeek { model, .. } => model.clone(),
+            LLMConfig::ClaudeDesktop { .. } => "claude-desktop".to_string(),
+            LLMConfig::ClaudeCode { model, .. } => model.clone().unwrap_or_else(|| "claude-code".to_string()),
         }
     }
 
@@ -1132,6 +1134,14 @@ impl LLMRouter {
             LLMConfig::Cohere { .. } => {
                 // Cohere streaming not implemented - fall back to non-streaming
                 Err(LLMError::InvalidResponse("Streaming not supported for Cohere".to_string()))
+            }
+            LLMConfig::ClaudeDesktop { .. } => {
+                // Claude Desktop doesn't support streaming via CDP
+                Err(LLMError::InvalidResponse("Streaming not supported for Claude Desktop".to_string()))
+            }
+            LLMConfig::ClaudeCode { .. } => {
+                // Claude Code CLI doesn't support streaming
+                Err(LLMError::InvalidResponse("Streaming not supported for Claude Code".to_string()))
             }
         };
 
