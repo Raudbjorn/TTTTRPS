@@ -1,0 +1,33 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="128" height="128" rx="24" fill="#141414"/>
+  
+  <!-- Bridge icon (stylized) -->
+  <g transform="translate(20, 36)">
+    <!-- Bridge deck -->
+    <rect x="0" y="40" width="88" height="8" rx="2" fill="#e07a3d"/>
+    
+    <!-- Left pillar -->
+    <rect x="12" y="24" width="8" height="32" rx="2" fill="#e8e6e3"/>
+    
+    <!-- Right pillar -->
+    <rect x="68" y="24" width="8" height="32" rx="2" fill="#e8e6e3"/>
+    
+    <!-- Cable left -->
+    <path d="M16 24 Q44 0, 44 28" stroke="#e8e6e3" stroke-width="3" fill="none" stroke-linecap="round"/>
+    
+    <!-- Cable right -->
+    <path d="M72 24 Q44 0, 44 28" stroke="#e8e6e3" stroke-width="3" fill="none" stroke-linecap="round"/>
+    
+    <!-- Connection dots -->
+    <circle cx="16" cy="24" r="4" fill="#e07a3d"/>
+    <circle cx="72" cy="24" r="4" fill="#e07a3d"/>
+    <circle cx="44" cy="28" r="5" fill="#e07a3d"/>
+  </g>
+  
+  <!-- Turnstile symbol (⊢) stylized as data flow -->
+  <g transform="translate(54, 78)">
+    <rect x="0" y="4" width="20" height="3" rx="1" fill="#5a5a5a"/>
+    <rect x="14" y="0" width="3" height="11" rx="1" fill="#5a5a5a"/>
+  </g>
+</svg>

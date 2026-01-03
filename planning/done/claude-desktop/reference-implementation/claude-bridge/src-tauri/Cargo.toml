@@ -1,0 +1,27 @@
+[package]
+name = "claude-bridge-tauri"
+version.workspace = true
+edition = "2021"
+description = "Tauri backend for Claude Desktop CDP bridge"
+license.workspace = true
+
+[build-dependencies]
+tauri-build = { workspace = true, features = [] }
+
+[dependencies]
+claude-cdp = { path = "../claude-cdp" }
+tauri = { workspace = true, features = ["tray-icon"] }
+tauri-plugin-shell = "2"
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[lib]
+name = "claude_bridge_tauri"
+crate-type = ["staticlib", "cdylib", "rlib"]
