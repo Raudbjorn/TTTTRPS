@@ -428,6 +428,14 @@ fn main() {
             commands::install_gemini_cli_extension,
             commands::link_gemini_cli_extension,
             commands::uninstall_gemini_cli_extension,
+
+            // Meilisearch Chat Provider Commands
+            commands::list_chat_providers,
+            commands::configure_chat_workspace,
+            commands::get_chat_workspace_settings,
+            commands::is_llm_proxy_running,
+            commands::get_llm_proxy_url,
+            commands::list_proxy_providers,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

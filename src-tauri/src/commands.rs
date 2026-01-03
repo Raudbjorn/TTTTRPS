@@ -5744,3 +5744,110 @@ pub async fn uninstall_gemini_cli_extension() -> Result<String, String> {
 
     GeminiCliProvider::uninstall_extension().await
 }
+
+// ============================================================================
+// Meilisearch Chat Provider Commands
+// ============================================================================
+
+use crate::core::meilisearch_chat::{
+    ChatProviderConfig, ChatProviderInfo, ChatPrompts, ChatWorkspaceSettings,
+    list_chat_providers as get_chat_providers,
+};
+
+/// List available chat providers with their capabilities.
+#[tauri::command]
+pub fn list_chat_providers() -> Vec<ChatProviderInfo> {
+    get_chat_providers()
+}
+
+/// Configure a Meilisearch chat workspace with a specific LLM provider.
+///
+/// This command:
+/// 1. Starts the LLM proxy if needed (for non-native providers)
+/// 2. Registers the provider with the proxy
+/// 3. Configures the Meilisearch chat workspace
+#[tauri::command]
+pub async fn configure_chat_workspace(
+    workspace_id: String,
+    provider: ChatProviderConfig,
+    custom_prompts: Option<ChatPrompts>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    use crate::core::llm::LLMManager;
+    use std::sync::OnceLock;
+    use tokio::sync::RwLock as AsyncRwLock;
+
+    // Get or create the LLM manager (stored statically for now)
+    static LLM_MANAGER: OnceLock<AsyncRwLock<LLMManager>> = OnceLock::new();
+    let manager = LLM_MANAGER.get_or_init(|| AsyncRwLock::new(LLMManager::new()));
+
+    // Ensure Meilisearch client is configured
+    {
+        let manager_guard = manager.read().await;
+        let host = state.search_client.host();
+        // Note: We're setting the chat client fresh each time to ensure it's configured
+        drop(manager_guard);
+
+        let manager_guard = manager.write().await;
+        // TODO: Get API key from credentials if needed
+        drop(manager_guard);
+    }
+
+    // Configure with Meilisearch host from search client
+    {
+        let manager_guard = manager.read().await;
+        manager_guard.set_chat_client(state.search_client.host(), None).await;
+    }
+
+    // Configure the workspace
+    let manager_guard = manager.read().await;
+    manager_guard
+        .configure_chat_workspace(&workspace_id, provider, custom_prompts)
+        .await
+}
+
+/// Get the current settings for a Meilisearch chat workspace.
+#[tauri::command]
+pub async fn get_chat_workspace_settings(
+    workspace_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<ChatWorkspaceSettings>, String> {
+    use crate::core::meilisearch_chat::MeilisearchChatClient;
+
+    let client = MeilisearchChatClient::new(state.search_client.host(), None);
+    client.get_workspace_settings(&workspace_id).await
+}
+
+/// Check if the LLM proxy is running.
+#[tauri::command]
+pub async fn is_llm_proxy_running() -> bool {
+    use crate::core::llm::LLMManager;
+    use std::sync::OnceLock;
+    use tokio::sync::RwLock as AsyncRwLock;
+
+    static LLM_MANAGER: OnceLock<AsyncRwLock<LLMManager>> = OnceLock::new();
+    let manager = LLM_MANAGER.get_or_init(|| AsyncRwLock::new(LLMManager::new()));
+
+    let guard = manager.read().await;
+    guard.is_proxy_running().await
+}
+
+/// Get the LLM proxy URL.
+#[tauri::command]
+pub fn get_llm_proxy_url() -> String {
+    "http://127.0.0.1:8787".to_string()
+}
+
+/// List providers currently registered with the LLM proxy.
+#[tauri::command]
+pub async fn list_proxy_providers() -> Vec<String> {
+    use crate::core::llm::LLMManager;
+    use std::sync::OnceLock;
+    use tokio::sync::RwLock as AsyncRwLock;
+
+    static LLM_MANAGER: OnceLock<AsyncRwLock<LLMManager>> = OnceLock::new();
+    let manager = LLM_MANAGER.get_or_init(|| AsyncRwLock::new(LLMManager::new()));
+
+    let guard = manager.read().await;
+    guard.list_proxy_providers().await
+}

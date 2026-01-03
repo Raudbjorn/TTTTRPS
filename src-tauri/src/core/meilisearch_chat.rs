@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use futures_util::StreamExt;
 use tokio::sync::mpsc;
 
+use super::llm::providers::ProviderConfig;
+
 // ============================================================================
 // Configuration Types
 // ============================================================================
@@ -98,6 +100,387 @@ When answering questions:
 
 You have access to the player's rulebooks, campaign notes, and lore documents.
 Use the search tool to find relevant information before answering."#;
+
+// ============================================================================
+// Chat Provider Configuration
+// ============================================================================
+
+/// Chat provider configuration for Meilisearch workspaces.
+/// Maps the project's LLM providers to Meilisearch's chat sources.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum ChatProviderConfig {
+    /// OpenAI (native Meilisearch support)
+    OpenAI {
+        api_key: String,
+        #[serde(default)]
+        model: Option<String>,
+        #[serde(default)]
+        organization_id: Option<String>,
+    },
+    /// Anthropic Claude (via proxy)
+    Claude {
+        api_key: String,
+        #[serde(default)]
+        model: Option<String>,
+        #[serde(default)]
+        max_tokens: Option<u32>,
+    },
+    /// Mistral (native Meilisearch support)
+    Mistral {
+        api_key: String,
+        #[serde(default)]
+        model: Option<String>,
+    },
+    /// Ollama (via proxy as VLlm)
+    Ollama {
+        host: String,
+        model: String,
+    },
+    /// Google Gemini (via proxy)
+    Gemini {
+        api_key: String,
+        #[serde(default)]
+        model: Option<String>,
+    },
+    /// OpenRouter (via proxy)
+    OpenRouter {
+        api_key: String,
+        model: String,
+    },
+    /// Azure OpenAI (native Meilisearch support)
+    AzureOpenAI {
+        api_key: String,
+        base_url: String,
+        deployment_id: String,
+        api_version: String,
+    },
+    /// Groq (via proxy)
+    Groq {
+        api_key: String,
+        model: String,
+    },
+    /// Together.ai (via proxy)
+    Together {
+        api_key: String,
+        model: String,
+    },
+    /// Cohere (via proxy)
+    Cohere {
+        api_key: String,
+        model: String,
+    },
+    /// DeepSeek (via proxy)
+    DeepSeek {
+        api_key: String,
+        model: String,
+    },
+    /// Claude Code CLI (via proxy, no API key needed)
+    ClaudeCode {
+        #[serde(default)]
+        timeout_secs: Option<u64>,
+        #[serde(default)]
+        model: Option<String>,
+    },
+    /// Claude Desktop CDP (via proxy, no API key needed)
+    ClaudeDesktop {
+        #[serde(default)]
+        port: Option<u16>,
+        #[serde(default)]
+        timeout_secs: Option<u64>,
+    },
+}
+
+impl ChatProviderConfig {
+    /// Get the provider ID for proxy routing
+    pub fn provider_id(&self) -> &'static str {
+        match self {
+            ChatProviderConfig::OpenAI { .. } => "openai",
+            ChatProviderConfig::Claude { .. } => "claude",
+            ChatProviderConfig::Mistral { .. } => "mistral",
+            ChatProviderConfig::Ollama { .. } => "ollama",
+            ChatProviderConfig::Gemini { .. } => "gemini",
+            ChatProviderConfig::OpenRouter { .. } => "openrouter",
+            ChatProviderConfig::AzureOpenAI { .. } => "azure",
+            ChatProviderConfig::Groq { .. } => "groq",
+            ChatProviderConfig::Together { .. } => "together",
+            ChatProviderConfig::Cohere { .. } => "cohere",
+            ChatProviderConfig::DeepSeek { .. } => "deepseek",
+            ChatProviderConfig::ClaudeCode { .. } => "claude-code",
+            ChatProviderConfig::ClaudeDesktop { .. } => "claude-desktop",
+        }
+    }
+
+    /// Check if this provider requires the proxy (vs native Meilisearch support)
+    pub fn requires_proxy(&self) -> bool {
+        !matches!(
+            self,
+            ChatProviderConfig::OpenAI { .. }
+                | ChatProviderConfig::Mistral { .. }
+                | ChatProviderConfig::AzureOpenAI { .. }
+        )
+    }
+
+    /// Get the model identifier for proxy routing (format: provider:model)
+    pub fn proxy_model_id(&self) -> String {
+        let provider = self.provider_id();
+        let model = match self {
+            ChatProviderConfig::OpenAI { model, .. } => {
+                model.as_deref().unwrap_or("gpt-4o-mini")
+            }
+            ChatProviderConfig::Claude { model, .. } => {
+                model.as_deref().unwrap_or("claude-sonnet-4-20250514")
+            }
+            ChatProviderConfig::Mistral { model, .. } => {
+                model.as_deref().unwrap_or("mistral-large-latest")
+            }
+            ChatProviderConfig::Ollama { model, .. } => model.as_str(),
+            ChatProviderConfig::Gemini { model, .. } => {
+                model.as_deref().unwrap_or("gemini-pro")
+            }
+            ChatProviderConfig::OpenRouter { model, .. } => model.as_str(),
+            ChatProviderConfig::AzureOpenAI { .. } => "azure-deployment",
+            ChatProviderConfig::Groq { model, .. } => model.as_str(),
+            ChatProviderConfig::Together { model, .. } => model.as_str(),
+            ChatProviderConfig::Cohere { model, .. } => model.as_str(),
+            ChatProviderConfig::DeepSeek { model, .. } => model.as_str(),
+            ChatProviderConfig::ClaudeCode { model, .. } => {
+                model.as_deref().unwrap_or("claude-sonnet-4-20250514")
+            }
+            ChatProviderConfig::ClaudeDesktop { .. } => "claude-desktop",
+        };
+        format!("{}:{}", provider, model)
+    }
+
+    /// Convert to Meilisearch ChatWorkspaceSettings
+    pub fn to_meilisearch_settings(&self, proxy_url: &str) -> ChatWorkspaceSettings {
+        match self {
+            // Native providers (direct to Meilisearch)
+            ChatProviderConfig::OpenAI { api_key, model, .. } => ChatWorkspaceSettings {
+                source: ChatLLMSource::OpenAi,
+                api_key: Some(api_key.clone()),
+                model: Some(model.as_deref().unwrap_or("gpt-4o-mini").to_string()),
+                prompts: Some(ChatPrompts {
+                    system: Some(DEFAULT_DM_SYSTEM_PROMPT.to_string()),
+                    ..Default::default()
+                }),
+                base_url: None,
+            },
+            ChatProviderConfig::Mistral { api_key, model } => ChatWorkspaceSettings {
+                source: ChatLLMSource::Mistral,
+                api_key: Some(api_key.clone()),
+                model: Some(model.as_deref().unwrap_or("mistral-large-latest").to_string()),
+                prompts: Some(ChatPrompts {
+                    system: Some(DEFAULT_DM_SYSTEM_PROMPT.to_string()),
+                    ..Default::default()
+                }),
+                base_url: None,
+            },
+            ChatProviderConfig::AzureOpenAI { api_key, base_url, .. } => ChatWorkspaceSettings {
+                source: ChatLLMSource::AzureOpenAi,
+                api_key: Some(api_key.clone()),
+                model: None, // Azure uses deployment_id
+                prompts: Some(ChatPrompts {
+                    system: Some(DEFAULT_DM_SYSTEM_PROMPT.to_string()),
+                    ..Default::default()
+                }),
+                base_url: Some(base_url.clone()),
+            },
+            // All other providers route through proxy
+            _ => ChatWorkspaceSettings {
+                source: ChatLLMSource::VLlm,
+                api_key: None, // Proxy handles auth
+                model: Some(self.proxy_model_id()),
+                prompts: Some(ChatPrompts {
+                    system: Some(DEFAULT_DM_SYSTEM_PROMPT.to_string()),
+                    ..Default::default()
+                }),
+                base_url: Some(format!("{}/v1", proxy_url)),
+            },
+        }
+    }
+
+    /// Convert to the project's ProviderConfig for proxy registration
+    pub fn to_provider_config(&self) -> ProviderConfig {
+        match self {
+            ChatProviderConfig::OpenAI { api_key, model, organization_id, .. } => {
+                ProviderConfig::OpenAI {
+                    api_key: api_key.clone(),
+                    model: model.as_deref().unwrap_or("gpt-4o-mini").to_string(),
+                    max_tokens: 4096,
+                    organization_id: organization_id.clone(),
+                    base_url: None,
+                }
+            }
+            ChatProviderConfig::Claude { api_key, model, max_tokens } => {
+                ProviderConfig::Claude {
+                    api_key: api_key.clone(),
+                    model: model.as_deref().unwrap_or("claude-sonnet-4-20250514").to_string(),
+                    max_tokens: max_tokens.unwrap_or(4096),
+                }
+            }
+            ChatProviderConfig::Mistral { api_key, model } => ProviderConfig::Mistral {
+                api_key: api_key.clone(),
+                model: model.as_deref().unwrap_or("mistral-large-latest").to_string(),
+            },
+            ChatProviderConfig::Ollama { host, model } => ProviderConfig::Ollama {
+                host: host.clone(),
+                model: model.clone(),
+            },
+            ChatProviderConfig::Gemini { api_key, model } => ProviderConfig::Gemini {
+                api_key: api_key.clone(),
+                model: model.as_deref().unwrap_or("gemini-pro").to_string(),
+            },
+            ChatProviderConfig::OpenRouter { api_key, model } => ProviderConfig::OpenRouter {
+                api_key: api_key.clone(),
+                model: model.clone(),
+            },
+            ChatProviderConfig::AzureOpenAI { api_key, base_url, .. } => {
+                ProviderConfig::OpenAI {
+                    api_key: api_key.clone(),
+                    model: "azure".to_string(),
+                    max_tokens: 4096,
+                    organization_id: None,
+                    base_url: Some(base_url.clone()),
+                }
+            }
+            ChatProviderConfig::Groq { api_key, model } => ProviderConfig::Groq {
+                api_key: api_key.clone(),
+                model: model.clone(),
+            },
+            ChatProviderConfig::Together { api_key, model } => ProviderConfig::Together {
+                api_key: api_key.clone(),
+                model: model.clone(),
+            },
+            ChatProviderConfig::Cohere { api_key, model } => ProviderConfig::Cohere {
+                api_key: api_key.clone(),
+                model: model.clone(),
+            },
+            ChatProviderConfig::DeepSeek { api_key, model } => ProviderConfig::DeepSeek {
+                api_key: api_key.clone(),
+                model: model.clone(),
+            },
+            ChatProviderConfig::ClaudeCode { timeout_secs, model } => ProviderConfig::ClaudeCode {
+                timeout_secs: timeout_secs.unwrap_or(300),
+                model: model.clone(),
+                working_dir: None,
+            },
+            ChatProviderConfig::ClaudeDesktop { port, timeout_secs } => {
+                ProviderConfig::ClaudeDesktop {
+                    port: port.unwrap_or(9333),
+                    timeout_secs: timeout_secs.unwrap_or(120),
+                }
+            }
+        }
+    }
+}
+
+/// Information about available chat providers
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatProviderInfo {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub description: &'static str,
+    pub requires_api_key: bool,
+    pub is_native: bool,
+}
+
+/// Get information about all available chat providers
+pub fn list_chat_providers() -> Vec<ChatProviderInfo> {
+    vec![
+        ChatProviderInfo {
+            id: "openai",
+            name: "OpenAI",
+            description: "GPT-4o, GPT-4, GPT-3.5 models",
+            requires_api_key: true,
+            is_native: true,
+        },
+        ChatProviderInfo {
+            id: "claude",
+            name: "Anthropic Claude",
+            description: "Claude 3.5 Sonnet, Claude 3 Opus/Haiku",
+            requires_api_key: true,
+            is_native: false,
+        },
+        ChatProviderInfo {
+            id: "mistral",
+            name: "Mistral AI",
+            description: "Mistral Large, Codestral, Mixtral",
+            requires_api_key: true,
+            is_native: true,
+        },
+        ChatProviderInfo {
+            id: "ollama",
+            name: "Ollama (Local)",
+            description: "Run open models locally",
+            requires_api_key: false,
+            is_native: false,
+        },
+        ChatProviderInfo {
+            id: "gemini",
+            name: "Google Gemini",
+            description: "Gemini Pro, Gemini Ultra",
+            requires_api_key: true,
+            is_native: false,
+        },
+        ChatProviderInfo {
+            id: "openrouter",
+            name: "OpenRouter",
+            description: "Access many models via single API",
+            requires_api_key: true,
+            is_native: false,
+        },
+        ChatProviderInfo {
+            id: "azure",
+            name: "Azure OpenAI",
+            description: "Azure-hosted OpenAI models",
+            requires_api_key: true,
+            is_native: true,
+        },
+        ChatProviderInfo {
+            id: "groq",
+            name: "Groq",
+            description: "Fast inference with Llama, Mixtral",
+            requires_api_key: true,
+            is_native: false,
+        },
+        ChatProviderInfo {
+            id: "together",
+            name: "Together.ai",
+            description: "Open models at scale",
+            requires_api_key: true,
+            is_native: false,
+        },
+        ChatProviderInfo {
+            id: "cohere",
+            name: "Cohere",
+            description: "Command R+, Command models",
+            requires_api_key: true,
+            is_native: false,
+        },
+        ChatProviderInfo {
+            id: "deepseek",
+            name: "DeepSeek",
+            description: "DeepSeek Coder, DeepSeek Chat",
+            requires_api_key: true,
+            is_native: false,
+        },
+        ChatProviderInfo {
+            id: "claude-code",
+            name: "Claude Code CLI",
+            description: "Uses existing Claude Code authentication",
+            requires_api_key: false,
+            is_native: false,
+        },
+        ChatProviderInfo {
+            id: "claude-desktop",
+            name: "Claude Desktop",
+            description: "Uses existing Claude Desktop app",
+            requires_api_key: false,
+            is_native: false,
+        },
+    ]
+}
 
 // ============================================================================
 // Chat Message Types (OpenAI Compatible)
@@ -273,6 +656,52 @@ impl MeilisearchChatClient {
             let error = response.text().await.unwrap_or_default();
             Err(format!("Failed to get workspace settings: {}", error))
         }
+    }
+
+    /// Configure a workspace with a specific chat provider
+    ///
+    /// This is a convenience method that converts a ChatProviderConfig to
+    /// Meilisearch settings and configures the workspace.
+    ///
+    /// # Arguments
+    /// * `workspace_id` - The workspace identifier
+    /// * `provider` - The chat provider configuration
+    /// * `proxy_url` - URL of the LLM proxy (for non-native providers)
+    /// * `custom_prompts` - Optional custom prompts to override defaults
+    pub async fn configure_workspace_with_provider(
+        &self,
+        workspace_id: &str,
+        provider: &ChatProviderConfig,
+        proxy_url: &str,
+        custom_prompts: Option<ChatPrompts>,
+    ) -> Result<(), String> {
+        // First ensure chat feature is enabled
+        self.enable_chat_feature().await?;
+
+        // Convert provider config to Meilisearch settings
+        let mut settings = provider.to_meilisearch_settings(proxy_url);
+
+        // Apply custom prompts if provided
+        if let Some(prompts) = custom_prompts {
+            settings.prompts = Some(prompts);
+        }
+
+        // Configure the workspace
+        self.configure_workspace(workspace_id, &settings).await?;
+
+        log::info!(
+            "Configured workspace '{}' with provider: {} (native: {})",
+            workspace_id,
+            provider.provider_id(),
+            !provider.requires_proxy()
+        );
+
+        Ok(())
+    }
+
+    /// Get the host URL
+    pub fn host(&self) -> &str {
+        &self.host
     }
 
     /// Create a chat completion with streaming
