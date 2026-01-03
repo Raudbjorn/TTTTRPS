@@ -4,6 +4,8 @@
 **Completed:** 2026-01-03
 **PR:** #12
 
+> **Note:** File paths in this document refer to the main project root (`src-tauri/...`), not the reference implementation in this directory.
+
 ## Overview
 
 Integrated the `claude-cdp` library to enable communication with Claude Desktop via Chrome DevTools Protocol (CDP). This provides an alternative to API-based Claude access.
@@ -58,9 +60,9 @@ Development convenience (not a first-class LLM provider):
 
 ### Platform Support
 
-- **Linux:** `/opt/Claude/claude`, `/opt/claude-desktop/claude`, `/usr/bin/claude`, `/usr/local/bin/claude`
 - **macOS:** `/Applications/Claude.app/Contents/MacOS/Claude`
-- **Windows:** `C:\Program Files\Claude\Claude.exe`, `C:\Program Files (x86)\Claude\Claude.exe`
+- **Windows:** `%LOCALAPPDATA%\Programs\Claude\Claude.exe`
+- **Linux:** No official desktop client. Paths configured speculatively: `/opt/Claude/claude`, `/opt/claude-desktop/claude`, `/usr/bin/claude`. CLI installs to `~/.local/bin/claude`.
 
 ## Reference Implementation
 

@@ -312,6 +312,30 @@ Original Python supports 21+ genres. Add:
 
 ---
 
+## Testing Requirements
+
+Each feature implementation should include appropriate testing:
+
+### Backend Testing
+- [ ] Unit tests for all new structs/managers (BudgetEnforcer, AlertSystem, etc.)
+- [ ] Integration tests for Tauri commands
+- [ ] Integration tests for database migrations (locations, plot_points, audit_log)
+- [ ] E2E tests for streaming response flow with cancellation
+- [ ] Performance benchmarks for StreamingManager throughput
+
+### Frontend Testing
+- [ ] Component tests for new UI components (chat, settings, combat tracker)
+- [ ] Integration tests for Tauri invoke calls
+- [ ] Visual regression tests for design system components
+
+### QA Validation
+- [ ] Cross-platform testing (Linux, macOS, Windows)
+- [ ] Provider integration testing (OpenAI, Claude, Gemini, Ollama)
+- [ ] Budget limit behavior validation
+- [ ] Streaming UX testing (latency, cancellation, error states)
+
+---
+
 ## Effort Estimates
 
 | Phase | Tasks | Est. Hours |
@@ -320,4 +344,5 @@ Original Python supports 21+ genres. Add:
 | Phase 2 (High) | 14 | 85-115 |
 | Phase 3 (Medium) | 14 | 90-120 |
 | Phase 4 (Low) | 3 | 20-30 |
-| **Total** | **34** | **235-320** |
+| Testing | - | 30-50 |
+| **Total** | **34** | **265-370** |
