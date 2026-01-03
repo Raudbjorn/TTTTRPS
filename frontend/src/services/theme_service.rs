@@ -388,7 +388,7 @@ impl ThemeDefinition {
             // Semantic colors
             success: [0.65, 0.15, 145.0, 1.0],
             warning: [0.75, 0.18, 65.0, 1.0],
-            error: [0.60, 0.20, 25.0, 1.0],
+            error: [0.70, 0.24, 25.0, 1.0],
 
             radius_sm: 4.0,
             radius_md: 8.0,
@@ -429,7 +429,7 @@ impl ThemeDefinition {
             // Semantic colors (shifted toward cosmic palette)
             success: [0.60, 0.12, 160.0, 1.0],
             warning: [0.65, 0.15, 80.0, 1.0],
-            error: [0.50, 0.15, 320.0, 1.0],
+            error: [0.60, 0.18, 320.0, 1.0],
 
             radius_sm: 2.0,
             radius_md: 4.0,
@@ -470,7 +470,7 @@ impl ThemeDefinition {
             // Semantic colors (terminal palette)
             success: [0.75, 0.15, 145.0, 1.0],
             warning: [0.75, 0.18, 80.0, 1.0],
-            error: [0.65, 0.20, 25.0, 1.0],
+            error: [0.70, 0.22, 25.0, 1.0],
 
             radius_sm: 0.0,
             radius_md: 0.0,
@@ -511,7 +511,7 @@ impl ThemeDefinition {
             // Semantic colors (muted)
             success: [0.55, 0.10, 145.0, 1.0],
             warning: [0.60, 0.12, 65.0, 1.0],
-            error: [0.55, 0.15, 25.0, 1.0],
+            error: [0.60, 0.18, 25.0, 1.0],
 
             radius_sm: 0.0,
             radius_md: 2.0,
@@ -552,7 +552,7 @@ impl ThemeDefinition {
             // Semantic colors (neon palette)
             success: [0.70, 0.18, 160.0, 1.0],
             warning: [0.75, 0.20, 55.0, 1.0],
-            error: [0.65, 0.22, 25.0, 1.0],
+            error: [0.70, 0.24, 25.0, 1.0],
 
             radius_sm: 0.0,
             radius_md: 4.0,

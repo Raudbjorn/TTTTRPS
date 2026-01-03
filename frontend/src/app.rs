@@ -13,12 +13,15 @@ use crate::components::character::CharacterCreator;
 use crate::components::analytics::{UsageDashboardPage, SearchAnalyticsPage, AuditLogsPage};
 use crate::services::layout_service::provide_layout_state;
 use crate::services::theme_service::{ThemeState, provide_theme_state};
+use crate::services::notification_service::provide_notification_state;
+use crate::components::design_system::ToastContainer;
 
 #[component]
 pub fn App() -> impl IntoView {
     // Provide global services
     provide_theme_state();
     provide_layout_state();
+    provide_notification_state();
 
     let theme_state = use_context::<ThemeState>();
 
@@ -64,6 +67,7 @@ pub fn App() -> impl IntoView {
         <Router>
             // Global Command Palette (Ctrl+K)
             <CommandPalette />
+            <ToastContainer />
 
             <MainShell
                 sidebar=|| view! {

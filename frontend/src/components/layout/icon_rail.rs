@@ -159,7 +159,7 @@ pub fn IconRail() -> impl IntoView {
                 // Sidebar Toggle
                 <button
                     class=move || format!(
-                        "w-10 h-10 rounded-lg flex items-center justify-center transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--accent)] {}",
+                        "w-10 h-10 rounded-md flex items-center justify-center transition-colors focus:outline-none focus:ring-1 focus:ring-[var(--accent)] {}",
                         if sidebar_visible.get() {
                             "text-[var(--accent)] bg-[var(--bg-surface)]"
                         } else {
@@ -177,7 +177,7 @@ pub fn IconRail() -> impl IntoView {
                 // Info Panel Toggle
                 <button
                     class=move || format!(
-                        "w-10 h-10 rounded-lg flex items-center justify-center transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--accent)] {}",
+                        "w-10 h-10 rounded-md flex items-center justify-center transition-colors focus:outline-none focus:ring-1 focus:ring-[var(--accent)] {}",
                         if infopanel_visible.get() {
                             "text-[var(--accent)] bg-[var(--bg-surface)]"
                         } else {
@@ -231,14 +231,14 @@ fn RailIcon(
     view! {
         <button
             class=move || format!(
-                "group relative w-full h-12 flex items-center justify-center cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--accent)] {}",
+                "group relative w-full h-12 flex items-center justify-center cursor-pointer transition-all duration-200 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-[var(--accent)] {}",
                 active_class.get()
             )
             aria-label=label
             aria-current=move || if active.get() { Some("page") } else { None }
             on:click=move |_| on_click.run(())
         >
-            <span class="text-xl" aria-hidden="true">
+            <span class="text-xl transform transition-transform group-hover:scale-110 duration-200" aria-hidden="true">
                 {match icon {
                     "home" => view! { <HomeIcon /> }.into_any(),
                     "folder" => view! { <FolderIcon /> }.into_any(),
@@ -250,14 +250,11 @@ fn RailIcon(
             </span>
 
             // Tooltip with proper positioning and accessibility
-            // Tooltip with proper positioning and accessibility
             <div
-                class="absolute left-16 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs px-3 py-1.5 rounded-md opacity-0 group-hover:opacity-100 group-hover:translate-x-0 -translate-x-2 group-focus:opacity-100 transition-all duration-200 whitespace-nowrap border border-white/10 shadow-xl z-[100] pointer-events-none"
+                class="absolute left-14 top-1/2 -translate-y-1/2 bg-[var(--bg-elevated)] text-[var(--text-primary)] text-xs font-medium px-2 py-1 rounded shadow-lg opacity-0 group-hover:opacity-100 group-hover:translate-x-1 group-focus:opacity-100 transition-all duration-200 whitespace-nowrap border border-[var(--border-subtle)] z-[100] pointer-events-none backdrop-blur-md"
                 role="tooltip"
             >
                 {tooltip_text}
-                // Tooltip arrow
-                <div class="absolute left-0 top-1/2 -translate-x-1 -translate-y-1/2 w-2 h-2 bg-gray-900 rotate-45"></div>
             </div>
         </button>
     }
@@ -268,7 +265,7 @@ fn RailIcon(
 #[component]
 fn HomeIcon() -> impl IntoView {
     view! {
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
             <polyline points="9 22 9 12 15 12 15 22"></polyline>
         </svg>
@@ -278,7 +275,7 @@ fn HomeIcon() -> impl IntoView {
 #[component]
 fn FolderIcon() -> impl IntoView {
     view! {
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
         </svg>
     }
@@ -287,7 +284,7 @@ fn FolderIcon() -> impl IntoView {
 #[component]
 fn MessageIcon() -> impl IntoView {
     view! {
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
         </svg>
     }
@@ -296,7 +293,7 @@ fn MessageIcon() -> impl IntoView {
 #[component]
 fn BookIcon() -> impl IntoView {
     view! {
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
             <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
         </svg>
@@ -306,7 +303,7 @@ fn BookIcon() -> impl IntoView {
 #[component]
 fn SettingsIcon() -> impl IntoView {
     view! {
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"></circle>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
         </svg>
@@ -316,7 +313,7 @@ fn SettingsIcon() -> impl IntoView {
 #[component]
 fn SidebarIcon() -> impl IntoView {
     view! {
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
             <line x1="9" y1="3" x2="9" y2="21"></line>
         </svg>
@@ -326,7 +323,7 @@ fn SidebarIcon() -> impl IntoView {
 #[component]
 fn InfoPanelIcon() -> impl IntoView {
     view! {
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
             <line x1="15" y1="3" x2="15" y2="21"></line>
         </svg>

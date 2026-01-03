@@ -9,7 +9,7 @@ pub fn Input(
     value: RwSignal<String>,
     /// Placeholder text
     #[prop(into, optional)]
-    placeholder: String,
+    placeholder: MaybeSignal<String>,
     /// Input change handler (called with the new value)
     #[prop(into, optional)]
     on_input: Option<Callback<String>>,
@@ -21,12 +21,18 @@ pub fn Input(
     disabled: bool,
     /// Input type (text, password, email, etc.)
     #[prop(into, optional)]
-    r#type: Option<String>,
+    r#type: MaybeSignal<String>,
     /// Additional CSS classes
     #[prop(into, optional)]
     class: String,
+    /// List attribute for datalist
+    #[prop(into, optional)]
+    list: Option<String>,
 ) -> impl IntoView {
-    let input_type = r#type.unwrap_or_else(|| "text".to_string());
+    let input_type = Signal::derive(move || {
+        let t = r#type.get();
+        if t.is_empty() { "text".to_string() } else { t }
+    });
 
     let base_class = "w-full p-2 rounded bg-gray-900 text-white border border-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors placeholder-gray-500 disabled:opacity-50 disabled:cursor-not-allowed";
 
@@ -49,12 +55,14 @@ pub fn Input(
     view! {
         <input
             class=full_class
-            type=input_type
+            type=move || input_type.get()
             prop:value=move || value.get()
-            placeholder=placeholder
+            placeholder=move || placeholder.get()
             disabled=disabled
+            list=list
             on:input=handle_input
             on:keydown=handle_keydown
         />
     }
 }
+

@@ -23,6 +23,8 @@ use leptos::prelude::*;
 use leptos::ev;
 use leptos::task::spawn_local;
 use wasm_bindgen::prelude::*;
+use crate::services::notification_service::{show_error, show_success, ToastAction};
+use std::sync::Arc;
 
 use crate::bindings::{
     check_meilisearch_health, ingest_document_with_progress, listen_event,
@@ -480,8 +482,13 @@ pub fn Library() -> impl IntoView {
                             ingestion_progress.set(1.0);
                         }
                         Err(e) => {
-                            ingestion_status.set(format!("Error: {}", e));
+                            ingestion_status.set(format!("Failed: {}", e));
                             ingestion_progress.set(0.0);
+                             show_error(
+                                "Ingestion Failed",
+                                Some(&format!("Could not process {}.\nReason: {}\n\nCheck file permissions or format.", filename, e)),
+                                None
+                            );
                         }
                     }
                     is_ingesting.set(false);
@@ -553,8 +560,10 @@ pub fn Library() -> impl IntoView {
                         </button>
 
                         <Button
-                            variant=ButtonVariant::Secondary
+                            variant=ButtonVariant::Ghost
                             on_click=handle_refresh
+                            class="p-2"
+                            title="Refresh search index status"
                         >
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -578,6 +587,8 @@ pub fn Library() -> impl IntoView {
                             on_click=handle_ingest
                             disabled=state.is_ingesting.get()
                             loading=state.is_ingesting.get()
+                            class="flex items-center gap-2"
+                            title="Import a new document into the library"
                         >
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -763,14 +774,14 @@ fn LibrarySidebar() -> impl IntoView {
                         <h3 class="font-medium text-[var(--text-primary)]">"Supported Formats"</h3>
                     </CardHeader>
                     <CardBody>
-                        <div class="flex flex-wrap gap-2">
-                            <Badge variant=BadgeVariant::Success>"PDF"</Badge>
-                            <Badge variant=BadgeVariant::Success>"EPUB"</Badge>
-                            <Badge variant=BadgeVariant::Success>"MOBI"</Badge>
-                            <Badge variant=BadgeVariant::Success>"AZW3"</Badge>
-                            <Badge variant=BadgeVariant::Success>"DOCX"</Badge>
-                            <Badge variant=BadgeVariant::Success>"MD"</Badge>
-                            <Badge variant=BadgeVariant::Success>"TXT"</Badge>
+                        <div class="grid grid-cols-3 gap-2">
+                            <div class="text-center"><Badge variant=BadgeVariant::Success class="w-full justify-center">"PDF"</Badge></div>
+                            <div class="text-center"><Badge variant=BadgeVariant::Success class="w-full justify-center">"EPUB"</Badge></div>
+                            <div class="text-center"><Badge variant=BadgeVariant::Success class="w-full justify-center">"MOBI"</Badge></div>
+                            <div class="text-center"><Badge variant=BadgeVariant::Success class="w-full justify-center">"AZW3"</Badge></div>
+                            <div class="text-center"><Badge variant=BadgeVariant::Success class="w-full justify-center">"DOCX"</Badge></div>
+                            <div class="text-center"><Badge variant=BadgeVariant::Success class="w-full justify-center">"MD"</Badge></div>
+                            <div class="text-center col-span-3"><Badge variant=BadgeVariant::Success class="w-full justify-center">"TXT"</Badge></div>
                         </div>
                     </CardBody>
                 </Card>

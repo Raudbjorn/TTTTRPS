@@ -16,32 +16,11 @@ use crate::bindings::{
     // Audio cache imports (TASK-005)
     get_audio_cache_stats, get_audio_cache_size, clear_audio_cache, prune_audio_cache,
     VoiceCacheStats, AudioCacheSizeInfo, format_bytes,
-    // Claude Code CLI imports
-    ClaudeCodeStatus, get_claude_code_status, claude_code_login, claude_code_install_skill,
 };
 use crate::components::design_system::{Badge, BadgeVariant, Button, ButtonVariant, Card, CardBody, CardHeader, Input, Select, Slider};
 use crate::services::theme_service::{ThemeState, ThemeWeights};
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/// Returns the static model list for Gemini CLI provider.
-/// These are the models available via the gemini CLI without API key.
-fn get_gemini_cli_models() -> Vec<ModelInfo> {
-    vec![
-        ModelInfo {
-            id: "gemini-2.5-pro".to_string(),
-            name: "Gemini 2.5 Pro".to_string(),
-            description: Some("1M token context, best for complex tasks".to_string()),
-        },
-        ModelInfo {
-            id: "gemini-2.5-flash".to_string(),
-            name: "Gemini 2.5 Flash".to_string(),
-            description: Some("Fast responses, good for quick tasks".to_string()),
-        },
-    ]
-}
+use crate::services::notification_service::{show_error, show_success, show_info, ToastAction};
+use std::sync::Arc;
 
 // ============================================================================
 // LLM Provider Enum
@@ -51,9 +30,7 @@ fn get_gemini_cli_models() -> Vec<ModelInfo> {
 pub enum LLMProvider {
     Ollama,
     Claude,
-    ClaudeCode,
     Gemini,
-    GeminiCli,
     OpenAI,
     OpenRouter,
     Mistral,
@@ -68,9 +45,7 @@ impl std::fmt::Display for LLMProvider {
         match self {
             LLMProvider::Ollama => write!(f, "Ollama (Local)"),
             LLMProvider::Claude => write!(f, "Claude (Anthropic)"),
-            LLMProvider::ClaudeCode => write!(f, "Claude Code (CLI)"),
             LLMProvider::Gemini => write!(f, "Gemini (Google)"),
-            LLMProvider::GeminiCli => write!(f, "Gemini CLI (Free)"),
             LLMProvider::OpenAI => write!(f, "OpenAI"),
             LLMProvider::OpenRouter => write!(f, "OpenRouter (400+ models)"),
             LLMProvider::Mistral => write!(f, "Mistral AI"),
@@ -87,9 +62,7 @@ impl LLMProvider {
         match self {
             LLMProvider::Ollama => "ollama".to_string(),
             LLMProvider::Claude => "claude".to_string(),
-            LLMProvider::ClaudeCode => "claude-code".to_string(),
             LLMProvider::Gemini => "gemini".to_string(),
-            LLMProvider::GeminiCli => "gemini-cli".to_string(),
             LLMProvider::OpenAI => "openai".to_string(),
             LLMProvider::OpenRouter => "openrouter".to_string(),
             LLMProvider::Mistral => "mistral".to_string(),
@@ -103,9 +76,7 @@ impl LLMProvider {
     fn from_string(s: &str) -> Self {
         match s {
             "Claude" | "claude" => LLMProvider::Claude,
-            "ClaudeCode" | "claude-code" => LLMProvider::ClaudeCode,
             "Gemini" | "gemini" => LLMProvider::Gemini,
-            "GeminiCli" | "gemini-cli" => LLMProvider::GeminiCli,
             "OpenAI" | "openai" => LLMProvider::OpenAI,
             "OpenRouter" | "openrouter" => LLMProvider::OpenRouter,
             "Mistral" | "mistral" => LLMProvider::Mistral,
@@ -119,16 +90,14 @@ impl LLMProvider {
 
     #[allow(dead_code)]
     fn requires_api_key(&self) -> bool {
-        !matches!(self, LLMProvider::Ollama | LLMProvider::ClaudeCode | LLMProvider::GeminiCli)
+        !matches!(self, LLMProvider::Ollama)
     }
 
     fn placeholder_text(&self) -> &'static str {
         match self {
             LLMProvider::Ollama => "http://localhost:11434",
             LLMProvider::Claude => "sk-ant-...",
-            LLMProvider::ClaudeCode => "(No API key needed)",
             LLMProvider::Gemini => "AIza...",
-            LLMProvider::GeminiCli => "Not required (uses Google account)",
             LLMProvider::OpenAI => "sk-...",
             LLMProvider::OpenRouter => "sk-or-...",
             LLMProvider::Mistral => "API Key",
@@ -143,9 +112,7 @@ impl LLMProvider {
         match self {
             LLMProvider::Ollama => "Ollama Host",
             LLMProvider::Claude => "Claude API Key",
-            LLMProvider::ClaudeCode => "Claude Code Status",
             LLMProvider::Gemini => "Gemini API Key",
-            LLMProvider::GeminiCli => "Gemini CLI Status",
             LLMProvider::OpenAI => "OpenAI API Key",
             LLMProvider::OpenRouter => "OpenRouter API Key",
             LLMProvider::Mistral => "Mistral API Key",
@@ -160,9 +127,7 @@ impl LLMProvider {
         match self {
             LLMProvider::Ollama => "llama3.2",
             LLMProvider::Claude => "claude-3-5-sonnet-20241022",
-            LLMProvider::ClaudeCode => "claude-sonnet-4-20250514",
             LLMProvider::Gemini => "gemini-1.5-pro",
-            LLMProvider::GeminiCli => "gemini-2.5-pro",
             LLMProvider::OpenAI => "gpt-4o",
             LLMProvider::OpenRouter => "openai/gpt-4o",
             LLMProvider::Mistral => "mistral-large-latest",
@@ -210,11 +175,6 @@ pub fn Settings() -> impl IntoView {
     let cloud_models = RwSignal::new(Vec::<ModelInfo>::new());
     let is_loading_models = RwSignal::new(false);
 
-    // Claude Code CLI status
-    let claude_code_status = RwSignal::new(ClaudeCodeStatus::default());
-    let is_claude_code_logging_in = RwSignal::new(false);
-    let is_claude_code_installing = RwSignal::new(false);
-
     // Theme state
     let theme_state = expect_context::<ThemeState>();
     let theme_value = RwSignal::new(
@@ -254,30 +214,51 @@ pub fn Settings() -> impl IntoView {
         theme_value.set("custom".to_string());
     };
 
-    // Provider select signal for the Select component
-    let provider_select_value = RwSignal::new("Ollama".to_string());
+use std::collections::HashMap;
+
+// ...
+
+    // Provider select signal for the Select component (Legacy, removed)
+    // let provider_select_value = RwSignal::new("Ollama".to_string());
+
+    // Smart Status State
+    let provider_statuses = RwSignal::new(HashMap::<String, bool>::new());
+
+    // Check all providers status
+    let check_providers = move || {
+        spawn_local(async move {
+            let mut statuses = HashMap::new();
+
+            // Check Ollama
+            if let Ok(models) = list_ollama_models("http://localhost:11434".to_string()).await {
+                 statuses.insert("ollama".to_string(), !models.is_empty());
+            } else {
+                 statuses.insert("ollama".to_string(), false);
+            }
+
+            // Check Clouds
+            let providers = vec!["claude", "openai", "gemini", "mistral", "groq", "together", "cohere", "deepseek", "openrouter"];
+            for p in providers {
+                if let Ok(Some(key)) = crate::bindings::get_api_key(p.to_string()).await {
+                    statuses.insert(p.to_string(), !key.is_empty());
+                } else {
+                    statuses.insert(p.to_string(), false);
+                }
+            }
+            provider_statuses.set(statuses);
+        });
+    };
 
     // Load existing config on mount
     Effect::new(move |_| {
+        check_providers();
         spawn_local(async move {
             // Load LLM config
             if let Ok(Some(config)) = get_llm_config().await {
                 let provider = LLMProvider::from_string(&config.provider);
                 selected_provider.set(provider.clone());
-                provider_select_value.set(match provider {
-                    LLMProvider::Ollama => "Ollama".to_string(),
-                    LLMProvider::Claude => "Claude".to_string(),
-                    LLMProvider::ClaudeCode => "ClaudeCode".to_string(),
-                    LLMProvider::Gemini => "Gemini".to_string(),
-                    LLMProvider::GeminiCli => "GeminiCli".to_string(),
-                    LLMProvider::OpenAI => "OpenAI".to_string(),
-                    LLMProvider::OpenRouter => "OpenRouter".to_string(),
-                    LLMProvider::Mistral => "Mistral".to_string(),
-                    LLMProvider::Groq => "Groq".to_string(),
-                    LLMProvider::Together => "Together".to_string(),
-                    LLMProvider::Cohere => "Cohere".to_string(),
-                    LLMProvider::DeepSeek => "DeepSeek".to_string(),
-                });
+                // provider_select_value removed
+                let _ = provider; // used above
 
                 match provider {
                     LLMProvider::Ollama => {
@@ -302,11 +283,6 @@ pub fn Settings() -> impl IntoView {
                             cloud_models.set(models);
                         }
                     }
-                    LLMProvider::GeminiCli => {
-                        // No API key needed - uses Google account auth
-                        api_key_or_host.set("Authenticated via Google account".to_string());
-                        cloud_models.set(get_gemini_cli_models());
-                    }
                     LLMProvider::OpenAI => {
                         api_key_or_host.set(String::new());
                         if let Ok(models) = list_openai_models(None).await {
@@ -328,10 +304,6 @@ pub fn Settings() -> impl IntoView {
                         if let Ok(models) = list_provider_models(provider.to_string_key()).await {
                             cloud_models.set(models);
                         }
-                    }
-                    LLMProvider::ClaudeCode => {
-                        // No API key needed for Claude Code
-                        api_key_or_host.set(String::new());
                     }
                 }
                 model_name.set(config.model);
@@ -396,11 +368,6 @@ pub fn Settings() -> impl IntoView {
                 health_status.set(Some(status));
             }
 
-            // Check Claude Code CLI status
-            if let Ok(status) = get_claude_code_status().await {
-                claude_code_status.set(status);
-            }
-
             // Check Meilisearch health
             if let Ok(status) = check_meilisearch_health().await {
                 meili_status.set(Some(status));
@@ -428,7 +395,6 @@ pub fn Settings() -> impl IntoView {
                 LLMProvider::Claude => list_claude_models(api_key).await.unwrap_or_default(),
                 LLMProvider::OpenAI => list_openai_models(api_key).await.unwrap_or_default(),
                 LLMProvider::Gemini => list_gemini_models(api_key).await.unwrap_or_default(),
-                LLMProvider::GeminiCli => get_gemini_cli_models(),
                 LLMProvider::OpenRouter => list_openrouter_models().await.unwrap_or_default(),
                 LLMProvider::Mistral
                 | LLMProvider::Groq
@@ -521,6 +487,7 @@ pub fn Settings() -> impl IntoView {
                             save_api_key("claude".to_string(), api_key_or_host_val.clone()).await
                         {
                             save_status.set(format!("Failed to save API key: {}", e));
+                            show_error("Validation Failed", Some("Could not save Claude API Key"), None);
                             is_saving.set(false);
                             return;
                         }
@@ -554,16 +521,6 @@ pub fn Settings() -> impl IntoView {
                         } else {
                             Some(api_key_or_host_val)
                         },
-                        host: None,
-                        model,
-                        embedding_model: None,
-                    }
-                }
-                "gemini-cli" => {
-                    // No API key needed for Gemini CLI - uses Google account auth
-                    LLMSettings {
-                        provider: "gemini-cli".to_string(),
-                        api_key: None,
                         host: None,
                         model,
                         embedding_model: None,
@@ -640,13 +597,15 @@ pub fn Settings() -> impl IntoView {
 
             match configure_llm(settings).await {
                 Ok(msg) => {
-                    save_status.set(msg);
+                    save_status.set(msg.clone());
+                    show_success("LLM Configured", Some(&msg));
                     if let Ok(status) = check_llm_health().await {
                         health_status.set(Some(status));
                     }
                 }
                 Err(e) => {
                     save_status.set(format!("Error: {}", e));
+                    show_error("Configuration Failed", Some(&e), None);
                     is_saving.set(false);
                     return;
                 }
@@ -706,6 +665,7 @@ pub fn Settings() -> impl IntoView {
 
             if let Err(e) = configure_voice(voice_config).await {
                 save_status.set(format!("Voice Config Error: {}", e));
+                show_error("Voice Config Failed", Some(&e), None);
                 is_saving.set(false);
                 return;
             }
@@ -726,67 +686,12 @@ pub fn Settings() -> impl IntoView {
                 model_name.set("llama3.2".to_string());
                 fetch_ollama_models("http://localhost:11434".to_string());
             }
-            LLMProvider::ClaudeCode => {
-                // No API key needed, just set default model
-                api_key_or_host.set(String::new());
-                model_name.set(provider.default_model().to_string());
-            }
-            LLMProvider::GeminiCli => {
-                // No API key needed - uses Google account auth
-                api_key_or_host.set("Authenticated via Google account".to_string());
-                model_name.set(provider.default_model().to_string());
-                fetch_cloud_models(provider, None);
-            }
             _ => {
                 api_key_or_host.set(String::new());
                 model_name.set(provider.default_model().to_string());
                 fetch_cloud_models(provider, None);
             }
         }
-    };
-
-    // Handle Claude Code login
-    let on_claude_code_login = move |_: ev::MouseEvent| {
-        is_claude_code_logging_in.set(true);
-        spawn_local(async move {
-            match claude_code_login().await {
-                Ok(()) => {
-                    // Refresh status after login
-                    if let Ok(status) = get_claude_code_status().await {
-                        claude_code_status.set(status);
-                    }
-                }
-                Err(e) => {
-                    // Update status to show error
-                    let mut status = claude_code_status.get();
-                    status.error = Some(format!("Login failed: {}", e));
-                    claude_code_status.set(status);
-                }
-            }
-            is_claude_code_logging_in.set(false);
-        });
-    };
-
-    // Handle Claude Code skill install
-    let on_claude_code_install_skill = move |_: ev::MouseEvent| {
-        is_claude_code_installing.set(true);
-        spawn_local(async move {
-            match claude_code_install_skill().await {
-                Ok(()) => {
-                    // Refresh status after install
-                    if let Ok(status) = get_claude_code_status().await {
-                        claude_code_status.set(status);
-                    }
-                }
-                Err(e) => {
-                    // Update status to show error
-                    let mut status = claude_code_status.get();
-                    status.error = Some(format!("Skill installation failed: {}", e));
-                    claude_code_status.set(status);
-                }
-            }
-            is_claude_code_installing.set(false);
-        });
     };
 
     // Handle voice provider change
@@ -832,13 +737,15 @@ pub fn Settings() -> impl IntoView {
         spawn_local(async move {
             match reindex_library(None).await {
                 Ok(msg) => {
-                    reindex_status.set(msg);
+                    reindex_status.set(msg.clone());
+                    show_success("Re-indexing complete", Some(&msg));
                     if let Ok(status) = check_meilisearch_health().await {
                         meili_status.set(Some(status));
                     }
                 }
                 Err(e) => {
                     reindex_status.set(format!("Error: {}", e));
+                    show_error("Re-indexing Failed", Some(&e), None);
                 }
             }
             is_reindexing.set(false);
@@ -860,13 +767,12 @@ pub fn Settings() -> impl IntoView {
     let placeholder_text = move || selected_provider.get().placeholder_text();
     let label_text = move || selected_provider.get().label_text();
     let input_type = move || {
-        if matches!(selected_provider.get(), LLMProvider::Ollama | LLMProvider::ClaudeCode | LLMProvider::GeminiCli) {
+        if matches!(selected_provider.get(), LLMProvider::Ollama) {
             "text"
         } else {
             "password"
         }
     };
-    let is_claude_code = move || matches!(selected_provider.get(), LLMProvider::ClaudeCode);
 
     view! {
         <div class="p-8 bg-theme-primary text-theme-primary min-h-screen font-sans transition-colors duration-300">
@@ -904,229 +810,150 @@ pub fn Settings() -> impl IntoView {
                         <h2 class="text-lg font-semibold">"LLM Configuration"</h2>
                     </CardHeader>
                     <CardBody class="space-y-4">
-                        // Provider Selection
-                        <div>
-                            <label class="block text-sm font-medium text-theme-secondary mb-1">
-                                "Provider"
-                            </label>
-                            <Select
-                                value=provider_select_value.get()
-                                on_change=Callback::new(on_provider_change)
-                            >
-                                <option value="Ollama" selected=move || matches!(selected_provider.get(), LLMProvider::Ollama)>
-                                    "Ollama (Local)"
-                                </option>
-                                <option value="OpenRouter" selected=move || matches!(selected_provider.get(), LLMProvider::OpenRouter)>
-                                    "OpenRouter (400+ models)"
-                                </option>
-                                <option value="Claude" selected=move || matches!(selected_provider.get(), LLMProvider::Claude)>
-                                    "Claude (Anthropic)"
-                                </option>
-                                <option value="ClaudeCode" selected=move || matches!(selected_provider.get(), LLMProvider::ClaudeCode)>
-                                    "Claude Code (CLI)"
-                                </option>
-                                <option value="OpenAI" selected=move || matches!(selected_provider.get(), LLMProvider::OpenAI)>
-                                    "OpenAI"
-                                </option>
-                                <option value="Gemini" selected=move || matches!(selected_provider.get(), LLMProvider::Gemini)>
-                                    "Gemini (Google)"
-                                </option>
-                                <option value="GeminiCli" selected=move || matches!(selected_provider.get(), LLMProvider::GeminiCli)>
-                                    "Gemini CLI (Free)"
-                                </option>
-                                <option value="Mistral" selected=move || matches!(selected_provider.get(), LLMProvider::Mistral)>
-                                    "Mistral AI"
-                                </option>
-                                <option value="Groq" selected=move || matches!(selected_provider.get(), LLMProvider::Groq)>
-                                    "Groq (Fast)"
-                                </option>
-                                <option value="Together" selected=move || matches!(selected_provider.get(), LLMProvider::Together)>
-                                    "Together AI"
-                                </option>
-                                <option value="Cohere" selected=move || matches!(selected_provider.get(), LLMProvider::Cohere)>
-                                    "Cohere"
-                                </option>
-                                <option value="DeepSeek" selected=move || matches!(selected_provider.get(), LLMProvider::DeepSeek)>
-                                    "DeepSeek"
-                                </option>
-                            </Select>
+                        // Provider Selection (Smart Grid)
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {move || {
+                                let current = selected_provider.get();
+                                let providers = vec![
+                                    LLMProvider::Ollama,
+                                    LLMProvider::Claude,
+                                    LLMProvider::OpenAI,
+                                    LLMProvider::Gemini,
+                                    LLMProvider::OpenRouter,
+                                    LLMProvider::Mistral,
+                                    LLMProvider::Groq,
+                                    LLMProvider::Together,
+                                    LLMProvider::Cohere,
+                                    LLMProvider::DeepSeek,
+                                ];
+
+                                providers.into_iter().map(|p| {
+                                    let is_selected = current == p;
+                                    let p_clone = p.clone();
+
+                                    // Status logic
+                                    let status_color = {
+                                        let statuses = provider_statuses.get();
+                                        let key = p.to_string_key();
+                                        if let Some(&is_ready) = statuses.get(&key) {
+                                            if is_ready { "text-green-400" } else { "text-gray-600" }
+                                        } else {
+                                            "text-gray-600"
+                                        }
+                                    };
+
+                                    // Tooltip title
+                                    let tooltip = if status_color == "text-green-400" {
+                                        "Ready"
+                                    } else {
+                                        if p == LLMProvider::Ollama { "Not detected (Run Ollama)" } else { "No API Key saved" }
+                                    };
+
+                                    view! {
+                                        <div
+                                            class=format!(
+                                                "p-3 rounded-lg border cursor-pointer transition-all duration-200 flex items-center justify-between {}",
+                                                if is_selected {
+                                                    "bg-[var(--bg-elevated)] border-[var(--accent)] shadow-md"
+                                                } else {
+                                                    "bg-transparent border-[var(--border-subtle)] hover:border-[var(--text-muted)] hover:bg-[var(--bg-surface)]"
+                                                }
+                                            )
+                                            on:click=move |_| {
+                                                if !is_selected {
+                                                    on_provider_change(p_clone.to_string_key());
+                                                }
+                                            }
+                                        >
+                                            <div class="flex items-center gap-2">
+                                                <div class=format!("w-2 h-2 rounded-full {}", status_color) />
+                                                <span class=if is_selected { "font-medium text-[var(--text-primary)]" } else { "text-[var(--text-secondary)]" }>
+                                                    {p.to_string()}
+                                                </span>
+                                            </div>
+                                            {if is_selected {
+                                                view! { <span class="text-[var(--accent)]">"●"</span> }.into_any()
+                                            } else {
+                                                view! { }.into_any()
+                                            }}
+                                        </div>
+                                    }
+                                }).collect_view()
+                            }}
                         </div>
 
-                        // Claude Code Status (shown when ClaudeCode selected)
-                        <Show when=move || is_claude_code()>
-                            <div class="p-3 rounded-lg bg-theme-secondary/20 border border-theme-border">
-                                {move || {
-                                    let status = claude_code_status.get();
-                                    if !status.installed {
-                                        // CLI not installed - show manual install instructions
-                                        view! {
-                                            <div class="space-y-2">
-                                                <div class="flex items-center gap-2 text-amber-500">
-                                                    <span class="text-lg">"!"</span>
-                                                    <span class="font-medium">"Claude Code CLI not installed"</span>
-                                                </div>
-                                                <p class="text-sm text-theme-secondary">
-                                                    "Install with: "
-                                                    <code class="bg-theme-secondary/30 px-1 rounded">"npm install -g @anthropic-ai/claude-code"</code>
-                                                </p>
-                                            </div>
-                                        }.into_any()
-                                    } else if !status.logged_in {
-                                        // CLI installed but not logged in
-                                        view! {
-                                            <div class="space-y-3">
-                                                <div class="flex items-center gap-2 text-amber-500">
-                                                    <span class="text-lg">"!"</span>
-                                                    <span class="font-medium">"Not logged in to Claude Code"</span>
-                                                </div>
-                                                {status.version.clone().map(|v| view! {
-                                                    <p class="text-xs text-theme-secondary">"Version: " {v}</p>
-                                                })}
-                                                <Button
-                                                    variant=ButtonVariant::Primary
-                                                    on_click=on_claude_code_login
-                                                    disabled=is_claude_code_logging_in.get()
-                                                >
-                                                    {move || if is_claude_code_logging_in.get() {
-                                                        "Logging in..."
-                                                    } else {
-                                                        "Login with Claude Code"
-                                                    }}
-                                                </Button>
-                                                {status.error.clone().map(|e| view! {
-                                                    <p class="text-xs text-red-400">{e}</p>
-                                                })}
-                                            </div>
-                                        }.into_any()
-                                    } else if !status.skill_installed {
-                                        // Logged in but skill not installed
-                                        view! {
-                                            <div class="space-y-3">
-                                                <div class="flex items-center gap-2 text-amber-500">
-                                                    <span class="text-lg">"!"</span>
-                                                    <span class="font-medium">"Bridge skill not installed"</span>
-                                                </div>
-                                                <p class="text-sm text-theme-secondary">
-                                                    "Install the claude-code-bridge skill to enable Claude-calling-Claude patterns."
-                                                </p>
-                                                <Button
-                                                    variant=ButtonVariant::Primary
-                                                    on_click=on_claude_code_install_skill
-                                                    disabled=is_claude_code_installing.get()
-                                                >
-                                                    {move || if is_claude_code_installing.get() {
-                                                        "Installing..."
-                                                    } else {
-                                                        "Install Bridge Skill"
-                                                    }}
-                                                </Button>
-                                                {status.error.clone().map(|e| view! {
-                                                    <p class="text-xs text-red-400">{e}</p>
-                                                })}
-                                            </div>
-                                        }.into_any()
-                                    } else {
-                                        // Fully configured
-                                        view! {
-                                            <div class="space-y-1">
-                                                <div class="flex items-center gap-2 text-green-500">
-                                                    <span class="text-lg">"*"</span>
-                                                    <span class="font-medium">"Connected to Claude Code"</span>
-                                                </div>
-                                                {status.user_email.clone().map(|email| view! {
-                                                    <p class="text-sm text-theme-secondary">"Logged in as: " {email}</p>
-                                                })}
-                                                {status.version.clone().map(|v| view! {
-                                                    <p class="text-xs text-theme-secondary">"Version: " {v}</p>
-                                                })}
-                                                <p class="text-xs text-green-400">"Bridge skill installed"</p>
-                                            </div>
-                                        }.into_any()
-                                    }
-                                }}
-                            </div>
-                        </Show>
-
-                        // API Key / Host (hidden for Claude Code)
-                        <Show when=move || !is_claude_code()>
-                            <div>
-                                <label class="block text-sm font-medium text-theme-secondary mb-1">
-                                    {label_text}
-                                </label>
-                                <Input
-                                    value=api_key_or_host
-                                    placeholder=placeholder_text()
-                                    r#type=input_type()
-                                />
-                            </div>
-                        </Show>
+                        // API Key / Host
+                        <div>
+                            <label class="block text-sm font-medium text-theme-secondary mb-1">
+                                {label_text}
+                            </label>
+                            <Input
+                                value=api_key_or_host
+                                placeholder=placeholder_text()
+                                r#type=input_type()
+                            />
+                        </div>
 
                         // Model Selection
                         <div>
                             <label class="block text-sm font-medium text-theme-secondary mb-1">
                                 "Model"
                             </label>
-                            <select
-                                class="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:border-purple-500 outline-none"
-                                prop:value=move || model_name.get()
-                                on:change=move |e| model_name.set(event_target_value(&e))
-                            >
-                                {move || {
-                                    if is_ollama() {
-                                        let models = ollama_models.get();
-                                        if models.is_empty() {
+                            {move || {
+                                let is_ollama_provider = is_ollama();
+                                let current_model = model_name.get();
+                                let models = ollama_models.get();
+
+                                // Check if model exists in list (for Ollama)
+                                let model_missing = is_ollama_provider && !models.iter().any(|m| m.name == current_model) && !models.is_empty();
+
+                                view! {
+                                    <div class="space-y-2">
+                                        <Input
+                                            value=model_name
+                                            placeholder="Enter model name (e.g. llama3)"
+                                            list="model-suggestions"
+                                        />
+                                        <datalist id="model-suggestions">
+                                            {move || {
+                                                if is_ollama() {
+                                                    ollama_models.get().into_iter().map(|m| {
+                                                        view! { <option value=m.name>{format!("{} ({})", m.name, m.parameter_size.unwrap_or_default())}</option> }
+                                                    }).collect_view()
+                                                } else {
+                                                    cloud_models.get().into_iter().map(|m| {
+                                                        view! { <option value=m.id>{m.name}</option> }
+                                                    }).collect_view()
+                                                }
+                                            }}
+                                        </datalist>
+
+                                        {if model_missing {
                                             view! {
-                                                <option value=model_name.get()>
-                                                    {model_name.get()}
-                                                </option>
+                                                <div class="flex items-center gap-3 p-3 bg-blue-900/30 border border-blue-500/30 rounded-lg text-sm">
+                                                    <span class="text-blue-200">"Model not found locally."</span>
+                                                    <Button
+                                                        variant=ButtonVariant::Primary
+                                                        class="text-xs px-2 py-1 h-auto"
+                                                        on_click=move |_| {
+                                                            let cmd = format!("ollama pull {}", current_model);
+                                                            // Show instructions
+                                                            let _ = show_info(
+                                                                "Download Instructions",
+                                                                Some(&format!("Run this in your terminal:\n\n{}", cmd))
+                                                            );
+                                                        }
+                                                    >
+                                                        "How to Download"
+                                                    </Button>
+                                                </div>
                                             }.into_any()
                                         } else {
-                                            models.iter().map(|m| {
-                                                let name = m.name.clone();
-                                                let display = if let Some(ref size) = m.size {
-                                                    format!("{} ({})", m.name, size)
-                                                } else {
-                                                    m.name.clone()
-                                                };
-                                                view! {
-                                                    <option
-                                                        value=name.clone()
-                                                        selected=move || model_name.get() == name
-                                                    >
-                                                        {display}
-                                                    </option>
-                                                }
-                                            }).collect_view().into_any()
-                                        }
-                                    } else {
-                                        let models = cloud_models.get();
-                                        if models.is_empty() {
-                                            view! {
-                                                <option value=model_name.get()>
-                                                    {model_name.get()}
-                                                </option>
-                                            }.into_any()
-                                        } else {
-                                            models.iter().map(|m| {
-                                                let id = m.id.clone();
-                                                let display = if let Some(ref desc) = m.description {
-                                                    format!("{} - {}", m.name, desc)
-                                                } else {
-                                                    m.name.clone()
-                                                };
-                                                view! {
-                                                    <option
-                                                        value=id.clone()
-                                                        selected=move || model_name.get() == id
-                                                    >
-                                                        {display}
-                                                    </option>
-                                                }
-                                            }).collect_view().into_any()
-                                        }
-                                    }
-                                }}
-                            </select>
+                                            view! { }.into_any()
+                                        }}
+                                    </div>
+                                }
+                            }}
                         </div>
 
                         // Embedding Model (Ollama only)
@@ -1320,7 +1147,44 @@ pub fn Settings() -> impl IntoView {
                                     <Input
                                         value=voice_model_id
                                         placeholder="bark".to_string()
+                                        list="voice-model-suggestions"
                                     />
+                                    <datalist id="voice-model-suggestions">
+                                        {move || {
+                                            ollama_models.get().into_iter().map(|m| {
+                                                view! { <option value=m.name>{format!("{} ({})", m.name, m.parameter_size.unwrap_or_default())}</option> }
+                                            }).collect_view()
+                                        }}
+                                    </datalist>
+
+                                    {move || {
+                                        let current = voice_model_id.get();
+                                        let models = ollama_models.get();
+                                        let missing = !models.iter().any(|m| m.name == current) && !models.is_empty() && !current.is_empty();
+
+                                        if missing {
+                                            view! {
+                                                <div class="mt-2 flex items-center gap-3 p-3 bg-blue-900/30 border border-blue-500/30 rounded-lg text-sm">
+                                                    <span class="text-blue-200">"Voice model not found."</span>
+                                                    <Button
+                                                        variant=ButtonVariant::Primary
+                                                        class="text-xs px-2 py-1 h-auto"
+                                                        on_click=move |_| {
+                                                            let cmd = format!("ollama pull {}", current);
+                                                            let _ = show_info(
+                                                                "Download Instructions",
+                                                                Some(&format!("Run this in your terminal:\n\n{}", cmd))
+                                                            );
+                                                        }
+                                                    >
+                                                        "How to Download"
+                                                    </Button>
+                                                </div>
+                                            }.into_any()
+                                        } else {
+                                            view! { }.into_any()
+                                        }
+                                    }}
                                 </div>
                             </Show>
                         </Show>
