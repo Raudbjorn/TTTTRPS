@@ -237,7 +237,7 @@ match client.prompt("...").await {
 | **Auth** | Anthropic API key | Google account (free!) |
 | **Context Window** | 200K tokens | 1M tokens |
 | **Search** | Web search tool | Native Google Search |
-| **Free Tier** | No | 1000 req/day |
+| **Free Tier** | No (paid API key required) | 1000 req/day |
 | **YOLO Mode** | `--dangerously-skip-permissions` | `--yolo` |
 | **Best For** | Coding, reasoning | Search, large context |
 

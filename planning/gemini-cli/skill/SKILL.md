@@ -21,7 +21,7 @@ Delegate tasks to Google's Gemini CLI from any context.
 |---------|-------------|------------|
 | **Search** | Web search tool | Native Google Search |
 | **Context** | 200K tokens | 1M tokens |
-| **Free tier** | API key required | 1000 req/day free |
+| **Free Tier** | API key required | 1000 req/day free |
 | **Strengths** | Coding, analysis | Search, multimodal |
 
 ## Usage Patterns

@@ -34,7 +34,7 @@ use crate::core::llm::router::{
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::process::Stdio;
+use std::process::{Command as StdCommand, Stdio};
 use std::time::Instant;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
@@ -247,8 +247,8 @@ impl GeminiCliProvider {
                         } else if check_output.status.success() || stdout.contains("response") {
                             (true, true, format!("Gemini CLI {} ready", version))
                         } else {
-                            // Unknown state, assume authenticated but there might be an issue
-                            (true, true, format!("Gemini CLI {} installed", version))
+                            // Unknown state - don't assume authenticated, may be in error state
+                            (true, false, format!("Gemini CLI {} installed (status unclear, try running 'gemini')", version))
                         }
                     }
                     Err(_) => {
@@ -271,8 +271,6 @@ impl GeminiCliProvider {
     /// Returns the child process handle for the spawned terminal.
     #[cfg(target_os = "linux")]
     pub fn launch_login() -> std::io::Result<std::process::Child> {
-        use std::process::Command as StdCommand;
-
         // Try common terminal emulators
         let terminals = ["kitty", "gnome-terminal", "konsole", "xterm", "x-terminal-emulator"];
 
@@ -306,8 +304,6 @@ impl GeminiCliProvider {
 
     #[cfg(target_os = "macos")]
     pub fn launch_login() -> std::io::Result<std::process::Child> {
-        use std::process::Command as StdCommand;
-
         // Use osascript to open Terminal and run gemini
         StdCommand::new("osascript")
             .args([
@@ -321,8 +317,6 @@ impl GeminiCliProvider {
 
     #[cfg(target_os = "windows")]
     pub fn launch_login() -> std::io::Result<std::process::Child> {
-        use std::process::Command as StdCommand;
-
         StdCommand::new("cmd")
             .args(["/c", "start", "cmd", "/k", "gemini"])
             .spawn()
