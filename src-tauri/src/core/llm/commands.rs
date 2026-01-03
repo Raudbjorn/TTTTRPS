@@ -60,6 +60,8 @@ pub enum AddProviderRequest {
     Together { api_key: String, model: String },
     Cohere { api_key: String, model: String },
     DeepSeek { api_key: String, model: String },
+    /// Gemini CLI - uses Google account auth, no API key needed
+    GeminiCli { model: Option<String>, timeout_secs: Option<u64> },
 }
 
 impl AddProviderRequest {
@@ -104,6 +106,12 @@ impl AddProviderRequest {
             }
             AddProviderRequest::DeepSeek { api_key, model } => {
                 ProviderConfig::DeepSeek { api_key: api_key.clone(), model: model.clone() }
+            }
+            AddProviderRequest::GeminiCli { model, timeout_secs } => {
+                ProviderConfig::GeminiCli {
+                    model: model.clone().unwrap_or_else(|| "gemini-2.5-pro".to_string()),
+                    timeout_secs: timeout_secs.unwrap_or(120),
+                }
             }
         }
     }
@@ -389,6 +397,42 @@ pub async fn cancel_stream(router: &RwLock<LLMRouter>, stream_id: &str) -> Resul
 pub async fn get_active_streams(router: &RwLock<LLMRouter>) -> Result<Vec<String>, String> {
     let r = router.read().await;
     Ok(r.active_stream_ids().await)
+}
+
+// ============================================================================
+// Gemini CLI Status Commands
+// ============================================================================
+
+/// Response for Gemini CLI status check
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeminiCliStatus {
+    /// Whether the CLI is installed
+    pub is_installed: bool,
+    /// Whether the user is authenticated
+    pub is_authenticated: bool,
+    /// Human-readable status message
+    pub message: String,
+}
+
+/// Check the Gemini CLI installation and authentication status
+pub async fn check_gemini_cli_status() -> GeminiCliStatus {
+    use super::providers::GeminiCliProvider;
+
+    let (is_installed, is_authenticated, message) = GeminiCliProvider::check_status().await;
+    GeminiCliStatus {
+        is_installed,
+        is_authenticated,
+        message,
+    }
+}
+
+/// Launch Gemini CLI for authentication
+pub fn launch_gemini_cli_login() -> Result<(), String> {
+    use super::providers::GeminiCliProvider;
+
+    GeminiCliProvider::launch_login()
+        .map(|_| ())
+        .map_err(|e| format!("Failed to launch Gemini CLI: {}", e))
 }
 
 // ============================================================================

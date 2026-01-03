@@ -320,7 +320,7 @@ pub async fn chat(
             LLMConfig::Together { api_key, .. } => api_key.clone(),
             LLMConfig::Cohere { api_key, .. } => api_key.clone(),
             LLMConfig::DeepSeek { api_key, .. } => api_key.clone(),
-            LLMConfig::Ollama { .. } | LLMConfig::ClaudeDesktop { .. } => String::new(),
+            LLMConfig::Ollama { .. } | LLMConfig::ClaudeDesktop { .. } | LLMConfig::GeminiCli { .. } => String::new(),
         };
 
         let model = match &config {
@@ -335,6 +335,7 @@ pub async fn chat(
             LLMConfig::DeepSeek { model, .. } => model.clone(),
             LLMConfig::Ollama { model, .. } => model.clone(),
             LLMConfig::ClaudeDesktop { .. } => "claude-desktop".to_string(),
+            LLMConfig::GeminiCli { model, .. } => model.clone(),
         };
 
         // Initialize the DM chat workspace (idempotent)
@@ -515,6 +516,13 @@ pub fn get_llm_config(state: State<'_, AppState>) -> Result<Option<LLMSettings>,
             api_key: None, // No API key needed - uses Claude Desktop auth
             host: Some(format!("localhost:{}", port)),
             model: "claude-desktop".to_string(),
+            embedding_model: None,
+        },
+        LLMConfig::GeminiCli { model, .. } => LLMSettings {
+            provider: "gemini-cli".to_string(),
+            api_key: None, // No API key needed - uses Google account auth
+            host: None,
+            model: model.clone(),
             embedding_model: None,
         },
     }))
@@ -2339,7 +2347,8 @@ pub async fn speak(text: String, state: State<'_, AppState>) -> Result<(), Strin
                 LLMConfig::Together { .. } |
                 LLMConfig::Cohere { .. } |
                 LLMConfig::DeepSeek { .. } |
-                LLMConfig::ClaudeDesktop { .. } => VoiceConfig::default(),
+                LLMConfig::ClaudeDesktop { .. } |
+                LLMConfig::GeminiCli { .. } => VoiceConfig::default(),
             }
         } else {
              VoiceConfig::default()
