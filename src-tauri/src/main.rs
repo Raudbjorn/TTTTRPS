@@ -415,6 +415,12 @@ fn main() {
             commands::claude_desktop_send_message,
             commands::configure_claude_desktop,
 
+            // Claude Code CLI Commands
+            commands::get_claude_code_status,
+            commands::claude_code_login,
+            commands::claude_code_logout,
+            commands::claude_code_install_skill,
+
             // Gemini CLI Status & Extension Commands
             commands::check_gemini_cli_status,
             commands::launch_gemini_cli_login,

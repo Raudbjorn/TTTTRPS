@@ -236,6 +236,11 @@ pub async fn configure_llm(
             api_key: settings.api_key.clone().ok_or("DeepSeek requires an API key")?,
             model: settings.model,
         },
+        "claude-code" => LLMConfig::ClaudeCode {
+            timeout_secs: 300, // 5 minute default
+            model: if settings.model.is_empty() { None } else { Some(settings.model) },
+            working_dir: None, // Not needed for TTRPG prompts (no file operations)
+        },
         _ => return Err(format!("Unknown provider: {}", settings.provider)),
     };
 
@@ -320,7 +325,7 @@ pub async fn chat(
             LLMConfig::Together { api_key, .. } => api_key.clone(),
             LLMConfig::Cohere { api_key, .. } => api_key.clone(),
             LLMConfig::DeepSeek { api_key, .. } => api_key.clone(),
-            LLMConfig::Ollama { .. } | LLMConfig::ClaudeDesktop { .. } | LLMConfig::GeminiCli { .. } => String::new(),
+            LLMConfig::Ollama { .. } | LLMConfig::ClaudeDesktop { .. } | LLMConfig::ClaudeCode { .. } | LLMConfig::GeminiCli { .. } => String::new(),
         };
 
         let model = match &config {
@@ -335,6 +340,7 @@ pub async fn chat(
             LLMConfig::DeepSeek { model, .. } => model.clone(),
             LLMConfig::Ollama { model, .. } => model.clone(),
             LLMConfig::ClaudeDesktop { .. } => "claude-desktop".to_string(),
+            LLMConfig::ClaudeCode { model, .. } => model.clone().unwrap_or_else(|| "claude-code".to_string()),
             LLMConfig::GeminiCli { model, .. } => model.clone(),
         };
 
@@ -516,6 +522,13 @@ pub fn get_llm_config(state: State<'_, AppState>) -> Result<Option<LLMSettings>,
             api_key: None, // No API key needed - uses Claude Desktop auth
             host: Some(format!("localhost:{}", port)),
             model: "claude-desktop".to_string(),
+            embedding_model: None,
+        },
+        LLMConfig::ClaudeCode { model, .. } => LLMSettings {
+            provider: "claude-code".to_string(),
+            api_key: None, // No API key needed - uses Claude Code auth
+            host: None,
+            model: model.clone().unwrap_or_else(|| "claude-code".to_string()),
             embedding_model: None,
         },
         LLMConfig::GeminiCli { model, .. } => LLMSettings {
@@ -2348,6 +2361,7 @@ pub async fn speak(text: String, state: State<'_, AppState>) -> Result<(), Strin
                 LLMConfig::Cohere { .. } |
                 LLMConfig::DeepSeek { .. } |
                 LLMConfig::ClaudeDesktop { .. } |
+                LLMConfig::ClaudeCode { .. } |
                 LLMConfig::GeminiCli { .. } => VoiceConfig::default(),
             }
         } else {
@@ -5623,6 +5637,34 @@ pub async fn configure_claude_desktop(
     let guard = manager.read().await;
     guard.update_config(port, timeout_secs).await;
     Ok(())
+}
+
+// ============================================================================
+// Claude Code CLI Commands
+// ============================================================================
+
+/// Get Claude Code CLI status (installed, logged in, version).
+#[tauri::command]
+pub async fn get_claude_code_status() -> crate::core::llm::providers::ClaudeCodeStatus {
+    crate::core::llm::providers::ClaudeCodeProvider::get_status().await
+}
+
+/// Spawn the Claude Code login flow (opens browser for OAuth).
+#[tauri::command]
+pub async fn claude_code_login() -> Result<(), String> {
+    crate::core::llm::providers::ClaudeCodeProvider::login().await
+}
+
+/// Logout from Claude Code.
+#[tauri::command]
+pub async fn claude_code_logout() -> Result<(), String> {
+    crate::core::llm::providers::ClaudeCodeProvider::logout().await
+}
+
+/// Install the claude-code-bridge skill to Claude Code.
+#[tauri::command]
+pub async fn claude_code_install_skill() -> Result<(), String> {
+    crate::core::llm::providers::ClaudeCodeProvider::install_skill().await
 }
 
 // ============================================================================

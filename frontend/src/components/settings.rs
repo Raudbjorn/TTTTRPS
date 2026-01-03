@@ -16,6 +16,8 @@ use crate::bindings::{
     // Audio cache imports (TASK-005)
     get_audio_cache_stats, get_audio_cache_size, clear_audio_cache, prune_audio_cache,
     VoiceCacheStats, AudioCacheSizeInfo, format_bytes,
+    // Claude Code CLI imports
+    ClaudeCodeStatus, get_claude_code_status, claude_code_login, claude_code_install_skill,
 };
 use crate::components::design_system::{Badge, BadgeVariant, Button, ButtonVariant, Card, CardBody, CardHeader, Input, Select, Slider};
 use crate::services::theme_service::{ThemeState, ThemeWeights};
@@ -49,6 +51,7 @@ fn get_gemini_cli_models() -> Vec<ModelInfo> {
 pub enum LLMProvider {
     Ollama,
     Claude,
+    ClaudeCode,
     Gemini,
     GeminiCli,
     OpenAI,
@@ -65,6 +68,7 @@ impl std::fmt::Display for LLMProvider {
         match self {
             LLMProvider::Ollama => write!(f, "Ollama (Local)"),
             LLMProvider::Claude => write!(f, "Claude (Anthropic)"),
+            LLMProvider::ClaudeCode => write!(f, "Claude Code (CLI)"),
             LLMProvider::Gemini => write!(f, "Gemini (Google)"),
             LLMProvider::GeminiCli => write!(f, "Gemini CLI (Free)"),
             LLMProvider::OpenAI => write!(f, "OpenAI"),
@@ -83,6 +87,7 @@ impl LLMProvider {
         match self {
             LLMProvider::Ollama => "ollama".to_string(),
             LLMProvider::Claude => "claude".to_string(),
+            LLMProvider::ClaudeCode => "claude-code".to_string(),
             LLMProvider::Gemini => "gemini".to_string(),
             LLMProvider::GeminiCli => "gemini-cli".to_string(),
             LLMProvider::OpenAI => "openai".to_string(),
@@ -98,6 +103,7 @@ impl LLMProvider {
     fn from_string(s: &str) -> Self {
         match s {
             "Claude" | "claude" => LLMProvider::Claude,
+            "ClaudeCode" | "claude-code" => LLMProvider::ClaudeCode,
             "Gemini" | "gemini" => LLMProvider::Gemini,
             "GeminiCli" | "gemini-cli" => LLMProvider::GeminiCli,
             "OpenAI" | "openai" => LLMProvider::OpenAI,
@@ -113,13 +119,14 @@ impl LLMProvider {
 
     #[allow(dead_code)]
     fn requires_api_key(&self) -> bool {
-        !matches!(self, LLMProvider::Ollama | LLMProvider::GeminiCli)
+        !matches!(self, LLMProvider::Ollama | LLMProvider::ClaudeCode | LLMProvider::GeminiCli)
     }
 
     fn placeholder_text(&self) -> &'static str {
         match self {
             LLMProvider::Ollama => "http://localhost:11434",
             LLMProvider::Claude => "sk-ant-...",
+            LLMProvider::ClaudeCode => "(No API key needed)",
             LLMProvider::Gemini => "AIza...",
             LLMProvider::GeminiCli => "Not required (uses Google account)",
             LLMProvider::OpenAI => "sk-...",
@@ -136,6 +143,7 @@ impl LLMProvider {
         match self {
             LLMProvider::Ollama => "Ollama Host",
             LLMProvider::Claude => "Claude API Key",
+            LLMProvider::ClaudeCode => "Claude Code Status",
             LLMProvider::Gemini => "Gemini API Key",
             LLMProvider::GeminiCli => "Gemini CLI Status",
             LLMProvider::OpenAI => "OpenAI API Key",
@@ -152,6 +160,7 @@ impl LLMProvider {
         match self {
             LLMProvider::Ollama => "llama3.2",
             LLMProvider::Claude => "claude-3-5-sonnet-20241022",
+            LLMProvider::ClaudeCode => "claude-sonnet-4-20250514",
             LLMProvider::Gemini => "gemini-1.5-pro",
             LLMProvider::GeminiCli => "gemini-2.5-pro",
             LLMProvider::OpenAI => "gpt-4o",
@@ -200,6 +209,11 @@ pub fn Settings() -> impl IntoView {
     let ollama_models = RwSignal::new(Vec::<OllamaModel>::new());
     let cloud_models = RwSignal::new(Vec::<ModelInfo>::new());
     let is_loading_models = RwSignal::new(false);
+
+    // Claude Code CLI status
+    let claude_code_status = RwSignal::new(ClaudeCodeStatus::default());
+    let is_claude_code_logging_in = RwSignal::new(false);
+    let is_claude_code_installing = RwSignal::new(false);
 
     // Theme state
     let theme_state = expect_context::<ThemeState>();
@@ -253,6 +267,7 @@ pub fn Settings() -> impl IntoView {
                 provider_select_value.set(match provider {
                     LLMProvider::Ollama => "Ollama".to_string(),
                     LLMProvider::Claude => "Claude".to_string(),
+                    LLMProvider::ClaudeCode => "ClaudeCode".to_string(),
                     LLMProvider::Gemini => "Gemini".to_string(),
                     LLMProvider::GeminiCli => "GeminiCli".to_string(),
                     LLMProvider::OpenAI => "OpenAI".to_string(),
@@ -313,6 +328,10 @@ pub fn Settings() -> impl IntoView {
                         if let Ok(models) = list_provider_models(provider.to_string_key()).await {
                             cloud_models.set(models);
                         }
+                    }
+                    LLMProvider::ClaudeCode => {
+                        // No API key needed for Claude Code
+                        api_key_or_host.set(String::new());
                     }
                 }
                 model_name.set(config.model);
@@ -375,6 +394,11 @@ pub fn Settings() -> impl IntoView {
             // Check LLM health
             if let Ok(status) = check_llm_health().await {
                 health_status.set(Some(status));
+            }
+
+            // Check Claude Code CLI status
+            if let Ok(status) = get_claude_code_status().await {
+                claude_code_status.set(status);
             }
 
             // Check Meilisearch health
@@ -702,6 +726,11 @@ pub fn Settings() -> impl IntoView {
                 model_name.set("llama3.2".to_string());
                 fetch_ollama_models("http://localhost:11434".to_string());
             }
+            LLMProvider::ClaudeCode => {
+                // No API key needed, just set default model
+                api_key_or_host.set(String::new());
+                model_name.set(provider.default_model().to_string());
+            }
             LLMProvider::GeminiCli => {
                 // No API key needed - uses Google account auth
                 api_key_or_host.set("Authenticated via Google account".to_string());
@@ -714,6 +743,50 @@ pub fn Settings() -> impl IntoView {
                 fetch_cloud_models(provider, None);
             }
         }
+    };
+
+    // Handle Claude Code login
+    let on_claude_code_login = move |_: ev::MouseEvent| {
+        is_claude_code_logging_in.set(true);
+        spawn_local(async move {
+            match claude_code_login().await {
+                Ok(()) => {
+                    // Refresh status after login
+                    if let Ok(status) = get_claude_code_status().await {
+                        claude_code_status.set(status);
+                    }
+                }
+                Err(e) => {
+                    // Update status to show error
+                    let mut status = claude_code_status.get();
+                    status.error = Some(format!("Login failed: {}", e));
+                    claude_code_status.set(status);
+                }
+            }
+            is_claude_code_logging_in.set(false);
+        });
+    };
+
+    // Handle Claude Code skill install
+    let on_claude_code_install_skill = move |_: ev::MouseEvent| {
+        is_claude_code_installing.set(true);
+        spawn_local(async move {
+            match claude_code_install_skill().await {
+                Ok(()) => {
+                    // Refresh status after install
+                    if let Ok(status) = get_claude_code_status().await {
+                        claude_code_status.set(status);
+                    }
+                }
+                Err(e) => {
+                    // Update status to show error
+                    let mut status = claude_code_status.get();
+                    status.error = Some(format!("Skill installation failed: {}", e));
+                    claude_code_status.set(status);
+                }
+            }
+            is_claude_code_installing.set(false);
+        });
     };
 
     // Handle voice provider change
@@ -787,12 +860,13 @@ pub fn Settings() -> impl IntoView {
     let placeholder_text = move || selected_provider.get().placeholder_text();
     let label_text = move || selected_provider.get().label_text();
     let input_type = move || {
-        if matches!(selected_provider.get(), LLMProvider::Ollama | LLMProvider::GeminiCli) {
+        if matches!(selected_provider.get(), LLMProvider::Ollama | LLMProvider::ClaudeCode | LLMProvider::GeminiCli) {
             "text"
         } else {
             "password"
         }
     };
+    let is_claude_code = move || matches!(selected_provider.get(), LLMProvider::ClaudeCode);
 
     view! {
         <div class="p-8 bg-theme-primary text-theme-primary min-h-screen font-sans transition-colors duration-300">
@@ -848,6 +922,9 @@ pub fn Settings() -> impl IntoView {
                                 <option value="Claude" selected=move || matches!(selected_provider.get(), LLMProvider::Claude)>
                                     "Claude (Anthropic)"
                                 </option>
+                                <option value="ClaudeCode" selected=move || matches!(selected_provider.get(), LLMProvider::ClaudeCode)>
+                                    "Claude Code (CLI)"
+                                </option>
                                 <option value="OpenAI" selected=move || matches!(selected_provider.get(), LLMProvider::OpenAI)>
                                     "OpenAI"
                                 </option>
@@ -875,17 +952,114 @@ pub fn Settings() -> impl IntoView {
                             </Select>
                         </div>
 
-                        // API Key / Host
-                        <div>
-                            <label class="block text-sm font-medium text-theme-secondary mb-1">
-                                {label_text}
-                            </label>
-                            <Input
-                                value=api_key_or_host
-                                placeholder=placeholder_text()
-                                r#type=input_type()
-                            />
-                        </div>
+                        // Claude Code Status (shown when ClaudeCode selected)
+                        <Show when=move || is_claude_code()>
+                            <div class="p-3 rounded-lg bg-theme-secondary/20 border border-theme-border">
+                                {move || {
+                                    let status = claude_code_status.get();
+                                    if !status.installed {
+                                        // CLI not installed - show manual install instructions
+                                        view! {
+                                            <div class="space-y-2">
+                                                <div class="flex items-center gap-2 text-amber-500">
+                                                    <span class="text-lg">"!"</span>
+                                                    <span class="font-medium">"Claude Code CLI not installed"</span>
+                                                </div>
+                                                <p class="text-sm text-theme-secondary">
+                                                    "Install with: "
+                                                    <code class="bg-theme-secondary/30 px-1 rounded">"npm install -g @anthropic-ai/claude-code"</code>
+                                                </p>
+                                            </div>
+                                        }.into_any()
+                                    } else if !status.logged_in {
+                                        // CLI installed but not logged in
+                                        view! {
+                                            <div class="space-y-3">
+                                                <div class="flex items-center gap-2 text-amber-500">
+                                                    <span class="text-lg">"!"</span>
+                                                    <span class="font-medium">"Not logged in to Claude Code"</span>
+                                                </div>
+                                                {status.version.clone().map(|v| view! {
+                                                    <p class="text-xs text-theme-secondary">"Version: " {v}</p>
+                                                })}
+                                                <Button
+                                                    variant=ButtonVariant::Primary
+                                                    on_click=on_claude_code_login
+                                                    disabled=is_claude_code_logging_in.get()
+                                                >
+                                                    {move || if is_claude_code_logging_in.get() {
+                                                        "Logging in..."
+                                                    } else {
+                                                        "Login with Claude Code"
+                                                    }}
+                                                </Button>
+                                                {status.error.clone().map(|e| view! {
+                                                    <p class="text-xs text-red-400">{e}</p>
+                                                })}
+                                            </div>
+                                        }.into_any()
+                                    } else if !status.skill_installed {
+                                        // Logged in but skill not installed
+                                        view! {
+                                            <div class="space-y-3">
+                                                <div class="flex items-center gap-2 text-amber-500">
+                                                    <span class="text-lg">"!"</span>
+                                                    <span class="font-medium">"Bridge skill not installed"</span>
+                                                </div>
+                                                <p class="text-sm text-theme-secondary">
+                                                    "Install the claude-code-bridge skill to enable Claude-calling-Claude patterns."
+                                                </p>
+                                                <Button
+                                                    variant=ButtonVariant::Primary
+                                                    on_click=on_claude_code_install_skill
+                                                    disabled=is_claude_code_installing.get()
+                                                >
+                                                    {move || if is_claude_code_installing.get() {
+                                                        "Installing..."
+                                                    } else {
+                                                        "Install Bridge Skill"
+                                                    }}
+                                                </Button>
+                                                {status.error.clone().map(|e| view! {
+                                                    <p class="text-xs text-red-400">{e}</p>
+                                                })}
+                                            </div>
+                                        }.into_any()
+                                    } else {
+                                        // Fully configured
+                                        view! {
+                                            <div class="space-y-1">
+                                                <div class="flex items-center gap-2 text-green-500">
+                                                    <span class="text-lg">"*"</span>
+                                                    <span class="font-medium">"Connected to Claude Code"</span>
+                                                </div>
+                                                {status.user_email.clone().map(|email| view! {
+                                                    <p class="text-sm text-theme-secondary">"Logged in as: " {email}</p>
+                                                })}
+                                                {status.version.clone().map(|v| view! {
+                                                    <p class="text-xs text-theme-secondary">"Version: " {v}</p>
+                                                })}
+                                                <p class="text-xs text-green-400">"Bridge skill installed"</p>
+                                            </div>
+                                        }.into_any()
+                                    }
+                                }}
+                            </div>
+                        </Show>
+
+                        // API Key / Host (hidden for Claude Code)
+                        <Show when=move || !is_claude_code()>
+                            <div>
+                                <label class="block text-sm font-medium text-theme-secondary mb-1">
+                                    {label_text}
+                                </label>
+                                <Input
+                                    value=api_key_or_host
+                                    placeholder=placeholder_text()
+                                    r#type=input_type()
+                                />
+                            </div>
+                        </Show>
 
                         // Model Selection
                         <div>
