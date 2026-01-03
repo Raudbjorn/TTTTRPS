@@ -417,7 +417,7 @@ impl LLMProvider for ClaudeCodeProvider {
     }
 
     async fn health_check(&self) -> bool {
-        Self::is_available()
+        Self::version().await.is_ok()
     }
 
     fn pricing(&self) -> Option<ProviderPricing> {
