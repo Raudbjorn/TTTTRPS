@@ -420,6 +420,14 @@ fn main() {
             commands::claude_code_login,
             commands::claude_code_logout,
             commands::claude_code_install_skill,
+
+            // Meilisearch Chat Provider Commands
+            commands::list_chat_providers,
+            commands::configure_chat_workspace,
+            commands::get_chat_workspace_settings,
+            commands::is_llm_proxy_running,
+            commands::get_llm_proxy_url,
+            commands::list_proxy_providers,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
