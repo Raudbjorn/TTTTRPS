@@ -14,7 +14,7 @@ use crate::core::voice::types::{
 };
 use crate::core::voice::providers::{
     VoiceProvider, elevenlabs::ElevenLabsProvider, fish_audio::FishAudioProvider,
-    OllamaProvider, openai::OpenAIVoiceProvider, piper::PiperProvider,
+    ollama::OllamaProvider, openai::OpenAIVoiceProvider, piper::PiperProvider,
     ChatterboxProvider, GptSoVitsProvider, XttsV2Provider, FishSpeechProvider, DiaProvider, CoquiProvider,
 };
 use crate::core::voice::cache::{AudioCache, CacheKeyParams, CacheConfig, CacheStats, CacheError};

@@ -1,0 +1,16 @@
+[build]
+target = "index.html"
+dist = "dist"
+
+[watch]
+watch = ["src", "index.html", "style.css"]
+
+[serve]
+address = "127.0.0.1"
+port = 1420
+open = false
+
+[[hooks]]
+stage = "build"
+command = "sh"
+command_arguments = ["-c", "cp style.css dist/style.css 2>/dev/null || true"]

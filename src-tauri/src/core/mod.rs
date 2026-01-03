@@ -47,3 +47,6 @@ pub mod security;
 
 // Session sub-modules (TASK-014, TASK-015, TASK-017)
 pub mod session;
+
+// Claude Desktop CDP bridge
+pub mod claude_cdp;

@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 //! Slider Component
 //!
 //! An accessible range slider component for numeric input.

@@ -41,6 +41,7 @@ use crate::core::personality::{
 };
 use crate::core::credentials::CredentialManager;
 use crate::core::audio::AudioVolumes;
+use crate::core::claude_cdp::{ClaudeDesktopManager, ClaudeDesktopStatus};
 use crate::core::sidecar_manager::{SidecarManager, MeilisearchConfig};
 use crate::core::search_client::SearchClient;
 use crate::core::meilisearch_pipeline::MeilisearchPipeline;
@@ -85,6 +86,8 @@ pub struct AppState {
     pub world_state_manager: WorldStateManager,
     pub relationship_manager: RelationshipManager,
     pub location_manager: crate::core::location_manager::LocationManager,
+    // Claude Desktop CDP bridge
+    pub claude_desktop_manager: Arc<AsyncRwLock<ClaudeDesktopManager>>,
 }
 
 // Helper init for default state components
@@ -105,6 +108,7 @@ impl AppState {
         WorldStateManager,
         RelationshipManager,
         crate::core::location_manager::LocationManager,
+        Arc<AsyncRwLock<ClaudeDesktopManager>>,
     ) {
         let sidecar_config = MeilisearchConfig::default();
         let search_client = SearchClient::new(
@@ -133,6 +137,7 @@ impl AppState {
             WorldStateManager::default(),
             RelationshipManager::default(),
             crate::core::location_manager::LocationManager::new(),
+            Arc::new(AsyncRwLock::new(ClaudeDesktopManager::new())),
         )
     }
 }
@@ -315,7 +320,7 @@ pub async fn chat(
             LLMConfig::Together { api_key, .. } => api_key.clone(),
             LLMConfig::Cohere { api_key, .. } => api_key.clone(),
             LLMConfig::DeepSeek { api_key, .. } => api_key.clone(),
-            LLMConfig::Ollama { .. } => String::new(),
+            LLMConfig::Ollama { .. } | LLMConfig::ClaudeDesktop { .. } => String::new(),
         };
 
         let model = match &config {
@@ -329,6 +334,7 @@ pub async fn chat(
             LLMConfig::Cohere { model, .. } => model.clone(),
             LLMConfig::DeepSeek { model, .. } => model.clone(),
             LLMConfig::Ollama { model, .. } => model.clone(),
+            LLMConfig::ClaudeDesktop { .. } => "claude-desktop".to_string(),
         };
 
         // Initialize the DM chat workspace (idempotent)
@@ -502,6 +508,13 @@ pub fn get_llm_config(state: State<'_, AppState>) -> Result<Option<LLMSettings>,
             api_key: Some("********".to_string()),
             host: None,
             model: model.clone(),
+            embedding_model: None,
+        },
+        LLMConfig::ClaudeDesktop { port, .. } => LLMSettings {
+            provider: "claude-desktop".to_string(),
+            api_key: None, // No API key needed - uses Claude Desktop auth
+            host: Some(format!("localhost:{}", port)),
+            model: "claude-desktop".to_string(),
             embedding_model: None,
         },
     }))
@@ -2325,7 +2338,8 @@ pub async fn speak(text: String, state: State<'_, AppState>) -> Result<(), Strin
                 LLMConfig::Groq { .. } |
                 LLMConfig::Together { .. } |
                 LLMConfig::Cohere { .. } |
-                LLMConfig::DeepSeek { .. } => VoiceConfig::default(),
+                LLMConfig::DeepSeek { .. } |
+                LLMConfig::ClaudeDesktop { .. } => VoiceConfig::default(),
             }
         } else {
              VoiceConfig::default()
@@ -5446,4 +5460,158 @@ fn parse_difficulty(s: &str) -> Difficulty {
         "nearly_impossible" | "nearlyimpossible" => Difficulty::NearlyImpossible,
         _ => Difficulty::Medium,
     }
+}
+
+// ============================================================================
+// Claude Desktop CDP Commands
+// ============================================================================
+
+/// Connect to a running Claude Desktop instance via CDP.
+#[tauri::command]
+pub async fn connect_claude_desktop(
+    port: Option<u16>,
+    state: State<'_, AppState>,
+) -> Result<ClaudeDesktopStatus, String> {
+    let manager = state.claude_desktop_manager.clone();
+
+    // Update port if specified
+    if let Some(p) = port {
+        let guard = manager.read().await;
+        guard.update_config(Some(p), None).await;
+    }
+
+    // Connect (lock released after block)
+    {
+        let guard = manager.read().await;
+        guard.connect().await.map_err(|e| e.to_string())?;
+    }
+
+    // Get status (separate lock acquisition)
+    let guard = manager.read().await;
+    let status = guard.status().await;
+    Ok(status)
+}
+
+/// Launch Claude Desktop with CDP enabled and connect.
+#[tauri::command]
+pub async fn launch_claude_desktop(
+    state: State<'_, AppState>,
+) -> Result<ClaudeDesktopStatus, String> {
+    let manager = state.claude_desktop_manager.clone();
+
+    // Connect or launch
+    {
+        let guard = manager.read().await;
+        guard.connect_or_launch().await.map_err(|e| e.to_string())?;
+    }
+
+    // Get status
+    let guard = manager.read().await;
+    let status = guard.status().await;
+    Ok(status)
+}
+
+/// Try to connect to Claude Desktop, launch if not running.
+#[tauri::command]
+pub async fn connect_or_launch_claude_desktop(
+    port: Option<u16>,
+    state: State<'_, AppState>,
+) -> Result<ClaudeDesktopStatus, String> {
+    let manager = state.claude_desktop_manager.clone();
+
+    // Update port if specified
+    if let Some(p) = port {
+        let guard = manager.read().await;
+        guard.update_config(Some(p), None).await;
+    }
+
+    // Connect or launch
+    {
+        let guard = manager.read().await;
+        guard.connect_or_launch().await.map_err(|e| e.to_string())?;
+    }
+
+    // Get status
+    let guard = manager.read().await;
+    let status = guard.status().await;
+    Ok(status)
+}
+
+/// Disconnect from Claude Desktop.
+#[tauri::command]
+pub async fn disconnect_claude_desktop(
+    kill_if_launched: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let manager = state.claude_desktop_manager.clone();
+    let guard = manager.read().await;
+
+    if kill_if_launched.unwrap_or(false) {
+        guard.disconnect_and_kill().await;
+    } else {
+        guard.disconnect().await;
+    }
+
+    Ok(())
+}
+
+/// Get Claude Desktop connection status.
+#[tauri::command]
+pub async fn get_claude_desktop_status(
+    state: State<'_, AppState>,
+) -> Result<ClaudeDesktopStatus, String> {
+    let manager = state.claude_desktop_manager.clone();
+    let guard = manager.read().await;
+    let status = guard.status().await;
+    Ok(status)
+}
+
+/// Start a new conversation in Claude Desktop.
+#[tauri::command]
+pub async fn claude_desktop_new_conversation(
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let manager = state.claude_desktop_manager.clone();
+    let guard = manager.read().await;
+    guard.new_conversation().await.map_err(|e| e.to_string())
+}
+
+/// Get conversation history from Claude Desktop.
+#[tauri::command]
+pub async fn claude_desktop_get_history(
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::core::claude_cdp::Message>, String> {
+    let manager = state.claude_desktop_manager.clone();
+    let guard = manager.read().await;
+    guard.get_conversation().await.map_err(|e| e.to_string())
+}
+
+/// Check if Claude Desktop binary is installed.
+#[tauri::command]
+pub fn detect_claude_desktop() -> Option<String> {
+    ClaudeDesktopManager::detect_claude_binary()
+}
+
+/// Send a message to Claude Desktop and get response.
+#[tauri::command]
+pub async fn claude_desktop_send_message(
+    message: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let manager = state.claude_desktop_manager.clone();
+    let guard = manager.read().await;
+    guard.send_message(&message).await.map_err(|e| e.to_string())
+}
+
+/// Update Claude Desktop CDP configuration.
+#[tauri::command]
+pub async fn configure_claude_desktop(
+    port: Option<u16>,
+    timeout_secs: Option<u64>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let manager = state.claude_desktop_manager.clone();
+    let guard = manager.read().await;
+    guard.update_config(port, timeout_secs).await;
+    Ok(())
 }

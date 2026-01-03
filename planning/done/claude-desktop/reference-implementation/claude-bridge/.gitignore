@@ -1,0 +1,33 @@
+# Rust
+/target/
+**/target/
+Cargo.lock
+
+# Tauri
+/src-tauri/target/
+/src-tauri/WixTools/
+/src-tauri/icons/*.ico
+/src-tauri/icons/*.icns
+/src-tauri/icons/*.png
+!src-tauri/icons/icon.svg
+
+# Frontend
+/frontend/dist/
+/frontend/pkg/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local

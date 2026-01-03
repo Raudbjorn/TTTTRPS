@@ -5,6 +5,7 @@
 
 mod ollama;
 mod claude;
+mod claude_desktop;
 mod openai;
 mod gemini;
 mod openrouter;
@@ -16,6 +17,7 @@ mod deepseek;
 
 pub use ollama::OllamaProvider;
 pub use claude::ClaudeProvider;
+pub use claude_desktop::ClaudeDesktopProvider;
 pub use openai::OpenAIProvider;
 pub use gemini::GeminiProvider;
 pub use openrouter::OpenRouterProvider;
@@ -75,6 +77,11 @@ pub enum ProviderConfig {
         api_key: String,
         model: String,
     },
+    /// Claude Desktop via CDP (no API key needed, uses existing Claude Desktop auth)
+    ClaudeDesktop {
+        port: u16,          // CDP port (default 9333)
+        timeout_secs: u64,  // Response timeout (default 120s)
+    },
 }
 
 impl ProviderConfig {
@@ -117,6 +124,9 @@ impl ProviderConfig {
             ProviderConfig::DeepSeek { api_key, model } => {
                 Arc::new(DeepSeekProvider::new(api_key.clone(), model.clone()))
             }
+            ProviderConfig::ClaudeDesktop { port, timeout_secs } => {
+                Arc::new(ClaudeDesktopProvider::with_config(*port, *timeout_secs))
+            }
         }
     }
 
@@ -133,6 +143,7 @@ impl ProviderConfig {
             ProviderConfig::Together { .. } => "together",
             ProviderConfig::Cohere { .. } => "cohere",
             ProviderConfig::DeepSeek { .. } => "deepseek",
+            ProviderConfig::ClaudeDesktop { .. } => "claude-desktop",
         }
     }
 }

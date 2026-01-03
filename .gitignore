@@ -3,3 +3,6 @@
 check_output.txt
 check_output_*.txt
 fns.txt
+
+# Sidecar binaries (downloaded at build time)
+src-tauri/bin/

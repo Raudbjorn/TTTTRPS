@@ -38,8 +38,7 @@ fn main() {
             }
 
             // Initialize managers (Meilisearch-based)
-            // Initialize managers (Meilisearch-based)
-            let (cm, sm, ns, creds, vm, sidecar_manager, search_client, personality_store, personality_manager, pipeline, _llm_router, version_manager, world_state_manager, relationship_manager, location_manager) =
+            let (cm, sm, ns, creds, vm, sidecar_manager, search_client, personality_store, personality_manager, pipeline, _llm_router, version_manager, world_state_manager, relationship_manager, location_manager, claude_desktop_manager) =
                 commands::AppState::init_defaults();
 
             // Initialize Database
@@ -95,6 +94,7 @@ fn main() {
                 world_state_manager,
                 relationship_manager,
                 location_manager,
+                claude_desktop_manager,
             });
 
             // Auto-configure Ollama if no providers are present (User Request)
@@ -397,6 +397,18 @@ fn main() {
             commands::clear_old_logs,
             commands::get_audit_summary,
             commands::get_security_events,
+
+            // Claude Desktop CDP Commands
+            commands::connect_claude_desktop,
+            commands::launch_claude_desktop,
+            commands::connect_or_launch_claude_desktop,
+            commands::disconnect_claude_desktop,
+            commands::get_claude_desktop_status,
+            commands::claude_desktop_new_conversation,
+            commands::claude_desktop_get_history,
+            commands::detect_claude_desktop,
+            commands::claude_desktop_send_message,
+            commands::configure_claude_desktop,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

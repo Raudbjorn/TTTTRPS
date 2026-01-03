@@ -20,7 +20,7 @@ SvelteKit Frontend <-> Rust Tauri Backend <-> Python MCP Server
 
 ### IPC Manager (`src/ipc.rs`)
 - Request/response correlation with unique IDs
-- Configurable queue management (max 10 concurrent, 100 queued)
+- Configurable queue management (max 20 concurrent, 200 queued)
 - Real-time performance metrics
 - Stream support for large responses
 - Per-request timeout configuration
@@ -57,7 +57,7 @@ SvelteKit Frontend <-> Rust Tauri Backend <-> Python MCP Server
 ## Performance Characteristics
 
 ### Throughput
-- Up to 50 concurrent requests
+- Up to 20 concurrent requests
 - Up to 200 queued requests
 - ~1000 requests/second capability
 
