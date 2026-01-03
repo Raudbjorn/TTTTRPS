@@ -5629,3 +5629,25 @@ pub async fn configure_claude_desktop(
     guard.update_config(port, timeout_secs).await;
     Ok(())
 }
+
+// ============================================================================
+// Claude Code CLI Commands
+// ============================================================================
+
+/// Get Claude Code CLI status (installed, logged in, version).
+#[tauri::command]
+pub async fn get_claude_code_status() -> crate::core::llm::providers::ClaudeCodeStatus {
+    crate::core::llm::providers::ClaudeCodeProvider::get_status().await
+}
+
+/// Spawn the Claude Code login flow (opens browser for OAuth).
+#[tauri::command]
+pub async fn claude_code_login() -> Result<(), String> {
+    crate::core::llm::providers::ClaudeCodeProvider::login().await
+}
+
+/// Logout from Claude Code.
+#[tauri::command]
+pub async fn claude_code_logout() -> Result<(), String> {
+    crate::core::llm::providers::ClaudeCodeProvider::logout().await
+}

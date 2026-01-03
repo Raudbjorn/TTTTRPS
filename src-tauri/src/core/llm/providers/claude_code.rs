@@ -260,6 +260,140 @@ impl ClaudeCodeProvider {
             Err("Failed to get Claude Code version".to_string())
         }
     }
+
+    /// Get full status of Claude Code CLI (installed, logged in, version)
+    pub async fn get_status() -> ClaudeCodeStatus {
+        // Check if binary exists
+        let binary = match which::which("claude") {
+            Ok(b) => b,
+            Err(_) => {
+                return ClaudeCodeStatus {
+                    installed: false,
+                    logged_in: false,
+                    version: None,
+                    user_email: None,
+                    error: Some("Claude Code CLI not installed".to_string()),
+                };
+            }
+        };
+
+        // Get version
+        let version = match Command::new(&binary)
+            .arg("--version")
+            .output()
+            .await
+        {
+            Ok(output) if output.status.success() => {
+                Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+            }
+            _ => None,
+        };
+
+        // Check auth status using `claude auth status`
+        let auth_result = Command::new(&binary)
+            .args(["auth", "status"])
+            .output()
+            .await;
+
+        match auth_result {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+
+                // Try to parse JSON output, or check for success indicators
+                if output.status.success() {
+                    // Try to parse as JSON for user email
+                    let user_email = serde_json::from_str::<serde_json::Value>(&stdout)
+                        .ok()
+                        .and_then(|v| v.get("email").and_then(|e| e.as_str()).map(String::from));
+
+                    ClaudeCodeStatus {
+                        installed: true,
+                        logged_in: true,
+                        version,
+                        user_email,
+                        error: None,
+                    }
+                } else {
+                    // Not logged in
+                    let error_msg = if !stderr.is_empty() {
+                        stderr.trim().to_string()
+                    } else if !stdout.is_empty() {
+                        stdout.trim().to_string()
+                    } else {
+                        "Not authenticated".to_string()
+                    };
+
+                    ClaudeCodeStatus {
+                        installed: true,
+                        logged_in: false,
+                        version,
+                        user_email: None,
+                        error: Some(error_msg),
+                    }
+                }
+            }
+            Err(e) => ClaudeCodeStatus {
+                installed: true,
+                logged_in: false,
+                version,
+                user_email: None,
+                error: Some(format!("Failed to check auth status: {}", e)),
+            },
+        }
+    }
+
+    /// Spawn the Claude Code login flow (opens browser)
+    pub async fn login() -> std::result::Result<(), String> {
+        let binary = which::which("claude")
+            .map_err(|_| "Claude Code CLI not installed")?;
+
+        // Run `claude auth login` which opens browser for OAuth
+        let status = Command::new(binary)
+            .args(["auth", "login"])
+            .status()
+            .await
+            .map_err(|e| format!("Failed to spawn login: {}", e))?;
+
+        if status.success() {
+            Ok(())
+        } else {
+            Err("Login process failed or was cancelled".to_string())
+        }
+    }
+
+    /// Logout from Claude Code
+    pub async fn logout() -> std::result::Result<(), String> {
+        let binary = which::which("claude")
+            .map_err(|_| "Claude Code CLI not installed")?;
+
+        let status = Command::new(binary)
+            .args(["auth", "logout"])
+            .status()
+            .await
+            .map_err(|e| format!("Failed to logout: {}", e))?;
+
+        if status.success() {
+            Ok(())
+        } else {
+            Err("Logout failed".to_string())
+        }
+    }
+}
+
+/// Status of Claude Code CLI installation and authentication
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClaudeCodeStatus {
+    /// Whether the CLI binary is installed
+    pub installed: bool,
+    /// Whether the user is logged in
+    pub logged_in: bool,
+    /// CLI version if available
+    pub version: Option<String>,
+    /// User email if logged in
+    pub user_email: Option<String>,
+    /// Error message if any
+    pub error: Option<String>,
 }
 
 impl Default for ClaudeCodeProvider {

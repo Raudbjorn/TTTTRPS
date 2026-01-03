@@ -435,6 +435,40 @@ pub async fn speak(text: String) -> Result<(), String> {
 }
 
 // ============================================================================
+// Claude Code CLI Commands
+// ============================================================================
+
+/// Status of Claude Code CLI installation and authentication
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ClaudeCodeStatus {
+    /// Whether the CLI binary is installed
+    pub installed: bool,
+    /// Whether the user is logged in
+    pub logged_in: bool,
+    /// CLI version if available
+    pub version: Option<String>,
+    /// User email if logged in
+    pub user_email: Option<String>,
+    /// Error message if any
+    pub error: Option<String>,
+}
+
+/// Get Claude Code CLI status (installed, logged in, version)
+pub async fn get_claude_code_status() -> Result<ClaudeCodeStatus, String> {
+    invoke_no_args("get_claude_code_status").await
+}
+
+/// Spawn the Claude Code login flow (opens browser for OAuth)
+pub async fn claude_code_login() -> Result<(), String> {
+    invoke_void_no_args("claude_code_login").await
+}
+
+/// Logout from Claude Code
+pub async fn claude_code_logout() -> Result<(), String> {
+    invoke_void_no_args("claude_code_logout").await
+}
+
+// ============================================================================
 // Credential Commands
 // ============================================================================
 

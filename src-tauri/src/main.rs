@@ -414,6 +414,11 @@ fn main() {
             commands::detect_claude_desktop,
             commands::claude_desktop_send_message,
             commands::configure_claude_desktop,
+
+            // Claude Code CLI Commands
+            commands::get_claude_code_status,
+            commands::claude_code_login,
+            commands::claude_code_logout,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

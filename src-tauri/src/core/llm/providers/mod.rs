@@ -18,7 +18,7 @@ mod deepseek;
 
 pub use ollama::OllamaProvider;
 pub use claude::ClaudeProvider;
-pub use claude_code::ClaudeCodeProvider;
+pub use claude_code::{ClaudeCodeProvider, ClaudeCodeStatus};
 pub use claude_desktop::ClaudeDesktopProvider;
 pub use openai::OpenAIProvider;
 pub use gemini::GeminiProvider;
