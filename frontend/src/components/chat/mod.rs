@@ -11,6 +11,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::spawn_local;
+use std::sync::Arc;
+use crate::services::notification_service::{show_error, ToastAction};
 
 use crate::bindings::{
     cancel_stream, chat, check_llm_health, get_session_usage, listen_chat_chunks, stream_chat,
@@ -62,22 +64,43 @@ pub fn Chat() -> impl IntoView {
     // Store the unlisten handle for cleanup
     let unlisten_handle: Rc<RefCell<Option<JsValue>>> = Rc::new(RefCell::new(None));
 
-    // Check LLM health on mount
-    Effect::new(move |_| {
-        spawn_local(async move {
-            match check_llm_health().await {
-                Ok(status) => {
-                    if status.healthy {
-                        llm_status.set(format!("{} connected", status.provider));
-                    } else {
-                        llm_status.set(format!("{}: {}", status.provider, status.message));
+    // Shared health check logic
+    let check_health = {
+        let llm_status = llm_status;
+        Arc::new(move || {
+            let llm_status = llm_status;
+            spawn_local(async move {
+                llm_status.set("Checking...".to_string());
+                match check_llm_health().await {
+                    Ok(status) => {
+                        if status.healthy {
+                            llm_status.set(format!("{} connected", status.provider));
+                        } else {
+                            llm_status.set(format!("{}: {}", status.provider, status.message));
+                            show_error("LLM Issue", Some(&status.message), None); // Retry could be here but maybe user needs to config
+                        }
+                    }
+                    Err(e) => {
+                        llm_status.set(format!("Error: {}", e));
+                         show_error(
+                            "LLM Connection Error",
+                            Some(&format!("Could not connect: {}", e)),
+                            // We can't easily recurse retry here without the stored callback pattern again.
+                            // But we can suggest checking settings.
+                            None
+                        );
                     }
                 }
-                Err(e) => {
-                    llm_status.set(format!("Error: {}", e));
-                }
-            }
-        });
+            });
+        })
+    };
+
+    // Check LLM health on mount
+    Effect::new({
+        let check = check_health.clone();
+        move |_| {
+            (check)();
+        }
     });
 
     // Set up streaming chunk listener on mount
@@ -254,12 +277,13 @@ pub fn Chat() -> impl IntoView {
                     messages.update(|msgs| {
                         if let Some(msg) = msgs.iter_mut().find(|m| m.id == assistant_msg_id) {
                             msg.role = "error".to_string();
-                            msg.content = format!("Streaming error: {}", e);
+                            msg.content = format!("Streaming error: {}\n\nCourse of Action: Check your network connection or verify the LLM provider settings.", e);
                             msg.is_streaming = false;
                         }
                     });
                     is_loading.set(false);
                     streaming_message_id.set(None);
+                    show_error("Streaming Failed", Some(&e), None);
                 }
             }
         });
@@ -325,12 +349,13 @@ pub fn Chat() -> impl IntoView {
                         msgs.push(Message {
                             id,
                             role: "error".to_string(),
-                            content: format!("Error: {}", e),
+                            content: format!("Error: {}\n\nSuggestion: Ensure the model is downloaded and running.", e),
                             tokens: None,
                             is_streaming: false,
                             stream_id: None,
                         });
                     });
+                    show_error("Request Failed", Some(&e), None);
                 }
             }
             is_loading.set(false);

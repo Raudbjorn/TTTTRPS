@@ -12,6 +12,7 @@ mod loading;
 mod markdown;
 mod slider;
 mod effects;
+mod toast;
 
 pub use button::{Button, ButtonVariant};
 pub use input::Input;
@@ -28,3 +29,4 @@ pub use effects::{
     ScanlineVariant, Stamp, StampStyle, TextGlow, Typewriter, Vignette,
     VignetteIntensity, recommended_effects, recommended_glow,
 };
+pub use toast::{Toast, ToastContainer};

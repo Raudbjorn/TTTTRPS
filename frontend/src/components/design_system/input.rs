@@ -25,6 +25,9 @@ pub fn Input(
     /// Additional CSS classes
     #[prop(into, optional)]
     class: String,
+    /// List attribute for datalist
+    #[prop(into, optional)]
+    list: Option<String>,
 ) -> impl IntoView {
     let input_type = r#type.unwrap_or_else(|| "text".to_string());
 
@@ -53,6 +56,7 @@ pub fn Input(
             prop:value=move || value.get()
             placeholder=placeholder
             disabled=disabled
+            list=list
             on:input=handle_input
             on:keydown=handle_keydown
         />
