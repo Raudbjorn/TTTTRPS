@@ -634,12 +634,13 @@ pub fn HeaderLink(
 ) -> impl IntoView {
     let layout_state = crate::services::layout_service::use_layout_state();
     let text_mode = layout_state.text_navigation;
+    let icon_children = children();
 
     view! {
         <A href=href attr:class="group relative text-theme-secondary hover:text-theme-primary transition-colors p-2 rounded hover:bg-white/5 flex items-center justify-center">
             // Icon (Hidden in text mode, but rendered once to avoid re-creation issues)
-            <div class=move || if text_mode.get() { "hidden" } else { "contents" }>
-                {children()}
+            <div class=move || if text_mode.get() { "hidden" } else { "" }>
+                {icon_children}
             </div>
 
             // Text Label (Dynamic)

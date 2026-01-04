@@ -151,7 +151,7 @@ pub fn MainShell(
     let handle_mousemove = move |e: web_sys::MouseEvent| {
         if let Some(side) = dragging.get() {
             let current_x = e.page_x() as f64;
-            let rail_w = if layout.text_navigation.get() { 200 } else { 64 };
+            let rail_w = rail_width_px.get();
 
             match side {
                 ResizeSide::Left => {
