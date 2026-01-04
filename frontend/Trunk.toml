@@ -18,10 +18,6 @@ command = "npm"
 command_arguments = ["run", "css"]
 
 # Copy public assets to dist after build
-[[hooks]]
-stage = "build"
-command = "./tailwindcss"
-command_arguments = ["-i", "input.css", "-o", "public/main.css", "--minify"]
 
 [[hooks]]
 stage = "post_build"
