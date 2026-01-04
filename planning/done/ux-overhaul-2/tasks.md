@@ -30,6 +30,5 @@
 
 ## Finalization
 - [x] Run `coderabbit review --prompt-only`
-- [x] Run `coderabbit review --prompt-only`
 - [x] Address review issues
 - [x] Create PR to main

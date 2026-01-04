@@ -15,7 +15,7 @@ use super::llm::providers::ProviderConfig;
 // ============================================================================
 
 /// LLM provider source for Meilisearch Chat
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum ChatLLMSource {
     OpenAi,
@@ -833,6 +833,88 @@ impl MeilisearchChatClient {
 
         Ok(())
     }
+
+    /// Configure from LLM ProviderConfig (convenience method for default workspace)
+    pub async fn configure_from_provider_config(
+        &self,
+        config: &ProviderConfig,
+        proxy_url: &str,
+        custom_system_prompt: Option<&str>,
+    ) -> Result<(), String> {
+        const DEFAULT_WORKSPACE: &str = "dm-assistant";
+        const DEFAULT_DM_PROMPT: &str = "You are a knowledgeable and creative Dungeon Master assistant.";
+
+        let chat_config = match config {
+            ProviderConfig::OpenAI { api_key, model, organization_id, .. } => ChatProviderConfig::OpenAI {
+                api_key: api_key.clone(),
+                model: Some(model.clone()),
+                organization_id: organization_id.clone(),
+            },
+            ProviderConfig::Claude { api_key, model, max_tokens } => ChatProviderConfig::Claude {
+                api_key: api_key.clone(),
+                model: Some(model.clone()),
+                max_tokens: Some(*max_tokens),
+            },
+            ProviderConfig::Mistral { api_key, model } => ChatProviderConfig::Mistral {
+                api_key: api_key.clone(),
+                model: Some(model.clone()),
+            },
+            ProviderConfig::Ollama { host, model } => ChatProviderConfig::Ollama {
+                host: host.clone(),
+                model: model.clone(),
+            },
+            ProviderConfig::Gemini { api_key, model } => ChatProviderConfig::Gemini {
+                api_key: api_key.clone(),
+                model: Some(model.clone()),
+            },
+            ProviderConfig::OpenRouter { api_key, model } => ChatProviderConfig::OpenRouter {
+                api_key: api_key.clone(),
+                model: model.clone(),
+            },
+            ProviderConfig::Groq { api_key, model } => ChatProviderConfig::Groq {
+                api_key: api_key.clone(),
+                model: model.clone(),
+            },
+            ProviderConfig::Together { api_key, model } => ChatProviderConfig::Together {
+                api_key: api_key.clone(),
+                model: model.clone(),
+            },
+            ProviderConfig::Cohere { api_key, model } => ChatProviderConfig::Cohere {
+                api_key: api_key.clone(),
+                model: model.clone(),
+            },
+            ProviderConfig::DeepSeek { api_key, model } => ChatProviderConfig::DeepSeek {
+                api_key: api_key.clone(),
+                model: model.clone(),
+            },
+            ProviderConfig::ClaudeCode { timeout_secs, model, .. } => ChatProviderConfig::ClaudeCode {
+                timeout_secs: Some(*timeout_secs),
+                model: model.clone(),
+            },
+            ProviderConfig::ClaudeDesktop { port, timeout_secs } => ChatProviderConfig::ClaudeDesktop {
+                port: Some(*port),
+                timeout_secs: Some(*timeout_secs),
+            },
+            ProviderConfig::GeminiCli { .. } => return Err("Gemini CLI not supported for Meilisearch chat yet".to_string()),
+            ProviderConfig::Meilisearch { .. } => return Err("Recursive Meilisearch configuration".to_string()),
+        };
+
+        let prompts = Some(ChatPrompts {
+            system: Some(
+                custom_system_prompt
+                    .unwrap_or(DEFAULT_DM_PROMPT)
+                    .to_string()
+            ),
+            ..Default::default()
+        });
+
+        self.configure_workspace_with_provider(
+            DEFAULT_WORKSPACE,
+            &chat_config,
+            proxy_url,
+            prompts
+        ).await
+    }
 }
 
 // ============================================================================
@@ -958,6 +1040,7 @@ impl DMChatManager {
         self.chat_client
             .chat_completion_stream(&self.default_workspace, request)
             .await
+    }
 
     /// Configure from LLM ProviderConfig
     pub async fn configure_from_provider_config(
@@ -1048,7 +1131,7 @@ impl DMChatManager {
             )
             .await
     }
-
+}
 
 #[cfg(test)]
 mod tests {
@@ -1068,5 +1151,71 @@ mod tests {
     fn test_workspace_settings_default() {
         let settings = ChatWorkspaceSettings::default();
         assert!(settings.prompts.is_some());
+    }
+
+    #[test]
+    fn test_chat_provider_config_provider_id() {
+        let openai = ChatProviderConfig::OpenAI {
+            api_key: "test".to_string(),
+            model: Some("gpt-4".to_string()),
+            organization_id: None,
+        };
+        assert_eq!(openai.provider_id(), "openai");
+
+        let claude = ChatProviderConfig::Claude {
+            api_key: "test".to_string(),
+            model: Some("claude-3".to_string()),
+            max_tokens: Some(4096),
+        };
+        assert_eq!(claude.provider_id(), "claude");
+
+        let ollama = ChatProviderConfig::Ollama {
+            host: "http://localhost:11434".to_string(),
+            model: "llama2".to_string(),
+        };
+        assert_eq!(ollama.provider_id(), "ollama");
+    }
+
+    #[test]
+    fn test_chat_provider_config_creation() {
+        // Test that all variants can be created
+        let openai = ChatProviderConfig::OpenAI {
+            api_key: "test".to_string(),
+            model: Some("gpt-4o".to_string()),
+            organization_id: None,
+        };
+        assert_eq!(openai.provider_id(), "openai");
+
+        let azure = ChatProviderConfig::AzureOpenAI {
+            api_key: "test".to_string(),
+            base_url: "https://example.openai.azure.com".to_string(),
+            deployment_id: "gpt-4".to_string(),
+            api_version: "2023-05-15".to_string(),
+        };
+        assert_eq!(azure.provider_id(), "azure");
+
+        let claude_code = ChatProviderConfig::ClaudeCode {
+            timeout_secs: Some(120),
+            model: Some("claude-3-sonnet".to_string()),
+        };
+        assert_eq!(claude_code.provider_id(), "claude-code");
+    }
+
+    #[test]
+    fn test_chat_llm_source_default() {
+        let source = ChatLLMSource::default();
+        assert_eq!(source, ChatLLMSource::OpenAi);
+    }
+
+    #[test]
+    fn test_chat_prompts_default() {
+        let prompts = ChatPrompts::default();
+        assert!(prompts.system.is_none());
+        assert!(prompts.search_description.is_none());
+    }
+
+    #[test]
+    fn test_dm_chat_manager_default_workspace() {
+        assert_eq!(DMChatManager::DEFAULT_WORKSPACE, "dm-assistant");
     }
 }

@@ -84,6 +84,16 @@ pub enum MessageRole {
     Assistant,
 }
 
+impl std::fmt::Display for MessageRole {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MessageRole::System => write!(f, "system"),
+            MessageRole::User => write!(f, "user"),
+            MessageRole::Assistant => write!(f, "assistant"),
+        }
+    }
+}
+
 /// A single message in a conversation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
@@ -1209,6 +1219,7 @@ mod tests {
                 finish_reason: Some("stop".to_string()),
                 latency_ms: latency,
                 cost_usd: None,
+                tool_calls: None,
             })
         }
 
@@ -1355,6 +1366,44 @@ mod tests {
         assert_eq!(config.request_timeout, Duration::from_secs(120));
         assert!(config.enable_fallback);
         assert_eq!(config.routing_strategy, RoutingStrategy::Priority);
+    }
+
+    #[test]
+    fn test_message_role_display() {
+        assert_eq!(MessageRole::System.to_string(), "system");
+        assert_eq!(MessageRole::User.to_string(), "user");
+        assert_eq!(MessageRole::Assistant.to_string(), "assistant");
+    }
+
+    #[test]
+    fn test_chat_message_constructors() {
+        let user = ChatMessage::user("Hello");
+        assert_eq!(user.role, MessageRole::User);
+        assert_eq!(user.content, "Hello");
+
+        let assistant = ChatMessage::assistant("Hi!");
+        assert_eq!(assistant.role, MessageRole::Assistant);
+        assert_eq!(assistant.content, "Hi!");
+
+        let system = ChatMessage::system("You are helpful.");
+        assert_eq!(system.role, MessageRole::System);
+        assert_eq!(system.content, "You are helpful.");
+    }
+
+    #[test]
+    fn test_chat_request_new() {
+        let messages = vec![ChatMessage::user("Test")];
+        let request = ChatRequest::new(messages.clone());
+        assert_eq!(request.messages.len(), 1);
+        assert!(request.system_prompt.is_none());
+        assert!(request.max_tokens.is_none());
+    }
+
+    #[test]
+    fn test_chat_request_with_system() {
+        let messages = vec![ChatMessage::user("Test")];
+        let request = ChatRequest::new(messages).with_system("Be helpful");
+        assert_eq!(request.system_prompt, Some("Be helpful".to_string()));
     }
 
     // ========================================================================

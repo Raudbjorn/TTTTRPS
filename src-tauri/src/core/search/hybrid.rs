@@ -209,7 +209,7 @@ impl HybridConfig {
 // ============================================================================
 
 /// Options for hybrid search
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HybridSearchOptions {
     /// Maximum results to return
     #[serde(default = "default_limit")]
@@ -233,6 +233,19 @@ pub struct HybridSearchOptions {
 
 fn default_limit() -> usize {
     10
+}
+
+impl Default for HybridSearchOptions {
+    fn default() -> Self {
+        Self {
+            limit: default_limit(),
+            source_type: None,
+            campaign_id: None,
+            index: None,
+            semantic_weight: None,
+            keyword_weight: None,
+        }
+    }
 }
 
 /// Enhanced search result with fusion score
@@ -778,9 +791,8 @@ mod tests {
     #[test]
     fn test_options_default() {
         let options = HybridSearchOptions::default();
-        // Note: #[derive(Default)] sets limit to 0 (usize default).
-        // The serde(default = "default_limit") only applies during deserialization.
-        assert_eq!(options.limit, 0);
+        // Manual Default impl now sets limit to default_limit() = 10
+        assert_eq!(options.limit, 10);
         assert!(options.source_type.is_none());
         assert!(options.campaign_id.is_none());
         assert!(options.index.is_none());

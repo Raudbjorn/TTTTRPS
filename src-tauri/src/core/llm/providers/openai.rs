@@ -63,6 +63,7 @@ impl OpenAIProvider {
             }));
         }
 
+        for msg in &request.messages {
             let mut message_obj = serde_json::Map::new();
 
             message_obj.insert("role".to_string(), serde_json::json!(match msg.role {

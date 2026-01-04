@@ -181,6 +181,8 @@ impl ProviderConfig {
             ProviderConfig::GeminiCli { .. } => "gemini-cli",
             ProviderConfig::Meilisearch { .. } => "meilisearch",
         }
+    }
+
     /// Check if this provider requires the LLM Proxy for Meilisearch chat
     pub fn requires_proxy(&self) -> bool {
         match self {
@@ -206,5 +208,83 @@ impl ProviderConfig {
             // Meilisearch itself doesn't need proxy
             ProviderConfig::Meilisearch { .. } => false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_provider_config_provider_id() {
+        let ollama = ProviderConfig::Ollama {
+            host: "http://localhost:11434".to_string(),
+            model: "llama2".to_string(),
+        };
+        assert_eq!(ollama.provider_id(), "ollama");
+
+        let claude = ProviderConfig::Claude {
+            api_key: "test".to_string(),
+            model: "claude-3-sonnet".to_string(),
+            max_tokens: 4096,
+        };
+        assert_eq!(claude.provider_id(), "claude");
+
+        let openai = ProviderConfig::OpenAI {
+            api_key: "test".to_string(),
+            model: "gpt-4".to_string(),
+            max_tokens: 4096,
+            base_url: None,
+            organization_id: None,
+        };
+        assert_eq!(openai.provider_id(), "openai");
+    }
+
+    #[test]
+    fn test_provider_config_requires_proxy_native() {
+        // Native providers don't need proxy
+        let openai = ProviderConfig::OpenAI {
+            api_key: "test".to_string(),
+            model: "gpt-4".to_string(),
+            max_tokens: 4096,
+            base_url: None,
+            organization_id: None,
+        };
+        assert!(!openai.requires_proxy());
+
+        let ollama = ProviderConfig::Ollama {
+            host: "http://localhost:11434".to_string(),
+            model: "llama2".to_string(),
+        };
+        assert!(!ollama.requires_proxy());
+
+        let mistral = ProviderConfig::Mistral {
+            api_key: "test".to_string(),
+            model: "mistral-large".to_string(),
+        };
+        assert!(!mistral.requires_proxy());
+    }
+
+    #[test]
+    fn test_provider_config_requires_proxy_non_native() {
+        // Non-native providers need proxy
+        let claude = ProviderConfig::Claude {
+            api_key: "test".to_string(),
+            model: "claude-3-sonnet".to_string(),
+            max_tokens: 4096,
+        };
+        assert!(claude.requires_proxy());
+
+        let groq = ProviderConfig::Groq {
+            api_key: "test".to_string(),
+            model: "llama2-70b".to_string(),
+        };
+        assert!(groq.requires_proxy());
+
+        let openrouter = ProviderConfig::OpenRouter {
+            api_key: "test".to_string(),
+            model: "anthropic/claude-3".to_string(),
+        };
+        assert!(openrouter.requires_proxy());
     }
 }

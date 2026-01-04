@@ -384,13 +384,20 @@ mod tests {
                 "/*",
                 "*/",
                 "-- ",
-                "#",
             ];
 
             for pattern in comment_patterns {
                 if lower.contains(pattern) {
                     return true;
                 }
+            }
+
+            // Check for "#" as SQL comment (MySQL/MariaDB) - stricter check to avoid false positives
+            // Only flag "#" when it looks like a SQL comment (not URLs, hashtags, etc.)
+            // Include '# which is a common SQL injection pattern after closing quotes
+            if lower.contains(" # ") || lower.ends_with(" #") || lower.contains("\n#")
+                || lower.starts_with("#") || lower.contains("'#") || lower.contains("\"#") {
+                return true;
             }
 
             // Stacked queries

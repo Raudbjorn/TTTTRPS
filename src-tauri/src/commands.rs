@@ -5816,9 +5816,9 @@ pub async fn get_chat_workspace_settings(
 #[tauri::command]
 pub async fn is_llm_proxy_running(
     state: State<'_, AppState>,
-) -> bool {
+) -> Result<bool, String> {
     let manager = state.llm_manager.read().await;
-    manager.is_proxy_running().await
+    Ok(manager.is_proxy_running().await)
 }
 
 /// Get the LLM proxy URL.
@@ -5831,7 +5831,7 @@ pub fn get_llm_proxy_url() -> String {
 #[tauri::command]
 pub async fn list_proxy_providers(
     state: State<'_, AppState>,
-) -> Vec<String> {
+) -> Result<Vec<String>, String> {
     let manager = state.llm_manager.read().await;
-    manager.list_proxy_providers().await
+    Ok(manager.list_proxy_providers().await)
 }

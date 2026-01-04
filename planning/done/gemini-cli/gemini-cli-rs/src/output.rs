@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use tracing;
 
 /// A complete response from Gemini CLI.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

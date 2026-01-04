@@ -230,7 +230,7 @@ impl LLMManager {
     /// Configure for chat (convenience method using default workspace)
     pub async fn configure_for_chat(
         &self,
-        config: &super::providers::ProviderConfig,
+        config: &providers::ProviderConfig,
         custom_system_prompt: Option<&str>,
     ) -> std::result::Result<(), String> {
         let chat_client = self.chat_client.read().await;

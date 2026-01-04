@@ -99,7 +99,6 @@ fn main() {
                 world_state_manager,
                 relationship_manager,
                 location_manager,
-                location_manager,
                 claude_desktop_manager,
                 llm_manager,
             });

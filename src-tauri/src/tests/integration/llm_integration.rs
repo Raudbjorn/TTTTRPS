@@ -155,6 +155,7 @@ impl LLMProvider for MockProvider {
             finish_reason: Some("stop".to_string()),
             latency_ms: delay as u64,
             cost_usd: None,
+            tool_calls: None,
         })
     }
 

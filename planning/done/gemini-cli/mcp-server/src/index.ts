@@ -94,22 +94,36 @@ async function executeGemini(options: ExecuteOptions): Promise<GeminiResponse> {
   }
 
   return new Promise((resolve, reject) => {
+    let settled = false;
     const child = spawn("gemini", args, {
       cwd: workingDir || process.cwd(),
       stdio: ["pipe", "pipe", "pipe"],
-      timeout: timeoutMs,
     });
 
     let stdout = "";
     let stderr = "";
 
+    // Manual timeout handling with proper cleanup
+    const timeoutId = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        child.kill("SIGTERM");
+        reject(new Error(`Gemini CLI timed out after ${timeoutMs}ms`));
+      }
+    }, timeoutMs);
+
+    const cleanup = () => {
+      clearTimeout(timeoutId);
+      child.stdout.removeAllListeners();
+      child.stderr.removeAllListeners();
+      child.removeAllListeners();
+    };
+
     // Write stdin if provided
     if (stdinInput) {
       child.stdin.write(stdinInput);
-      child.stdin.end();
-    } else {
-      child.stdin.end();
     }
+    child.stdin.end();
 
     child.stdout.on("data", (data: Buffer) => {
       stdout += data.toString();
@@ -120,18 +134,21 @@ async function executeGemini(options: ExecuteOptions): Promise<GeminiResponse> {
     });
 
     child.on("error", (err) => {
-      // Handle spawn errors including timeouts from the spawn timeout option
-      if (err.message.includes("ETIMEDOUT") || err.message.includes("timed out")) {
-        reject(new Error(`Gemini CLI timed out after ${timeoutMs}ms`));
-      } else {
-        reject(new Error(`Failed to spawn Gemini CLI: ${err.message}`));
-      }
+      if (settled) return;
+      settled = true;
+      cleanup();
+      child.kill();
+      reject(new Error(`Failed to spawn Gemini CLI: ${err.message}`));
     });
 
     child.on("close", (code, signal) => {
-      // Check if killed by timeout (SIGTERM from spawn timeout)
-      if (signal === "SIGTERM") {
-        reject(new Error(`Gemini CLI timed out after ${timeoutMs}ms`));
+      if (settled) return;
+      settled = true;
+      cleanup();
+
+      // Check if killed by signal (e.g., timeout)
+      if (signal) {
+        // Already handled by timeout
         return;
       }
 

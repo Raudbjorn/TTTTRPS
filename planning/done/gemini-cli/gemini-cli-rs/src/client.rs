@@ -156,27 +156,17 @@ impl GeminiCliClient {
             }
         }
 
-        // Wait with timeout
-        let result = timeout(self.config.timeout, async {
-            let mut stdout = String::new();
-            let mut stderr = String::new();
-
-            if let Some(mut stdout_handle) = child.stdout.take() {
-                stdout_handle.read_to_string(&mut stdout).await?;
-            }
-
-            if let Some(mut stderr_handle) = child.stderr.take() {
-                stderr_handle.read_to_string(&mut stderr).await?;
-            }
-
-            let status = child.wait().await?;
-
-            Ok::<_, std::io::Error>((status, stdout, stderr))
-        })
-        .await;
+        // Wait with timeout - use wait_with_output to avoid deadlock
+        // (reading stdout/stderr sequentially before wait can deadlock if pipes fill)
+        let result = timeout(self.config.timeout, child.wait_with_output())
+            .await;
 
         match result {
-            Ok(Ok((status, stdout, stderr))) => {
+            Ok(Ok(output)) => {
+                let status = output.status;
+                let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+                let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+
                 debug!(
                     status = %status,
                     stdout_len = stdout.len(),
@@ -338,11 +328,9 @@ impl GeminiCliClient {
     }
 }
 
-impl Default for GeminiCliClient {
-    fn default() -> Self {
-        Self::new().expect("Gemini CLI not found")
-    }
-}
+// Note: Default is intentionally not implemented for GeminiCliClient.
+// Callers must use GeminiCliClient::new() and handle the Result,
+// as the CLI may not be installed on the system.
 
 /// Builder for creating a configured GeminiCliClient.
 #[derive(Debug, Default)]
