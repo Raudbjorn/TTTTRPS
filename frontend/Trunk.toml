@@ -4,13 +4,20 @@ dist = "dist"
 
 [watch]
 watch = ["src", "index.html", "public"]
-ignore = ["dist"]
+ignore = ["dist", "node_modules"]
 
 [serve]
 address = "127.0.0.1"
 port = 3030
 open = false
 
+# Build Tailwind CSS before compiling WASM
+[[hooks]]
+stage = "pre_build"
+command = "npm"
+command_arguments = ["run", "css"]
+
+# Copy public assets to dist after build
 [[hooks]]
 stage = "post_build"
 command = "sh"
