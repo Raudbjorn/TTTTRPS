@@ -627,14 +627,19 @@ fn HeaderLink(
     let layout_state = crate::services::layout_service::use_layout_state();
     let text_mode = layout_state.text_navigation;
 
+    // Execute children once to get the view (Icon)
+    // Children returns a Fragment which is Clone
+    let icon_view = children();
+
     view! {
         <A href=href attr:class="group relative text-theme-secondary hover:text-theme-primary transition-colors p-2 rounded hover:bg-white/5 flex items-center justify-center">
             {move || {
                 if text_mode.get() {
                     view! { <span class="font-medium text-sm px-2">{label}</span> }.into_any()
                 } else {
+                    let icon = icon_view.clone();
                     view! {
-                        {children()}
+                        {icon}
                         <div
                             class="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-[var(--bg-elevated)] text-[var(--text-primary)] text-xs font-medium px-2 py-1 rounded shadow-lg opacity-0 group-hover:opacity-100 group-hover:translate-y-1 group-focus:opacity-100 transition-all duration-200 whitespace-nowrap border border-[var(--border-subtle)] z-[100] pointer-events-none backdrop-blur-md"
                             role="tooltip"
