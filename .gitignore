@@ -6,3 +6,4 @@ fns.txt
 
 # Sidecar binaries (downloaded at build time)
 src-tauri/bin/
+frontend/tailwindcss

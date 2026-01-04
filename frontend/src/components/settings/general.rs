@@ -83,16 +83,51 @@ pub fn GeneralSettings() -> impl IntoView {
 
             // Visual Tweaks
             <Card class="p-6">
-                 <div class="flex items-center justify-between opacity-50 cursor-not-allowed" title="Coming soon">
+                 // Motion Toggle (Placeholder)
+                 <div class="flex items-center justify-between opacity-50 cursor-not-allowed mb-6" title="Coming soon">
                     <div>
                         <h4 class="font-semibold text-[var(--text-secondary)]">"Reduce Motion"</h4>
                         <p class="text-sm text-[var(--text-muted)]">"Disable advanced animations (film grain, scanlines)."</p>
                     </div>
-                    // Toggle placeholder
                     <div class="h-6 w-11 bg-[var(--bg-surface)] rounded-full border border-[var(--border-subtle)] relative">
                          <div class="absolute left-1 top-1 h-4 w-4 bg-[var(--text-muted)] rounded-full"></div>
                     </div>
                  </div>
+
+                 // Navigation Mode Toggle
+                 {
+                    let layout_state = crate::services::layout_service::use_layout_state();
+                    let is_text_mode = layout_state.text_navigation;
+
+                    view! {
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <h4 class="font-semibold text-[var(--text-secondary)]">"Text Navigation"</h4>
+                                <p class="text-sm text-[var(--text-muted)]">"Show text labels instead of icons in the navigation bar."</p>
+                            </div>
+                            <button
+                                class=move || format!(
+                                    "h-6 w-11 rounded-full border transition-colors duration-200 relative focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)] {}",
+                                    if is_text_mode.get() {
+                                        "bg-[var(--accent-primary)] border-[var(--accent-primary)]"
+                                    } else {
+                                        "bg-[var(--bg-surface)] border-[var(--border-subtle)]"
+                                    }
+                                )
+                                on:click=move |_| is_text_mode.update(|v| *v = !*v)
+                                role="switch"
+                                aria-checked=move || is_text_mode.get().to_string()
+                            >
+                                <div
+                                    class=move || format!(
+                                        "absolute top-1 left-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 {}",
+                                        if is_text_mode.get() { "translate-x-5" } else { "translate-x-0" }
+                                    )
+                                />
+                            </button>
+                        </div>
+                    }
+                 }
             </Card>
         </div>
     }

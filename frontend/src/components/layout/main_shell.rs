@@ -114,9 +114,12 @@ pub fn MainShell(
     let is_mobile = Signal::derive(move || window_width.get() < 900.0);
 
     // Computed grid template columns
+    let rail_width_px = Signal::derive(move || if layout.text_navigation.get() { 200 } else { 64 });
+
     let grid_template_cols = Signal::derive(move || {
         let sidebar_w = layout.sidebar_width.get();
         let info_w = layout.infopanel_width.get();
+        let rail_w = rail_width_px.get();
 
         let sidebar_col = if is_mobile.get() {
             "0px".to_string()
@@ -132,7 +135,7 @@ pub fn MainShell(
             "0px".to_string()
         };
 
-        format!("64px {} 1fr {}", sidebar_col, info_col)
+        format!("{}px {} 1fr {}", rail_w, sidebar_col, info_col)
     });
 
     // Computed cursor style
@@ -148,9 +151,11 @@ pub fn MainShell(
     let handle_mousemove = move |e: web_sys::MouseEvent| {
         if let Some(side) = dragging.get() {
             let current_x = e.page_x() as f64;
+            let rail_w = rail_width_px.get();
+
             match side {
                 ResizeSide::Left => {
-                    let new_w = ((current_x as i32) - 64).max(200).min(800);
+                    let new_w = ((current_x as i32) - rail_w).max(200).min(800);
                     layout.sidebar_width.set(new_w);
                 }
                 ResizeSide::Right => {
@@ -200,20 +205,21 @@ pub fn MainShell(
 
     // Sidebar class based on mobile/desktop
     let sidebar_class = Signal::derive(move || {
+        let rail_w = if layout.text_navigation.get() { "200px" } else { "64px" };
         if is_mobile.get() {
             if sidebar_visible.get() {
-                "fixed left-[64px] top-0 bottom-[56px] w-[300px] z-50 shadow-2xl border-r border-[var(--border-subtle)] bg-[var(--bg-surface)] overflow-visible transition-transform duration-300"
+                format!("fixed left-[{}] top-0 bottom-[56px] w-[300px] z-50 shadow-2xl border-r border-[var(--border-subtle)] bg-[var(--bg-surface)] overflow-visible transition-transform duration-300", rail_w)
             } else {
-                "hidden"
+                "hidden".to_string()
             }
         } else {
-            "border-r border-[var(--border-subtle)] bg-[var(--bg-surface)] overflow-visible transition-none relative"
+            "border-r border-[var(--border-subtle)] bg-[var(--bg-surface)] overflow-visible transition-none relative".to_string()
         }
     });
 
     view! {
         <div
-            class="h-screen w-screen overflow-hidden bg-[var(--bg-deep)] text-[var(--text-primary)] font-ui transition-all duration-300 select-none"
+            class="h-screen w-screen overflow-hidden bg-hero text-[var(--text-primary)] font-ui transition-all duration-300 select-none"
             style:display="grid"
             style:grid-template-columns=move || grid_template_cols.get()
             style:grid-template-rows="1fr 56px"
@@ -231,7 +237,7 @@ pub fn MainShell(
             // Mobile Backdrop
             <Show when=move || show_backdrop.get()>
                 <div
-                    class="fixed inset-0 bg-black/50 z-40 backdrop-blur-sm ml-[64px]"
+                    class=move || format!("fixed inset-0 bg-black/50 z-40 backdrop-blur-sm ml-[{}]", if layout.text_navigation.get() { "200px" } else { "64px" })
                     on:click=move |_| layout.sidebar_visible.set(false)
                 />
             </Show>
@@ -239,7 +245,15 @@ pub fn MainShell(
             // Area: Sidebar (Drawer or Grid)
             <div
                 style:grid-area=move || if is_mobile.get() { "" } else { "sidebar" }
-                class=move || sidebar_class.get()
+                class=move || {
+                    let base = sidebar_class.get();
+                    // Append glass effect if not mobile drawer (drawer has its own styling in the signal)
+                    if !is_mobile.get() {
+                        format!("{} panel-glass border-r-0 my-2 ml-2", base)
+                    } else {
+                        base.to_string()
+                    }
+                }
             >
                 {sidebar()}
                 // Drag Handle (Only if not mobile)
@@ -254,7 +268,7 @@ pub fn MainShell(
             // Area: Main
             <div
                 style:grid-area="main"
-                class="overflow-y-auto relative bg-[var(--bg-deep)]"
+                class="overflow-y-auto relative scrollbar-none"
             >
                 {children()}
             </div>
@@ -262,7 +276,7 @@ pub fn MainShell(
             // Area: Info
             <div
                 style:grid-area="info"
-                class="border-l border-[var(--border-subtle)] bg-[var(--bg-surface)] overflow-visible transition-none relative"
+                class="panel-glass overflow-visible transition-none relative my-2 mr-2"
             >
                 {info_panel()}
                 <Show when=move || infopanel_visible.get()>
@@ -276,7 +290,7 @@ pub fn MainShell(
             // Area: Footer
             <div
                 style:grid-area="footer"
-                class="border-t border-[var(--border-subtle)] bg-[var(--bg-elevated)] z-10"
+                class="panel-glass z-10 m-2 mt-0"
             >
                 <MediaBar />
             </div>

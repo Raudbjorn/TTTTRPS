@@ -709,6 +709,7 @@ pub async fn stream_chat(
     system_prompt: Option<String>,
     temperature: Option<f32>,
     max_tokens: Option<u32>,
+    provided_stream_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     use tauri::Emitter;
@@ -725,45 +726,52 @@ pub async fn stream_chat(
     let router_clone = router.clone();
     drop(router);
 
+    // Use provided stream ID or generate a new one
+    let stream_id = provided_stream_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let stream_id_clone = stream_id.clone();
+
+    // Initiate the stream (waits for connection/headers)
     let mut rx = router_clone.stream_chat(request).await
         .map_err(|e| e.to_string())?;
 
-    let mut stream_id = String::new();
-    let mut full_content = String::new();
+    // Spawn a task to handle the stream asynchronously so we don't block the command
+    tokio::spawn(async move {
+        let mut full_content = String::new();
 
-    // Process chunks and emit events
-    while let Some(chunk_result) = rx.recv().await {
-        match chunk_result {
-            Ok(chunk) => {
-                if stream_id.is_empty() {
-                    stream_id = chunk.stream_id.clone();
+        // Process chunks and emit events
+        while let Some(chunk_result) = rx.recv().await {
+            match chunk_result {
+                Ok(mut chunk) => {
+                    // Override the provider's stream ID with our generated one
+                    chunk.stream_id = stream_id_clone.clone();
+                    full_content.push_str(&chunk.content);
+
+                    // Emit the chunk event
+                    let _ = app_handle.emit("chat-chunk", &chunk);
+
+                    if chunk.is_final {
+                        break;
+                    }
                 }
-                full_content.push_str(&chunk.content);
-
-                // Emit the chunk event
-                let _ = app_handle.emit("chat-chunk", &chunk);
-
-                if chunk.is_final {
+                Err(e) => {
+                    // Emit error event
+                    let error_chunk = ChatChunk {
+                        stream_id: stream_id_clone.clone(),
+                        content: String::new(),
+                        provider: String::new(),
+                        model: String::new(),
+                        is_final: true,
+                        finish_reason: Some("error".to_string()),
+                        usage: None,
+                        index: 0,
+                    };
+                    let _ = app_handle.emit("chat-chunk", &error_chunk);
+                    eprintln!("Stream error: {}", e);
                     break;
                 }
             }
-            Err(e) => {
-                // Emit error event
-                let error_chunk = ChatChunk {
-                    stream_id: stream_id.clone(),
-                    content: String::new(),
-                    provider: String::new(),
-                    model: String::new(),
-                    is_final: true,
-                    finish_reason: Some("error".to_string()),
-                    usage: None,
-                    index: 0,
-                };
-                let _ = app_handle.emit("chat-chunk", &error_chunk);
-                return Err(e.to_string());
-            }
         }
-    }
+    });
 
     Ok(stream_id)
 }

@@ -16,5 +16,14 @@ pub fn main() {
     // Simple console logging for WASM
     web_sys::console::log_1(&"Starting TTRPG Assistant Frontend (Leptos)".into());
 
+    // Remove loading spinner
+    if let Some(window) = web_sys::window() {
+        if let Some(document) = window.document() {
+            if let Some(loader) = document.get_element_by_id("app-loading") {
+                loader.remove();
+            }
+        }
+    }
+
     leptos::mount::mount_to_body(app::App);
 }

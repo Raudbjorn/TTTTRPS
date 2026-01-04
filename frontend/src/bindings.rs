@@ -3259,19 +3259,23 @@ pub async fn stream_chat(
     system_prompt: Option<String>,
     temperature: Option<f32>,
     max_tokens: Option<u32>,
+    provided_stream_id: Option<String>,
 ) -> Result<String, String> {
     #[derive(Serialize)]
+    #[serde(rename_all = "snake_case")]
     struct Args {
         messages: Vec<StreamingChatMessage>,
         system_prompt: Option<String>,
         temperature: Option<f32>,
         max_tokens: Option<u32>,
+        provided_stream_id: Option<String>,
     }
     invoke("stream_chat", &Args {
         messages,
         system_prompt,
         temperature,
         max_tokens,
+        provided_stream_id,
     }).await
 }
 

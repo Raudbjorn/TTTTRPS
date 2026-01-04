@@ -350,6 +350,10 @@ pub struct ThemeDefinition {
     pub effect_grain: f32,    // 0-1
     pub effect_scanline: f32, // 0-1
     pub effect_glow: f32,     // 0-1
+
+    // Background Image (CSS value, e.g. url(...) or linear-gradient(...))
+    // Note: Strings cannot be interpolated smoothly in this model, so we favor the dominant theme's image.
+    pub bg_image: String,
 }
 
 impl Default for ThemeDefinition {
@@ -360,44 +364,48 @@ impl Default for ThemeDefinition {
 }
 
 impl ThemeDefinition {
-    /// Fantasy theme: Warm browns, golds, parchment tones
+    /// Fantasy theme: Ethereal/Premium — Dark with Gold Accents
     /// Ideal for D&D, Pathfinder, and traditional fantasy RPGs
     pub fn fantasy() -> Self {
         ThemeDefinition {
-            // Warm dark browns/purples for backgrounds
-            bg_deep: [0.15, 0.02, 280.0, 1.0],
-            bg_surface: [0.20, 0.03, 280.0, 0.8],
-            bg_elevated: [0.25, 0.04, 280.0, 0.9],
+            // Deep dark background (matching the CSS #0a0a0c)
+            bg_deep: [0.10, 0.01, 270.0, 1.0],
+            // High transparency surface
+            bg_surface: [0.15, 0.02, 270.0, 0.4],
+            bg_elevated: [0.20, 0.03, 270.0, 0.6],
 
-            // Warm parchment-like text
-            text_primary: [0.95, 0.01, 60.0, 1.0],
-            text_secondary: [0.80, 0.02, 50.0, 1.0],
-            text_muted: [0.60, 0.02, 280.0, 1.0],
+            // Crisp white text for contrast against dark
+            text_primary: [0.98, 0.00, 0.0, 1.0],
+            text_secondary: [0.85, 0.01, 50.0, 1.0],
+            text_muted: [0.60, 0.02, 270.0, 1.0],
 
-            // Golden/amber accents
-            accent_primary: [0.75, 0.15, 45.0, 1.0],
-            accent_secondary: [0.65, 0.12, 30.0, 1.0],
-            accent_hover: [0.80, 0.18, 45.0, 1.0],
+            // Gold/Amber accents
+            accent_primary: [0.85, 0.18, 85.0, 1.0], // Gold
+            accent_secondary: [0.75, 0.15, 70.0, 1.0],
+            accent_hover: [0.90, 0.20, 85.0, 1.0],
 
-            // Borders
-            border_subtle: [0.30, 0.03, 280.0, 0.5],
-            border_strong: [0.75, 0.12, 45.0, 0.6],
-            border_color: [0.40, 0.04, 50.0, 0.6],
-            shadow_color: [0.10, 0.02, 280.0, 0.5],
+            // Borders - subtle and strong (Gold)
+            border_subtle: [0.90, 0.00, 0.0, 0.1],
+            border_strong: [0.85, 0.18, 85.0, 0.3],
+            border_color: [0.85, 0.18, 85.0, 0.2],
+            shadow_color: [0.00, 0.00, 0.0, 0.5],
 
             // Semantic colors
             success: [0.65, 0.15, 145.0, 1.0],
             warning: [0.75, 0.18, 65.0, 1.0],
             error: [0.70, 0.24, 25.0, 1.0],
 
-            radius_sm: 4.0,
-            radius_md: 8.0,
-            radius_lg: 16.0,
+            radius_sm: 6.0,
+            radius_md: 12.0,
+            radius_lg: 24.0,
 
-            effect_blur: 12.0,
-            effect_grain: 0.0,
+            effect_blur: 20.0,
+            effect_grain: 0.03,
             effect_scanline: 0.0,
-            effect_glow: 0.4,
+            effect_glow: 0.5,
+
+            // Fantasy: Rich Nebula Gradient
+            bg_image: "radial-gradient(circle at 15% 50%, rgba(76, 29, 149, 0.15), transparent 25%), radial-gradient(circle at 85% 30%, rgba(180, 83, 9, 0.1), transparent 25%)".to_string(),
         }
     }
 
@@ -439,6 +447,9 @@ impl ThemeDefinition {
             effect_grain: 0.15,
             effect_scanline: 0.0,
             effect_glow: 0.2,
+
+            // Cosmic: Deep Starfield Gradient
+            bg_image: "radial-gradient(ellipse at bottom, rgba(27, 39, 53, 0.3) 0%, transparent 100%), radial-gradient(circle at 50% 0%, rgba(76, 29, 149, 0.2), transparent 50%)".to_string(),
         }
     }
 
@@ -480,6 +491,9 @@ impl ThemeDefinition {
             effect_grain: 0.05,
             effect_scanline: 0.3,
             effect_glow: 0.6,
+
+            // Terminal: Scanline grid hint
+            bg_image: "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 50, 0, 0.05) 2px, rgba(0, 50, 0, 0.05) 4px)".to_string(),
         }
     }
 
@@ -521,6 +535,9 @@ impl ThemeDefinition {
             effect_grain: 0.08,
             effect_scanline: 0.0,
             effect_glow: 0.0,
+
+            // Noir: Subtle Vignette
+            bg_image: "radial-gradient(circle, transparent 40%, rgba(0, 0, 0, 0.4) 100%)".to_string(),
         }
     }
 
@@ -562,6 +579,9 @@ impl ThemeDefinition {
             effect_grain: 0.03,
             effect_scanline: 0.1,
             effect_glow: 0.8,
+
+            // Neon: Cyber Grid
+            bg_image: "linear-gradient(rgba(255, 0, 255, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 255, 255, 0.05) 1px, transparent 1px)".to_string(),
         }
     }
 }
@@ -623,6 +643,7 @@ fn zeroed_theme() -> ThemeDefinition {
         effect_grain: 0.0,
         effect_scanline: 0.0,
         effect_glow: 0.0,
+        bg_image: String::new(),
     }
 }
 
@@ -673,6 +694,9 @@ pub fn generate_css(weights: &ThemeWeights) -> String {
             --effect-grain: {effect_grain};
             --effect-scanline: {effect_scanline};
             --effect-glow: {effect_glow};
+
+            /* Background Image */
+            --bg-image: {bg_image};
         }}
     "#,
         bg_deep = fmt_oklch(mixed.bg_deep),
@@ -697,7 +721,8 @@ pub fn generate_css(weights: &ThemeWeights) -> String {
         effect_blur = mixed.effect_blur,
         effect_grain = mixed.effect_grain,
         effect_scanline = mixed.effect_scanline,
-        effect_glow = mixed.effect_glow
+        effect_glow = mixed.effect_glow,
+        bg_image = mixed.bg_image
     )
 }
 
@@ -789,6 +814,16 @@ pub fn blend_themes(weights: &ThemeWeights) -> ThemeDefinition {
     mixed.success = blend_oklch(&success_colors);
     mixed.warning = blend_oklch(&warning_colors);
     mixed.error = blend_oklch(&error_colors);
+
+    // For background image, we cannot interpolate strings.
+    // We pick the image from the theme with the highest weight.
+    let dominant_def = definitions
+        .iter()
+        .max_by(|(w1, _), (w2, _)| w1.partial_cmp(w2).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(_, def)| def)
+        .unwrap_or(&definitions[0].1);
+
+    mixed.bg_image = dominant_def.bg_image.clone();
 
     mixed
 }

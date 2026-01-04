@@ -91,36 +91,49 @@
 }
 
 /* -----------------------------------------------------------------------------
-   Theme: Fantasy (Default) — Arcane Glassmorphism
+   Theme: Fantasy (Default) — Ethereal Glass
    For: D&D, Pathfinder, Warhammer Fantasy, 13th Age
 ----------------------------------------------------------------------------- */
 .theme-fantasy,
 :root {
-  --bg-deep: oklch(15% 0.02 280);
-  --bg-surface: oklch(20% 0.03 280 / 0.8);
-  --bg-elevated: oklch(25% 0.04 280 / 0.9);
-  --text-primary: oklch(95% 0.01 60);
-  --text-muted: oklch(60% 0.02 280);
-  --accent: oklch(75% 0.15 45);
-  --accent-hover: oklch(80% 0.18 45);
-  --danger: oklch(60% 0.20 25);
+  /* Deep, rich animated background base */
+  --bg-deep: #0a0a0c;
+  /* Fallback if image fails, but we used a rich dark gradient */
 
-  --border-subtle: oklch(30% 0.03 280 / 0.5);
-  --border-strong: oklch(75% 0.12 45 / 0.6);
-  --glow-color: oklch(75% 0.15 45 / 0.3);
+  /* Glass panels - High transparency */
+  --bg-surface: rgba(20, 20, 25, 0.4);
+  --bg-elevated: rgba(30, 30, 40, 0.6);
+
+  --text-primary: #f0f0f0;
+  --text-muted: #a0a0a0;
+
+  /* Gold/Amber Accent for Premium feel */
+  --accent: #ffd700;
+  --accent-hover: #ffed4a;
+
+  --danger: #ff4d4d;
+
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 215, 0, 0.3);
+
+  --glow-color: rgba(255, 215, 0, 0.15);
 
   --font-body: 'Inter', system-ui, sans-serif;
-  --font-header: 'Cinzel', 'Merriweather', serif;
+  --font-header: 'Cinzel', serif;
   --font-mono: 'Iosevka', monospace;
 
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 16px;
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 24px;
 
-  --effect-blur: 12px;
-  --effect-grain: 0;
+  --effect-blur: 20px;
+  --effect-grain: 0.03;
   --effect-scanline: 0;
-  --effect-glow: 0.4;
+  --effect-glow: 0.5;
+
+  /* Premium Background Image (Abstract Nebula/Magic) */
+  --bg-image: radial-gradient(circle at 15% 50%, rgba(76, 29, 149, 0.15), transparent 25%),
+              radial-gradient(circle at 85% 30%, rgba(180, 83, 9, 0.1), transparent 25%);
 }
 
 /* -----------------------------------------------------------------------------

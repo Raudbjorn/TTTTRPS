@@ -116,13 +116,23 @@
     color: var(--text-muted);
   }
 
-  /* Glass Panel */
+  /* Glass Panel - Premium */
   .panel-glass {
     background: var(--bg-surface);
     backdrop-filter: blur(var(--effect-blur));
     -webkit-backdrop-filter: blur(var(--effect-blur));
     border: 1px solid var(--border-subtle);
+    border-top: 1px solid rgba(255, 255, 255, 0.1); /* Top light highlight */
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
     border-radius: var(--radius-md);
+  }
+
+  /* Main Hero Background */
+  .bg-hero {
+    background-color: var(--bg-deep);
+    background-image: var(--bg-image);
+    background-attachment: fixed;
+    background-size: cover;
   }
 
   /* Skip Link for Accessibility */
@@ -134,6 +144,7 @@
     background-color: var(--bg-elevated);
     color: var(--text-primary);
     border-radius: var(--radius-md);
+    border: 1px solid var(--accent);
   }
 
   .skip-link:focus {

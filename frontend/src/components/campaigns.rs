@@ -422,9 +422,10 @@ pub fn Campaigns() -> impl IntoView {
     };
 
     // Load campaigns on mount and refresh
+    let fetch_for_effect = fetch_campaigns.clone();
     Effect::new(move |_| {
         refresh_trigger.track();
-        (fetch_campaigns)();
+        (fetch_for_effect)();
     });
 
     // Refresh campaigns handler

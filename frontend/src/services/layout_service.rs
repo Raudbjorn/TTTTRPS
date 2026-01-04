@@ -60,6 +60,8 @@ pub struct LayoutState {
     pub infopanel_width: RwSignal<i32>,
     /// The currently active view in the application
     pub active_view: RwSignal<ViewType>,
+    /// Whether to use text labels instead of icons for navigation
+    pub text_navigation: RwSignal<bool>,
 }
 
 impl LayoutState {
@@ -71,6 +73,7 @@ impl LayoutState {
             infopanel_visible: RwSignal::new(true),
             infopanel_width: RwSignal::new(320),
             active_view: RwSignal::new(ViewType::default()),
+            text_navigation: RwSignal::new(false),
         }
     }
 

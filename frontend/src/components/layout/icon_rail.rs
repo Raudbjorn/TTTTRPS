@@ -214,6 +214,9 @@ fn RailIcon(
     #[prop(optional)] shortcut: Option<&'static str>,
     #[prop(into)] on_click: Callback<()>,
 ) -> impl IntoView {
+    let layout_state = crate::services::layout_service::use_layout_state();
+    let text_mode = layout_state.text_navigation;
+
     let active_class = Signal::derive(move || {
         if active.get() {
             "text-[var(--accent)] bg-[var(--bg-surface)] border-l-2 border-[var(--accent)]"
@@ -231,7 +234,8 @@ fn RailIcon(
     view! {
         <button
             class=move || format!(
-                "group relative w-full h-12 flex items-center justify-center cursor-pointer transition-all duration-200 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-[var(--accent)] {}",
+                "group relative w-full h-12 flex items-center cursor-pointer transition-all duration-200 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-[var(--accent)] {} {}",
+                if text_mode.get() { "justify-start px-4 gap-3" } else { "justify-center" },
                 active_class.get()
             )
             aria-label=label
@@ -249,13 +253,25 @@ fn RailIcon(
                 }}
             </span>
 
-            // Tooltip with proper positioning and accessibility
-            <div
-                class="absolute left-14 top-1/2 -translate-y-1/2 bg-[var(--bg-elevated)] text-[var(--text-primary)] text-xs font-medium px-2 py-1 rounded shadow-lg opacity-0 group-hover:opacity-100 group-hover:translate-x-1 group-focus:opacity-100 transition-all duration-200 whitespace-nowrap border border-[var(--border-subtle)] z-[100] pointer-events-none backdrop-blur-md"
-                role="tooltip"
-            >
-                {tooltip_text}
-            </div>
+            {move || if text_mode.get() {
+                view! { <span class="text-sm font-medium whitespace-nowrap animate-fade-in">{label}</span> }.into_any()
+            } else {
+                view! { <span /> }.into_any()
+            }}
+
+            // Tooltip (only in icon mode)
+            {move || if !text_mode.get() {
+                view! {
+                    <div
+                        class="absolute left-14 top-1/2 -translate-y-1/2 bg-[var(--bg-elevated)] text-[var(--text-primary)] text-xs font-medium px-2 py-1 rounded shadow-lg opacity-0 group-hover:opacity-100 group-hover:translate-x-1 group-focus:opacity-100 transition-all duration-200 whitespace-nowrap border border-[var(--border-subtle)] z-[100] pointer-events-none backdrop-blur-md"
+                        role="tooltip"
+                    >
+                        {tooltip_text.clone()}
+                    </div>
+                }.into_any()
+            } else {
+                view! { <span /> }.into_any()
+            }}
         </button>
     }
 }
