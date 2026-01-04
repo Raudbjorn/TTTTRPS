@@ -149,12 +149,18 @@ impl BackstoryGenerator {
                 ChatMessage {
                     role: MessageRole::User,
                     content: user_prompt,
+                    images: None,
+                    name: None,
+                    tool_calls: None,
+                    tool_call_id: None,
                 },
             ],
             system_prompt: Some(system_prompt),
             temperature: Some(temperature),
             max_tokens: Some(max_tokens),
             provider: None,
+            tools: None,
+            tool_choice: None,
         };
 
         let response = self.llm_client.chat(chat_request).await
@@ -209,12 +215,18 @@ impl BackstoryGenerator {
                     ChatMessage {
                         role: MessageRole::User,
                         content: user_prompt,
+                        images: None,
+                        name: None,
+                        tool_calls: None,
+                        tool_call_id: None,
                     },
                 ],
                 system_prompt: Some(system_prompt),
                 temperature: Some(temp),
                 max_tokens: Some(estimate_tokens(&request.length)),
                 provider: None,
+                tools: None,
+                tool_choice: None,
             };
 
             match self.llm_client.chat(chat_request).await {
@@ -262,12 +274,18 @@ impl BackstoryGenerator {
                 ChatMessage {
                     role: MessageRole::User,
                     content: prompt,
+                    images: None,
+                    name: None,
+                    tool_calls: None,
+                    tool_call_id: None,
                 },
             ],
             system_prompt: Some(system_prompt),
             temperature: Some(0.8),
             max_tokens: Some(2000),
             provider: None,
+            tools: None,
+            tool_choice: None,
         };
 
         let response = self.llm_client.chat(chat_request).await
@@ -294,12 +312,18 @@ impl BackstoryGenerator {
                 ChatMessage {
                     role: MessageRole::User,
                     content: prompt,
+                    images: None,
+                    name: None,
+                    tool_calls: None,
+                    tool_call_id: None,
                 },
             ],
             system_prompt: Some(system_prompt),
             temperature: Some(0.7),
             max_tokens: Some(2000),
             provider: None,
+            tools: None,
+            tool_choice: None,
         };
 
         let response = self.llm_client.chat(chat_request).await
@@ -343,12 +367,18 @@ impl BackstoryGenerator {
                 ChatMessage {
                     role: MessageRole::User,
                     content: prompt,
+                    images: None,
+                    name: None,
+                    tool_calls: None,
+                    tool_call_id: None,
                 },
             ],
             system_prompt: Some(self.default_system_prompt()),
             temperature: Some(0.8),
             max_tokens: Some(estimate_tokens(&target_length)),
             provider: None,
+            tools: None,
+            tool_choice: None,
         };
 
         let response = self.llm_client.chat(chat_request).await
@@ -383,12 +413,18 @@ impl BackstoryGenerator {
                 ChatMessage {
                     role: MessageRole::User,
                     content: prompt,
+                    images: None,
+                    name: None,
+                    tool_calls: None,
+                    tool_call_id: None,
                 },
             ],
             system_prompt: Some(self.default_system_prompt()),
             temperature: Some(0.7),
             max_tokens: Some(estimate_tokens(&target_length)),
             provider: None,
+            tools: None,
+            tool_choice: None,
         };
 
         let response = self.llm_client.chat(chat_request).await
@@ -428,6 +464,10 @@ impl BackstoryGenerator {
                 ChatMessage {
                     role: MessageRole::User,
                     content: prompt,
+                    images: None,
+                    name: None,
+                    tool_calls: None,
+                    tool_call_id: None,
                 },
             ],
             system_prompt: Some(
@@ -436,6 +476,8 @@ impl BackstoryGenerator {
             temperature: Some(0.85),
             max_tokens: Some(800),
             provider: None,
+            tools: None,
+            tool_choice: None,
         };
 
         let response = self.llm_client.chat(chat_request).await

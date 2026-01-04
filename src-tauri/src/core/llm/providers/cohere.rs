@@ -161,6 +161,7 @@ impl LLMProvider for CohereProvider {
             finish_reason: json["finish_reason"].as_str().map(|s| s.to_string()),
             latency_ms: latency,
             cost_usd: cost,
+            tool_calls: None,
         })
     }
 

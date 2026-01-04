@@ -159,6 +159,7 @@ impl LLMProvider for GeminiProvider {
                 .map(|s| s.to_string()),
             latency_ms: latency,
             cost_usd: cost,
+            tool_calls: None,
         })
     }
 

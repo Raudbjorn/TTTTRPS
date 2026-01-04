@@ -38,7 +38,7 @@ fn main() {
             }
 
             // Initialize managers (Meilisearch-based)
-            let (cm, sm, ns, creds, vm, sidecar_manager, search_client, personality_store, personality_manager, pipeline, _llm_router, version_manager, world_state_manager, relationship_manager, location_manager, claude_desktop_manager) =
+            let (cm, sm, ns, creds, vm, sidecar_manager, search_client, personality_store, personality_manager, pipeline, _llm_router, version_manager, world_state_manager, relationship_manager, location_manager, claude_desktop_manager, llm_manager) =
                 commands::AppState::init_defaults();
 
             // Initialize Database
@@ -99,7 +99,9 @@ fn main() {
                 world_state_manager,
                 relationship_manager,
                 location_manager,
+                location_manager,
                 claude_desktop_manager,
+                llm_manager,
             });
 
             // Auto-configure Ollama if no providers are present (User Request)

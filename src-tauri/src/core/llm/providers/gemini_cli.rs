@@ -660,6 +660,7 @@ impl LLMProvider for GeminiCliProvider {
             finish_reason: Some("stop".to_string()),
             latency_ms,
             cost_usd: None, // Free tier / subscription based
+            tool_calls: None,
         })
     }
 

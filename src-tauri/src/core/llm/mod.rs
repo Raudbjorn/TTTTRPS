@@ -226,6 +226,84 @@ impl LLMManager {
             None => Vec::new(),
         }
     }
+
+    /// Configure for chat (convenience method using default workspace)
+    pub async fn configure_for_chat(
+        &self,
+        config: &super::providers::ProviderConfig,
+        custom_system_prompt: Option<&str>,
+    ) -> std::result::Result<(), String> {
+        let chat_client = self.chat_client.read().await;
+        let client = chat_client
+            .as_ref()
+            .ok_or("Meilisearch chat client not configured")?;
+
+        let proxy_url = if config.requires_proxy() {
+             let url = self.ensure_proxy().await?;
+             let llm_provider = config.create_provider();
+             self.register_proxy_provider(config.provider_id(), llm_provider).await?;
+             url
+        } else {
+            String::new()
+        };
+
+        client.configure_from_provider_config(config, &proxy_url, custom_system_prompt).await
+    }
+
+    /// Send a chat message (using default DM workspace)
+    /// Send a chat message (using default DM workspace)
+    pub async fn chat(
+        &self,
+        messages: Vec<ChatMessage>,
+        model: &str,
+    ) -> std::result::Result<String, String> {
+        let chat_client = self.chat_client.read().await;
+        let client = chat_client
+            .as_ref()
+            .ok_or("Meilisearch chat client not configured")?;
+
+        // Convert router messages to Meilisearch messages
+        let meili_messages: Vec<crate::core::meilisearch_chat::ChatMessage> = messages.into_iter().map(|m| {
+            crate::core::meilisearch_chat::ChatMessage {
+                role: m.role.to_string().to_lowercase(),
+                content: m.content,
+            }
+        }).collect();
+
+        // Use default workspace "dm-assistant"
+        client.chat_completion("dm-assistant", meili_messages, model).await
+    }
+
+    /// Stream chat response (using default DM workspace)
+    /// Stream chat response (using default DM workspace)
+    pub async fn chat_stream(
+        &self,
+        messages: Vec<ChatMessage>,
+        model: &str,
+    ) -> std::result::Result<tokio::sync::mpsc::Receiver<std::result::Result<String, String>>, String> {
+        let chat_client = self.chat_client.read().await;
+        let client = chat_client
+            .as_ref()
+            .ok_or("Meilisearch chat client not configured")?;
+
+        // Convert router messages to Meilisearch messages
+        let meili_messages: Vec<crate::core::meilisearch_chat::ChatMessage> = messages.into_iter().map(|m| {
+            crate::core::meilisearch_chat::ChatMessage {
+                role: m.role.to_string().to_lowercase(),
+                content: m.content,
+            }
+        }).collect();
+
+        let request = crate::core::meilisearch_chat::ChatCompletionRequest {
+            model: model.to_string(),
+            messages: meili_messages,
+            stream: true,
+            temperature: Some(0.7),
+            max_tokens: Some(4096),
+        };
+
+        client.chat_completion_stream("dm-assistant", request).await
+    }
 }
 
 impl Default for LLMManager {

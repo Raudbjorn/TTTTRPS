@@ -560,6 +560,7 @@ impl LLMProvider for ClaudeCodeProvider {
             finish_reason: Some("stop".to_string()),
             latency_ms,
             cost_usd: response.cost.map(|c| c.usd),
+            tool_calls: None,
         })
     }
 

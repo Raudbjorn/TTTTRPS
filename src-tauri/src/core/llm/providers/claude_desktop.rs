@@ -187,6 +187,7 @@ impl LLMProvider for ClaudeDesktopProvider {
             finish_reason: Some("stop".to_string()),
             latency_ms,
             cost_usd: None, // Subscription-based
+            tool_calls: None,
         })
     }
 

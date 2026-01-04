@@ -958,8 +958,97 @@ impl DMChatManager {
         self.chat_client
             .chat_completion_stream(&self.default_workspace, request)
             .await
+
+    /// Configure from LLM ProviderConfig
+    pub async fn configure_from_provider_config(
+        &self,
+        config: &ProviderConfig,
+        proxy_url: &str,
+        custom_system_prompt: Option<&str>,
+    ) -> Result<(), String> {
+        let chat_config = match config {
+            ProviderConfig::OpenAI { api_key, model, organization_id, .. } => ChatProviderConfig::OpenAI {
+                api_key: api_key.clone(),
+                model: Some(model.clone()),
+                organization_id: organization_id.clone(),
+            },
+            ProviderConfig::Claude { api_key, model, max_tokens } => ChatProviderConfig::Claude {
+                api_key: api_key.clone(),
+                model: Some(model.clone()),
+                max_tokens: Some(*max_tokens),
+            },
+            ProviderConfig::Mistral { api_key, model } => ChatProviderConfig::Mistral {
+                api_key: api_key.clone(),
+                model: Some(model.clone()),
+            },
+            ProviderConfig::Ollama { host, model } => ChatProviderConfig::Ollama {
+                host: host.clone(),
+                model: model.clone(),
+            },
+            ProviderConfig::Gemini { api_key, model } => ChatProviderConfig::Gemini {
+                api_key: api_key.clone(),
+                model: Some(model.clone()),
+            },
+            ProviderConfig::OpenRouter { api_key, model } => ChatProviderConfig::OpenRouter {
+                api_key: api_key.clone(),
+                model: model.clone(),
+            },
+            // Note: ProviderConfig doesn't have AzureOpenAI variant yet in mod.rs,
+            // but ChatProviderConfig does. We skip it or map if it exists.
+            // Based on view_file output of mod.rs, AzureOpenAI is NOT in ProviderConfig.
+            // So we handle other variants.
+
+            ProviderConfig::Groq { api_key, model } => ChatProviderConfig::Groq {
+                api_key: api_key.clone(),
+                model: model.clone(),
+            },
+            ProviderConfig::Together { api_key, model } => ChatProviderConfig::Together {
+                api_key: api_key.clone(),
+                model: model.clone(),
+            },
+            ProviderConfig::Cohere { api_key, model } => ChatProviderConfig::Cohere {
+                api_key: api_key.clone(),
+                model: model.clone(),
+            },
+            ProviderConfig::DeepSeek { api_key, model } => ChatProviderConfig::DeepSeek {
+                api_key: api_key.clone(),
+                model: model.clone(),
+            },
+            ProviderConfig::ClaudeCode { timeout_secs, model, .. } => ChatProviderConfig::ClaudeCode {
+                timeout_secs: Some(*timeout_secs),
+                model: model.clone(),
+            },
+            ProviderConfig::ClaudeDesktop { port, timeout_secs } => ChatProviderConfig::ClaudeDesktop {
+                port: Some(*port),
+                timeout_secs: Some(*timeout_secs),
+            },
+            // Handle GeminiCLI as generic or unsupported for now if no direct map
+            ProviderConfig::GeminiCli { .. } => return Err("Gemini CLI not supported for Meilisearch chat yet".to_string()),
+
+            // Meilisearch provider is for using Meilisearch as a provider, creating a loop if we configure it here
+            ProviderConfig::Meilisearch { .. } => return Err("Recursive Meilisearch configuration".to_string()),
+        };
+
+        // Create custom prompts object
+        let prompts = Some(ChatPrompts {
+            system: Some(
+                custom_system_prompt
+                    .unwrap_or(DEFAULT_DM_SYSTEM_PROMPT)
+                    .to_string()
+            ),
+            ..Default::default()
+        });
+
+        self.chat_client
+            .configure_workspace_with_provider(
+                &self.default_workspace,
+                &chat_config,
+                proxy_url,
+                prompts
+            )
+            .await
     }
-}
+
 
 #[cfg(test)]
 mod tests {

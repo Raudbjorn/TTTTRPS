@@ -281,12 +281,18 @@ impl NPCGenerator {
                 ChatMessage {
                     role: MessageRole::User,
                     content: prompt,
+                    images: None,
+                    name: None,
+                    tool_calls: None,
+                    tool_call_id: None,
                 },
             ],
             system_prompt: Some("You are a creative TTRPG game master assistant specializing in NPC creation. Generate detailed, memorable NPCs with rich personalities and interesting hooks. Always respond with valid JSON.".to_string()),
             temperature: Some(0.8),
             max_tokens: Some(2000),
             provider: None,
+            tools: None,
+            tool_choice: None,
         };
 
         let response = llm.chat(request).await
