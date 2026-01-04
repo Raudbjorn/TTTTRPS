@@ -218,12 +218,11 @@ fn RailIcon(
     let text_mode = layout_state.text_navigation;
 
     let active_class = Signal::derive(move || {
-        let base = if active.get() {
+        if active.get() {
             "text-[var(--accent)] bg-[var(--bg-surface)] border-l-2 border-[var(--accent)]"
         } else {
             "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface)] border-l-2 border-transparent"
-        };
-        base
+        }
     });
 
     let tooltip_text = if let Some(sc) = shortcut {

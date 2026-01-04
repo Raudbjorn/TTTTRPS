@@ -258,7 +258,20 @@ pub fn Chat() -> impl IntoView {
 
         message_input.set(String::new());
         is_loading.set(true);
+        // Generate stream ID on frontend to prevent race condition
+        let stream_id = uuid::Uuid::new_v4().to_string();
+        let stream_id_clone = stream_id.clone();
+
+        // Set active stream BEFORE calling backend
+        current_stream_id.set(Some(stream_id.clone()));
         streaming_message_id.set(Some(assistant_msg_id));
+
+        // Update the placeholder message with the stream ID immediately
+        messages.update(|msgs| {
+            if let Some(msg) = msgs.iter_mut().find(|m| m.id == assistant_msg_id) {
+                msg.stream_id = Some(stream_id.clone());
+            }
+        });
 
         // Build conversation history for context
         let history: Vec<StreamingChatMessage> = messages.get().iter()
@@ -271,15 +284,9 @@ pub fn Chat() -> impl IntoView {
             .collect();
 
         spawn_local(async move {
-            match stream_chat(history, None, None, None).await {
-                Ok(stream_id) => {
-                    // Update the placeholder message with the stream ID
-                    messages.update(|msgs| {
-                        if let Some(msg) = msgs.iter_mut().find(|m| m.id == assistant_msg_id) {
-                            msg.stream_id = Some(stream_id.clone());
-                        }
-                    });
-                    current_stream_id.set(Some(stream_id));
+            match stream_chat(history, None, None, None, Some(stream_id_clone)).await {
+                Ok(_) => {
+                    // Stream started successfully (ID already set)
                 }
                 Err(e) => {
                     // Replace streaming message with error
@@ -292,6 +299,7 @@ pub fn Chat() -> impl IntoView {
                     });
                     is_loading.set(false);
                     streaming_message_id.set(None);
+                    current_stream_id.set(None);
                     show_error("Streaming Failed", Some(&e), None);
                 }
             }

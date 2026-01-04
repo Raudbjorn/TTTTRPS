@@ -815,8 +815,6 @@ pub fn blend_themes(weights: &ThemeWeights) -> ThemeDefinition {
     mixed.warning = blend_oklch(&warning_colors);
     mixed.error = blend_oklch(&error_colors);
 
-    mixed.error = blend_oklch(&error_colors);
-
     // For background image, we cannot interpolate strings.
     // We pick the image from the theme with the highest weight.
     let dominant_def = definitions

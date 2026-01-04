@@ -32,7 +32,7 @@ fn test_header_link_regression() {
     // Access the state to trigger updates
     // In a real browser test, we might click the toggle, but here we modify state directly.
 
-    // Note: We can't easy access the same context injected into mount_to_body from outside
+    // Note: We can't easily access the same context injected into mount_to_body from outside
     // unless we capture it or use a global.
     // However, the regression was often on *initial* render or immediate update.
 
