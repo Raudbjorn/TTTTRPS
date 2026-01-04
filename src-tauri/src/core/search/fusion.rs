@@ -565,8 +565,8 @@ mod tests {
         // Both items appear in both sets with opposite ranks
         // Scores should be identical
         assert_eq!(results.len(), 2);
-        let apple = results.iter().find(|r| *r.item == "apple").unwrap();
-        let banana = results.iter().find(|r| *r.item == "banana").unwrap();
+        let apple = results.iter().find(|r| r.item == "apple").unwrap();
+        let banana = results.iter().find(|r| r.item == "banana").unwrap();
         assert!((apple.score - banana.score).abs() < 0.001);
     }
 }

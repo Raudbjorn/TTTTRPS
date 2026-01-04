@@ -8,8 +8,8 @@ This document defines the requirements for achieving feature parity between the 
 
 | Field | Value |
 |-------|-------|
-| Version | 1.0.0 |
-| Last Updated | 2025-12-29 |
+| Version | 1.1.0 |
+| Last Updated | 2026-01-02 |
 | Status | Draft |
 
 ---

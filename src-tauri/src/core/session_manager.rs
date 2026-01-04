@@ -1924,6 +1924,8 @@ mod tests {
             conditions: vec![],
             is_active: true,
             notes: String::new(),
+            condition_immunities: vec![],
+            condition_tracker: ConditionTracker::new(),
         };
 
         manager.add_combatant(&session.id, combatant.clone()).unwrap();

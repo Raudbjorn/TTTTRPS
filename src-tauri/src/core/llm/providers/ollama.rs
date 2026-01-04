@@ -127,6 +127,7 @@ impl LLMProvider for OllamaProvider {
             finish_reason: Some("stop".to_string()),
             latency_ms: latency,
             cost_usd: Some(0.0),
+            tool_calls: None,
         })
     }
 

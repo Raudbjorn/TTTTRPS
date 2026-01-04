@@ -63,15 +63,59 @@ impl OpenAIProvider {
             }));
         }
 
-        for msg in &request.messages {
-            messages.push(serde_json::json!({
-                "role": match msg.role {
-                    MessageRole::System => "system",
-                    MessageRole::User => "user",
-                    MessageRole::Assistant => "assistant",
-                },
-                "content": msg.content
+            let mut message_obj = serde_json::Map::new();
+
+            message_obj.insert("role".to_string(), serde_json::json!(match msg.role {
+                MessageRole::System => "system",
+                MessageRole::User => "user",
+                MessageRole::Assistant => "assistant",
             }));
+
+            // Handle content (text or multi-modal)
+            if let Some(images) = &msg.images {
+                if !images.is_empty() {
+                    let mut content_parts = Vec::new();
+
+                    // Add text definition if present
+                    if !msg.content.is_empty() {
+                        content_parts.push(serde_json::json!({
+                            "type": "text",
+                            "text": msg.content
+                        }));
+                    }
+
+                    // Add images
+                    for image_url in images {
+                        content_parts.push(serde_json::json!({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": image_url
+                            }
+                        }));
+                    }
+
+                    message_obj.insert("content".to_string(), serde_json::Value::Array(content_parts));
+                } else {
+                    message_obj.insert("content".to_string(), serde_json::json!(msg.content));
+                }
+            } else {
+                message_obj.insert("content".to_string(), serde_json::json!(msg.content));
+            }
+
+            // Handle tools
+            if let Some(tool_calls) = &msg.tool_calls {
+                message_obj.insert("tool_calls".to_string(), serde_json::json!(tool_calls));
+            }
+
+            if let Some(tool_call_id) = &msg.tool_call_id {
+                message_obj.insert("tool_call_id".to_string(), serde_json::json!(tool_call_id));
+            }
+
+            if let Some(name) = &msg.name {
+                message_obj.insert("name".to_string(), serde_json::json!(name));
+            }
+
+            messages.push(serde_json::Value::Object(message_obj));
         }
 
         messages
@@ -124,6 +168,14 @@ impl LLMProvider for OpenAIProvider {
             body["temperature"] = serde_json::json!(temp);
         }
 
+        if let Some(tools) = &request.tools {
+            body["tools"] = serde_json::json!(tools);
+        }
+
+        if let Some(tool_choice) = &request.tool_choice {
+            body["tool_choice"] = tool_choice.clone();
+        }
+
         let start = std::time::Instant::now();
         let mut req_builder = self
             .client
@@ -169,8 +221,19 @@ impl LLMProvider for OpenAIProvider {
             .as_array()
             .and_then(|arr| arr.first())
             .and_then(|c| c["message"]["content"].as_str())
-            .ok_or_else(|| LLMError::InvalidResponse("Missing content".to_string()))?
-            .to_string();
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+
+        let tool_calls = json["choices"]
+            .as_array()
+            .and_then(|arr| arr.first())
+            .and_then(|c| c["message"]["tool_calls"].as_array())
+            .map(|arr| arr.to_vec());
+
+        // Validate that we have either content or tool calls
+        if content.is_empty() && tool_calls.is_none() {
+             return Err(LLMError::InvalidResponse("Missing content or tool_calls".to_string()));
+        }
 
         let usage = json["usage"].as_object().map(|u| TokenUsage {
             input_tokens: u["prompt_tokens"].as_u64().unwrap_or(0) as u32,
@@ -195,6 +258,7 @@ impl LLMProvider for OpenAIProvider {
             finish_reason,
             latency_ms: latency,
             cost_usd: cost,
+            tool_calls,
         })
     }
 
@@ -206,6 +270,7 @@ impl LLMProvider for OpenAIProvider {
         let messages = self.build_messages(&request);
         let stream_id = uuid::Uuid::new_v4().to_string();
         let model = self.model.clone();
+        let provider_id = "openai".to_string();
 
         let mut body = serde_json::json!({
             "model": self.model,
@@ -255,7 +320,7 @@ impl LLMProvider for OpenAIProvider {
                                     let final_chunk = ChatChunk {
                                         stream_id: stream_id.clone(),
                                         content: String::new(),
-                                        provider: "openai".to_string(),
+                                        provider: provider_id.clone(),
                                         model: model.clone(),
                                         is_final: true,
                                         finish_reason: Some("stop".to_string()),
@@ -275,7 +340,7 @@ impl LLMProvider for OpenAIProvider {
                                             let chunk = ChatChunk {
                                                 stream_id: stream_id.clone(),
                                                 content: delta.to_string(),
-                                                provider: "openai".to_string(),
+                                                provider: provider_id.clone(),
                                                 model: model.clone(),
                                                 is_final: false,
                                                 finish_reason: None,
@@ -319,6 +384,53 @@ impl LLMProvider for OpenAIProvider {
         });
 
         Ok(rx)
+    }
+
+    async fn embeddings(&self, text: String) -> Result<Vec<f32>> {
+        let url = format!("{}/embeddings", self.base_url);
+
+        // Use text-embedding-3-small as default
+        let model = "text-embedding-3-small";
+
+        let body = serde_json::json!({
+            "model": model,
+            "input": text
+        });
+
+        let mut req_builder = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json");
+
+        if let Some(org_id) = &self.organization_id {
+            req_builder = req_builder.header("OpenAI-Organization", org_id);
+        }
+
+        let resp = req_builder.json(&body).send().await?;
+        let status = resp.status();
+
+        if !status.is_success() {
+            let text = resp.text().await.unwrap_or_default();
+            return Err(LLMError::ApiError {
+                status: status.as_u16(),
+                message: text,
+            });
+        }
+
+        let json: serde_json::Value = resp.json().await?;
+
+        let embedding = json["data"]
+            .as_array()
+            .and_then(|arr| arr.first())
+            .and_then(|item| item["embedding"].as_array())
+            .ok_or_else(|| LLMError::InvalidResponse("Missing embedding data".to_string()))?
+            .iter()
+            .filter_map(|v| v.as_f64())
+            .map(|v| v as f32)
+            .collect();
+
+        Ok(embedding)
     }
 
     fn supports_embeddings(&self) -> bool {
@@ -497,6 +609,7 @@ impl LLMProvider for OpenAICompatibleProvider {
                 .map(|s| s.to_string()),
             latency_ms: latency,
             cost_usd: cost,
+            tool_calls: None,
         })
     }
 
@@ -613,5 +726,141 @@ impl LLMProvider for OpenAICompatibleProvider {
         });
 
         Ok(rx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::llm::router::{ChatMessage, MessageRole};
+    use serde_json::json;
+
+    fn make_provider() -> OpenAIProvider {
+        OpenAIProvider::new(
+            "test-key".to_string(),
+            "gpt-4o".to_string(),
+            1000,
+            None,
+            None,
+        )
+    }
+
+    #[test]
+    fn test_build_messages_simple_text() {
+        let provider = make_provider();
+        let request = ChatRequest {
+            messages: vec![ChatMessage {
+                role: MessageRole::User,
+                content: "Hello".to_string(),
+                images: None,
+                name: None,
+                tool_calls: None,
+                tool_call_id: None,
+            }],
+            provider: None,
+            temperature: None,
+            max_tokens: None,
+            system_prompt: None,
+            tools: None,
+            tool_choice: None,
+        };
+
+        let messages = provider.build_messages(&request);
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0]["role"], "user");
+        assert_eq!(messages[0]["content"], "Hello");
+    }
+
+    #[test]
+    fn test_build_messages_with_system_prompt() {
+        let provider = make_provider();
+        let request = ChatRequest {
+            messages: vec![ChatMessage {
+                role: MessageRole::User,
+                content: "Hello".to_string(),
+                images: None,
+                name: None,
+                tool_calls: None,
+                tool_call_id: None,
+            }],
+            provider: None,
+            temperature: None,
+            max_tokens: None,
+            system_prompt: Some("System instructions".to_string()),
+            tools: None,
+            tool_choice: None,
+        };
+
+        let messages = provider.build_messages(&request);
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0]["role"], "system");
+        assert_eq!(messages[0]["content"], "System instructions");
+        assert_eq!(messages[1]["role"], "user");
+    }
+
+    #[test]
+    fn test_build_messages_with_images() {
+        let provider = make_provider();
+        let msg = ChatMessage::user_with_images(
+            "Look at this".to_string(),
+            vec!["base64image".to_string()]
+        );
+
+
+        let request = ChatRequest {
+            messages: vec![msg],
+            provider: None,
+            temperature: None,
+            max_tokens: None,
+            system_prompt: None,
+            tools: None,
+            tool_choice: None,
+        };
+
+        let messages = provider.build_messages(&request);
+        println!("DEBUG: Result messages: {:?}", messages);
+        assert_eq!(messages.len(), 1);
+        let content = &messages[0]["content"];
+        assert!(content.is_array(), "Content should be array but is: {:?}", content);
+        let arr = content.as_array().unwrap();
+        assert_eq!(arr.len(), 2);
+        assert_eq!(arr[0]["type"], "text");
+        assert_eq!(arr[1]["type"], "image_url");
+        assert_eq!(arr[1]["image_url"]["url"], "base64image");
+    }
+
+    #[test]
+    fn test_build_messages_with_tool_calls_response() {
+        let provider = make_provider();
+        let tool_call = json!({
+            "id": "call_123",
+            "type": "function",
+            "function": {
+                "name": "get_weather",
+                "arguments": "{}"
+            }
+        });
+
+        let mut msg = ChatMessage::assistant("".to_string());
+        msg.tool_calls = Some(vec![tool_call]);
+
+
+
+        let request = ChatRequest {
+            messages: vec![msg],
+            provider: None,
+            temperature: None,
+            max_tokens: None,
+            system_prompt: None,
+            tools: None,
+            tool_choice: None,
+        };
+
+        let messages = provider.build_messages(&request);
+        println!("DEBUG: Tool Result messages: {:?}", messages);
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0]["role"], "assistant");
+        assert!(messages[0].get("tool_calls").is_some(), "tool_calls missing in: {:?}", messages[0]);
+        assert_eq!(messages[0]["tool_calls"][0]["id"], "call_123");
     }
 }

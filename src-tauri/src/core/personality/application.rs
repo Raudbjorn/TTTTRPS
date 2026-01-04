@@ -713,12 +713,18 @@ impl PersonalityApplicationManager {
                 ChatMessage {
                     role: MessageRole::User,
                     content: "Rewrite this text in character.".to_string(),
+                    images: None,
+                    name: None,
+                    tool_calls: None,
+                    tool_call_id: None,
                 },
             ],
             system_prompt: Some(system_prompt),
             temperature: Some(0.7),
             max_tokens: Some(500),
             provider: None,
+            tools: None,
+            tool_choice: None,
         };
 
         let response = llm_client.chat(request).await
@@ -900,12 +906,18 @@ impl PersonalityApplicationManager {
                 ChatMessage {
                     role: MessageRole::User,
                     content: test_prompt.to_string(),
+                    images: None,
+                    name: None,
+                    tool_calls: None,
+                    tool_call_id: None,
                 },
             ],
             system_prompt: Some(system_prompt),
             temperature: Some(0.8),
             max_tokens: Some(500),
             provider: None,
+            tools: None,
+            tool_choice: None,
         };
 
         let response = llm_client.chat(request).await
@@ -929,12 +941,18 @@ impl PersonalityApplicationManager {
                 ChatMessage {
                     role: MessageRole::User,
                     content: "A traveler approaches you. Greet them briefly.".to_string(),
+                    images: None,
+                    name: None,
+                    tool_calls: None,
+                    tool_call_id: None,
                 },
             ],
             system_prompt: Some(system_prompt.clone()),
             temperature: Some(0.8),
             max_tokens: Some(100),
             provider: None,
+            tools: None,
+            tool_choice: None,
         };
 
         let greeting = llm_client.chat(greeting_request).await

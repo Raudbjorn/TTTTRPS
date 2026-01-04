@@ -64,6 +64,9 @@ pub enum LLMError {
 
     #[error("Stream cancelled")]
     StreamCancelled,
+
+    #[error("Embedding generation failed: {0}")]
+    EmbeddingError(String),
 }
 
 pub type Result<T> = std::result::Result<T, LLMError>;
@@ -86,6 +89,14 @@ pub enum MessageRole {
 pub struct ChatMessage {
     pub role: MessageRole,
     pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub images: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<serde_json::Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
 }
 
 impl ChatMessage {
@@ -93,6 +104,10 @@ impl ChatMessage {
         Self {
             role: MessageRole::System,
             content: content.into(),
+            images: None,
+            name: None,
+            tool_calls: None,
+            tool_call_id: None,
         }
     }
 
@@ -100,6 +115,21 @@ impl ChatMessage {
         Self {
             role: MessageRole::User,
             content: content.into(),
+            images: None,
+            name: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }
+    }
+
+    pub fn user_with_images(content: impl Into<String>, images: Vec<String>) -> Self {
+        Self {
+            role: MessageRole::User,
+            content: content.into(),
+            images: Some(images),
+            name: None,
+            tool_calls: None,
+            tool_call_id: None,
         }
     }
 
@@ -107,6 +137,10 @@ impl ChatMessage {
         Self {
             role: MessageRole::Assistant,
             content: content.into(),
+            images: None,
+            name: None,
+            tool_calls: None,
+            tool_call_id: None,
         }
     }
 }
@@ -124,6 +158,12 @@ pub struct ChatRequest {
     /// Optional: Request specific provider
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
+    /// Optional: Tools definitions
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<Vec<serde_json::Value>>,
+    /// Optional: Tool choice
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_choice: Option<serde_json::Value>,
 }
 
 impl ChatRequest {
@@ -134,6 +174,8 @@ impl ChatRequest {
             temperature: None,
             max_tokens: None,
             provider: None,
+            tools: None,
+            tool_choice: None,
         }
     }
 
@@ -168,6 +210,8 @@ pub struct ChatResponse {
     pub finish_reason: Option<String>,
     pub latency_ms: u64,
     pub cost_usd: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<serde_json::Value>>,
 }
 
 /// A chunk from a streaming response
@@ -214,6 +258,11 @@ pub trait LLMProvider: Send + Sync {
         &self,
         request: ChatRequest,
     ) -> Result<mpsc::Receiver<Result<ChatChunk>>>;
+
+    /// Generate embeddings for the given text
+    async fn embeddings(&self, _text: String) -> Result<Vec<f32>> {
+        Err(LLMError::EmbeddingNotSupported(self.id().to_string()))
+    }
 
     /// Check if streaming is supported
     fn supports_streaming(&self) -> bool {

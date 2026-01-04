@@ -382,7 +382,7 @@ impl LocationGenerator {
     /// Generate a location without LLM (uses templates)
     pub fn generate_quick(&self, options: &LocationGenerationOptions) -> Location {
         let mut rng = rand::thread_rng();
-        
+
 
         let location_type = options.location_type.as_deref()
             .map(LocationType::from_str)
@@ -491,12 +491,18 @@ impl LocationGenerator {
                 ChatMessage {
                     role: MessageRole::User,
                     content: prompt,
+                    images: None,
+                    name: None,
+                    tool_calls: None,
+                    tool_call_id: None,
                 },
             ],
             system_prompt: Some(system),
             temperature: Some(0.8),
             max_tokens: Some(2000),
             provider: None,
+            tools: None,
+            tool_choice: None,
         };
 
         let response = llm.chat(request).await

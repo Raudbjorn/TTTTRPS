@@ -70,6 +70,7 @@ pub struct AppState {
     pub llm_client: RwLock<Option<LLMClient>>,
     pub llm_config: RwLock<Option<LLMConfig>>,
     pub llm_router: AsyncRwLock<LLMRouter>,
+    pub llm_manager: Arc<AsyncRwLock<crate::core::llm::LLMManager>>, // TASK-026: Unified LLM Manager
     pub campaign_manager: CampaignManager,
     pub session_manager: SessionManager,
     pub npc_store: NPCStore,
@@ -109,6 +110,7 @@ impl AppState {
         RelationshipManager,
         crate::core::location_manager::LocationManager,
         Arc<AsyncRwLock<ClaudeDesktopManager>>,
+        Arc<AsyncRwLock<crate::core::llm::LLMManager>>,
     ) {
         let sidecar_config = MeilisearchConfig::default();
         let search_client = SearchClient::new(
@@ -138,6 +140,7 @@ impl AppState {
             RelationshipManager::default(),
             crate::core::location_manager::LocationManager::new(),
             Arc::new(AsyncRwLock::new(ClaudeDesktopManager::new())),
+            Arc::new(AsyncRwLock::new(crate::core::llm::LLMManager::new())),
         )
     }
 }
@@ -287,6 +290,7 @@ pub async fn chat(
     payload: ChatRequestPayload,
     state: State<'_, AppState>,
 ) -> Result<ChatResponsePayload, String> {
+    // Get configuration
     let config = state.llm_config.read().unwrap()
         .clone()
         .ok_or("LLM not configured. Please configure in Settings.")?;
@@ -306,104 +310,68 @@ pub async fn chat(
         })
     };
 
-    // RAG Mode: Route through Meilisearch Chat API
-    if payload.use_rag {
-        let sidecar_config = state.sidecar_manager.config();
-        let dm_chat = DMChatManager::new(
-            &sidecar_config.url(),
-            Some(&sidecar_config.master_key),
-        );
+    // Use unified LLM Manager using Meilisearch Chat (RAG-enabled)
+    let manager = state.llm_manager.clone();
 
-        // Get API key for the configured LLM provider
-        let api_key = match &config {
-            LLMConfig::OpenAI { api_key, .. } => api_key.clone(),
-            LLMConfig::Claude { api_key, .. } => api_key.clone(),
-            LLMConfig::Gemini { api_key, .. } => api_key.clone(),
-            LLMConfig::OpenRouter { api_key, .. } => api_key.clone(),
-            LLMConfig::Mistral { api_key, .. } => api_key.clone(),
-            LLMConfig::Groq { api_key, .. } => api_key.clone(),
-            LLMConfig::Together { api_key, .. } => api_key.clone(),
-            LLMConfig::Cohere { api_key, .. } => api_key.clone(),
-            LLMConfig::DeepSeek { api_key, .. } => api_key.clone(),
-            LLMConfig::Ollama { .. } | LLMConfig::ClaudeDesktop { .. } | LLMConfig::ClaudeCode { .. } | LLMConfig::GeminiCli { .. } => String::new(),
-        };
-
-        let model = match &config {
-            LLMConfig::OpenAI { model, .. } => model.clone(),
-            LLMConfig::Claude { model, .. } => model.clone(),
-            LLMConfig::Gemini { model, .. } => model.clone(),
-            LLMConfig::OpenRouter { model, .. } => model.clone(),
-            LLMConfig::Mistral { model, .. } => model.clone(),
-            LLMConfig::Groq { model, .. } => model.clone(),
-            LLMConfig::Together { model, .. } => model.clone(),
-            LLMConfig::Cohere { model, .. } => model.clone(),
-            LLMConfig::DeepSeek { model, .. } => model.clone(),
-            LLMConfig::Ollama { model, .. } => model.clone(),
-            LLMConfig::ClaudeDesktop { .. } => "claude-desktop".to_string(),
-            LLMConfig::ClaudeCode { model, .. } => model.clone().unwrap_or_else(|| "claude-code".to_string()),
-            LLMConfig::GeminiCli { model, .. } => model.clone(),
-        };
-
-        // Initialize the DM chat workspace (idempotent)
-        if !api_key.is_empty() {
-            dm_chat.initialize(&api_key, Some(&model), Some(&system_prompt)).await
-                .map_err(|e| format!("Failed to initialize RAG: {}", e))?;
-        }
-
-        // Build conversation history
-        let mut meili_messages = vec![];
-        if let Some(context) = &payload.context {
-            for ctx in context {
-                meili_messages.push(MeiliChatMessage::user(ctx));
-            }
-        }
-        meili_messages.push(MeiliChatMessage::user(&payload.message));
-
-        // Send to Meilisearch Chat (with automatic RAG)
-        let response = dm_chat.chat_with_history(meili_messages, &model).await
-            .map_err(|e| format!("RAG chat failed: {}", e))?;
-
-        return Ok(ChatResponsePayload {
-            content: response,
-            model,
-            input_tokens: None, // Meilisearch doesn't report token usage
-            output_tokens: None,
-        });
+    // Ensure properly configured for this provider
+    {
+        let manager_guard = manager.write().await;
+        // This ensures the correct provider is registered with proxy if needed
+        manager_guard.configure_for_chat(&config, Some(&system_prompt)).await
+            .map_err(|e| format!("Failed to configure chat: {}", e))?;
     }
 
-    // Standard Mode: Router call
+    // Prepare messages
     let mut messages = vec![];
-
     if let Some(context) = &payload.context {
         for ctx in context {
             messages.push(ChatMessage {
                 role: MessageRole::User,
                 content: ctx.clone(),
+                images: None,
+                name: None,
+                tool_calls: None,
+                tool_call_id: None,
             });
         }
     }
-
     messages.push(ChatMessage {
         role: MessageRole::User,
         content: payload.message,
+        images: None,
+        name: None,
+        tool_calls: None,
+        tool_call_id: None,
     });
 
-    let request = ChatRequest {
-        messages,
-        system_prompt: Some(system_prompt),
-        temperature: Some(0.7),
-        max_tokens: Some(2048),
-        provider: None,
+    // Determine model name
+    let model = match &config {
+        LLMConfig::OpenAI { model, .. } => model.clone(),
+        LLMConfig::Claude { model, .. } => model.clone(),
+        LLMConfig::Gemini { model, .. } => model.clone(),
+        LLMConfig::OpenRouter { model, .. } => model.clone(),
+        LLMConfig::Mistral { model, .. } => model.clone(),
+        LLMConfig::Groq { model, .. } => model.clone(),
+        LLMConfig::Together { model, .. } => model.clone(),
+        LLMConfig::Cohere { model, .. } => model.clone(),
+        LLMConfig::DeepSeek { model, .. } => model.clone(),
+        LLMConfig::Ollama { model, .. } => model.clone(),
+        LLMConfig::ClaudeDesktop { .. } => "claude-desktop".to_string(),
+        LLMConfig::ClaudeCode { model, .. } => model.clone().unwrap_or_else(|| "claude-code".to_string()),
+        LLMConfig::GeminiCli { model, .. } => model.clone(),
+        LLMConfig::Meilisearch { model, .. } => model.clone(),
     };
 
-    let router = (*state.llm_router.read().await).clone();
-    let response = router.chat(request).await.map_err(|e| e.to_string())?;
+    // Send chat request
+    let manager_guard = manager.read().await;
+    let content = manager_guard.chat(messages, &model).await
+        .map_err(|e| format!("Chat failed: {}", e))?;
 
     Ok(ChatResponsePayload {
-        content: response.content,
-        model: response.model,
-        input_tokens: response.usage.as_ref().map(|u| u.input_tokens),
-        output_tokens: response.usage.as_ref().map(|u| u.output_tokens),
+        content,
+        model,
+        input_tokens: None, // Meilisearch usage stats passed through would be nice but optional
+        output_tokens: None,
     })
 }
 
@@ -535,6 +503,13 @@ pub fn get_llm_config(state: State<'_, AppState>) -> Result<Option<LLMSettings>,
             provider: "gemini-cli".to_string(),
             api_key: None, // No API key needed - uses Google account auth
             host: None,
+            model: model.clone(),
+            embedding_model: None,
+        },
+        LLMConfig::Meilisearch { host, model, .. } => LLMSettings {
+            provider: "meilisearch".to_string(),
+            api_key: None,
+            host: Some(host.clone()),
             model: model.clone(),
             embedding_model: None,
         },
@@ -714,12 +689,18 @@ pub async fn stream_chat(
 ) -> Result<String, String> {
     use tauri::Emitter;
 
+    let config = state.llm_config.read().unwrap()
+        .clone()
+        .ok_or("LLM not configured. Please configure in Settings.")?;
+
     let request = ChatRequest {
         messages,
-        system_prompt,
-        temperature,
         max_tokens,
+        temperature,
+        system_prompt,
         provider: None,
+        tools: None,
+        tool_choice: None,
     };
 
     let router = state.llm_router.read().await;
@@ -2371,6 +2352,7 @@ pub async fn speak(text: String, state: State<'_, AppState>) -> Result<(), Strin
                 LLMConfig::ClaudeDesktop { .. } |
                 LLMConfig::ClaudeCode { .. } |
                 LLMConfig::GeminiCli { .. } => VoiceConfig::default(),
+                LLMConfig::Meilisearch { .. } => VoiceConfig::default(),
             }
         } else {
              VoiceConfig::default()
@@ -2606,6 +2588,10 @@ pub async fn reply_as_npc(
     let llm_messages: Vec<crate::core::llm::ChatMessage> = history.iter().map(|m| crate::core::llm::ChatMessage {
         role: if m.role == "user" { crate::core::llm::MessageRole::User } else { crate::core::llm::MessageRole::Assistant },
         content: m.content.clone(),
+        images: None,
+        name: None,
+        tool_calls: None,
+        tool_call_id: None,
     }).collect();
 
     if llm_messages.is_empty() {
@@ -2622,6 +2608,8 @@ pub async fn reply_as_npc(
         temperature: Some(0.8),
         max_tokens: Some(250),
         provider: None,
+        tools: None,
+        tool_choice: None,
     };
 
     let resp = client.chat(req).await.map_err(|e| e.to_string())?;
@@ -4763,11 +4751,17 @@ pub async fn categorize_note_ai(
         messages: vec![crate::core::llm::ChatMessage {
             role: crate::core::llm::MessageRole::User,
             content: prompt,
+            images: None,
+            name: None,
+            tool_calls: None,
+            tool_call_id: None,
         }],
         system_prompt: Some("You are a TTRPG session note analyzer. Respond only with valid JSON.".to_string()),
         temperature: Some(0.3),
         max_tokens: Some(500),
         provider: None,
+        tools: None,
+        tool_choice: None,
     };
 
     let response = client.chat(llm_request).await
@@ -5781,29 +5775,21 @@ pub async fn configure_chat_workspace(
     custom_prompts: Option<ChatPrompts>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    use crate::core::llm::LLMManager;
-    use std::sync::OnceLock;
-    use tokio::sync::RwLock as AsyncRwLock;
-
-    // Get or create the LLM manager (stored statically for now)
-    static LLM_MANAGER: OnceLock<AsyncRwLock<LLMManager>> = OnceLock::new();
-    let manager = LLM_MANAGER.get_or_init(|| AsyncRwLock::new(LLMManager::new()));
+    // Get the unified LLM manager from state
+    let manager = state.llm_manager.clone();
 
     // Ensure Meilisearch client is configured
     {
         let manager_guard = manager.read().await;
-        let host = state.search_client.host();
-        // Note: We're setting the chat client fresh each time to ensure it's configured
-        drop(manager_guard);
-
-        let manager_guard = manager.write().await;
-        // TODO: Get API key from credentials if needed
-        drop(manager_guard);
+        // We can't access chat_client easily to check if it's set without lock,
+        // but set_chat_client handles it.
     }
 
     // Configure with Meilisearch host from search client
+    // TODO: Get API key from credentials if needed
     {
-        let manager_guard = manager.read().await;
+        let manager_guard = manager.write().await;
+        // Re-configure chat client to ensure it has latest host/key
         manager_guard.set_chat_client(state.search_client.host(), None).await;
     }
 
@@ -5828,16 +5814,11 @@ pub async fn get_chat_workspace_settings(
 
 /// Check if the LLM proxy is running.
 #[tauri::command]
-pub async fn is_llm_proxy_running() -> bool {
-    use crate::core::llm::LLMManager;
-    use std::sync::OnceLock;
-    use tokio::sync::RwLock as AsyncRwLock;
-
-    static LLM_MANAGER: OnceLock<AsyncRwLock<LLMManager>> = OnceLock::new();
-    let manager = LLM_MANAGER.get_or_init(|| AsyncRwLock::new(LLMManager::new()));
-
-    let guard = manager.read().await;
-    guard.is_proxy_running().await
+pub async fn is_llm_proxy_running(
+    state: State<'_, AppState>,
+) -> bool {
+    let manager = state.llm_manager.read().await;
+    manager.is_proxy_running().await
 }
 
 /// Get the LLM proxy URL.
@@ -5848,14 +5829,9 @@ pub fn get_llm_proxy_url() -> String {
 
 /// List providers currently registered with the LLM proxy.
 #[tauri::command]
-pub async fn list_proxy_providers() -> Vec<String> {
-    use crate::core::llm::LLMManager;
-    use std::sync::OnceLock;
-    use tokio::sync::RwLock as AsyncRwLock;
-
-    static LLM_MANAGER: OnceLock<AsyncRwLock<LLMManager>> = OnceLock::new();
-    let manager = LLM_MANAGER.get_or_init(|| AsyncRwLock::new(LLMManager::new()));
-
-    let guard = manager.read().await;
-    guard.list_proxy_providers().await
+pub async fn list_proxy_providers(
+    state: State<'_, AppState>,
+) -> Vec<String> {
+    let manager = state.llm_manager.read().await;
+    manager.list_proxy_providers().await
 }

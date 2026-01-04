@@ -16,6 +16,7 @@ mod groq;
 mod together;
 mod cohere;
 mod deepseek;
+mod meilisearch;
 
 pub use ollama::OllamaProvider;
 pub use claude::ClaudeProvider;
@@ -30,6 +31,7 @@ pub use groq::GroqProvider;
 pub use together::TogetherProvider;
 pub use cohere::CohereProvider;
 pub use deepseek::DeepSeekProvider;
+pub use meilisearch::MeilisearchProvider;
 
 use super::router::LLMProvider;
 use std::sync::Arc;
@@ -97,6 +99,12 @@ pub enum ProviderConfig {
         model: String,      // Model to use (default: gemini-2.5-pro)
         timeout_secs: u64,  // Response timeout (default 120s)
     },
+    Meilisearch {
+        host: String,
+        api_key: Option<String>,
+        workspace_id: String,
+        model: String,
+    },
 }
 
 impl ProviderConfig {
@@ -148,6 +156,10 @@ impl ProviderConfig {
             ProviderConfig::GeminiCli { model, timeout_secs } => {
                 Arc::new(GeminiCliProvider::with_config(model.clone(), *timeout_secs))
             }
+
+            ProviderConfig::Meilisearch { host, api_key, workspace_id, model } => {
+                Arc::new(MeilisearchProvider::new(host.clone(), api_key.clone(), workspace_id.clone(), model.clone()))
+            }
         }
     }
 
@@ -167,6 +179,32 @@ impl ProviderConfig {
             ProviderConfig::ClaudeDesktop { .. } => "claude-desktop",
             ProviderConfig::ClaudeCode { .. } => "claude-code",
             ProviderConfig::GeminiCli { .. } => "gemini-cli",
+            ProviderConfig::Meilisearch { .. } => "meilisearch",
+        }
+    /// Check if this provider requires the LLM Proxy for Meilisearch chat
+    pub fn requires_proxy(&self) -> bool {
+        match self {
+            // Natively supported by Meilisearch
+            ProviderConfig::OpenAI { .. } => false,
+            ProviderConfig::Gemini { .. } => false, // Meilisearch likely supports Gemini natively now
+            ProviderConfig::Mistral { .. } => false,
+            ProviderConfig::Ollama { .. } => false, // Uses vLLM source which is supported
+
+            // Others need proxy to look like OpenAI
+            ProviderConfig::Claude { .. } => true,
+            ProviderConfig::ClaudeDesktop { .. } => true,
+            ProviderConfig::ClaudeCode { .. } => true,
+            ProviderConfig::GeminiCli { .. } => true,
+
+            // OpenAI-compatible but might need header tweaking or proxy for consistency
+            ProviderConfig::OpenRouter { .. } => true,
+            ProviderConfig::Groq { .. } => true,
+            ProviderConfig::Together { .. } => true,
+            ProviderConfig::Cohere { .. } => true,
+            ProviderConfig::DeepSeek { .. } => true,
+
+            // Meilisearch itself doesn't need proxy
+            ProviderConfig::Meilisearch { .. } => false,
         }
     }
 }

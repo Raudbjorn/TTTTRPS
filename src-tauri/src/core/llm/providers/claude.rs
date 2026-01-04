@@ -164,6 +164,7 @@ impl LLMProvider for ClaudeProvider {
             finish_reason: json["stop_reason"].as_str().map(|s| s.to_string()),
             latency_ms: latency,
             cost_usd: cost,
+            tool_calls: None,
         })
     }
 
