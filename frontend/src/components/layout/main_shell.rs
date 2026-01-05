@@ -219,7 +219,7 @@ pub fn MainShell(
 
     view! {
         <div
-            class="h-screen w-screen overflow-hidden bg-hero text-[var(--text-primary)] font-ui transition-all duration-300 select-none"
+            class="h-screen w-screen overflow-hidden bg-hero text-[var(--text-primary)] font-ui transition-all duration-300"
             style:display="grid"
             style:grid-template-columns=move || grid_template_cols.get()
             style:grid-template-rows="1fr 56px"
@@ -230,7 +230,7 @@ pub fn MainShell(
             on:mouseleave=handle_mouseleave
         >
             // Area: Rail
-            <div style:grid-area="rail" class="relative z-50">
+            <div style:grid-area="rail" class="relative z-[100]">
                 <IconRail />
             </div>
 

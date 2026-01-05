@@ -107,6 +107,22 @@ impl LLMProvider for MeilisearchProvider {
             stream: true,
             temperature: request.temperature,
             max_tokens: request.max_tokens,
+            tools: Some(vec![
+                serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "_meiliSearchProgress",
+                        "description": "Reports real-time search progress to the user"
+                    }
+                }),
+                serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "_meiliSearchSources",
+                        "description": "Provides sources and references for the information"
+                    }
+                })
+            ]),
         };
 
         let mut rx = self.client.chat_completion_stream(&self.workspace_id, meili_request)

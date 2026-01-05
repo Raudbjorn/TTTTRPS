@@ -641,7 +641,7 @@ pub fn RelationshipGraph(
                         let selected = selected_node.get();
 
                         nodes.into_iter().map(|pn| {
-                            let node_id = pn.node.id.clone();
+                            let _node_id = pn.node.id.clone();
                             let node_id_click = pn.node.id.clone();
                             let node_for_hover = pn.node.clone();
                             let x = pn.x;

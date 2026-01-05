@@ -363,7 +363,7 @@ pub fn UsageDashboard() -> impl IntoView {
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {breakdown.by_model.iter().map(|(key, details)| {
+                                                    {breakdown.by_model.iter().map(|(_key, details)| {
                                                         view! {
                                                             <tr class="border-b border-gray-800">
                                                                 <td class="py-2">

@@ -248,7 +248,7 @@ impl Default for GraphFilter {
 pub fn EntityGraph(
     /// Campaign ID to load entities from
     #[prop(optional)]
-    campaign_id: Option<String>,
+    _campaign_id: Option<String>,
     /// Callback when a node is selected
     #[prop(optional, into)]
     on_select_node: Option<Callback<String>>,

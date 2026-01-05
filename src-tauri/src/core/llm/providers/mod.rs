@@ -37,7 +37,7 @@ use super::router::LLMProvider;
 use std::sync::Arc;
 
 /// Configuration for creating providers
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum ProviderConfig {
     Ollama {
         host: String,
@@ -207,6 +207,26 @@ impl ProviderConfig {
 
             // Meilisearch itself doesn't need proxy
             ProviderConfig::Meilisearch { .. } => false,
+        }
+    }
+
+    /// Get the model name for this configuration
+    pub fn model_name(&self) -> String {
+        match self {
+            ProviderConfig::Ollama { model, .. } => model.clone(),
+            ProviderConfig::Claude { model, .. } => model.clone(),
+            ProviderConfig::OpenAI { model, .. } => model.clone(),
+            ProviderConfig::Gemini { model, .. } => model.clone(),
+            ProviderConfig::OpenRouter { model, .. } => model.clone(),
+            ProviderConfig::Mistral { model, .. } => model.clone(),
+            ProviderConfig::Groq { model, .. } => model.clone(),
+            ProviderConfig::Together { model, .. } => model.clone(),
+            ProviderConfig::Cohere { model, .. } => model.clone(),
+            ProviderConfig::DeepSeek { model, .. } => model.clone(),
+            ProviderConfig::ClaudeDesktop { .. } => "claude-desktop".to_string(),
+            ProviderConfig::ClaudeCode { model, .. } => model.clone().unwrap_or_else(|| "claude-code".to_string()),
+            ProviderConfig::GeminiCli { model, .. } => model.clone(),
+            ProviderConfig::Meilisearch { model, .. } => model.clone(),
         }
     }
 }

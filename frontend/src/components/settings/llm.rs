@@ -2,6 +2,7 @@ use leptos::prelude::*;
 use leptos::ev;
 use wasm_bindgen_futures::spawn_local;
 use std::collections::HashMap;
+use gloo_timers::callback::Timeout;
 use crate::bindings::{
     check_llm_health, configure_llm, get_llm_config, list_claude_models, list_gemini_models,
     list_ollama_models, list_openai_models, list_openrouter_models, list_provider_models,
@@ -146,6 +147,8 @@ pub fn LLMSettingsView() -> impl IntoView {
     let save_status = RwSignal::new(String::new());
     let is_saving = RwSignal::new(false);
     let health_status = RwSignal::new(Option::<HealthStatus>::None);
+    let initial_load = RwSignal::new(true);
+    let timeout_handle = StoredValue::new_local(None::<Timeout>);
 
     // Models
     let ollama_models = RwSignal::new(Vec::<OllamaModel>::new());
@@ -251,11 +254,76 @@ pub fn LLMSettingsView() -> impl IntoView {
             } else {
                 fetch_ollama_models("http://localhost:11434".to_string());
             }
+            initial_load.set(false);
 
             if let Ok(status) = check_llm_health().await {
                 health_status.set(Some(status));
             }
         });
+    });
+
+    // --- Auto-Save Effect ---
+    Effect::new(move |_| {
+        // Track dependencies
+        let provider = selected_provider.get();
+        let key_or_host = api_key_or_host.get();
+        let model = model_name.get();
+        let emb = embedding_model.get();
+
+        if initial_load.get_untracked() {
+            return;
+        }
+
+        // Debounce logic
+        timeout_handle.update_value(|h| { if let Some(t) = h.take() { t.cancel(); } });
+
+        let perform_save = move || {
+             is_saving.set(true);
+             save_status.set("Saving...".to_string());
+             spawn_local(async move {
+                 let key_to_save = if provider != LLMProvider::Ollama && !key_or_host.is_empty() {
+                      match save_api_key(provider.to_string_key(), key_or_host.clone()).await {
+                         Ok(_) => Some(key_or_host.clone()),
+                         Err(e) => {
+                             show_error("Key Save Failed", Some(&e), None);
+                             is_saving.set(false);
+                             return;
+                         }
+                      }
+                 } else {
+                     None
+                 };
+
+                 let settings = LLMSettings {
+                     provider: provider.to_string_key(),
+                     api_key: key_to_save,
+                     host: if provider == LLMProvider::Ollama { Some(key_or_host.clone()) } else { None },
+                     model: model.clone(),
+                     embedding_model: if provider == LLMProvider::Ollama { Some(emb.clone()) } else { None },
+                 };
+
+                 match configure_llm(settings).await {
+                     Ok(_) => {
+                         save_status.set("All changes saved".to_string());
+                         if let Ok(status) = check_llm_health().await {
+                             health_status.set(Some(status));
+                         }
+                         check_providers();
+                     }
+                     Err(e) => {
+                         show_error("Save Failed", Some(&e), None);
+                         save_status.set("Error saving".to_string());
+                     }
+                 }
+                 is_saving.set(false);
+             });
+        };
+
+        timeout_handle.set_value(Some(Timeout::new(1000, perform_save)));
+    });
+
+    on_cleanup(move || {
+        timeout_handle.update_value(|h| { if let Some(t) = h.take() { t.cancel(); } });
     });
 
     // --- Handlers ---
@@ -278,55 +346,7 @@ pub fn LLMSettingsView() -> impl IntoView {
         }
     };
 
-    let handle_save = move |_: ev::MouseEvent| {
-        is_saving.set(true);
-        save_status.set("Saving...".to_string());
 
-        let provider = selected_provider.get();
-        let key_or_host = api_key_or_host.get();
-        let model = model_name.get();
-        let emb = embedding_model.get();
-
-        spawn_local(async move {
-            let key_to_save = if provider != LLMProvider::Ollama && !key_or_host.is_empty() {
-                 match save_api_key(provider.to_string_key(), key_or_host.clone()).await {
-                    Ok(_) => Some(key_or_host.clone()),
-                    Err(e) => {
-                        show_error("Key Save Failed", Some(&e), None);
-                        is_saving.set(false);
-                        return;
-                    }
-                 }
-            } else {
-                None
-            };
-
-            // Construct settings object
-            let settings = LLMSettings {
-                provider: provider.to_string_key(),
-                api_key: key_to_save,
-                host: if provider == LLMProvider::Ollama { Some(key_or_host) } else { None },
-                model,
-                embedding_model: if provider == LLMProvider::Ollama { Some(emb) } else { None },
-            };
-
-            match configure_llm(settings).await {
-                Ok(msg) => {
-                    save_status.set(msg.clone());
-                    show_success("Configuration Saved", Some(&msg));
-                     if let Ok(status) = check_llm_health().await {
-                        health_status.set(Some(status));
-                    }
-                    // Refresh status
-                    check_providers();
-                }
-                Err(e) => {
-                    show_error("Saved Failed", Some(&e), None);
-                }
-            }
-            is_saving.set(false);
-        });
-    };
 
     // --- UI Helpers ---
     let providers_list = vec![
@@ -457,16 +477,17 @@ pub fn LLMSettingsView() -> impl IntoView {
                             view! { <span/> }.into_any()
                         }}
 
-                        <div class="pt-4">
-                            <Button
-                                variant=ButtonVariant::Primary
-                                loading=is_saving.get()
-                                on_click=handle_save
-                                class="w-full md:w-auto"
-                            >
-                                "Save Configuration"
-                            </Button>
-                        </div>
+                         <div class="pt-4 h-10 flex items-center">
+                             <div class="text-sm text-[var(--accent-primary)] font-medium italic animate-pulse">
+                                 {move || {
+                                      if is_saving.get() {
+                                          "Saving changes...".to_string()
+                                      } else {
+                                          save_status.get()
+                                      }
+                                 }}
+                             </div>
+                         </div>
                     </div>
 
                     // Right Column: Provider Switcher

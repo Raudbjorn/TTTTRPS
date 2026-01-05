@@ -108,7 +108,7 @@ pub fn AuditLogViewer() -> impl IntoView {
     });
 
     // Handle export
-    let handle_export = move |_: ev::MouseEvent| {
+    let handle_export = move |_| {
         is_exporting.set(true);
         let format = export_format.get();
         let hours: Option<i64> = selected_time_range.get().parse().ok();
@@ -134,8 +134,8 @@ pub fn AuditLogViewer() -> impl IntoView {
                             };
 
                             let blob_parts = js_sys::Array::of1(&JsValue::from_str(&content));
-                            let mut options = web_sys::BlobPropertyBag::new();
-                            options.type_(mime);
+                            let options = web_sys::BlobPropertyBag::new();
+                            options.set_type(mime);
                             if let Ok(blob) = web_sys::Blob::new_with_str_sequence_and_options(
                                 &blob_parts,
                                 &options,
@@ -167,7 +167,7 @@ pub fn AuditLogViewer() -> impl IntoView {
     };
 
     // Handle cleanup
-    let handle_cleanup = move |_: ev::MouseEvent| {
+    let handle_cleanup = move |_| {
         is_cleaning.set(true);
         let days: i64 = cleanup_days.get().parse().unwrap_or(30);
 
@@ -373,7 +373,7 @@ pub fn AuditLogViewer() -> impl IntoView {
                     </Select>
                     <Button
                         variant=ButtonVariant::Secondary
-                        loading=is_exporting.get()
+                        loading=is_exporting
                         on_click=handle_export
                     >
                         "Export"
@@ -394,7 +394,7 @@ pub fn AuditLogViewer() -> impl IntoView {
                     </select>
                     <Button
                         variant=ButtonVariant::Danger
-                        loading=is_cleaning.get()
+                        loading=is_cleaning
                         on_click=handle_cleanup
                     >
                         "Clear Old Logs"

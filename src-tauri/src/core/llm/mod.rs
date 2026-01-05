@@ -280,6 +280,8 @@ impl LLMManager {
         &self,
         messages: Vec<ChatMessage>,
         model: &str,
+        temperature: Option<f32>,
+        max_tokens: Option<u32>,
     ) -> std::result::Result<tokio::sync::mpsc::Receiver<std::result::Result<String, String>>, String> {
         let chat_client = self.chat_client.read().await;
         let client = chat_client
@@ -298,8 +300,24 @@ impl LLMManager {
             model: model.to_string(),
             messages: meili_messages,
             stream: true,
-            temperature: Some(0.7),
-            max_tokens: Some(4096),
+            temperature: temperature.or(Some(0.7)),
+            max_tokens: max_tokens.or(Some(4096)),
+            tools: Some(vec![
+                serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "_meiliSearchProgress",
+                        "description": "Reports real-time search progress to the user"
+                    }
+                }),
+                serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "_meiliSearchSources",
+                        "description": "Provides sources and references for the information"
+                    }
+                })
+            ]),
         };
 
         client.chat_completion_stream("dm-assistant", request).await

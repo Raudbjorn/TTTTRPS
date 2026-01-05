@@ -77,6 +77,7 @@ pub fn IconRail() -> impl IntoView {
     let make_nav = move |path: &'static str, view: ViewType| {
         let nav = nav_for_make.clone();
         Callback::new(move |_: ()| {
+            web_sys::console::log_1(&format!("Navigating to {}", path).into());
             layout.active_view.set(view);
             nav(path, NavigateOptions::default());
         })
@@ -119,37 +120,17 @@ pub fn IconRail() -> impl IntoView {
             </button>
 
             // Main Navigation Icons
-            <RailIcon
-                active=Signal::derive(move || {
-                    let current = location.pathname.get();
-                    current == "/" || current.is_empty()
-                })
-                icon="home"
-                label="Home"
-                shortcut="Ctrl+1"
-                on_click=make_nav("/", ViewType::Home)
-            />
-            <RailIcon
-                active=Signal::derive(move || is_active("/campaigns"))
-                icon="folder"
-                label="Campaigns"
-                shortcut="Ctrl+2"
-                on_click=make_nav("/campaigns", ViewType::Campaigns)
-            />
-            <RailIcon
-                active=Signal::derive(move || is_active("/library"))
-                icon="book"
-                label="Library"
-                shortcut="Ctrl+3"
-                on_click=make_nav("/library", ViewType::Library)
-            />
-            <RailIcon
-                active=Signal::derive(move || is_active("/chat"))
-                icon="message"
-                label="Chat"
-                shortcut="Ctrl+4"
-                on_click=make_nav("/chat", ViewType::Chat)
-            />
+            {NAV_ICONS.iter().map(|item| {
+                view! {
+                    <RailIcon
+                        active=Signal::derive(move || is_active(item.path))
+                        icon=item.icon
+                        label=item.label
+                        shortcut=item.shortcut
+                        on_click=make_nav(item.path, item.view_type)
+                    />
+                }
+            }).collect::<Vec<_>>()}
 
             // Spacer
             <div class="flex-1" aria-hidden="true"></div>
@@ -198,7 +179,7 @@ pub fn IconRail() -> impl IntoView {
                 active=Signal::derive(move || is_active("/settings"))
                 icon="settings"
                 label="Settings"
-                shortcut="Ctrl+,"
+                shortcut=Some("Ctrl+,")
                 on_click=make_nav("/settings", ViewType::Settings)
             />
         </nav>
@@ -211,7 +192,7 @@ fn RailIcon(
     #[prop(into)] active: Signal<bool>,
     icon: &'static str,
     label: &'static str,
-    #[prop(optional)] shortcut: Option<&'static str>,
+    shortcut: Option<&'static str>,
     #[prop(into)] on_click: Callback<()>,
 ) -> impl IntoView {
     let layout_state = crate::services::layout_service::use_layout_state();
@@ -234,13 +215,18 @@ fn RailIcon(
     view! {
         <button
             class=move || format!(
-                "group relative w-full h-12 flex items-center cursor-pointer transition-all duration-200 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-[var(--accent)] {} {}",
+                "group relative w-full h-12 flex items-center cursor-pointer pointer-events-auto transition-all duration-200 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-[var(--accent)] {} {}",
                 if text_mode.get() { "justify-start px-4 gap-3" } else { "justify-center" },
                 active_class.get()
             )
             aria-label=label
+            type="button"
             aria-current=move || if active.get() { Some("page") } else { None }
-            on:click=move |_| on_click.run(())
+            on:click=move |e| {
+                e.prevent_default();
+                e.stop_propagation();
+                on_click.run(());
+            }
         >
             <span class="text-xl transform transition-transform group-hover:scale-110 duration-200" aria-hidden="true">
                 {match icon {

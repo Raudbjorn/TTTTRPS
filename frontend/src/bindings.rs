@@ -12,8 +12,8 @@ use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 extern "C" {
-    #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"], js_name = "invoke")]
-    async fn invoke_raw(cmd: &str, args: JsValue) -> JsValue;
+    #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"], js_name = "invoke", catch)]
+    async fn invoke_raw(cmd: &str, args: JsValue) -> Result<JsValue, JsValue>;
 
     // Dialog plugin - file picker
     #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "dialog"], js_name = "open")]
@@ -47,10 +47,11 @@ pub async fn invoke<A: Serialize, R: for<'de> Deserialize<'de>>(
     let args_js = serde_wasm_bindgen::to_value(args)
         .map_err(|e| format!("Failed to serialize args: {}", e))?;
 
-    let result = invoke_raw(cmd, args_js).await;
-
-    // Check if result is an error
-
+    let result = invoke_raw(cmd, args_js).await
+        .map_err(|e| {
+            serde_wasm_bindgen::from_value::<String>(e)
+                .unwrap_or_else(|_| "Unknown invoke error".to_string())
+        })?;
 
     serde_wasm_bindgen::from_value(result)
         .map_err(|e| format!("Failed to deserialize response: {}", e))
@@ -69,14 +70,20 @@ pub async fn invoke_void<A: Serialize>(cmd: &str, args: &A) -> Result<(), String
     let args_js = serde_wasm_bindgen::to_value(args)
         .map_err(|e| format!("Failed to serialize args: {}", e))?;
 
-    let result = invoke_raw(cmd, args_js).await;
+    let result = invoke_raw(cmd, args_js).await
+        .map_err(|e| {
+            serde_wasm_bindgen::from_value::<String>(e)
+                .unwrap_or_else(|_| "Unknown invoke error".to_string())
+        })?;
 
     // For void commands, null/undefined means success
-    // Only check for error object with __TAURI_ERROR__ or similar patterns
+    // Only check for error object with __TAURI_ERROR__ or similar patterns if we needed to,
+    // but the catch above handles the rejection case.
     if !result.is_null() && !result.is_undefined() {
-        // Check if it's an error response (Tauri wraps errors)
+        // Double check if it's a success value that looks like an error string (unlikely for void but safe)
         if let Ok(err_str) = serde_wasm_bindgen::from_value::<String>(result.clone()) {
             if !err_str.is_empty() {
+                // This path might not be hit if backend rejects on error, but keeping for safety
                 return Err(err_str);
             }
         }
@@ -209,7 +216,9 @@ pub async fn pick_document_file() -> Option<String> {
 pub struct ChatRequestPayload {
     pub message: String,
     pub system_prompt: Option<String>,
+    pub personality_id: Option<String>,
     pub context: Option<Vec<String>>,
+    pub use_rag: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3306,8 +3315,16 @@ where
 {
     listen_event("chat-chunk", move |event| {
         // The event payload is wrapped in { payload: ChatChunk }
-        if let Ok(wrapper) = serde_wasm_bindgen::from_value::<StreamEventWrapper>(event) {
-            callback(wrapper.payload);
+        match serde_wasm_bindgen::from_value::<StreamEventWrapper>(event.clone()) {
+            Ok(wrapper) => callback(wrapper.payload),
+            Err(e) => {
+                let json_str = js_sys::JSON::stringify(&event).unwrap_or(js_sys::JsString::from("?"));
+                web_sys::console::error_2(
+                    &JsValue::from_str("Failed to deserialize chat-chunk event:"),
+                    &e.into()
+                );
+                web_sys::console::log_2(&JsValue::from_str("Event data:"), &json_str);
+            }
         }
     })
 }

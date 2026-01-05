@@ -37,6 +37,7 @@ impl ButtonVariant {
 
 /// A styled button component with multiple variants
 #[component]
+
 pub fn Button<F>(
     /// The visual variant of the button
     #[prop(default = ButtonVariant::Primary)]
@@ -45,11 +46,11 @@ pub fn Button<F>(
     #[prop(optional)]
     on_click: Option<F>,
     /// Whether the button is disabled
-    #[prop(default = false)]
-    disabled: bool,
+    #[prop(into, default = false.into())]
+    disabled: MaybeSignal<bool>,
     /// Whether to show a loading spinner
-    #[prop(default = false)]
-    loading: bool,
+    #[prop(into, default = false.into())]
+    loading: MaybeSignal<bool>,
     /// Additional CSS classes
     #[prop(into, optional)]
     class: String,
@@ -65,17 +66,20 @@ where
     let base_class = "px-4 py-2 rounded transition-all duration-200 flex items-center justify-center gap-2 font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-blue-500";
     let variant_class = variant.class();
 
-    let is_disabled = disabled || loading;
-    let state_class = if is_disabled {
-        "opacity-50 cursor-not-allowed transform-none"
-    } else {
-        "cursor-pointer active:scale-95"
+    let is_disabled = move || disabled.get() || loading.get();
+
+    let state_class = move || {
+        if is_disabled() {
+            "opacity-50 cursor-not-allowed transform-none"
+        } else {
+            "cursor-pointer active:scale-95"
+        }
     };
 
-    let full_class = format!("{base_class} {variant_class} {state_class} {class}");
+    let full_class = move || format!("{base_class} {variant_class} {} {class}", state_class());
 
     let handle_click = move |evt: ev::MouseEvent| {
-        if !is_disabled {
+        if !is_disabled() {
             if let Some(ref callback) = on_click {
                 callback(evt);
             }
@@ -90,7 +94,7 @@ where
             title=title
         >
             {move || {
-                if loading {
+                if loading.get() {
                     Some(view! { <LoadingSpinner size="sm" /> })
                 } else {
                     None

@@ -380,6 +380,8 @@ pub fn Chat() -> impl IntoView {
                 message: msg,
                 system_prompt: None,
                 context: None,
+                personality_id: None,
+                use_rag: true,
             };
 
             match chat(request).await {

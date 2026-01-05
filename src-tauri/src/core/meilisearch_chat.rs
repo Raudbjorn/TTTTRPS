@@ -50,15 +50,25 @@ pub struct ChatPrompts {
 
 /// Workspace settings for Meilisearch Chat
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChatWorkspaceSettings {
     /// LLM provider source
     pub source: ChatLLMSource,
     /// API key for the LLM provider
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
-    /// Model to use (e.g., "gpt-4o", "gpt-3.5-turbo")
+    /// Azure OpenAI deployment ID
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub deployment_id: Option<String>,
+    /// Azure OpenAI API version
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api_version: Option<String>,
+    /// Azure OpenAI Organization ID
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub org_id: Option<String>,
+    /// Azure OpenAI Project ID
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<String>,
     /// Prompt configuration
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompts: Option<ChatPrompts>,
@@ -72,7 +82,10 @@ impl Default for ChatWorkspaceSettings {
         Self {
             source: ChatLLMSource::OpenAi,
             api_key: None,
-            model: Some("gpt-4o-mini".to_string()),
+            deployment_id: None,
+            api_version: None,
+            org_id: None,
+            project_id: None,
             prompts: Some(ChatPrompts {
                 system: Some(DEFAULT_DM_SYSTEM_PROMPT.to_string()),
                 ..Default::default()
@@ -256,30 +269,65 @@ impl ChatProviderConfig {
     pub fn to_meilisearch_settings(&self, proxy_url: &str) -> ChatWorkspaceSettings {
         match self {
             // Native providers (direct to Meilisearch)
-            ChatProviderConfig::OpenAI { api_key, model, .. } => ChatWorkspaceSettings {
+            ChatProviderConfig::OpenAI { api_key, .. } => ChatWorkspaceSettings {
                 source: ChatLLMSource::OpenAi,
                 api_key: Some(api_key.clone()),
-                model: Some(model.as_deref().unwrap_or("gpt-4o-mini").to_string()),
+                deployment_id: None,
+                api_version: None,
+                org_id: None,
+                project_id: None,
                 prompts: Some(ChatPrompts {
                     system: Some(DEFAULT_DM_SYSTEM_PROMPT.to_string()),
                     ..Default::default()
                 }),
                 base_url: None,
             },
-            ChatProviderConfig::Mistral { api_key, model } => ChatWorkspaceSettings {
+            ChatProviderConfig::Mistral { api_key, .. } => ChatWorkspaceSettings {
                 source: ChatLLMSource::Mistral,
                 api_key: Some(api_key.clone()),
-                model: Some(model.as_deref().unwrap_or("mistral-large-latest").to_string()),
+                deployment_id: None,
+                api_version: None,
+                org_id: None,
+                project_id: None,
                 prompts: Some(ChatPrompts {
                     system: Some(DEFAULT_DM_SYSTEM_PROMPT.to_string()),
                     ..Default::default()
                 }),
                 base_url: None,
             },
-            ChatProviderConfig::AzureOpenAI { api_key, base_url, .. } => ChatWorkspaceSettings {
+            ChatProviderConfig::Gemini { api_key, .. } => ChatWorkspaceSettings {
+                source: ChatLLMSource::Gemini,
+                api_key: Some(api_key.clone()),
+                deployment_id: None,
+                api_version: None,
+                org_id: None,
+                project_id: None,
+                prompts: Some(ChatPrompts {
+                    system: Some(DEFAULT_DM_SYSTEM_PROMPT.to_string()),
+                    ..Default::default()
+                }),
+                base_url: None,
+            },
+            ChatProviderConfig::Ollama { host, .. } => ChatWorkspaceSettings {
+                source: ChatLLMSource::VLlm,
+                api_key: Some("ollama".to_string()), // Placeholder key required by Meilisearch for vLLM source
+                deployment_id: None,
+                api_version: None,
+                org_id: None,
+                project_id: None,
+                prompts: Some(ChatPrompts {
+                    system: Some(DEFAULT_DM_SYSTEM_PROMPT.to_string()),
+                    ..Default::default()
+                }),
+                base_url: Some(format!("{}/v1", host.trim_end_matches('/'))),
+            },
+            ChatProviderConfig::AzureOpenAI { api_key, base_url, deployment_id, api_version, .. } => ChatWorkspaceSettings {
                 source: ChatLLMSource::AzureOpenAi,
                 api_key: Some(api_key.clone()),
-                model: None, // Azure uses deployment_id
+                deployment_id: Some(deployment_id.clone()),
+                api_version: Some(api_version.clone()),
+                org_id: None, // Not currently stored in config
+                project_id: None, // Not currently stored in config
                 prompts: Some(ChatPrompts {
                     system: Some(DEFAULT_DM_SYSTEM_PROMPT.to_string()),
                     ..Default::default()
@@ -290,7 +338,10 @@ impl ChatProviderConfig {
             _ => ChatWorkspaceSettings {
                 source: ChatLLMSource::VLlm,
                 api_key: None, // Proxy handles auth
-                model: Some(self.proxy_model_id()),
+                deployment_id: None,
+                api_version: None,
+                org_id: None,
+                project_id: None,
                 prompts: Some(ChatPrompts {
                     system: Some(DEFAULT_DM_SYSTEM_PROMPT.to_string()),
                     ..Default::default()
@@ -526,6 +577,8 @@ pub struct ChatCompletionRequest {
     pub temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<Vec<serde_json::Value>>,
 }
 
 /// Streaming response delta
@@ -535,6 +588,8 @@ pub struct StreamDelta {
     pub content: Option<String>,
     #[serde(default)]
     pub role: Option<String>,
+    #[serde(default)]
+    pub tool_calls: Option<serde_json::Value>,
 }
 
 /// Streaming response choice
@@ -547,13 +602,28 @@ pub struct StreamChoice {
     pub finish_reason: Option<String>,
 }
 
-/// Streaming response chunk
 #[derive(Debug, Clone, Deserialize)]
 pub struct StreamChunk {
     pub id: String,
     pub choices: Vec<StreamChoice>,
     #[serde(default)]
     pub model: Option<String>,
+}
+
+/// Error response from Meilisearch
+#[derive(Debug, Clone, Deserialize)]
+pub struct MeilisearchErrorResponse {
+    pub error: MeilisearchErrorDetail,
+    #[serde(rename = "type")]
+    pub error_type: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MeilisearchErrorDetail {
+    pub message: String,
+    #[serde(rename = "type")]
+    pub error_type: String,
+    pub code: Option<String>,
 }
 
 // ============================================================================
@@ -583,7 +653,7 @@ impl MeilisearchChatClient {
         let mut request = self.http_client
             .patch(&url)
             .json(&serde_json::json!({
-                "chat": true
+                "chatCompletions": true
             }));
 
         if let Some(key) = &self.api_key {
@@ -736,31 +806,55 @@ impl MeilisearchChatClient {
             let mut stream = response.bytes_stream();
             let mut buffer = String::new();
 
+            log::info!("Starting SSE stream processing");
+
             while let Some(chunk_result) = stream.next().await {
                 match chunk_result {
                     Ok(bytes) => {
-                        buffer.push_str(&String::from_utf8_lossy(&bytes));
+                        let chunk_str = String::from_utf8_lossy(&bytes);
+                        log::debug!("Received chunk: {}", chunk_str);
+                        buffer.push_str(&chunk_str);
 
                         // Process complete SSE events
                         while let Some(pos) = buffer.find("\n\n") {
                             let event = buffer[..pos].to_string();
                             buffer = buffer[pos + 2..].to_string();
 
+                            log::debug!("Processing event: {}", event);
+
                             // Parse SSE event
                             for line in event.lines() {
                                 if line.starts_with("data: ") {
                                     let data = &line[6..];
                                     if data == "[DONE]" {
+                                        log::info!("Stream finished with [DONE]");
                                         let _ = tx.send(Ok("[DONE]".to_string())).await;
                                         return;
                                     }
 
                                     // Parse JSON chunk
-                                    if let Ok(chunk) = serde_json::from_str::<StreamChunk>(data) {
-                                        for choice in chunk.choices {
-                                            if let Some(content) = choice.delta.content {
-                                                let _ = tx.send(Ok(content)).await;
+                                    match serde_json::from_str::<StreamChunk>(data) {
+                                        Ok(chunk) => {
+                                            for choice in chunk.choices {
+                                                if let Some(content) = choice.delta.content {
+                                                    log::debug!("Emitting content: {}", content);
+                                                    let _ = tx.send(Ok(content)).await;
+                                                } else if let Some(tool_calls) = choice.delta.tool_calls {
+                                                    log::debug!("Received tool calls: {:?}", tool_calls);
+                                                    // Optionally emit a status update to the frontend here if we had a way to do so
+                                                }
                                             }
+                                        }
+                                        Err(e) => {
+                                            // Try parsing as error
+                                            if let Ok(error_response) = serde_json::from_str::<MeilisearchErrorResponse>(data) {
+                                                log::error!("Meilisearch API error: {}", error_response.error.message);
+                                                let _ = tx.send(Err(error_response.error.message)).await;
+                                                return;
+                                            }
+
+                                            log::warn!("Failed to parse chunk: {} Data: {}", e, data);
+                                            // Make id optional in struct if this often fails
                                         }
                                     }
                                 }
@@ -768,11 +862,21 @@ impl MeilisearchChatClient {
                         }
                     }
                     Err(e) => {
+                        log::error!("Stream error: {}", e);
                         let _ = tx.send(Err(e.to_string())).await;
                         return;
                     }
                 }
             }
+
+            // Handle any remaining buffer content (e.g. if stream ended without double newline)
+            if !buffer.is_empty() {
+                log::debug!("Stream ended with data in buffer: {}", buffer);
+                if buffer.trim() == "data: [DONE]" {
+                     let _ = tx.send(Ok("[DONE]".to_string())).await;
+                }
+            }
+            log::info!("SSE stream ended");
         });
 
         Ok(rx)
@@ -791,6 +895,22 @@ impl MeilisearchChatClient {
             stream: true, // Meilisearch only supports streaming
             temperature: Some(0.7),
             max_tokens: Some(2048),
+            tools: Some(vec![
+                serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "_meiliSearchProgress",
+                        "description": "Reports real-time search progress to the user"
+                    }
+                }),
+                serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "_meiliSearchSources",
+                        "description": "Provides sources and references for the information"
+                    }
+                })
+            ]),
         };
 
         let mut rx = self.chat_completion_stream(workspace_id, request).await?;
@@ -951,7 +1071,10 @@ impl DMChatManager {
         let settings = ChatWorkspaceSettings {
             source: ChatLLMSource::OpenAi,
             api_key: Some(llm_api_key.to_string()),
-            model: Some(model.unwrap_or("gpt-4o-mini").to_string()),
+            deployment_id: None,
+            api_version: None,
+            org_id: None,
+            project_id: None,
             prompts: Some(ChatPrompts {
                 system: Some(
                     custom_system_prompt
@@ -986,7 +1109,10 @@ impl DMChatManager {
         let settings = ChatWorkspaceSettings {
             source: ChatLLMSource::VLlm, // vLLM compatible with Ollama API
             api_key: None,
-            model: Some(model.to_string()),
+            deployment_id: None,
+            api_version: None,
+            org_id: None,
+            project_id: None,
             prompts: Some(ChatPrompts {
                 system: Some(
                     custom_system_prompt
@@ -1035,6 +1161,57 @@ impl DMChatManager {
             stream: true,
             temperature: Some(0.7),
             max_tokens: Some(2048),
+            tools: Some(vec![
+                serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "_meiliSearchProgress",
+                        "description": "Reports real-time search progress to the user"
+                    }
+                }),
+                serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "_meiliSearchSources",
+                        "description": "Provides sources and references for the information"
+                    }
+                })
+            ]),
+        };
+
+        self.chat_client
+            .chat_completion_stream(&self.default_workspace, request)
+            .await
+    }
+
+    /// Get streaming response with conversation history
+    pub async fn chat_stream_with_history(
+        &self,
+        messages: Vec<ChatMessage>,
+        model: &str,
+    ) -> Result<mpsc::Receiver<Result<String, String>>, String> {
+        let request = ChatCompletionRequest {
+            model: model.to_string(),
+            messages,
+            stream: true,
+            temperature: Some(0.7),
+            max_tokens: Some(2048),
+            tools: Some(vec![
+                serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "_meiliSearchProgress",
+                        "description": "Reports real-time search progress to the user"
+                    }
+                }),
+                serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": "_meiliSearchSources",
+                        "description": "Provides sources and references for the information"
+                    }
+                })
+            ]),
         };
 
         self.chat_client
