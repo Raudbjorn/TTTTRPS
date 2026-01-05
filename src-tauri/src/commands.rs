@@ -1327,6 +1327,59 @@ pub async fn download_piper_voice(voice_key: String, quality: Option<String>) ->
     Ok(path.to_string_lossy().to_string())
 }
 
+#[tauri::command]
+pub async fn play_tts(
+    text: String,
+    voice_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let manager = state.voice_manager.read().await;
+
+    let request = SynthesisRequest {
+        text,
+        voice_id,
+        settings: None,
+        output_format: OutputFormat::Wav,
+    };
+
+    let result = manager.synthesize(request).await.map_err(|e| e.to_string())?;
+
+    // Read audio data
+    let audio_data = std::fs::read(&result.audio_path).map_err(|e| e.to_string())?;
+
+    // Play in blocking task to avoid blocking async runtime
+    // We clone manager to pass to closure? No, play_audio is method on manager.
+    // Actually play_audio doesn't use self state, just rodio.
+    // But it is a method.
+    // We can't easily pass &manager across thread boundary if it's locked?
+    // Actually, play_audio doesn't use &self fields, it creates new OutputStream.
+    // So we can arguably clone audio_data and run logic standalone or modify VoiceManager to be Send/Sync friendly?
+    // VoiceManager is Send+Sync.
+    // But we hold a read lock.
+
+    // Let's just run the playback logic here directly since play_audio logic is self-contained.
+    tokio::task::spawn_blocking(move || {
+        use rodio::{Decoder, OutputStream, Sink};
+        use std::io::Cursor;
+
+        let (_stream, stream_handle) = OutputStream::try_default().map_err(|e| e.to_string())?;
+        let sink = Sink::try_new(&stream_handle).map_err(|e| e.to_string())?;
+        let cursor = Cursor::new(audio_data);
+        let source = Decoder::new(cursor).map_err(|e| e.to_string())?;
+
+        sink.append(source);
+        sink.sleep_until_end();
+        Ok::<(), String>(())
+    }).await.map_err(|e| e.to_string())??;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn list_all_voices(state: State<'_, AppState>) -> Result<Vec<Voice>, String> {
+    state.voice_manager.read().await.list_voices().await.map_err(|e| e.to_string())
+}
+
 // ============================================================================
 // Meilisearch Commands
 // ============================================================================

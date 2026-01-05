@@ -216,7 +216,19 @@ pub fn Chat() -> impl IntoView {
         let messages = messages;
         let next_id = next_message_id;
         spawn_local(async move {
-            match speak(text).await {
+            // For now, use the default voice logic via play_tts with an empty ID
+            // to trigger default behavior, or use the `speak` command if it does that.
+            // The existing `speak` command likely uses the active provider's default.
+            // My new `play_tts` expects a voice_id.
+            // If I pass an empty string, does VoiceManager handle it?
+            // VoiceManager::synthesize checks prefix. Empty string matches none.
+            // Falls back to `get_active_provider_id`.
+            // So `play_tts(text, "")` should equivalent to `speak(text)`.
+            // Let's use `play_tts` to be consistent with new API.
+
+            use crate::bindings::play_tts;
+
+            match play_tts(text, "".to_string()).await {
                 Ok(_) => {} // Success, audio playing
                 Err(e) => {
                     let id = next_id.get();

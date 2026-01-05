@@ -367,6 +367,8 @@ fn main() {
             commands::queue_voice,
             commands::get_voice_queue,
             commands::cancel_voice,
+            commands::play_tts,
+            commands::list_all_voices,
 
             // Audio Cache Commands (TASK-005)
             commands::get_audio_cache_stats,

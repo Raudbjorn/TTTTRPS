@@ -268,6 +268,8 @@ pub struct VoiceConfig {
     pub fish_audio: Option<FishAudioConfig>,
     pub ollama: Option<OllamaConfig>,
     pub openai: Option<OpenAIVoiceConfig>,
+    pub piper: Option<PiperConfig>,
+    pub coqui: Option<CoquiConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -293,6 +295,30 @@ pub struct OpenAIVoiceConfig {
     pub api_key: String,
     pub model: String,
     pub voice: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PiperConfig {
+    pub models_dir: Option<String>,
+    pub length_scale: f32,
+    pub noise_scale: f32,
+    pub noise_w: f32,
+    pub sentence_silence: f32,
+    pub speaker_id: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CoquiConfig {
+    pub port: u16,
+    pub model: String,
+    pub speaker: Option<String>,
+    pub language: Option<String>,
+    pub speed: f32,
+    pub speaker_wav: Option<String>,
+    pub temperature: f32,
+    pub top_k: u32,
+    pub top_p: f32,
+    pub repetition_penalty: f32,
 }
 
 /// Voice information from a TTS provider
@@ -332,6 +358,21 @@ pub async fn list_elevenlabs_voices(api_key: String) -> Result<Vec<Voice>, Strin
 /// List voices from the currently configured voice provider
 pub async fn list_available_voices() -> Result<Vec<Voice>, String> {
     invoke_no_args("list_available_voices").await
+}
+
+/// List all available voices from all providers
+pub async fn list_all_voices() -> Result<Vec<Voice>, String> {
+    invoke_no_args("list_all_voices").await
+}
+
+/// Synthesize and play TTS for the given text and voice ID
+pub async fn play_tts(text: String, voice_id: String) -> Result<(), String> {
+    #[derive(Serialize)]
+    struct Args {
+        text: String,
+        voice_id: String,
+    }
+    invoke_void("play_tts", &Args { text, voice_id }).await
 }
 
 // ============================================================================
