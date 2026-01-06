@@ -368,6 +368,7 @@ pub async fn list_all_voices() -> Result<Vec<Voice>, String> {
 /// Synthesize and play TTS for the given text and voice ID
 pub async fn play_tts(text: String, voice_id: String) -> Result<(), String> {
     #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
     struct Args {
         text: String,
         voice_id: String,
