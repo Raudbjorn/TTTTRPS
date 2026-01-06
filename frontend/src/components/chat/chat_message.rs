@@ -67,7 +67,7 @@ pub fn ChatMessage(
         let play_button = on_play.map(|handler| {
             view! {
                 <button
-                    class="p-2 bg-zinc-800 rounded-full hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors shadow-sm"
+                    class="p-1.5 rounded hover:bg-zinc-700 text-zinc-400 hover:text-green-400 transition-colors"
                     title="Read Aloud"
                     on:click=move |_| handler.run(())
                 >
@@ -80,10 +80,10 @@ pub fn ChatMessage(
 
         let copy_handler = copy_to_clipboard.clone();
         Some(view! {
-            <div class="absolute -left-12 top-1 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-1">
+            <div class="flex items-center gap-1 mt-2 pt-2 border-t border-zinc-700/50">
                 {play_button}
                 <button
-                    class="p-2 bg-zinc-800 rounded-full hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors shadow-sm"
+                    class="p-1.5 rounded hover:bg-zinc-700 text-zinc-400 hover:text-blue-400 transition-colors"
                     title="Copy"
                     on:click=move |e| copy_handler.run(e)
                 >
@@ -153,11 +153,11 @@ pub fn ChatMessage(
 
     view! {
         <div class=container_class title=token_tooltip>
-            {action_buttons}
             <div class="min-w-0 break-words prose prose-invert max-w-none text-sm leading-relaxed">
                 {message_content}
             </div>
             {streaming_indicator}
+            {action_buttons}
         </div>
     }
 }
