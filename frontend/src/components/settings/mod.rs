@@ -2,9 +2,11 @@ pub mod general;
 pub mod llm;
 pub mod voice;
 pub mod data;
+pub mod model_selection;
 
 use leptos::prelude::*;
 pub use llm::LLMProvider;
+pub use model_selection::ModelSelectionDashboard;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SettingsTab {

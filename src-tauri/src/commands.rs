@@ -22,6 +22,7 @@ use crate::database::{Database, NpcConversation, ConversationMessage};
 // Core modules
 // use crate::core::database::Database;
 use crate::core::llm::{LLMConfig, LLMClient, ChatMessage, MessageRole};
+use crate::core::llm::{model_selector, ModelSelection, TaskComplexity};
 use crate::core::llm::router::{LLMRouter, RouterConfig, ProviderStats};
 use crate::core::campaign_manager::{
     CampaignManager, SessionNote, SnapshotSummary, ThemeWeights
@@ -6177,4 +6178,39 @@ pub async fn get_current_proxy_provider(
 ) -> Result<Option<String>, String> {
     let manager = state.llm_manager.read().await;
     Ok(manager.current_proxy_provider().await)
+}
+
+// ============================================================================
+// Model Selection Commands
+// ============================================================================
+
+/// Get the recommended model selection based on subscription plan and usage.
+///
+/// Returns a ModelSelection with the recommended model, plan info, and selection reason.
+/// Uses medium task complexity as the default.
+#[tauri::command]
+pub async fn get_model_selection() -> Result<ModelSelection, String> {
+    let selector = model_selector();
+    selector.get_selection(TaskComplexity::Medium).await
+}
+
+/// Get the recommended model selection with complexity auto-detected from the prompt.
+///
+/// Analyzes the prompt for keywords that indicate task complexity (light/medium/heavy)
+/// and returns the appropriate model recommendation.
+#[tauri::command]
+pub async fn get_model_selection_for_prompt(prompt: String) -> Result<ModelSelection, String> {
+    let selector = model_selector();
+    selector.get_selection_for_prompt(&prompt).await
+}
+
+/// Set a manual model override that bypasses automatic selection.
+///
+/// Pass `None` to clear the override and return to automatic selection.
+/// Pass `Some("claude-opus-4-20250514")` or similar to force a specific model.
+#[tauri::command]
+pub async fn set_model_override(model: Option<String>) -> Result<(), String> {
+    let selector = model_selector();
+    selector.set_override(model).await;
+    Ok(())
 }

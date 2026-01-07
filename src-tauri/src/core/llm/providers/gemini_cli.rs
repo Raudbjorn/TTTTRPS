@@ -690,7 +690,7 @@ impl GeminiCliProvider {
     }
 
     /// Check if an error indicates a rate limit / quota exhaustion.
-    fn is_rate_limit_error(stderr: &str, exit_code: Option<i32>) -> bool {
+    fn is_rate_limit_error(stderr: &str, _exit_code: Option<i32>) -> bool {
         // Check for common rate limit indicators (case-insensitive)
         let lower = stderr.to_lowercase();
         lower.contains("429")
@@ -699,7 +699,6 @@ impl GeminiCliProvider {
             || lower.contains("quota")
             || lower.contains("rate limit")
             || lower.contains("too many requests")
-            || exit_code == Some(8) // Common exit code for rate limiting
     }
 
     /// Execute a chat request with a specific model.
@@ -1348,12 +1347,6 @@ mod tests {
     #[test]
     fn test_is_rate_limit_error_too_many_requests() {
         assert!(GeminiCliProvider::is_rate_limit_error("too many requests", None));
-    }
-
-    #[test]
-    fn test_is_rate_limit_error_exit_code_8() {
-        assert!(GeminiCliProvider::is_rate_limit_error("", Some(8)));
-        assert!(GeminiCliProvider::is_rate_limit_error("some other error", Some(8)));
     }
 
     #[test]

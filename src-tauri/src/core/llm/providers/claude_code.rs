@@ -39,6 +39,7 @@
 //! ```
 
 use crate::core::llm::cost::ProviderPricing;
+use crate::core::llm::model_selector::model_selector;
 use crate::core::llm::router::{
     ChatChunk, ChatRequest, ChatResponse, LLMError, LLMProvider, Result,
 };
@@ -66,8 +67,8 @@ const DEFAULT_TIMEOUT_SECS: u64 = 300;
 /// Default model (Claude Code auto-selects based on task complexity).
 const DEFAULT_MODEL: &str = "claude-sonnet-4-20250514";
 
-/// Fallback model when rate limited (faster, cheaper).
-const FALLBACK_MODEL: &str = "claude-haiku-4-20250514";
+/// Fallback model when rate limited (429) - faster, cheaper.
+const RATE_LIMIT_FALLBACK_MODEL: &str = "claude-sonnet-4-20250514";
 
 // ============================================================================
 // Response Types
@@ -165,7 +166,7 @@ impl Default for ClaudeCodeProviderBuilder {
     fn default() -> Self {
         Self {
             model: None,
-            fallback_model: Some(FALLBACK_MODEL.to_string()),
+            fallback_model: Some(RATE_LIMIT_FALLBACK_MODEL.to_string()),
             timeout_secs: None,
             working_dir: None,
             persist_sessions: true,
@@ -292,7 +293,7 @@ impl ClaudeCodeProvider {
         Self {
             timeout_secs,
             model,
-            fallback_model: Some(FALLBACK_MODEL.to_string()),
+            fallback_model: Some(RATE_LIMIT_FALLBACK_MODEL.to_string()),
             working_dir,
             session_store,
             current_session: RwLock::new(None),
@@ -302,13 +303,15 @@ impl ClaudeCodeProvider {
     }
 
     /// Check if an error indicates a rate limit / quota exhaustion.
-    /// Uses only confirmed Anthropic rate limit indicators.
+    /// Uses confirmed Anthropic rate limit indicators.
     fn is_rate_limit_error(output: &str) -> bool {
         let lower = output.to_lowercase();
         lower.contains("429")
             || lower.contains("rate limit")
             || lower.contains("too many requests")
             || lower.contains("quota")
+            || lower.contains("overloaded")
+            || lower.contains("capacity")
     }
 
     /// Build the message content from the request.
@@ -359,12 +362,12 @@ impl ClaudeCodeProvider {
             args.extend(["--output-format".to_string(), "json".to_string()]);
         }
 
-        // Model selection - prefer override, then self.model
-        if let Some(model) = model_override {
-            args.extend(["--model".to_string(), model.to_string()]);
-        } else if let Some(ref model) = self.model {
-            args.extend(["--model".to_string(), model.clone()]);
-        }
+        // Model selection - use override, explicit config, or dynamic selection
+        let model = model_override
+            .map(String::from)
+            .or_else(|| self.model.clone())
+            .unwrap_or_else(|| model_selector().select_model_sync());
+        args.extend(["--model".to_string(), model]);
 
         // Session handling
         match session_mode {
@@ -393,7 +396,9 @@ impl ClaudeCodeProvider {
     }
 
     /// Execute a prompt via Claude Code CLI (non-streaming).
-    /// Delegates to execute_prompt_impl with no model override.
+    ///
+    /// If a rate limit (429) error is encountered and no explicit model was configured,
+    /// automatically retries with Sonnet as a fallback.
     async fn execute_prompt(&self, prompt: &str, session_mode: SessionMode) -> Result<ClaudeCodeResponse> {
         self.execute_prompt_impl(prompt, session_mode, None).await
     }
@@ -409,6 +414,7 @@ impl ClaudeCodeProvider {
     }
 
     /// Core implementation for executing prompts via Claude Code CLI.
+    /// Includes rate limit fallback logic.
     async fn execute_prompt_impl(
         &self,
         prompt: &str,
@@ -482,11 +488,24 @@ impl ClaudeCodeProvider {
                         "unknown error".to_string()
                     };
 
-                    // Check for rate limiting
-                    let combined = format!("{} {}", stdout, stderr);
-                    if Self::is_rate_limit_error(&combined) {
-                        warn!(status = %status, "Claude Code rate limited");
-                        return Err(LLMError::RateLimited { retry_after_secs: 60 });
+                    // Check for rate limit and retry with Sonnet if no explicit model was set
+                    // and we haven't already tried the fallback
+                    if Self::is_rate_limit_error(&error_msg)
+                        && model_override.is_none()
+                        && self.model.is_none()
+                    {
+                        warn!(
+                            error = %error_msg,
+                            fallback_model = RATE_LIMIT_FALLBACK_MODEL,
+                            "Rate limit detected, retrying with fallback model"
+                        );
+                        // Retry with Sonnet - use Box::pin for recursive async call
+                        return Box::pin(self.execute_prompt_impl(
+                            prompt,
+                            session_mode,
+                            Some(RATE_LIMIT_FALLBACK_MODEL),
+                        ))
+                        .await;
                     }
 
                     error!(status = %status, error = %error_msg, "Claude Code failed");
@@ -574,7 +593,7 @@ impl ClaudeCodeProvider {
             message: "Failed to capture stdout".to_string(),
         })?;
 
-        let model = self.model.clone().unwrap_or_else(|| DEFAULT_MODEL.to_string());
+        let model = self.model.clone().unwrap_or_else(|| model_selector().select_model_sync());
         let timeout_secs = self.timeout_secs;
         let session_store = self.session_store.clone();
         let working_dir = self.working_dir.clone();
@@ -1478,6 +1497,8 @@ mod tests {
         assert!(args.contains(&"test".to_string()));
         assert!(args.contains(&"json".to_string()));
         assert!(!args.contains(&"--continue".to_string()));
+        // Should have --model with dynamic selection
+        assert!(args.contains(&"--model".to_string()));
     }
 
     #[test]
@@ -1521,6 +1542,16 @@ mod tests {
         let args = provider.build_args("test", &SessionMode::New, false);
         assert!(args.contains(&"--model".to_string()));
         assert!(args.contains(&"claude-sonnet-4-20250514".to_string()));
+    }
+
+    #[test]
+    fn test_is_rate_limit_error() {
+        assert!(ClaudeCodeProvider::is_rate_limit_error("Error: rate limit exceeded"));
+        assert!(ClaudeCodeProvider::is_rate_limit_error("429 Too Many Requests"));
+        assert!(ClaudeCodeProvider::is_rate_limit_error("API is overloaded"));
+        assert!(ClaudeCodeProvider::is_rate_limit_error("Server at capacity"));
+        assert!(!ClaudeCodeProvider::is_rate_limit_error("Internal server error"));
+        assert!(!ClaudeCodeProvider::is_rate_limit_error("Authentication failed"));
     }
 
     #[tokio::test]
@@ -1632,8 +1663,13 @@ mod tests {
         assert!(!ClaudeCodeProvider::is_rate_limit_error("authentication failed"));
         assert!(!ClaudeCodeProvider::is_rate_limit_error("network error"));
         assert!(!ClaudeCodeProvider::is_rate_limit_error(""));
-        // "overloaded" is not a reliable rate limit indicator
-        assert!(!ClaudeCodeProvider::is_rate_limit_error("API overloaded"));
+    }
+
+    #[test]
+    fn test_is_rate_limit_error_capacity_indicators() {
+        // Capacity/overload indicators for dynamic fallback
+        assert!(ClaudeCodeProvider::is_rate_limit_error("API overloaded"));
+        assert!(ClaudeCodeProvider::is_rate_limit_error("Server at capacity"));
     }
 
     // ==================== Model Override Tests ====================

@@ -4332,3 +4332,70 @@ pub async fn is_llm_proxy_running() -> Result<bool, String> {
 pub async fn list_proxy_providers() -> Result<Vec<String>, String> {
     invoke_no_args("list_proxy_providers").await
 }
+
+// ============================================================================
+// Model Selection (Claude Code Smart Model Selection)
+// ============================================================================
+
+/// Usage data from Anthropic API (rate limit utilization)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UsageData {
+    /// 5-hour window utilization (0.0 - 1.0)
+    pub five_hour_util: f64,
+    /// 7-day window utilization (0.0 - 1.0)
+    pub seven_day_util: f64,
+    /// When the 5-hour window resets (ISO 8601)
+    #[serde(default)]
+    pub five_hour_resets_at: Option<String>,
+    /// When the 7-day window resets (ISO 8601)
+    #[serde(default)]
+    pub seven_day_resets_at: Option<String>,
+    /// Unix timestamp when this data was cached
+    pub cached_at: u64,
+}
+
+/// Model selection result from the smart model selector
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelSelection {
+    /// Full model ID (e.g., "claude-opus-4-20250514")
+    pub model: String,
+    /// Short model name (e.g., "opus", "sonnet")
+    pub model_short: String,
+    /// Subscription plan (e.g., "max_5x", "pro", "free")
+    pub plan: String,
+    /// Auth type ("oauth", "api", "none")
+    pub auth_type: String,
+    /// Current usage data
+    pub usage: UsageData,
+    /// Detected task complexity ("light", "medium", "heavy")
+    pub complexity: String,
+    /// Human-readable selection reason
+    pub selection_reason: String,
+    /// Whether a manual override is active
+    pub override_active: bool,
+}
+
+/// Get the current model selection (uses default complexity)
+pub async fn get_model_selection() -> Result<ModelSelection, String> {
+    invoke_no_args("get_model_selection").await
+}
+
+/// Get model selection for a specific prompt (analyzes complexity)
+pub async fn get_model_selection_for_prompt(prompt: String) -> Result<ModelSelection, String> {
+    #[derive(Serialize)]
+    struct Args {
+        prompt: String,
+    }
+    invoke("get_model_selection_for_prompt", &Args { prompt }).await
+}
+
+/// Set or clear a manual model override
+///
+/// Pass `Some(model_id)` to force a specific model, or `None` to clear the override.
+pub async fn set_model_override(model: Option<String>) -> Result<(), String> {
+    #[derive(Serialize)]
+    struct Args {
+        model: Option<String>,
+    }
+    invoke_void("set_model_override", &Args { model }).await
+}

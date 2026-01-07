@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use futures_util::StreamExt;
 use tokio::sync::mpsc;
 
+use super::llm::model_selector::model_selector;
 use super::llm::providers::ProviderConfig;
 
 // ============================================================================
@@ -242,7 +243,10 @@ impl ChatProviderConfig {
                 model.as_deref().unwrap_or("gpt-4o-mini")
             }
             ChatProviderConfig::Claude { model, .. } => {
-                model.as_deref().unwrap_or("claude-sonnet-4-20250514")
+                return format!(
+                    "claude:{}",
+                    model.clone().unwrap_or_else(|| model_selector().select_model_sync())
+                );
             }
             ChatProviderConfig::Mistral { model, .. } => {
                 model.as_deref().unwrap_or("mistral-large-latest")
@@ -258,7 +262,10 @@ impl ChatProviderConfig {
             ChatProviderConfig::Cohere { model, .. } => model.as_str(),
             ChatProviderConfig::DeepSeek { model, .. } => model.as_str(),
             ChatProviderConfig::ClaudeCode { model, .. } => {
-                model.as_deref().unwrap_or("claude-sonnet-4-20250514")
+                return format!(
+                    "claude-code:{}",
+                    model.clone().unwrap_or_else(|| model_selector().select_model_sync())
+                );
             }
             ChatProviderConfig::ClaudeDesktop { .. } => "claude-desktop",
         };

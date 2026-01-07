@@ -521,6 +521,11 @@ fn main() {
             commands::list_proxy_providers,
             commands::configure_meilisearch_chat,
             commands::get_current_proxy_provider,
+
+            // Model Selection Commands
+            commands::get_model_selection,
+            commands::get_model_selection_for_prompt,
+            commands::set_model_override,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

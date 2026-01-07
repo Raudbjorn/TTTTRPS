@@ -16,6 +16,7 @@
 pub mod client;
 pub mod cost;
 pub mod health;
+pub mod model_selector;
 pub mod proxy;
 pub mod router;
 pub mod session;
@@ -43,6 +44,12 @@ pub use proxy::LLMProxyService;
 pub use session::{
     ProviderSession, SessionError, SessionId, SessionInfo, SessionManager, SessionStore,
     SessionResult, SessionChatRequest, SessionChatResponse, ClaudeStreamEvent,
+};
+
+// Re-export model selector types
+pub use model_selector::{
+    ModelSelector, ModelSelection, SubscriptionPlan, TaskComplexity, UsageData,
+    AuthType, model_selector,
 };
 
 // Note: LLMManager is defined below and re-exported automatically
