@@ -18,7 +18,7 @@ pub use button::{Button, ButtonVariant};
 pub use input::Input;
 pub use card::{Card, CardHeader, CardBody};
 pub use badge::{Badge, BadgeVariant};
-pub use select::{Select, SelectOption, SELECT_CLASS, OPTION_CLASS};
+pub use select::{Select, SelectRw, SelectOption, SELECT_CLASS, OPTION_CLASS};
 pub use modal::Modal;
 pub use loading::{LoadingSpinner, TypingIndicator};
 pub use markdown::Markdown;

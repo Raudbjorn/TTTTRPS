@@ -13,7 +13,7 @@
 //! Provider selection via model name prefix: `{provider}:{model}`
 //! Examples: `claude:claude-sonnet-4-20250514`, `gemini:gemini-pro`
 
-use super::router::{ChatChunk, ChatMessage, ChatRequest, ChatResponse, LLMError, LLMProvider, MessageRole};
+use super::router::{ChatMessage, ChatRequest, LLMError, LLMProvider, MessageRole};
 use axum::{
     extract::{Json, State},
     http::StatusCode,
@@ -21,7 +21,6 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use futures_util::stream::Stream;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::Infallible;

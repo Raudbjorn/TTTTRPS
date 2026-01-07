@@ -8,7 +8,7 @@ use crate::bindings::{
     ElevenLabsConfig, OllamaConfig, OpenAIVoiceConfig, Voice, VoiceConfig,
     PiperConfig, CoquiConfig, PopularPiperVoice,
 };
-use crate::components::design_system::{Card, Input, Select, SelectOption, Button, ButtonVariant};
+use crate::components::design_system::{Card, Input, SelectRw, SelectOption, Button, ButtonVariant, Slider};
 use crate::services::notification_service::{show_error, show_success};
 
 #[component]
@@ -28,6 +28,22 @@ pub fn VoiceSettingsView() -> impl IntoView {
     let is_saving = RwSignal::new(false);
     let initial_load = RwSignal::new(true);
     let timeout_handle = StoredValue::new_local(None::<Timeout>);
+
+    // Piper advanced settings
+    let piper_length_scale = RwSignal::new(1.0_f32);
+    let piper_noise_scale = RwSignal::new(0.667_f32);
+    let piper_noise_w = RwSignal::new(0.8_f32);
+    let piper_sentence_silence = RwSignal::new(0.2_f32);
+
+    // Coqui advanced settings
+    let coqui_speed = RwSignal::new(1.0_f32);
+    let coqui_temperature = RwSignal::new(0.8_f32);
+    let coqui_top_k = RwSignal::new(50.0_f32);
+    let coqui_top_p = RwSignal::new(0.95_f32);
+    let coqui_repetition_penalty = RwSignal::new(2.0_f32);
+
+    // Show advanced settings toggle
+    let show_advanced = RwSignal::new(false);
 
     // Piper voice download
     let popular_voices = RwSignal::new(Vec::<PopularPiperVoice>::new());
@@ -72,6 +88,9 @@ pub fn VoiceSettingsView() -> impl IntoView {
         });
     };
 
+    // Track the saved voice ID from config (not user-changeable)
+    let saved_voice_id = RwSignal::new(String::new());
+
     // On Mount - load existing config
     Effect::new(move |_| {
         spawn_local(async move {
@@ -86,6 +105,12 @@ pub fn VoiceSettingsView() -> impl IntoView {
                     _ => "Disabled",
                 };
                 selected_voice_provider.set(provider_str.to_string());
+
+                // Restore default voice for all providers
+                if let Some(ref default_voice) = config.default_voice_id {
+                    saved_voice_id.set(default_voice.clone());
+                    selected_voice_id.set(default_voice.clone());
+                }
 
                 match provider_str {
                     "ElevenLabs" => {
@@ -107,13 +132,16 @@ pub fn VoiceSettingsView() -> impl IntoView {
                         if let Some(c) = config.openai {
                             voice_api_key_or_host.set(c.api_key);
                             voice_model_id.set(c.model);
-                            selected_voice_id.set(c.voice);
                         }
                         fetch_voices("OpenAI".to_string(), None);
                     }
                     "Piper" => {
                         if let Some(c) = config.piper {
                             piper_models_dir.set(c.models_dir.unwrap_or_default());
+                            piper_length_scale.set(c.length_scale);
+                            piper_noise_scale.set(c.noise_scale);
+                            piper_noise_w.set(c.noise_w);
+                            piper_sentence_silence.set(c.sentence_silence);
                         }
                         fetch_voices("Piper".to_string(), None);
                         // Load popular voices for download
@@ -125,6 +153,11 @@ pub fn VoiceSettingsView() -> impl IntoView {
                         if let Some(c) = config.coqui {
                             voice_api_key_or_host.set(format!("{}", c.port));
                             voice_model_id.set(c.model);
+                            coqui_speed.set(c.speed);
+                            coqui_temperature.set(c.temperature);
+                            coqui_top_k.set(c.top_k as f32);
+                            coqui_top_p.set(c.top_p);
+                            coqui_repetition_penalty.set(c.repetition_penalty);
                         }
                         fetch_voices("Coqui".to_string(), None);
                     }
@@ -135,6 +168,23 @@ pub fn VoiceSettingsView() -> impl IntoView {
         });
     });
 
+    // Sync voice selection when available_voices changes
+    // This ensures the saved voice is re-selected after the dropdown re-renders
+    Effect::new(move |_| {
+        let voices = available_voices.get();
+        let saved = saved_voice_id.get_untracked();
+
+        if !voices.is_empty() && !saved.is_empty() {
+            // Check if saved voice exists in available voices
+            if voices.iter().any(|v| v.id == saved) {
+                // Use request_animation_frame to ensure DOM has rendered options first
+                request_animation_frame(move || {
+                    selected_voice_id.set(saved);
+                });
+            }
+        }
+    });
+
     // Auto-Save Effect
     Effect::new(move |_| {
         let provider = selected_voice_provider.get();
@@ -142,6 +192,19 @@ pub fn VoiceSettingsView() -> impl IntoView {
         let piper_dir = piper_models_dir.get();
         let model = voice_model_id.get();
         let voice = selected_voice_id.get();
+
+        // Piper advanced settings (track for reactivity)
+        let length_scale = piper_length_scale.get();
+        let noise_scale = piper_noise_scale.get();
+        let noise_w = piper_noise_w.get();
+        let sentence_silence = piper_sentence_silence.get();
+
+        // Coqui advanced settings (track for reactivity)
+        let coqui_spd = coqui_speed.get();
+        let coqui_temp = coqui_temperature.get();
+        let coqui_tk = coqui_top_k.get();
+        let coqui_tp = coqui_top_p.get();
+        let coqui_rep = coqui_repetition_penalty.get();
 
         if initial_load.get_untracked() {
             return;
@@ -203,10 +266,10 @@ pub fn VoiceSettingsView() -> impl IntoView {
                         "Piper" => {
                             base.piper = Some(PiperConfig {
                                 models_dir: if piper_dir.is_empty() { None } else { Some(piper_dir.clone()) },
-                                length_scale: 1.0,
-                                noise_scale: 0.667,
-                                noise_w: 0.8,
-                                sentence_silence: 0.2,
+                                length_scale: length_scale,
+                                noise_scale: noise_scale,
+                                noise_w: noise_w,
+                                sentence_silence: sentence_silence,
                                 speaker_id: 0,
                             });
                         }
@@ -217,12 +280,12 @@ pub fn VoiceSettingsView() -> impl IntoView {
                                 model: if model.is_empty() { "tts_models/en/ljspeech/vits".to_string() } else { model.clone() },
                                 speaker: None,
                                 language: None,
-                                speed: 1.0,
+                                speed: coqui_spd,
                                 speaker_wav: None,
-                                temperature: 0.8,
-                                top_k: 50,
-                                top_p: 0.95,
-                                repetition_penalty: 2.0,
+                                temperature: coqui_temp,
+                                top_k: coqui_tk as u32,
+                                top_p: coqui_tp,
+                                repetition_penalty: coqui_rep,
                             });
                         }
                         _ => {}
@@ -233,6 +296,10 @@ pub fn VoiceSettingsView() -> impl IntoView {
                 match configure_voice(voice_config).await {
                     Ok(_) => {
                         save_status.set("All changes saved".to_string());
+                        // Update saved_voice_id to match what was just saved
+                        if !voice.is_empty() {
+                            saved_voice_id.set(voice.clone());
+                        }
                     }
                     Err(e) => {
                         save_status.set(format!("Error: {}", e));
@@ -308,14 +375,14 @@ pub fn VoiceSettingsView() -> impl IntoView {
                 <div class="grid grid-cols-1 gap-6">
                     <div>
                         <label class="block text-sm font-medium text-[var(--text-secondary)] mb-2">"Provider"</label>
-                        <Select
-                            value=Signal::from(selected_voice_provider)
+                        <SelectRw
+                            value=selected_voice_provider
                             on_change=Callback::new(move |val: String| handle_provider_change(val))
                         >
                             {providers.into_iter().map(|p| {
                                 view! { <SelectOption value=p.to_string() /> }
                             }).collect::<Vec<_>>()}
-                        </Select>
+                        </SelectRw>
                     </div>
 
                     {move || {
@@ -376,20 +443,128 @@ pub fn VoiceSettingsView() -> impl IntoView {
                                             view! {
                                                 <div>
                                                     <label class="block text-sm font-medium text-[var(--text-secondary)] mb-2">"Voice Persona"</label>
-                                                    <Select
-                                                        value=Signal::from(selected_voice_id)
-                                                        on_change=Callback::new(move |val: String| selected_voice_id.set(val))
+                                                    <SelectRw
+                                                        value=selected_voice_id
                                                     >
                                                         {voices.into_iter().map(|v| {
                                                             view! { <SelectOption value=v.id.clone() label=v.name /> }
                                                         }).collect::<Vec<_>>()}
-                                                    </Select>
+                                                    </SelectRw>
                                                 </div>
                                             }.into_any()
                                         } else {
                                             view! { <span/> }.into_any()
                                         }
                                     }
+
+                                    // Advanced Settings Toggle
+                                    <div class="pt-2">
+                                        <button
+                                            type="button"
+                                            class="flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                                            on:click=move |_| show_advanced.update(|v| *v = !*v)
+                                        >
+                                            <span class=move || if show_advanced.get() { "transform rotate-90 transition-transform" } else { "transition-transform" }>
+                                                "▶"
+                                            </span>
+                                            "Advanced Settings"
+                                        </button>
+                                    </div>
+
+                                    // Piper Advanced Settings
+                                    <Show when=move || is_piper && show_advanced.get()>
+                                        <div class="space-y-4 p-4 rounded-lg bg-[var(--bg-deep)] border border-[var(--border-subtle)] animate-fade-in">
+                                            <h4 class="text-sm font-semibold text-[var(--accent-primary)]">"Piper Settings"</h4>
+
+                                            <div>
+                                                <div class="flex justify-between mb-1">
+                                                    <label class="text-sm text-[var(--text-muted)]">"Speed (Length Scale)"</label>
+                                                    <span class="text-xs font-mono text-[var(--text-muted)]">{move || format!("{:.2}", piper_length_scale.get())}</span>
+                                                </div>
+                                                <Slider value=piper_length_scale min=0.5 max=2.0 step=0.01 />
+                                                <p class="text-xs text-[var(--text-muted)] mt-1">"1.0 = normal, higher = slower"</p>
+                                            </div>
+
+                                            <div>
+                                                <div class="flex justify-between mb-1">
+                                                    <label class="text-sm text-[var(--text-muted)]">"Noise Scale"</label>
+                                                    <span class="text-xs font-mono text-[var(--text-muted)]">{move || format!("{:.2}", piper_noise_scale.get())}</span>
+                                                </div>
+                                                <Slider value=piper_noise_scale min=0.0 max=1.0 step=0.01 />
+                                                <p class="text-xs text-[var(--text-muted)] mt-1">"Phoneme variability"</p>
+                                            </div>
+
+                                            <div>
+                                                <div class="flex justify-between mb-1">
+                                                    <label class="text-sm text-[var(--text-muted)]">"Noise W"</label>
+                                                    <span class="text-xs font-mono text-[var(--text-muted)]">{move || format!("{:.2}", piper_noise_w.get())}</span>
+                                                </div>
+                                                <Slider value=piper_noise_w min=0.0 max=1.0 step=0.01 />
+                                                <p class="text-xs text-[var(--text-muted)] mt-1">"Phoneme width variability"</p>
+                                            </div>
+
+                                            <div>
+                                                <div class="flex justify-between mb-1">
+                                                    <label class="text-sm text-[var(--text-muted)]">"Sentence Silence"</label>
+                                                    <span class="text-xs font-mono text-[var(--text-muted)]">{move || format!("{:.2}s", piper_sentence_silence.get())}</span>
+                                                </div>
+                                                <Slider value=piper_sentence_silence min=0.0 max=2.0 step=0.01 />
+                                                <p class="text-xs text-[var(--text-muted)] mt-1">"Pause between sentences"</p>
+                                            </div>
+                                        </div>
+                                    </Show>
+
+                                    // Coqui Advanced Settings
+                                    <Show when=move || provider == "Coqui" && show_advanced.get()>
+                                        <div class="space-y-4 p-4 rounded-lg bg-[var(--bg-deep)] border border-[var(--border-subtle)] animate-fade-in">
+                                            <h4 class="text-sm font-semibold text-[var(--accent-primary)]">"Coqui Settings"</h4>
+
+                                            <div>
+                                                <div class="flex justify-between mb-1">
+                                                    <label class="text-sm text-[var(--text-muted)]">"Speed"</label>
+                                                    <span class="text-xs font-mono text-[var(--text-muted)]">{move || format!("{:.2}x", coqui_speed.get())}</span>
+                                                </div>
+                                                <Slider value=coqui_speed min=0.5 max=2.0 step=0.01 />
+                                                <p class="text-xs text-[var(--text-muted)] mt-1">"Playback speed multiplier"</p>
+                                            </div>
+
+                                            <div>
+                                                <div class="flex justify-between mb-1">
+                                                    <label class="text-sm text-[var(--text-muted)]">"Temperature"</label>
+                                                    <span class="text-xs font-mono text-[var(--text-muted)]">{move || format!("{:.2}", coqui_temperature.get())}</span>
+                                                </div>
+                                                <Slider value=coqui_temperature min=0.0 max=2.0 step=0.01 />
+                                                <p class="text-xs text-[var(--text-muted)] mt-1">"Generation randomness (XTTS)"</p>
+                                            </div>
+
+                                            <div>
+                                                <div class="flex justify-between mb-1">
+                                                    <label class="text-sm text-[var(--text-muted)]">"Top K"</label>
+                                                    <span class="text-xs font-mono text-[var(--text-muted)]">{move || format!("{}", coqui_top_k.get() as u32)}</span>
+                                                </div>
+                                                <Slider value=coqui_top_k min=1.0 max=100.0 step=1.0 />
+                                                <p class="text-xs text-[var(--text-muted)] mt-1">"Limits token selection pool"</p>
+                                            </div>
+
+                                            <div>
+                                                <div class="flex justify-between mb-1">
+                                                    <label class="text-sm text-[var(--text-muted)]">"Top P"</label>
+                                                    <span class="text-xs font-mono text-[var(--text-muted)]">{move || format!("{:.2}", coqui_top_p.get())}</span>
+                                                </div>
+                                                <Slider value=coqui_top_p min=0.0 max=1.0 step=0.01 />
+                                                <p class="text-xs text-[var(--text-muted)] mt-1">"Nucleus sampling threshold"</p>
+                                            </div>
+
+                                            <div>
+                                                <div class="flex justify-between mb-1">
+                                                    <label class="text-sm text-[var(--text-muted)]">"Repetition Penalty"</label>
+                                                    <span class="text-xs font-mono text-[var(--text-muted)]">{move || format!("{:.1}", coqui_repetition_penalty.get())}</span>
+                                                </div>
+                                                <Slider value=coqui_repetition_penalty min=1.0 max=5.0 step=0.1 />
+                                                <p class="text-xs text-[var(--text-muted)] mt-1">"Reduces repetitive output"</p>
+                                            </div>
+                                        </div>
+                                    </Show>
                                 </div>
                             }.into_any()
                         }

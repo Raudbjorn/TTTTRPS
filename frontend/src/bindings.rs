@@ -544,12 +544,21 @@ pub async fn get_vector_store_status() -> Result<String, String> {
     invoke("get_vector_store_status", &()).await
 }
 
-pub async fn speak(text: String) -> Result<(), String> {
+/// Audio data returned from speak command for frontend playback
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpeakResult {
+    /// Base64-encoded audio data
+    pub audio_data: String,
+    /// Audio format (e.g., "wav")
+    pub format: String,
+}
+
+pub async fn speak(text: String) -> Result<Option<SpeakResult>, String> {
     #[derive(Serialize)]
     struct Args {
         text: String,
     }
-    invoke_void("speak", &Args { text }).await
+    invoke("speak", &Args { text }).await
 }
 
 // ============================================================================

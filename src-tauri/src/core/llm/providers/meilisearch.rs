@@ -2,7 +2,7 @@
 //!
 //! RAG-powered provider using Meilisearch's Chat API.
 
-use crate::core::llm::cost::{ProviderPricing, TokenUsage};
+use crate::core::llm::cost::ProviderPricing;
 use crate::core::llm::router::{
     ChatChunk, ChatRequest, ChatResponse, LLMError, LLMProvider, MessageRole, Result,
 };

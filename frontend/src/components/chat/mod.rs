@@ -15,7 +15,7 @@ use crate::services::layout_service::use_layout_state;
 
 use crate::bindings::{
     cancel_stream, chat, check_llm_health, get_session_usage, listen_chat_chunks_async, stream_chat,
-    ChatChunk, ChatRequestPayload, SessionUsage, StreamingChatMessage, speak,
+    ChatChunk, ChatRequestPayload, SessionUsage, StreamingChatMessage,
 };
 use crate::components::design_system::{Button, ButtonVariant, Input};
 
@@ -211,25 +211,31 @@ pub fn Chat() -> impl IntoView {
         });
     }
 
-    // Play message via TTS
+    // Play message via TTS using saved voice configuration
     let play_message = move |text: String| {
         let messages = messages;
         let next_id = next_message_id;
         spawn_local(async move {
-            // For now, use the default voice logic via play_tts with an empty ID
-            // to trigger default behavior, or use the `speak` command if it does that.
-            // The existing `speak` command likely uses the active provider's default.
-            // My new `play_tts` expects a voice_id.
-            // If I pass an empty string, does VoiceManager handle it?
-            // VoiceManager::synthesize checks prefix. Empty string matches none.
-            // Falls back to `get_active_provider_id`.
-            // So `play_tts(text, "")` should equivalent to `speak(text)`.
-            // Let's use `play_tts` to be consistent with new API.
+            // Use the `speak` command which loads voice config from disk
+            // and uses the user's saved default_voice_id
+            use crate::bindings::speak;
 
-            use crate::bindings::play_tts;
+            match speak(text).await {
+                Ok(Some(result)) => {
+                    // Create audio data URL from base64
+                    let mime_type = if result.format == "mp3" { "audio/mpeg" } else { "audio/wav" };
+                    let data_url = format!("data:{};base64,{}", mime_type, result.audio_data);
 
-            match play_tts(text, "".to_string()).await {
-                Ok(_) => {} // Success, audio playing
+                    // Play audio using web_sys
+                    if let Ok(audio) = web_sys::HtmlAudioElement::new_with_src(&data_url) {
+                        if let Err(e) = audio.play() {
+                            log::error!("Failed to play audio: {:?}", e);
+                        }
+                    }
+                }
+                Ok(None) => {
+                    // Voice is disabled, no audio to play
+                }
                 Err(e) => {
                     let id = next_id.get();
                     next_id.set(id + 1);
