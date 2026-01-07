@@ -12,3 +12,5 @@ src-tauri/proptest-regressions/
 
 # Planning/scratch directories
 planning/audaio/
+planning/meilisearch/
+planning/claude-code-provider/

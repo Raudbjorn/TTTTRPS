@@ -7,7 +7,7 @@ mod native_features;
 
 use ttrpg_assistant::commands;
 use ttrpg_assistant::backstory_commands;
-use tauri::Manager;
+use tauri::{Manager, RunEvent};
 use native_features::NativeFeaturesState;
 
 fn main() {
@@ -102,6 +102,19 @@ fn main() {
                 location_manager,
                 claude_desktop_manager,
                 llm_manager: llm_manager.clone(), // Clone for auto-configure block
+            });
+
+            // Start LLM proxy service for OpenAI-compatible API
+            let llm_manager_proxy = llm_manager.clone();
+            tauri::async_runtime::spawn(async move {
+                match llm_manager_proxy.write().await.ensure_proxy().await {
+                    Ok(url) => {
+                        log::info!("LLM proxy service started at {}", url);
+                    }
+                    Err(e) => {
+                        log::error!("Failed to start LLM proxy service: {}", e);
+                    }
+                }
             });
 
             // Initialize Meilisearch Chat Client (fixes "Meilisearch chat client not configured" error)
@@ -477,6 +490,7 @@ fn main() {
             commands::claude_code_login,
             commands::claude_code_logout,
             commands::claude_code_install_skill,
+            commands::claude_code_install_cli,
 
             // Gemini CLI Status & Extension Commands
             commands::check_gemini_cli_status,
@@ -493,7 +507,22 @@ fn main() {
             commands::is_llm_proxy_running,
             commands::get_llm_proxy_url,
             commands::list_proxy_providers,
+            commands::configure_meilisearch_chat,
+            commands::get_current_proxy_provider,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if let RunEvent::ExitRequested { .. } = event {
+                // Gracefully stop the LLM proxy service without blocking the event loop
+                if let Some(app_state) = app_handle.try_state::<commands::AppState>() {
+                    let llm_manager = app_state.llm_manager.clone();
+                    tauri::async_runtime::spawn(async move {
+                        log::info!("Shutting down LLM proxy service...");
+                        llm_manager.write().await.stop_proxy().await;
+                        log::info!("LLM proxy service stopped");
+                    });
+                }
+            }
+        });
 }

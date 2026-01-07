@@ -13,7 +13,7 @@
 //! Provider selection via model name prefix: `{provider}:{model}`
 //! Examples: `claude:claude-sonnet-4-20250514`, `gemini:gemini-pro`
 
-use super::router::{ChatChunk, ChatMessage, ChatRequest, ChatResponse, LLMError, LLMProvider, MessageRole};
+use super::router::{ChatMessage, ChatRequest, LLMError, LLMProvider, MessageRole};
 use axum::{
     extract::{Json, State},
     http::StatusCode,
@@ -21,7 +21,6 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use futures_util::stream::Stream;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -45,13 +44,59 @@ pub struct OpenAIChatRequest {
     pub temperature: Option<f32>,
     #[serde(default)]
     pub max_tokens: Option<u32>,
+    #[serde(default)]
+    pub tools: Option<Vec<OpenAITool>>,
+    #[serde(default)]
+    pub tool_choice: Option<serde_json::Value>,
+}
+
+/// OpenAI-compatible tool definition
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenAITool {
+    #[serde(rename = "type")]
+    pub tool_type: String,
+    pub function: OpenAIFunction,
+}
+
+/// OpenAI-compatible function definition
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenAIFunction {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parameters: Option<serde_json::Value>,
+}
+
+/// OpenAI-compatible tool call (in assistant messages)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenAIToolCall {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub tool_type: String,
+    pub function: OpenAIFunctionCall,
+}
+
+/// OpenAI-compatible function call details
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenAIFunctionCall {
+    pub name: String,
+    pub arguments: String,
 }
 
 /// OpenAI-compatible message
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenAIMessage {
     pub role: String,
-    pub content: String,
+    /// Content can be None for assistant messages with tool_calls
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    /// Tool calls made by the assistant
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<OpenAIToolCall>>,
+    /// Tool call ID for tool response messages
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
 }
 
 impl From<OpenAIMessage> for ChatMessage {
@@ -59,15 +104,34 @@ impl From<OpenAIMessage> for ChatMessage {
         let role = match msg.role.as_str() {
             "system" => MessageRole::System,
             "assistant" => MessageRole::Assistant,
+            "tool" => MessageRole::User, // Tool results are sent as user role in internal format
             _ => MessageRole::User,
         };
+
+        // Convert OpenAI tool calls to internal JSON format
+        let tool_calls = msg.tool_calls.map(|calls| {
+            calls
+                .into_iter()
+                .map(|tc| {
+                    serde_json::json!({
+                        "id": tc.id,
+                        "type": tc.tool_type,
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments
+                        }
+                    })
+                })
+                .collect()
+        });
+
         ChatMessage {
             role,
-            content: msg.content,
+            content: msg.content.unwrap_or_default(),
             images: None,
             name: None,
-            tool_calls: None,
-            tool_call_id: None,
+            tool_calls,
+            tool_call_id: msg.tool_call_id,
         }
     }
 }
@@ -87,8 +151,18 @@ pub struct OpenAIChatResponse {
 #[derive(Debug, Clone, Serialize)]
 pub struct OpenAIChoice {
     pub index: u32,
-    pub message: OpenAIMessage,
+    pub message: OpenAIChoiceMessage,
     pub finish_reason: Option<String>,
+}
+
+/// Message in a choice (separate from request message for cleaner serialization)
+#[derive(Debug, Clone, Serialize)]
+pub struct OpenAIChoiceMessage {
+    pub role: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<OpenAIToolCall>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -122,6 +196,29 @@ pub struct OpenAIDelta {
     pub role: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<OpenAIDeltaToolCall>>,
+}
+
+/// Tool call delta for streaming (may have partial data)
+#[derive(Debug, Clone, Serialize)]
+pub struct OpenAIDeltaToolCall {
+    pub index: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub tool_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub function: Option<OpenAIDeltaFunctionCall>,
+}
+
+/// Function call delta for streaming
+#[derive(Debug, Clone, Serialize)]
+pub struct OpenAIDeltaFunctionCall {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arguments: Option<String>,
 }
 
 /// Model info for /v1/models endpoint
@@ -205,9 +302,9 @@ impl LLMProxyService {
         }
     }
 
-    /// Create with default port (8787)
+    /// Create with default port (18787)
     pub fn with_defaults() -> Self {
-        Self::new(8787)
+        Self::new(18787)
     }
 
     /// Get the proxy URL
@@ -374,18 +471,44 @@ async fn chat_completions(
         }
     };
 
-    // Convert messages
-    let messages: Vec<ChatMessage> = request.messages.into_iter().map(|m| m.into()).collect();
+    // Extract system messages and combine them into a single system prompt
+    // Claude API handles system prompts differently - they should be passed
+    // as a separate `system` parameter, not as a message with role "system"
+    let system_prompt: Option<String> = {
+        let combined: String = request
+            .messages
+            .iter()
+            .filter(|m| m.role == "system")
+            .filter_map(|m| m.content.as_deref())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        if combined.is_empty() {
+            None
+        } else {
+            Some(combined)
+        }
+    };
+
+    // Convert non-system messages
+    let messages: Vec<ChatMessage> = request
+        .messages
+        .into_iter()
+        .filter(|m| m.role != "system")
+        .map(|m| m.into())
+        .collect();
+
+    // Convert tools to internal JSON format
+    let tools = request.tools.map(convert_openai_tools);
 
     // Build internal request
     let chat_request = ChatRequest {
         messages,
         temperature: request.temperature,
         max_tokens: request.max_tokens,
-        system_prompt: None,
+        system_prompt,
         provider: None,
-        tools: None,
-        tool_choice: None,
+        tools,
+        tool_choice: request.tool_choice,
     };
 
     if request.stream {
@@ -395,6 +518,45 @@ async fn chat_completions(
         // Non-streaming response
         handle_non_streaming(provider, chat_request, request.model).await
     }
+}
+
+/// Convert OpenAI tools to internal JSON format
+fn convert_openai_tools(tools: Vec<OpenAITool>) -> Vec<serde_json::Value> {
+    tools
+        .into_iter()
+        .map(|t| {
+            serde_json::json!({
+                "type": t.tool_type,
+                "function": {
+                    "name": t.function.name,
+                    "description": t.function.description,
+                    "parameters": t.function.parameters
+                }
+            })
+        })
+        .collect()
+}
+
+/// Convert internal tool_calls JSON to OpenAI format
+fn convert_tool_calls_to_openai(tool_calls: Option<Vec<serde_json::Value>>) -> Option<Vec<OpenAIToolCall>> {
+    tool_calls.map(|calls| {
+        calls
+            .into_iter()
+            .filter_map(|tc| {
+                let id = tc.get("id")?.as_str()?.to_string();
+                let tool_type = tc.get("type").and_then(|t| t.as_str()).unwrap_or("function").to_string();
+                let function = tc.get("function")?;
+                let name = function.get("name")?.as_str()?.to_string();
+                let arguments = function.get("arguments").and_then(|a| a.as_str()).unwrap_or("{}").to_string();
+
+                Some(OpenAIToolCall {
+                    id,
+                    tool_type,
+                    function: OpenAIFunctionCall { name, arguments },
+                })
+            })
+            .collect()
+    })
 }
 
 /// Handle non-streaming chat request
@@ -416,6 +578,22 @@ async fn handle_non_streaming(
                 total_tokens: u.input_tokens + u.output_tokens,
             });
 
+            // Convert tool_calls from internal format to OpenAI format
+            let tool_calls = convert_tool_calls_to_openai(response.tool_calls);
+
+            // Determine content and finish_reason based on whether there are tool calls
+            let (content, finish_reason) = if tool_calls.is_some() {
+                // When there are tool calls, content may be empty and finish_reason is "tool_calls"
+                let content = if response.content.is_empty() {
+                    None
+                } else {
+                    Some(response.content)
+                };
+                (content, Some("tool_calls".to_string()))
+            } else {
+                (Some(response.content), response.finish_reason)
+            };
+
             let openai_response = OpenAIChatResponse {
                 id: format!("chatcmpl-{}", uuid::Uuid::new_v4()),
                 object: "chat.completion".to_string(),
@@ -423,11 +601,12 @@ async fn handle_non_streaming(
                 model,
                 choices: vec![OpenAIChoice {
                     index: 0,
-                    message: OpenAIMessage {
+                    message: OpenAIChoiceMessage {
                         role: "assistant".to_string(),
-                        content: response.content,
+                        content,
+                        tool_calls,
                     },
-                    finish_reason: response.finish_reason,
+                    finish_reason,
                 }],
                 usage,
             };
@@ -444,7 +623,7 @@ async fn handle_streaming(
     request: ChatRequest,
     model: String,
 ) -> Response {
-    match provider.stream_chat(request).await {
+    match provider.stream_chat(request.clone()).await {
         Ok(mut rx) => {
             let stream_id = format!("chatcmpl-{}", uuid::Uuid::new_v4());
             let now = std::time::SystemTime::now()
@@ -462,12 +641,14 @@ async fn handle_streaming(
                                 is_first = false;
                                 OpenAIDelta {
                                     role: Some("assistant".to_string()),
-                                    content: Some(chunk.content),
+                                    content: if chunk.content.is_empty() { None } else { Some(chunk.content) },
+                                    tool_calls: None, // Tool calls would be streamed separately if supported
                                 }
                             } else {
                                 OpenAIDelta {
                                     role: None,
-                                    content: Some(chunk.content),
+                                    content: if chunk.content.is_empty() { None } else { Some(chunk.content) },
+                                    tool_calls: None,
                                 }
                             };
 
@@ -507,7 +688,120 @@ async fn handle_streaming(
                 .keep_alive(axum::response::sse::KeepAlive::new())
                 .into_response()
         }
+        Err(LLMError::StreamingNotSupported(_)) => {
+            // Fall back to non-streaming for providers that don't support it
+            log::info!("Provider doesn't support streaming, falling back to non-streaming");
+            handle_streaming_fallback(provider, request, model).await
+        }
         Err(e) => error_response(e),
+    }
+}
+
+/// Fallback for providers that don't support streaming - emit full response as SSE
+async fn handle_streaming_fallback(
+    provider: Arc<dyn LLMProvider>,
+    request: ChatRequest,
+    model: String,
+) -> Response {
+    let stream_id = format!("chatcmpl-{}", uuid::Uuid::new_v4());
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    // Call non-streaming chat
+    match provider.chat(request).await {
+        Ok(response) => {
+            // Convert tool_calls if present for streaming delta format
+            let tool_calls_delta = response.tool_calls.as_ref().map(|calls| {
+                calls
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(idx, tc)| {
+                        let id = tc.get("id")?.as_str()?.to_string();
+                        let tool_type = tc.get("type").and_then(|t| t.as_str()).unwrap_or("function").to_string();
+                        let function = tc.get("function")?;
+                        let name = function.get("name")?.as_str()?.to_string();
+                        let arguments = function.get("arguments").and_then(|a| a.as_str()).unwrap_or("{}").to_string();
+
+                        Some(OpenAIDeltaToolCall {
+                            index: idx as u32,
+                            id: Some(id),
+                            tool_type: Some(tool_type),
+                            function: Some(OpenAIDeltaFunctionCall {
+                                name: Some(name),
+                                arguments: Some(arguments),
+                            }),
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            }).filter(|v| !v.is_empty());
+
+            // Determine finish_reason
+            let finish_reason = if tool_calls_delta.is_some() {
+                "tool_calls".to_string()
+            } else {
+                "stop".to_string()
+            };
+
+            // Emit the full response as a single SSE chunk
+            let stream = async_stream::stream! {
+                // First chunk with role
+                let delta = OpenAIDelta {
+                    role: Some("assistant".to_string()),
+                    content: if response.content.is_empty() { None } else { Some(response.content) },
+                    tool_calls: tool_calls_delta,
+                };
+
+                let stream_chunk = OpenAIStreamChunk {
+                    id: stream_id.clone(),
+                    object: "chat.completion.chunk".to_string(),
+                    created: now,
+                    model: model.clone(),
+                    choices: vec![OpenAIStreamChoice {
+                        index: 0,
+                        delta,
+                        finish_reason: Some(finish_reason),
+                    }],
+                };
+
+                let json = serde_json::to_string(&stream_chunk).unwrap();
+                yield Ok::<_, Infallible>(Event::default().data(json));
+                yield Ok(Event::default().data("[DONE]"));
+            };
+
+            Sse::new(stream)
+                .keep_alive(axum::response::sse::KeepAlive::new())
+                .into_response()
+        }
+        Err(e) => {
+            // Return error as SSE event so client can handle it properly
+            let stream = async_stream::stream! {
+                let error_chunk = OpenAIStreamChunk {
+                    id: stream_id.clone(),
+                    object: "chat.completion.chunk".to_string(),
+                    created: now,
+                    model: model.clone(),
+                    choices: vec![OpenAIStreamChoice {
+                        index: 0,
+                        delta: OpenAIDelta {
+                            role: Some("assistant".to_string()),
+                            content: Some(format!("Error: {}", e)),
+                            tool_calls: None,
+                        },
+                        finish_reason: Some("error".to_string()),
+                    }],
+                };
+
+                let json = serde_json::to_string(&error_chunk).unwrap();
+                yield Ok::<_, Infallible>(Event::default().data(json));
+                yield Ok(Event::default().data("[DONE]"));
+            };
+
+            Sse::new(stream)
+                .keep_alive(axum::response::sse::KeepAlive::new())
+                .into_response()
+        }
     }
 }
 
@@ -545,11 +839,94 @@ mod tests {
     fn test_openai_message_conversion() {
         let msg = OpenAIMessage {
             role: "user".to_string(),
-            content: "Hello".to_string(),
+            content: Some("Hello".to_string()),
+            tool_calls: None,
+            tool_call_id: None,
         };
         let chat_msg: ChatMessage = msg.into();
         assert_eq!(chat_msg.role, MessageRole::User);
         assert_eq!(chat_msg.content, "Hello");
+    }
+
+    #[test]
+    fn test_openai_message_with_tool_calls() {
+        let msg = OpenAIMessage {
+            role: "assistant".to_string(),
+            content: None,
+            tool_calls: Some(vec![OpenAIToolCall {
+                id: "call_123".to_string(),
+                tool_type: "function".to_string(),
+                function: OpenAIFunctionCall {
+                    name: "_meiliSearchInIndex".to_string(),
+                    arguments: r#"{"query": "test"}"#.to_string(),
+                },
+            }]),
+            tool_call_id: None,
+        };
+        let chat_msg: ChatMessage = msg.into();
+        assert_eq!(chat_msg.role, MessageRole::Assistant);
+        assert!(chat_msg.tool_calls.is_some());
+        let tool_calls = chat_msg.tool_calls.unwrap();
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0]["id"], "call_123");
+        assert_eq!(tool_calls[0]["function"]["name"], "_meiliSearchInIndex");
+    }
+
+    #[test]
+    fn test_openai_tool_message() {
+        let msg = OpenAIMessage {
+            role: "tool".to_string(),
+            content: Some(r#"{"results": []}"#.to_string()),
+            tool_calls: None,
+            tool_call_id: Some("call_123".to_string()),
+        };
+        let chat_msg: ChatMessage = msg.into();
+        // Tool messages are mapped to User role internally
+        assert_eq!(chat_msg.role, MessageRole::User);
+        assert_eq!(chat_msg.tool_call_id, Some("call_123".to_string()));
+        assert_eq!(chat_msg.content, r#"{"results": []}"#);
+    }
+
+    #[test]
+    fn test_convert_openai_tools() {
+        let tools = vec![OpenAITool {
+            tool_type: "function".to_string(),
+            function: OpenAIFunction {
+                name: "_meiliSearchInIndex".to_string(),
+                description: Some("Search in a Meilisearch index".to_string()),
+                parameters: Some(serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"}
+                    }
+                })),
+            },
+        }];
+
+        let converted = convert_openai_tools(tools);
+        assert_eq!(converted.len(), 1);
+        assert_eq!(converted[0]["type"], "function");
+        assert_eq!(converted[0]["function"]["name"], "_meiliSearchInIndex");
+    }
+
+    #[test]
+    fn test_convert_tool_calls_to_openai() {
+        let tool_calls = Some(vec![serde_json::json!({
+            "id": "call_456",
+            "type": "function",
+            "function": {
+                "name": "_meiliSearchProgress",
+                "arguments": "{}"
+            }
+        })]);
+
+        let openai_calls = convert_tool_calls_to_openai(tool_calls);
+        assert!(openai_calls.is_some());
+        let calls = openai_calls.unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].id, "call_456");
+        assert_eq!(calls[0].tool_type, "function");
+        assert_eq!(calls[0].function.name, "_meiliSearchProgress");
     }
 
     #[tokio::test]

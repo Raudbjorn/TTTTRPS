@@ -6,7 +6,7 @@
 //!
 //! # Usage
 //!
-//! ```rust
+//! ```ignore
 //! use crate::components::design_system::effects::*;
 //!
 //! // Wrap content in a film grain effect

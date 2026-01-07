@@ -18,6 +18,7 @@ pub mod cost;
 pub mod health;
 pub mod proxy;
 pub mod router;
+pub mod session;
 pub mod providers;
 
 // Re-export commonly used types
@@ -37,6 +38,12 @@ pub use providers::*;
 
 // Re-export proxy types
 pub use proxy::LLMProxyService;
+
+// Re-export session types
+pub use session::{
+    ProviderSession, SessionError, SessionId, SessionInfo, SessionManager, SessionStore,
+    SessionResult, SessionChatRequest, SessionChatResponse, ClaudeStreamEvent,
+};
 
 // Note: LLMManager is defined below and re-exported automatically
 
@@ -79,6 +86,8 @@ pub struct LLMManager {
     chat_client: RwLock<Option<MeilisearchChatClient>>,
     /// Default proxy port
     proxy_port: u16,
+    /// Currently active provider ID for the proxy (for cleanup on switch)
+    current_proxy_provider: RwLock<Option<String>>,
 }
 
 impl LLMManager {
@@ -88,7 +97,8 @@ impl LLMManager {
             router: LLMRouter::with_defaults(),
             proxy: RwLock::new(None),
             chat_client: RwLock::new(None),
-            proxy_port: 8787,
+            proxy_port: 18787,
+            current_proxy_provider: RwLock::new(None),
         }
     }
 
@@ -151,6 +161,30 @@ impl LLMManager {
         let proxy_guard = self.proxy.read().await;
         if let Some(ref proxy) = *proxy_guard {
             proxy.register_provider(id, provider).await;
+        }
+
+        Ok(())
+    }
+
+    /// Unregister a provider from the proxy
+    pub async fn unregister_proxy_provider(&self, id: &str) {
+        let proxy_guard = self.proxy.read().await;
+        if let Some(ref proxy) = *proxy_guard {
+            proxy.unregister_provider(id).await;
+        }
+    }
+
+    /// Set the default provider for the proxy
+    ///
+    /// When a model name without provider prefix is used (e.g., "gpt-4" instead of "openai:gpt-4"),
+    /// the proxy will route to this provider.
+    pub async fn set_default_proxy_provider(&self, id: &str) -> std::result::Result<(), String> {
+        // Ensure proxy is running
+        self.ensure_proxy().await?;
+
+        let proxy_guard = self.proxy.read().await;
+        if let Some(ref proxy) = *proxy_guard {
+            proxy.set_default_provider(id).await;
         }
 
         Ok(())
@@ -228,6 +262,12 @@ impl LLMManager {
     }
 
     /// Configure for chat (convenience method using default workspace)
+    ///
+    /// This method handles provider switching by:
+    /// 1. Unregistering the previous provider from the proxy (if different)
+    /// 2. Registering the new provider with the proxy (if it requires proxy)
+    /// 3. Setting the new provider as the default for the proxy
+    /// 4. Configuring the Meilisearch workspace
     pub async fn configure_for_chat(
         &self,
         config: &providers::ProviderConfig,
@@ -238,16 +278,55 @@ impl LLMManager {
             .as_ref()
             .ok_or("Meilisearch chat client not configured")?;
 
+        let new_provider_id = config.provider_id();
+
+        // Check if we're switching providers
+        let previous_provider = {
+            let current = self.current_proxy_provider.read().await;
+            current.clone()
+        };
+
+        // Unregister previous provider if it's different from the new one
+        if let Some(ref prev_id) = previous_provider {
+            if prev_id != new_provider_id {
+                log::info!("Switching LLM proxy provider: {} -> {}", prev_id, new_provider_id);
+                self.unregister_proxy_provider(prev_id).await;
+            }
+        }
+
         let proxy_url = if config.requires_proxy() {
-             let url = self.ensure_proxy().await?;
-             let llm_provider = config.create_provider();
-             self.register_proxy_provider(config.provider_id(), llm_provider).await?;
-             url
+            let url = self.ensure_proxy().await?;
+
+            // Create and register the LLM provider
+            let llm_provider = config.create_provider();
+            self.register_proxy_provider(new_provider_id, llm_provider).await?;
+
+            // Set as default provider for the proxy
+            self.set_default_proxy_provider(new_provider_id).await?;
+
+            // Track current provider
+            {
+                let mut current = self.current_proxy_provider.write().await;
+                *current = Some(new_provider_id.to_string());
+            }
+
+            url
         } else {
+            // Native provider - clear current proxy provider tracking
+            {
+                let mut current = self.current_proxy_provider.write().await;
+                *current = None;
+            }
             String::new()
         };
 
         client.configure_from_provider_config(config, &proxy_url, custom_system_prompt).await
+    }
+
+    /// Get the currently active proxy provider ID
+    pub async fn current_proxy_provider(&self) -> Option<String> {
+        let current = self.current_proxy_provider.read().await;
+        current.clone()
     }
 
     /// Send a chat message (using default DM workspace)

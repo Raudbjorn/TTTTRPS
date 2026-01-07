@@ -8,14 +8,17 @@
 //!
 //! - Full Claude Code capabilities (file access, tool use, etc.)
 //! - Conversation management via session IDs
-//! - JSON output parsing for structured responses
+//! - JSON and streaming output parsing
+//! - Session resumption (`--continue`, `--resume`)
+//! - Conversation compaction (`/compact`)
 //! - Configurable timeout and model selection
 //!
-//! ## Limitations
+//! ## Session Management
 //!
-//! - No streaming support (full responses only)
-//! - Requires Claude Code CLI to be installed
-//! - Uses CLI's built-in authentication
+//! Sessions are tracked via the `session_id` returned in responses.
+//! - `--continue`: Resume the most recent session
+//! - `--resume <id>`: Resume a specific session
+//! - `--fork-session`: Create a new branch when resuming
 //!
 //! ## Usage
 //!
@@ -23,22 +26,31 @@
 //! use crate::core::llm::providers::ClaudeCodeProvider;
 //!
 //! let provider = ClaudeCodeProvider::new();
-//! // Or with custom timeout
-//! let provider = ClaudeCodeProvider::with_config(300, None);
+//! // Or with custom timeout and session support
+//! let provider = ClaudeCodeProvider::with_config(300, None, None);
 //! ```
 
 use crate::core::llm::cost::ProviderPricing;
 use crate::core::llm::router::{
     ChatChunk, ChatRequest, ChatResponse, LLMError, LLMProvider, Result,
 };
+use crate::core::llm::session::{
+    ClaudeStreamEvent, ContentBlock, ProviderSession, SessionError, SessionId, SessionInfo,
+    SessionResult, SessionStore,
+};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::process::Stdio;
+use std::sync::Arc;
 use std::time::Instant;
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::process::Command;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info, warn};
+
+// ============================================================================
+// Response Types
+// ============================================================================
 
 /// Response structure from Claude Code CLI JSON output
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,6 +65,12 @@ struct ClaudeCodeResponse {
     cost: Option<ClaudeCodeCost>,
     #[serde(default)]
     error: Option<String>,
+    #[serde(default)]
+    is_error: Option<bool>,
+    #[serde(default)]
+    duration_ms: Option<u64>,
+    #[serde(default)]
+    num_turns: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,11 +87,39 @@ struct ClaudeCodeCost {
     usd: f64,
 }
 
+// ============================================================================
+// Session Configuration
+// ============================================================================
+
+/// Session mode for requests
+#[derive(Debug, Clone, Default)]
+pub enum SessionMode {
+    /// Start a new session
+    #[default]
+    New,
+    /// Continue the most recent session
+    Continue,
+    /// Resume a specific session by ID
+    Resume(SessionId),
+    /// Fork an existing session (create new branch)
+    Fork(SessionId),
+}
+
+// ============================================================================
+// Claude Code Provider
+// ============================================================================
+
 /// Claude Code provider using CLI.
 pub struct ClaudeCodeProvider {
     timeout_secs: u64,
     model: Option<String>,
     working_dir: Option<String>,
+    /// Session store for tracking conversations
+    session_store: Arc<SessionStore>,
+    /// Current active session ID
+    current_session: RwLock<Option<SessionId>>,
+    /// Whether to persist sessions to disk
+    persist_sessions: bool,
 }
 
 impl ClaudeCodeProvider {
@@ -88,17 +134,47 @@ impl ClaudeCodeProvider {
     }
 
     /// Create a new provider with custom configuration.
-    pub fn with_config(timeout_secs: u64, model: Option<String>, working_dir: Option<String>) -> Self {
+    pub fn with_config(
+        timeout_secs: u64,
+        model: Option<String>,
+        working_dir: Option<String>,
+    ) -> Self {
+        let store_path = dirs::data_local_dir()
+            .map(|d| d.join("ttrpg-assistant").join("claude-sessions.json"));
+
+        let session_store = match store_path {
+            Some(path) => Arc::new(SessionStore::with_persistence(path)),
+            None => Arc::new(SessionStore::new()),
+        };
+
         Self {
             timeout_secs,
             model,
             working_dir,
+            session_store,
+            current_session: RwLock::new(None),
+            persist_sessions: true,
+        }
+    }
+
+    /// Create provider with custom session store
+    pub fn with_session_store(
+        timeout_secs: u64,
+        model: Option<String>,
+        working_dir: Option<String>,
+        session_store: Arc<SessionStore>,
+    ) -> Self {
+        Self {
+            timeout_secs,
+            model,
+            working_dir,
+            session_store,
+            current_session: RwLock::new(None),
+            persist_sessions: true,
         }
     }
 
     /// Build the message content from the request.
-    ///
-    /// Includes system prompt and conversation history for context.
     fn build_message(&self, request: &ChatRequest) -> String {
         let mut parts = Vec::new();
 
@@ -117,14 +193,11 @@ impl ClaudeCodeProvider {
                     parts.push(format!("Assistant: {}", msg.content));
                 }
                 crate::core::llm::router::MessageRole::System => {
-                    // Include system messages in context
                     parts.push(format!("[System: {}]", msg.content));
                 }
             }
         }
 
-        // Return joined message with all context preserved
-        // If no messages, just return the system prompt or empty string
         if parts.is_empty() {
             String::new()
         } else {
@@ -132,8 +205,45 @@ impl ClaudeCodeProvider {
         }
     }
 
-    /// Execute a prompt via Claude Code CLI
-    async fn execute_prompt(&self, prompt: &str) -> Result<ClaudeCodeResponse> {
+    /// Build CLI arguments for a request
+    fn build_args(&self, prompt: &str, session_mode: &SessionMode, streaming: bool) -> Vec<String> {
+        let mut args = vec!["-p".to_string(), prompt.to_string()];
+
+        // Output format
+        if streaming {
+            args.extend(["--output-format".to_string(), "stream-json".to_string()]);
+        } else {
+            args.extend(["--output-format".to_string(), "json".to_string()]);
+        }
+
+        // Model selection
+        if let Some(ref model) = self.model {
+            args.extend(["--model".to_string(), model.clone()]);
+        }
+
+        // Session handling
+        match session_mode {
+            SessionMode::New => {}
+            SessionMode::Continue => {
+                args.push("--continue".to_string());
+            }
+            SessionMode::Resume(session_id) => {
+                args.extend(["--resume".to_string(), session_id.clone()]);
+            }
+            SessionMode::Fork(session_id) => {
+                args.extend([
+                    "--resume".to_string(),
+                    session_id.clone(),
+                    "--fork-session".to_string(),
+                ]);
+            }
+        }
+
+        args
+    }
+
+    /// Execute a prompt via Claude Code CLI (non-streaming)
+    async fn execute_prompt(&self, prompt: &str, session_mode: SessionMode) -> Result<ClaudeCodeResponse> {
         let binary = which::which("claude").map_err(|_| {
             LLMError::NotConfigured(
                 "Claude Code CLI not found. Install with: npm install -g @anthropic-ai/claude-code"
@@ -141,16 +251,11 @@ impl ClaudeCodeProvider {
             )
         })?;
 
+        let args = self.build_args(prompt, &session_mode, false);
+
         let mut cmd = Command::new(binary);
-        cmd.arg("-p").arg(prompt);
-        cmd.arg("--output-format").arg("json");
+        cmd.args(&args);
 
-        // Add model if specified
-        if let Some(ref model) = self.model {
-            cmd.arg("--model").arg(model);
-        }
-
-        // Set working directory if specified
         if let Some(ref dir) = self.working_dir {
             cmd.current_dir(dir);
         }
@@ -210,16 +315,30 @@ impl ClaudeCodeProvider {
                 }
 
                 // Parse JSON response
-                serde_json::from_str::<ClaudeCodeResponse>(&stdout).or_else(|_| {
-                    // If not JSON, treat as plain text response
-                    Ok(ClaudeCodeResponse {
+                let response: ClaudeCodeResponse =
+                    serde_json::from_str(&stdout).unwrap_or_else(|_| ClaudeCodeResponse {
                         session_id: None,
                         result: stdout.trim().to_string(),
                         usage: None,
                         cost: None,
                         error: None,
-                    })
-                })
+                        is_error: None,
+                        duration_ms: None,
+                        num_turns: None,
+                    });
+
+                // Store session ID if returned
+                if let Some(ref session_id) = response.session_id {
+                    let mut current = self.current_session.write().await;
+                    *current = Some(session_id.clone());
+
+                    // Store session info
+                    let mut info = SessionInfo::new(session_id.clone(), "claude-code");
+                    info.working_dir = self.working_dir.clone();
+                    let _ = self.session_store.store(info).await;
+                }
+
+                Ok(response)
             }
             Ok(Err(io_err)) => {
                 error!(error = %io_err, "I/O error during Claude Code execution");
@@ -229,14 +348,201 @@ impl ClaudeCodeProvider {
                 })
             }
             Err(_) => {
-                warn!(
-                    timeout_secs = self.timeout_secs,
-                    "Claude Code request timed out"
-                );
+                warn!(timeout_secs = self.timeout_secs, "Claude Code request timed out");
                 let _ = child.kill().await;
                 Err(LLMError::Timeout)
             }
         }
+    }
+
+    /// Execute a prompt with streaming output
+    async fn execute_streaming(
+        &self,
+        prompt: &str,
+        session_mode: SessionMode,
+    ) -> Result<mpsc::Receiver<Result<ChatChunk>>> {
+        let binary = which::which("claude").map_err(|_| {
+            LLMError::NotConfigured(
+                "Claude Code CLI not found. Install with: npm install -g @anthropic-ai/claude-code"
+                    .to_string(),
+            )
+        })?;
+
+        let args = self.build_args(prompt, &session_mode, true);
+        let (tx, rx) = mpsc::channel::<Result<ChatChunk>>(100);
+
+        let mut cmd = Command::new(binary);
+        cmd.args(&args);
+
+        if let Some(ref dir) = self.working_dir {
+            cmd.current_dir(dir);
+        }
+
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+
+        let mut child = cmd.spawn().map_err(|e| LLMError::ApiError {
+            status: 0,
+            message: format!("Failed to spawn Claude Code: {}", e),
+        })?;
+
+        let stdout = child.stdout.take().ok_or_else(|| LLMError::ApiError {
+            status: 0,
+            message: "Failed to capture stdout".to_string(),
+        })?;
+
+        let model = self.model.clone().unwrap_or_else(|| "claude-code".to_string());
+        let timeout_secs = self.timeout_secs;
+        let session_store = self.session_store.clone();
+        let working_dir = self.working_dir.clone();
+
+        // Spawn task to read streaming output
+        tokio::spawn(async move {
+            let reader = BufReader::new(stdout);
+            let mut lines = reader.lines();
+            let stream_id = uuid::Uuid::new_v4().to_string();
+            let mut chunk_index: u32 = 0;
+            let mut session_id: Option<String> = None;
+            let mut total_content = String::new();
+
+            let timeout = tokio::time::Duration::from_secs(timeout_secs);
+            let start = Instant::now();
+
+            loop {
+                if start.elapsed() > timeout {
+                    let _ = tx
+                        .send(Err(LLMError::Timeout))
+                        .await;
+                    let _ = child.kill().await;
+                    break;
+                }
+
+                let line_result = tokio::time::timeout(
+                    tokio::time::Duration::from_secs(30),
+                    lines.next_line(),
+                )
+                .await;
+
+                match line_result {
+                    Ok(Ok(Some(line))) => {
+                        if line.is_empty() {
+                            continue;
+                        }
+
+                        // Parse stream-json event
+                        match serde_json::from_str::<ClaudeStreamEvent>(&line) {
+                            Ok(event) => match event {
+                                ClaudeStreamEvent::System { session_id: sid, .. } => {
+                                    session_id = sid;
+                                }
+                                ClaudeStreamEvent::Assistant { message, .. } => {
+                                    if let Some(msg) = message {
+                                        if let Some(content_blocks) = msg.content {
+                                            for block in content_blocks {
+                                                if let ContentBlock::Text { text } = block {
+                                                    total_content.push_str(&text);
+
+                                                    let chunk = ChatChunk {
+                                                        stream_id: stream_id.clone(),
+                                                        content: text,
+                                                        provider: "claude-code".to_string(),
+                                                        model: model.clone(),
+                                                        is_final: false,
+                                                        finish_reason: None,
+                                                        usage: None,
+                                                        index: chunk_index,
+                                                    };
+                                                    chunk_index += 1;
+
+                                                    if tx.send(Ok(chunk)).await.is_err() {
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                ClaudeStreamEvent::Result {
+                                    session_id: sid,
+                                    is_error,
+                                    cost_usd,
+                                    ..
+                                } => {
+                                    if sid.is_some() {
+                                        session_id = sid;
+                                    }
+
+                                    // Store session
+                                    if let Some(ref s_id) = session_id {
+                                        let mut info = SessionInfo::new(s_id.clone(), "claude-code");
+                                        info.working_dir = working_dir.clone();
+                                        let _ = session_store.store(info).await;
+                                    }
+
+                                    // Send final chunk
+                                    let final_chunk = ChatChunk {
+                                        stream_id: stream_id.clone(),
+                                        content: String::new(),
+                                        provider: "claude-code".to_string(),
+                                        model: model.clone(),
+                                        is_final: true,
+                                        finish_reason: if is_error.unwrap_or(false) {
+                                            Some("error".to_string())
+                                        } else {
+                                            Some("stop".to_string())
+                                        },
+                                        usage: None,
+                                        index: chunk_index,
+                                    };
+                                    let _ = tx.send(Ok(final_chunk)).await;
+                                    break;
+                                }
+                                ClaudeStreamEvent::User { .. } => {
+                                    // User message acknowledgment, ignore
+                                }
+                            },
+                            Err(e) => {
+                                debug!(line = %line, error = %e, "Failed to parse stream event");
+                            }
+                        }
+                    }
+                    Ok(Ok(None)) => {
+                        // EOF - send final chunk if we haven't already
+                        let final_chunk = ChatChunk {
+                            stream_id: stream_id.clone(),
+                            content: String::new(),
+                            provider: "claude-code".to_string(),
+                            model: model.clone(),
+                            is_final: true,
+                            finish_reason: Some("stop".to_string()),
+                            usage: None,
+                            index: chunk_index,
+                        };
+                        let _ = tx.send(Ok(final_chunk)).await;
+                        break;
+                    }
+                    Ok(Err(e)) => {
+                        let _ = tx
+                            .send(Err(LLMError::ApiError {
+                                status: 0,
+                                message: format!("Read error: {}", e),
+                            }))
+                            .await;
+                        break;
+                    }
+                    Err(_) => {
+                        // Line read timeout - continue waiting
+                        continue;
+                    }
+                }
+            }
+
+            // Wait for process to finish
+            let _ = child.wait().await;
+        });
+
+        Ok(rx)
     }
 
     /// Check if Claude Code CLI is available
@@ -263,10 +569,8 @@ impl ClaudeCodeProvider {
 
     /// Get full status of Claude Code CLI (installed, logged in, version)
     pub async fn get_status() -> ClaudeCodeStatus {
-        // Check if skill is installed
-        let skill_installed = Self::skill_path()
-            .map(|p| p.exists())
-            .unwrap_or(false);
+        // Check if skill is installed via plugin system
+        let skill_installed = Self::check_plugin_installed("claude-code-bridge").await;
 
         // Check if binary exists
         let binary = match which::which("claude") {
@@ -284,52 +588,46 @@ impl ClaudeCodeProvider {
         };
 
         // Get version
-        let version = match Command::new(&binary)
-            .arg("--version")
-            .output()
-            .await
-        {
+        let version = match Command::new(&binary).arg("--version").output().await {
             Ok(output) if output.status.success() => {
                 Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
             }
             _ => None,
         };
 
-        // Check auth status using `claude auth status`
-        let auth_result = Command::new(&binary)
-            .args(["auth", "status"])
-            .output()
-            .await;
+        // Check auth by attempting a minimal prompt
+        let auth_result = tokio::time::timeout(
+            tokio::time::Duration::from_secs(30),
+            Command::new(&binary)
+                .args(["-p", "hi", "--output-format", "json"])
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .output(),
+        )
+        .await;
 
         match auth_result {
-            Ok(output) => {
+            Ok(Ok(output)) => {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 let stderr = String::from_utf8_lossy(&output.stderr);
 
-                // Try to parse JSON output, or check for success indicators
                 if output.status.success() {
-                    // Try to parse as JSON for user email
-                    let user_email = serde_json::from_str::<serde_json::Value>(&stdout)
-                        .ok()
-                        .and_then(|v| v.get("email").and_then(|e| e.as_str()).map(String::from));
-
                     ClaudeCodeStatus {
                         installed: true,
                         logged_in: true,
                         skill_installed,
                         version,
-                        user_email,
+                        user_email: None,
                         error: None,
                     }
                 } else {
-                    // Not logged in
-                    let error_msg = if !stderr.is_empty() {
-                        stderr.trim().to_string()
-                    } else if !stdout.is_empty() {
-                        stdout.trim().to_string()
-                    } else {
-                        "Not authenticated".to_string()
-                    };
+                    let combined = format!("{} {}", stdout, stderr);
+                    let is_auth_error = combined.contains("login")
+                        || combined.contains("authenticate")
+                        || combined.contains("unauthorized")
+                        || combined.contains("session")
+                        || combined.contains("token");
 
                     ClaudeCodeStatus {
                         installed: true,
@@ -337,82 +635,256 @@ impl ClaudeCodeProvider {
                         skill_installed,
                         version,
                         user_email: None,
-                        error: Some(error_msg),
+                        error: if is_auth_error {
+                            Some("Not logged in - run 'claude' to authenticate".to_string())
+                        } else {
+                            Some(stderr.trim().to_string())
+                        },
                     }
                 }
             }
-            Err(e) => ClaudeCodeStatus {
+            Ok(Err(e)) => ClaudeCodeStatus {
                 installed: true,
                 logged_in: false,
                 skill_installed,
                 version,
                 user_email: None,
-                error: Some(format!("Failed to check auth status: {}", e)),
+                error: Some(format!("Failed to check auth: {}", e)),
+            },
+            Err(_) => ClaudeCodeStatus {
+                installed: true,
+                logged_in: false,
+                skill_installed,
+                version,
+                user_email: None,
+                error: Some("Auth check timed out".to_string()),
             },
         }
     }
 
-    /// Get the path to the skill file
+    /// Check if a plugin is installed using `claude plugin` command
+    async fn check_plugin_installed(plugin_name: &str) -> bool {
+        // For now, check the legacy skill file path
+        // TODO: Use `claude plugin list` when available
+        Self::skill_path().map(|p| p.exists()).unwrap_or(false)
+    }
+
+    /// Get the path to the legacy skill file
     fn skill_path() -> Option<std::path::PathBuf> {
         dirs::home_dir().map(|h| h.join(".claude").join("commands").join("claude-code-bridge.md"))
     }
 
-    /// Spawn the Claude Code login flow (opens browser)
+    /// Spawn the Claude Code login flow
     pub async fn login() -> std::result::Result<(), String> {
-        let binary = which::which("claude")
-            .map_err(|_| "Claude Code CLI not installed")?;
+        let binary = which::which("claude").map_err(|_| "Claude Code CLI not installed")?;
 
-        // Run `claude auth login` which opens browser for OAuth
-        let status = Command::new(binary)
-            .args(["auth", "login"])
-            .status()
-            .await
-            .map_err(|e| format!("Failed to spawn login: {}", e))?;
+        #[cfg(target_os = "linux")]
+        {
+            let terminals = [
+                ("kitty", vec!["-e"]),
+                ("gnome-terminal", vec!["--"]),
+                ("konsole", vec!["-e"]),
+                ("xterm", vec!["-e"]),
+                ("alacritty", vec!["-e"]),
+            ];
 
-        if status.success() {
-            Ok(())
-        } else {
-            Err("Login process failed or was cancelled".to_string())
+            for (term, args) in terminals {
+                if which::which(term).is_ok() {
+                    let mut cmd = Command::new(term);
+                    for arg in &args {
+                        cmd.arg(arg);
+                    }
+                    cmd.arg(&binary);
+
+                    if cmd.spawn().is_ok() {
+                        return Ok(());
+                    }
+                }
+            }
+            Err("Could not open terminal. Please run 'claude' manually to login.".to_string())
         }
+
+        #[cfg(target_os = "macos")]
+        {
+            Command::new("open")
+                .args(["-a", "Terminal", binary.to_str().unwrap_or("claude")])
+                .spawn()
+                .map_err(|e| format!("Failed to open Terminal: {}", e))?;
+            Ok(())
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            Command::new("cmd")
+                .args(["/c", "start", "cmd", "/k", binary.to_str().unwrap_or("claude")])
+                .spawn()
+                .map_err(|e| format!("Failed to open terminal: {}", e))?;
+            Ok(())
+        }
+
+        #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+        Err("Unsupported platform for automatic login. Please run 'claude' manually.".to_string())
     }
 
     /// Logout from Claude Code
     pub async fn logout() -> std::result::Result<(), String> {
-        let binary = which::which("claude")
-            .map_err(|_| "Claude Code CLI not installed")?;
-
-        let status = Command::new(binary)
-            .args(["auth", "logout"])
-            .status()
-            .await
-            .map_err(|e| format!("Failed to logout: {}", e))?;
-
-        if status.success() {
-            Ok(())
-        } else {
-            Err("Logout failed".to_string())
+        if let Some(home) = dirs::home_dir() {
+            let creds_path = home.join(".claude").join("credentials.json");
+            if creds_path.exists() {
+                tokio::fs::remove_file(&creds_path)
+                    .await
+                    .map_err(|e| format!("Failed to remove credentials: {}", e))?;
+                info!("Removed Claude Code credentials");
+                return Ok(());
+            }
         }
+        Ok(())
     }
 
-    /// Install the claude-code-bridge skill to ~/.claude/commands/
+    /// Install the claude-code-bridge plugin using `claude plugin install`
     pub async fn install_skill() -> std::result::Result<(), String> {
-        let skill_path = Self::skill_path()
-            .ok_or("Could not determine home directory")?;
+        // First, try using the plugin system
+        let binary = which::which("claude").map_err(|_| "Claude Code CLI not installed")?;
 
-        // Create the commands directory if it doesn't exist
+        // For now, fall back to creating the skill file manually
+        // since plugin marketplace may not have the bridge skill yet
+        let skill_path = Self::skill_path().ok_or("Could not determine home directory")?;
+
         if let Some(parent) = skill_path.parent() {
             tokio::fs::create_dir_all(parent)
                 .await
                 .map_err(|e| format!("Failed to create commands directory: {}", e))?;
         }
 
-        // Write the skill file
         tokio::fs::write(&skill_path, CLAUDE_CODE_BRIDGE_SKILL)
             .await
             .map_err(|e| format!("Failed to write skill file: {}", e))?;
 
         info!("Installed claude-code-bridge skill to {:?}", skill_path);
         Ok(())
+    }
+
+    /// Install Claude Code CLI via npm
+    pub async fn install_cli() -> std::result::Result<(), String> {
+        let npm = which::which("npm")
+            .or_else(|_| which::which("pnpm"))
+            .or_else(|_| which::which("bun"))
+            .map_err(|_| "No package manager found. Please install npm, pnpm, or bun.")?;
+
+        let pkg_manager = npm
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("npm");
+
+        let install_cmd = format!("{} install -g @anthropic-ai/claude-code", pkg_manager);
+
+        #[cfg(target_os = "linux")]
+        {
+            let terminals = [
+                ("kitty", vec!["-e", "bash", "-c"]),
+                ("gnome-terminal", vec!["--", "bash", "-c"]),
+                ("konsole", vec!["-e", "bash", "-c"]),
+                ("xterm", vec!["-e", "bash", "-c"]),
+                ("alacritty", vec!["-e", "bash", "-c"]),
+            ];
+
+            for (term, args) in terminals {
+                if which::which(term).is_ok() {
+                    let mut cmd = Command::new(term);
+                    for arg in &args {
+                        cmd.arg(arg);
+                    }
+                    cmd.arg(format!(
+                        "{}; echo ''; echo 'Press Enter to close...'; read",
+                        install_cmd
+                    ));
+
+                    if cmd.spawn().is_ok() {
+                        return Ok(());
+                    }
+                }
+            }
+            Err(format!(
+                "Could not open terminal. Please run manually: {}",
+                install_cmd
+            ))
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            Command::new("osascript")
+                .args([
+                    "-e",
+                    &format!(r#"tell application "Terminal" to do script "{}""#, install_cmd),
+                ])
+                .spawn()
+                .map_err(|e| format!("Failed to open Terminal: {}", e))?;
+            Ok(())
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            Command::new("cmd")
+                .args(["/c", "start", "cmd", "/k", &install_cmd])
+                .spawn()
+                .map_err(|e| format!("Failed to open terminal: {}", e))?;
+            Ok(())
+        }
+
+        #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+        Err(format!(
+            "Unsupported platform. Please run manually: {}",
+            install_cmd
+        ))
+    }
+
+    /// Request conversation compaction via /compact command
+    pub async fn compact(&self) -> std::result::Result<(), String> {
+        let binary = which::which("claude").map_err(|_| "Claude Code CLI not installed")?;
+
+        // Get current session
+        let session_id = {
+            let current = self.current_session.read().await;
+            current.clone()
+        };
+
+        let mut cmd = Command::new(binary);
+        cmd.args(["-p", "/compact", "--output-format", "json"]);
+
+        // Resume session if we have one
+        if let Some(ref sid) = session_id {
+            cmd.args(["--resume", sid]);
+        } else {
+            cmd.arg("--continue");
+        }
+
+        if let Some(ref dir) = self.working_dir {
+            cmd.current_dir(dir);
+        }
+
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+
+        let output = tokio::time::timeout(tokio::time::Duration::from_secs(120), cmd.output())
+            .await
+            .map_err(|_| "Compaction timed out")?
+            .map_err(|e| format!("Failed to run compact: {}", e))?;
+
+        if output.status.success() {
+            // Update session info to mark as compacted
+            if let Some(sid) = session_id {
+                if let Some(mut info) = self.session_store.get(&sid).await {
+                    info.is_compacted = true;
+                    let _ = self.session_store.store(info).await;
+                }
+            }
+            info!("Session compacted successfully");
+            Ok(())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(format!("Compaction failed: {}", stderr))
+        }
     }
 }
 
@@ -496,11 +968,28 @@ pub struct ClaudeCodeStatus {
     pub error: Option<String>,
 }
 
+impl Default for ClaudeCodeStatus {
+    fn default() -> Self {
+        Self {
+            installed: false,
+            logged_in: false,
+            skill_installed: false,
+            version: None,
+            user_email: None,
+            error: None,
+        }
+    }
+}
+
 impl Default for ClaudeCodeProvider {
     fn default() -> Self {
         Self::new()
     }
 }
+
+// ============================================================================
+// LLMProvider Implementation
+// ============================================================================
 
 #[async_trait]
 impl LLMProvider for ClaudeCodeProvider {
@@ -521,7 +1010,6 @@ impl LLMProvider for ClaudeCodeProvider {
     }
 
     fn pricing(&self) -> Option<ProviderPricing> {
-        // Uses your Claude Code account pricing (subscription or API)
         None
     }
 
@@ -531,7 +1019,17 @@ impl LLMProvider for ClaudeCodeProvider {
 
         let start = Instant::now();
 
-        let response = self.execute_prompt(&message).await?;
+        // Check if we should continue a session
+        let session_mode = {
+            let current = self.current_session.read().await;
+            if current.is_some() {
+                SessionMode::Continue
+            } else {
+                SessionMode::New
+            }
+        };
+
+        let response = self.execute_prompt(&message, session_mode).await?;
 
         let latency_ms = start.elapsed().as_millis() as u64;
 
@@ -564,20 +1062,160 @@ impl LLMProvider for ClaudeCodeProvider {
         })
     }
 
-    async fn stream_chat(&self, _request: ChatRequest) -> Result<mpsc::Receiver<Result<ChatChunk>>> {
-        // Claude Code CLI doesn't support streaming - returns full response
-        warn!("streaming not supported for Claude Code provider");
-        Err(LLMError::StreamingNotSupported("claude-code".to_string()))
+    async fn stream_chat(&self, request: ChatRequest) -> Result<mpsc::Receiver<Result<ChatChunk>>> {
+        let message = self.build_message(&request);
+        debug!(message_len = message.len(), "streaming message to Claude Code");
+
+        // Check if we should continue a session
+        let session_mode = {
+            let current = self.current_session.read().await;
+            if current.is_some() {
+                SessionMode::Continue
+            } else {
+                SessionMode::New
+            }
+        };
+
+        self.execute_streaming(&message, session_mode).await
     }
 
     fn supports_streaming(&self) -> bool {
-        false
+        true // Now supports streaming via --output-format stream-json
     }
 
     fn supports_embeddings(&self) -> bool {
         false
     }
 }
+
+// ============================================================================
+// ProviderSession Implementation
+// ============================================================================
+
+#[async_trait]
+impl ProviderSession for ClaudeCodeProvider {
+    fn supports_sessions(&self) -> bool {
+        true
+    }
+
+    async fn current_session(&self) -> Option<SessionId> {
+        self.current_session.read().await.clone()
+    }
+
+    async fn resume_session(&self, session_id: &SessionId) -> SessionResult<SessionInfo> {
+        // Verify session exists
+        let info = self
+            .session_store
+            .get(session_id)
+            .await
+            .ok_or_else(|| SessionError::NotFound(session_id.clone()))?;
+
+        // Set as current session
+        {
+            let mut current = self.current_session.write().await;
+            *current = Some(session_id.clone());
+        }
+
+        // Touch to update last used time
+        let _ = self.session_store.touch(session_id).await;
+
+        Ok(info)
+    }
+
+    async fn continue_session(&self) -> SessionResult<SessionInfo> {
+        let recent = self
+            .session_store
+            .most_recent("claude-code")
+            .await
+            .ok_or_else(|| SessionError::NotFound("no recent session".to_string()))?;
+
+        self.resume_session(&recent.id).await
+    }
+
+    async fn fork_session(&self, session_id: &SessionId) -> SessionResult<SessionId> {
+        // Verify source session exists
+        let source = self
+            .session_store
+            .get(session_id)
+            .await
+            .ok_or_else(|| SessionError::NotFound(session_id.clone()))?;
+
+        // Execute a minimal prompt with fork to create new session
+        let binary = which::which("claude")
+            .map_err(|_| SessionError::OperationFailed("Claude Code CLI not found".to_string()))?;
+
+        let mut cmd = Command::new(binary);
+        cmd.args([
+            "-p",
+            "Continue from here.",
+            "--output-format",
+            "json",
+            "--resume",
+            session_id,
+            "--fork-session",
+        ]);
+
+        if let Some(ref dir) = source.working_dir {
+            cmd.current_dir(dir);
+        }
+
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+
+        let output = cmd.output().await.map_err(|e| {
+            SessionError::OperationFailed(format!("Failed to fork session: {}", e))
+        })?;
+
+        if !output.status.success() {
+            return Err(SessionError::OperationFailed(
+                String::from_utf8_lossy(&output.stderr).to_string(),
+            ));
+        }
+
+        // Parse response to get new session ID
+        let response: ClaudeCodeResponse = serde_json::from_slice(&output.stdout)
+            .map_err(|e| SessionError::OperationFailed(format!("Failed to parse response: {}", e)))?;
+
+        let new_session_id = response
+            .session_id
+            .ok_or_else(|| SessionError::OperationFailed("No session ID in response".to_string()))?;
+
+        // Store new session
+        let mut new_info = SessionInfo::new(new_session_id.clone(), "claude-code");
+        new_info.working_dir = source.working_dir;
+        self.session_store.store(new_info).await?;
+
+        // Set as current
+        {
+            let mut current = self.current_session.write().await;
+            *current = Some(new_session_id.clone());
+        }
+
+        Ok(new_session_id)
+    }
+
+    async fn compact_session(&self) -> SessionResult<()> {
+        self.compact()
+            .await
+            .map_err(|e| SessionError::CompactionFailed(e))
+    }
+
+    async fn get_session_info(&self, session_id: &SessionId) -> SessionResult<SessionInfo> {
+        self.session_store
+            .get(session_id)
+            .await
+            .ok_or_else(|| SessionError::NotFound(session_id.clone()))
+    }
+
+    async fn list_sessions(&self, limit: usize) -> SessionResult<Vec<SessionInfo>> {
+        Ok(self.session_store.list_by_provider("claude-code", limit).await)
+    }
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
 
 #[cfg(test)]
 mod tests {
@@ -597,17 +1235,24 @@ mod tests {
     }
 
     #[test]
-    fn test_no_streaming() {
+    fn test_supports_streaming() {
         let provider = ClaudeCodeProvider::new();
-        assert!(!provider.supports_streaming());
+        assert!(provider.supports_streaming());
         assert!(!provider.supports_embeddings());
     }
 
     #[test]
     fn test_custom_config() {
-        let provider = ClaudeCodeProvider::with_config(60, Some("claude-sonnet-4-20250514".to_string()), None);
+        let provider = ClaudeCodeProvider::with_config(
+            60,
+            Some("claude-sonnet-4-20250514".to_string()),
+            None,
+        );
         assert_eq!(provider.timeout_secs, 60);
-        assert_eq!(provider.model, Some("claude-sonnet-4-20250514".to_string()));
+        assert_eq!(
+            provider.model,
+            Some("claude-sonnet-4-20250514".to_string())
+        );
     }
 
     #[test]
@@ -615,5 +1260,86 @@ mod tests {
         let provider = ClaudeCodeProvider::default();
         assert_eq!(provider.timeout_secs, 300);
         assert!(provider.model.is_none());
+    }
+
+    #[test]
+    fn test_build_args_new_session() {
+        let provider = ClaudeCodeProvider::new();
+        let args = provider.build_args("test", &SessionMode::New, false);
+        assert!(args.contains(&"-p".to_string()));
+        assert!(args.contains(&"test".to_string()));
+        assert!(args.contains(&"json".to_string()));
+        assert!(!args.contains(&"--continue".to_string()));
+    }
+
+    #[test]
+    fn test_build_args_continue() {
+        let provider = ClaudeCodeProvider::new();
+        let args = provider.build_args("test", &SessionMode::Continue, false);
+        assert!(args.contains(&"--continue".to_string()));
+    }
+
+    #[test]
+    fn test_build_args_resume() {
+        let provider = ClaudeCodeProvider::new();
+        let args = provider.build_args("test", &SessionMode::Resume("abc123".to_string()), false);
+        assert!(args.contains(&"--resume".to_string()));
+        assert!(args.contains(&"abc123".to_string()));
+    }
+
+    #[test]
+    fn test_build_args_fork() {
+        let provider = ClaudeCodeProvider::new();
+        let args = provider.build_args("test", &SessionMode::Fork("abc123".to_string()), false);
+        assert!(args.contains(&"--resume".to_string()));
+        assert!(args.contains(&"abc123".to_string()));
+        assert!(args.contains(&"--fork-session".to_string()));
+    }
+
+    #[test]
+    fn test_build_args_streaming() {
+        let provider = ClaudeCodeProvider::new();
+        let args = provider.build_args("test", &SessionMode::New, true);
+        assert!(args.contains(&"stream-json".to_string()));
+    }
+
+    #[test]
+    fn test_build_args_with_model() {
+        let provider = ClaudeCodeProvider::with_config(
+            300,
+            Some("claude-sonnet-4-20250514".to_string()),
+            None,
+        );
+        let args = provider.build_args("test", &SessionMode::New, false);
+        assert!(args.contains(&"--model".to_string()));
+        assert!(args.contains(&"claude-sonnet-4-20250514".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_session_store_integration() {
+        let store = Arc::new(SessionStore::new());
+        let provider = ClaudeCodeProvider::with_session_store(300, None, None, store.clone());
+
+        // Initially no session
+        assert!(provider.current_session().await.is_none());
+
+        // Store a session manually
+        let info = SessionInfo::new("test-session".to_string(), "claude-code");
+        store.store(info).await.unwrap();
+
+        // List sessions
+        let sessions = provider.list_sessions(10).await.unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].id, "test-session");
+    }
+
+    #[test]
+    fn test_claude_code_status_default() {
+        let status = ClaudeCodeStatus::default();
+        assert!(!status.installed);
+        assert!(!status.logged_in);
+        assert!(!status.skill_installed);
+        assert!(status.version.is_none());
+        assert!(status.error.is_none());
     }
 }

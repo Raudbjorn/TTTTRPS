@@ -7,6 +7,11 @@ use crate::bindings::{
     check_llm_health, configure_llm, get_llm_config, list_claude_models, list_gemini_models,
     list_ollama_models, list_openai_models, list_openrouter_models, list_provider_models,
     save_api_key, HealthStatus, LLMSettings, ModelInfo, OllamaModel,
+    // Claude Code CLI
+    get_claude_code_status, claude_code_login, claude_code_logout,
+    claude_code_install_cli, claude_code_install_skill, ClaudeCodeStatus,
+    // LLM Proxy
+    is_llm_proxy_running, get_llm_proxy_url, list_proxy_providers,
 };
 use crate::components::design_system::{Badge, BadgeVariant, Button, ButtonVariant, Card, Input};
 use crate::services::notification_service::{show_error, show_success};
@@ -23,6 +28,8 @@ pub enum LLMProvider {
     Together,
     Cohere,
     DeepSeek,
+    ClaudeCode,
+    ClaudeDesktop,
 }
 
 impl std::fmt::Display for LLMProvider {
@@ -38,6 +45,8 @@ impl std::fmt::Display for LLMProvider {
             LLMProvider::Together => write!(f, "Together"),
             LLMProvider::Cohere => write!(f, "Cohere"),
             LLMProvider::DeepSeek => write!(f, "DeepSeek"),
+            LLMProvider::ClaudeCode => write!(f, "Claude Code"),
+            LLMProvider::ClaudeDesktop => write!(f, "Claude Desktop"),
         }
     }
 }
@@ -55,6 +64,8 @@ impl LLMProvider {
             LLMProvider::Together => "together".to_string(),
             LLMProvider::Cohere => "cohere".to_string(),
             LLMProvider::DeepSeek => "deepseek".to_string(),
+            LLMProvider::ClaudeCode => "claude-code".to_string(),
+            LLMProvider::ClaudeDesktop => "claude-desktop".to_string(),
         }
     }
 
@@ -69,6 +80,8 @@ impl LLMProvider {
             "Together" | "together" => LLMProvider::Together,
             "Cohere" | "cohere" => LLMProvider::Cohere,
             "DeepSeek" | "deepseek" => LLMProvider::DeepSeek,
+            "ClaudeCode" | "claude-code" => LLMProvider::ClaudeCode,
+            "ClaudeDesktop" | "claude-desktop" => LLMProvider::ClaudeDesktop,
             _ => LLMProvider::Ollama,
         }
     }
@@ -85,12 +98,16 @@ impl LLMProvider {
             LLMProvider::Together => "API Key",
             LLMProvider::Cohere => "API Key",
             LLMProvider::DeepSeek => "sk-...",
+            LLMProvider::ClaudeCode => "Uses CLI authentication",
+            LLMProvider::ClaudeDesktop => "Uses Desktop authentication",
         }
     }
 
     fn label_text(&self) -> &'static str {
         match self {
             LLMProvider::Ollama => "Ollama Host",
+            LLMProvider::ClaudeCode => "Status",
+            LLMProvider::ClaudeDesktop => "Status",
             _ => "API Key",
         }
     }
@@ -107,6 +124,8 @@ impl LLMProvider {
             LLMProvider::Together => "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
             LLMProvider::Cohere => "command-r-plus",
             LLMProvider::DeepSeek => "deepseek-chat",
+            LLMProvider::ClaudeCode => "claude-sonnet-4-20250514",
+            LLMProvider::ClaudeDesktop => "claude-sonnet-4-20250514",
         }
     }
 
@@ -122,6 +141,8 @@ impl LLMProvider {
             LLMProvider::Cohere => Some("https://dashboard.cohere.com/api-keys"),
             LLMProvider::DeepSeek => Some("https://platform.deepseek.com/api_keys"),
             LLMProvider::Ollama => Some("https://ollama.com/download"),
+            LLMProvider::ClaudeCode => None, // Uses CLI authentication
+            LLMProvider::ClaudeDesktop => None, // Uses Desktop authentication
         }
     }
 
@@ -132,6 +153,8 @@ impl LLMProvider {
             LLMProvider::OpenAI => "text-emerald-400", // OpenAI Green
             LLMProvider::Ollama => "text-white", // Ollama White
             LLMProvider::OpenRouter => "text-violet-400",
+            LLMProvider::ClaudeCode => "text-orange-400", // Anthropic Sienna
+            LLMProvider::ClaudeDesktop => "text-orange-400", // Anthropic Sienna
             _ => "text-[var(--accent-primary)]",
         }
     }
@@ -157,6 +180,13 @@ pub fn LLMSettingsView() -> impl IntoView {
 
     // Statuses
     let provider_statuses = RwSignal::new(HashMap::<String, bool>::new());
+    let claude_code_status = RwSignal::new(ClaudeCodeStatus::default());
+    let claude_code_loading = RwSignal::new(false);
+
+    // Proxy status
+    let proxy_running = RwSignal::new(false);
+    let proxy_url = RwSignal::new(String::new());
+    let proxy_providers = RwSignal::new(Vec::<String>::new());
 
     // --- Helpers ---
 
@@ -223,7 +253,39 @@ pub fn LLMSettingsView() -> impl IntoView {
                     statuses.insert(p.to_string(), false);
                 }
             }
+            // Claude Desktop uses Desktop authentication
+            statuses.insert("claude-desktop".to_string(), true);
+
+            // Check Claude Code CLI status
+            match get_claude_code_status().await {
+                Ok(status) => {
+                    statuses.insert("claude-code".to_string(), status.installed && status.logged_in);
+                    claude_code_status.set(status);
+                }
+                Err(_) => {
+                    statuses.insert("claude-code".to_string(), false);
+                }
+            }
+
             provider_statuses.set(statuses);
+        });
+    };
+
+    // Refresh Claude Code status
+    let refresh_claude_code_status = move || {
+        claude_code_loading.set(true);
+        spawn_local(async move {
+            match get_claude_code_status().await {
+                Ok(status) => {
+                    let is_ready = status.installed && status.logged_in;
+                    provider_statuses.update(|map| { map.insert("claude-code".to_string(), is_ready); });
+                    claude_code_status.set(status);
+                }
+                Err(e) => {
+                    show_error("Claude Code Status", Some(&e), None);
+                }
+            }
+            claude_code_loading.set(false);
         });
     };
 
@@ -262,6 +324,21 @@ pub fn LLMSettingsView() -> impl IntoView {
         });
     });
 
+    // Check proxy status
+    Effect::new(move |_| {
+        spawn_local(async move {
+            if let Ok(running) = is_llm_proxy_running().await {
+                proxy_running.set(running);
+            }
+            if let Ok(url) = get_llm_proxy_url().await {
+                proxy_url.set(url);
+            }
+            if let Ok(providers) = list_proxy_providers().await {
+                proxy_providers.set(providers);
+            }
+        });
+    });
+
     // --- Auto-Save Effect ---
     Effect::new(move |_| {
         // Track dependencies
@@ -281,7 +358,12 @@ pub fn LLMSettingsView() -> impl IntoView {
              is_saving.set(true);
              save_status.set("Saving...".to_string());
              spawn_local(async move {
-                 let key_to_save = if provider != LLMProvider::Ollama && !key_or_host.is_empty() {
+                 // ClaudeCode and ClaudeDesktop don't need API keys - they use CLI/Desktop auth
+                 let needs_api_key = !matches!(
+                     provider,
+                     LLMProvider::Ollama | LLMProvider::ClaudeCode | LLMProvider::ClaudeDesktop
+                 );
+                 let key_to_save = if needs_api_key && !key_or_host.is_empty() {
                       match save_api_key(provider.to_string_key(), key_or_host.clone()).await {
                          Ok(_) => Some(key_or_host.clone()),
                          Err(e) => {
@@ -336,6 +418,12 @@ pub fn LLMSettingsView() -> impl IntoView {
                  model_name.set("llama3.2".to_string());
                  fetch_ollama_models("http://localhost:11434".to_string());
             },
+            LLMProvider::ClaudeCode | LLMProvider::ClaudeDesktop => {
+                 // No API key needed - uses CLI/Desktop authentication
+                 api_key_or_host.set(String::new());
+                 model_name.set(p.default_model().to_string());
+                 cloud_models.set(Vec::new());
+            },
             _ => {
                  api_key_or_host.set(String::new());
                  model_name.set(p.default_model().to_string());
@@ -353,6 +441,7 @@ pub fn LLMSettingsView() -> impl IntoView {
         LLMProvider::Ollama,
         LLMProvider::OpenAI,
         LLMProvider::Claude,
+        LLMProvider::ClaudeCode,
         LLMProvider::Gemini,
         LLMProvider::OpenRouter,
         LLMProvider::Mistral,
@@ -390,10 +479,11 @@ pub fn LLMSettingsView() -> impl IntoView {
                             </label>
                             <h2 class="text-3xl font-bold mb-1">{move || selected_provider.get().to_string()}</h2>
                             <p class="text-sm text-[var(--text-muted)]">
-                                {move || if selected_provider.get() == LLMProvider::Ollama {
-                                    "Running locally on your machine."
-                                } else {
-                                    "Cloud-based inference."
+                                {move || match selected_provider.get() {
+                                    LLMProvider::Ollama => "Running locally on your machine.",
+                                    LLMProvider::ClaudeCode => "Uses Claude Code CLI authentication.",
+                                    LLMProvider::ClaudeDesktop => "Uses Claude Desktop authentication.",
+                                    _ => "Cloud-based inference.",
                                 }}
                             </p>
                         </div>
@@ -417,11 +507,133 @@ pub fn LLMSettingsView() -> impl IntoView {
                                     }
                                 })}
                             </div>
-                            <Input
-                                value=api_key_or_host
-                                placeholder=Signal::derive(move || selected_provider.get().placeholder_text().to_string())
-                                r#type=Signal::derive(move || if selected_provider.get() == LLMProvider::Ollama { "text".to_string() } else { "password".to_string() })
-                            />
+                            {move || {
+                                if selected_provider.get() == LLMProvider::ClaudeCode {
+                                    // Claude Code status panel
+                                    let status = claude_code_status.get();
+                                    let is_loading = claude_code_loading.get();
+                                    view! {
+                                        <div class="p-4 rounded-lg bg-[var(--bg-deep)] border border-[var(--border-subtle)] space-y-3">
+                                            // Status indicators
+                                            <div class="flex flex-wrap gap-2">
+                                                <div class=move || format!(
+                                                    "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium {}",
+                                                    if status.installed { "bg-green-500/20 text-green-400" } else { "bg-red-500/20 text-red-400" }
+                                                )>
+                                                    <span class=move || format!(
+                                                        "w-2 h-2 rounded-full {}",
+                                                        if status.installed { "bg-green-400" } else { "bg-red-400" }
+                                                    )></span>
+                                                    {if status.installed { "CLI Installed" } else { "CLI Not Installed" }}
+                                                </div>
+                                                <div class=move || format!(
+                                                    "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium {}",
+                                                    if status.logged_in { "bg-green-500/20 text-green-400" } else { "bg-yellow-500/20 text-yellow-400" }
+                                                )>
+                                                    <span class=move || format!(
+                                                        "w-2 h-2 rounded-full {}",
+                                                        if status.logged_in { "bg-green-400" } else { "bg-yellow-400" }
+                                                    )></span>
+                                                    {if status.logged_in { "Logged In" } else { "Not Logged In" }}
+                                                </div>
+                                                {status.version.clone().map(|v| view! {
+                                                    <div class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400">
+                                                        {format!("v{}", v)}
+                                                    </div>
+                                                })}
+                                            </div>
+
+                                            // Error message if any
+                                            {status.error.clone().map(|e| view! {
+                                                <p class="text-xs text-red-400">{e}</p>
+                                            })}
+
+                                            // Action buttons
+                                            <div class="flex flex-wrap gap-2 pt-2">
+                                                {move || if !status.installed {
+                                                    view! {
+                                                        <button
+                                                            class="px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--accent-primary)] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+                                                            disabled=is_loading
+                                                            on:click=move |_| {
+                                                                spawn_local(async move {
+                                                                    match claude_code_install_cli().await {
+                                                                        Ok(_) => show_success("Installing CLI", Some("Opening terminal...")),
+                                                                        Err(e) => show_error("Install Failed", Some(&e), None),
+                                                                    }
+                                                                });
+                                                            }
+                                                        >
+                                                            "Install CLI"
+                                                        </button>
+                                                    }.into_any()
+                                                } else if !status.logged_in {
+                                                    view! {
+                                                        <button
+                                                            class="px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--accent-primary)] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+                                                            disabled=is_loading
+                                                            on:click=move |_| {
+                                                                spawn_local(async move {
+                                                                    match claude_code_login().await {
+                                                                        Ok(_) => show_success("Logging In", Some("Opening terminal...")),
+                                                                        Err(e) => show_error("Login Failed", Some(&e), None),
+                                                                    }
+                                                                });
+                                                            }
+                                                        >
+                                                            "Login"
+                                                        </button>
+                                                    }.into_any()
+                                                } else {
+                                                    view! { <span></span> }.into_any()
+                                                }}
+
+                                                <button
+                                                    class="px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] transition-colors disabled:opacity-50"
+                                                    disabled=is_loading
+                                                    on:click=move |_| refresh_claude_code_status()
+                                                >
+                                                    {if is_loading { "Checking..." } else { "Refresh Status" }}
+                                                </button>
+
+                                                {move || if status.installed && status.logged_in && !status.skill_installed {
+                                                    view! {
+                                                        <button
+                                                            class="px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] transition-colors disabled:opacity-50"
+                                                            disabled=is_loading
+                                                            on:click=move |_| {
+                                                                spawn_local(async move {
+                                                                    match claude_code_install_skill().await {
+                                                                        Ok(_) => {
+                                                                            show_success("Skill Installed", None);
+                                                                            refresh_claude_code_status();
+                                                                        }
+                                                                        Err(e) => show_error("Install Failed", Some(&e), None),
+                                                                    }
+                                                                });
+                                                            }
+                                                        >
+                                                            "Install Bridge Skill"
+                                                        </button>
+                                                    }.into_any()
+                                                } else {
+                                                    view! { <span></span> }.into_any()
+                                                }}
+                                            </div>
+                                        </div>
+                                    }.into_any()
+                                } else {
+                                    // Regular input for other providers
+                                    view! {
+                                        <Input
+                                            value=api_key_or_host
+                                            placeholder=Signal::derive(move || selected_provider.get().placeholder_text().to_string())
+                                            r#type=Signal::derive(move || if matches!(selected_provider.get(), LLMProvider::Ollama | LLMProvider::ClaudeDesktop) { "text".to_string() } else { "password".to_string() })
+                                            disabled=Signal::derive(move || matches!(selected_provider.get(), LLMProvider::ClaudeDesktop))
+                                        />
+                                    }.into_any()
+                                }
+                            }}
                         </div>
 
                         <div>
@@ -562,6 +774,45 @@ pub fn LLMSettingsView() -> impl IntoView {
                         }
                     }
                 </div>
+            </Card>
+
+            // Proxy Status Card
+            <Card class="p-4 mt-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class=move || {
+                            if proxy_running.get() {
+                                "w-2 h-2 rounded-full bg-green-500"
+                            } else {
+                                "w-2 h-2 rounded-full bg-red-500"
+                            }
+                        }></div>
+                        <div>
+                            <span class="text-sm font-medium text-[var(--text-primary)]">"LLM Proxy"</span>
+                            <span class="text-xs text-[var(--text-muted)] ml-2">
+                                {move || if proxy_running.get() { "Running" } else { "Stopped" }}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="text-xs text-[var(--text-muted)]">
+                        {move || proxy_url.get()}
+                    </div>
+                </div>
+                {move || {
+                    let providers = proxy_providers.get();
+                    if !providers.is_empty() {
+                        view! {
+                            <div class="mt-2 pt-2 border-t border-[var(--border-subtle)]">
+                                <span class="text-xs text-[var(--text-muted)]">"Registered: "</span>
+                                <span class="text-xs text-[var(--text-secondary)]">
+                                    {providers.join(", ")}
+                                </span>
+                            </div>
+                        }.into_any()
+                    } else {
+                        view! { <span/> }.into_any()
+                    }
+                }}
             </Card>
         </div>
     }

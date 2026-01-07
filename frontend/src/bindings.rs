@@ -488,6 +488,11 @@ pub async fn claude_code_install_skill() -> Result<(), String> {
     invoke_void_no_args("claude_code_install_skill").await
 }
 
+/// Install Claude Code CLI via npm (opens terminal)
+pub async fn claude_code_install_cli() -> Result<(), String> {
+    invoke_void_no_args("claude_code_install_cli").await
+}
+
 // ============================================================================
 // Credential Commands
 // ============================================================================
@@ -4085,4 +4090,77 @@ pub async fn link_gemini_cli_extension(path: String) -> Result<String, String> {
 /// Uninstall the Sidecar DM extension
 pub async fn uninstall_gemini_cli_extension() -> Result<String, String> {
     invoke_no_args("uninstall_gemini_cli_extension").await
+}
+
+// ============================================================================
+// LLM Proxy / Meilisearch Chat Configuration
+// ============================================================================
+
+/// Configure Meilisearch chat workspace with an LLM provider
+///
+/// This sets up the Meilisearch chat workspace to use the specified provider.
+/// For non-OpenAI providers (Claude, Gemini, etc.), requests are routed through
+/// the local LLM proxy service.
+///
+/// # Arguments
+/// * `provider` - The LLM provider to use (e.g., "claude", "openai", "gemini", "ollama")
+/// * `api_key` - Optional API key (if not already stored)
+/// * `model` - Optional model override (uses provider default if not specified)
+/// * `custom_system_prompt` - Optional custom system prompt for the DM
+/// * `host` - Optional host URL for Ollama (defaults to http://localhost:11434)
+pub async fn configure_meilisearch_chat(
+    provider: String,
+    api_key: Option<String>,
+    model: Option<String>,
+    custom_system_prompt: Option<String>,
+    host: Option<String>,
+) -> Result<(), String> {
+    #[derive(Serialize)]
+    struct Args {
+        provider: String,
+        api_key: Option<String>,
+        model: Option<String>,
+        custom_system_prompt: Option<String>,
+        host: Option<String>,
+    }
+    invoke_void(
+        "configure_meilisearch_chat",
+        &Args {
+            provider,
+            api_key,
+            model,
+            custom_system_prompt,
+            host,
+        },
+    )
+    .await
+}
+
+/// Get the URL of the local LLM proxy service
+///
+/// Returns the URL that Meilisearch uses to communicate with non-native providers.
+/// Typically `http://127.0.0.1:8787` or similar.
+pub async fn get_llm_proxy_url() -> Result<String, String> {
+    invoke_no_args("get_llm_proxy_url").await
+}
+
+/// Check if the LLM proxy service is running and healthy
+///
+/// Returns `true` if the proxy is active and can accept requests.
+pub async fn get_llm_proxy_status() -> Result<bool, String> {
+    invoke_no_args("get_llm_proxy_status").await
+}
+
+/// Check if the LLM proxy is running
+///
+/// Returns `true` if the proxy server is active.
+pub async fn is_llm_proxy_running() -> Result<bool, String> {
+    invoke_no_args("is_llm_proxy_running").await
+}
+
+/// List providers registered with the LLM proxy
+///
+/// Returns a list of provider names that are currently registered with the proxy.
+pub async fn list_proxy_providers() -> Result<Vec<String>, String> {
+    invoke_no_args("list_proxy_providers").await
 }

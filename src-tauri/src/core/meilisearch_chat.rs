@@ -837,11 +837,22 @@ impl MeilisearchChatClient {
                                         Ok(chunk) => {
                                             for choice in chunk.choices {
                                                 if let Some(content) = choice.delta.content {
-                                                    log::debug!("Emitting content: {}", content);
-                                                    let _ = tx.send(Ok(content)).await;
+                                                    // Filter out tool call JSON that models output as text
+                                                    // when they don't support structured tool calling
+                                                    let trimmed = content.trim();
+                                                    let is_tool_call_json = trimmed.starts_with('{')
+                                                        && trimmed.contains("\"name\"")
+                                                        && (trimmed.contains("_meili") || trimmed.contains("_search"));
+
+                                                    if is_tool_call_json {
+                                                        log::debug!("Filtering tool call JSON from content: {}", content);
+                                                    } else {
+                                                        log::debug!("Emitting content: {}", content);
+                                                        let _ = tx.send(Ok(content)).await;
+                                                    }
                                                 } else if let Some(tool_calls) = choice.delta.tool_calls {
                                                     log::debug!("Received tool calls: {:?}", tool_calls);
-                                                    // Optionally emit a status update to the frontend here if we had a way to do so
+                                                    // Tool calls are handled internally by Meilisearch, not sent to frontend
                                                 }
                                             }
                                         }
