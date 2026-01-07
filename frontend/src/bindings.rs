@@ -562,6 +562,56 @@ pub async fn speak(text: String) -> Result<Option<SpeakResult>, String> {
 }
 
 // ============================================================================
+// Voice Provider Installation
+// ============================================================================
+
+/// Installation status for a voice provider
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InstallStatus {
+    pub provider: VoiceProviderType,
+    pub installed: bool,
+    pub version: Option<String>,
+    pub binary_path: Option<String>,
+    pub voices_available: u32,
+    pub install_method: InstallMethod,
+    pub install_instructions: Option<String>,
+}
+
+/// How to install a provider
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum InstallMethod {
+    PackageManager(String),
+    Python(String),
+    Binary(String),
+    Docker(String),
+    Manual(String),
+    AppManaged,
+}
+
+/// Check installation status for a specific voice provider
+pub async fn check_voice_provider_status(provider: VoiceProviderType) -> Result<InstallStatus, String> {
+    #[derive(Serialize)]
+    struct Args {
+        provider: VoiceProviderType,
+    }
+    invoke("check_voice_provider_status", &Args { provider }).await
+}
+
+/// Check installation status for all local voice providers
+pub async fn check_voice_provider_installations() -> Result<Vec<InstallStatus>, String> {
+    invoke_no_args("check_voice_provider_installations").await
+}
+
+/// Install a voice provider (Piper or Coqui)
+pub async fn install_voice_provider(provider: VoiceProviderType) -> Result<InstallStatus, String> {
+    #[derive(Serialize)]
+    struct Args {
+        provider: VoiceProviderType,
+    }
+    invoke("install_voice_provider", &Args { provider }).await
+}
+
+// ============================================================================
 // Claude Code CLI Commands
 // ============================================================================
 
@@ -3608,6 +3658,7 @@ pub enum VoiceProviderType {
     XttsV2,
     FishSpeech,
     Dia,
+    Coqui,
     System,
     Disabled,
 }
@@ -3630,6 +3681,7 @@ impl VoiceProviderType {
             Self::XttsV2 => "XTTS-v2 (Coqui)",
             Self::FishSpeech => "Fish Speech",
             Self::Dia => "Dia",
+            Self::Coqui => "Coqui TTS",
             Self::Piper => "Piper (Local)",
             Self::System => "System TTS",
             Self::Disabled => "Disabled",
@@ -3647,6 +3699,7 @@ impl VoiceProviderType {
             Self::XttsV2 => "xtts_v2",
             Self::FishSpeech => "fish_speech",
             Self::Dia => "dia",
+            Self::Coqui => "coqui",
             Self::Piper => "piper",
             Self::System => "system",
             Self::Disabled => "disabled",
@@ -3659,6 +3712,7 @@ impl VoiceProviderType {
             Self::ElevenLabs,
             Self::FishAudio,
             Self::Piper,
+            Self::Coqui,
             Self::Ollama,
             Self::Chatterbox,
             Self::GptSoVits,

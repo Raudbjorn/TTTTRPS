@@ -5,8 +5,9 @@ use gloo_timers::callback::Timeout;
 use crate::bindings::{
     configure_voice, get_voice_config, list_elevenlabs_voices, list_openai_tts_models,
     list_openai_voices, list_all_voices, get_popular_piper_voices, download_piper_voice,
+    check_voice_provider_status, install_voice_provider,
     ElevenLabsConfig, OllamaConfig, OpenAIVoiceConfig, Voice, VoiceConfig,
-    PiperConfig, CoquiConfig, PopularPiperVoice,
+    PiperConfig, CoquiConfig, PopularPiperVoice, InstallStatus, VoiceProviderType,
 };
 use crate::components::design_system::{Card, Input, SelectRw, SelectOption, Button, ButtonVariant, Slider};
 use crate::services::notification_service::{show_error, show_success};
@@ -49,6 +50,11 @@ pub fn VoiceSettingsView() -> impl IntoView {
     let popular_voices = RwSignal::new(Vec::<PopularPiperVoice>::new());
     let downloading_voice = RwSignal::new(Option::<String>::None);
     let download_error = RwSignal::new(Option::<String>::None);
+
+    // Provider installation status
+    let piper_status = RwSignal::new(Option::<InstallStatus>::None);
+    let coqui_status = RwSignal::new(Option::<InstallStatus>::None);
+    let installing_provider = RwSignal::new(Option::<String>::None);
 
     // Helpers
     let fetch_voices = move |provider: String, api_key: Option<String>| {
@@ -164,6 +170,15 @@ pub fn VoiceSettingsView() -> impl IntoView {
                     _ => {}
                 }
             }
+
+            // Check provider installation status
+            if let Ok(status) = check_voice_provider_status(VoiceProviderType::Piper).await {
+                piper_status.set(Some(status));
+            }
+            if let Ok(status) = check_voice_provider_status(VoiceProviderType::Coqui).await {
+                coqui_status.set(Some(status));
+            }
+
             initial_load.set(false);
         });
     });
@@ -370,6 +385,174 @@ pub fn VoiceSettingsView() -> impl IntoView {
                 <h3 class="text-xl font-bold text-[var(--text-primary)]">"Voice & Audio"</h3>
                 <p class="text-[var(--text-muted)]">"Manage Text-to-Speech engines and voice clones."</p>
             </div>
+
+            // Provider Installation Status
+            <Card class="p-6">
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h4 class="text-lg font-semibold text-[var(--text-primary)]">"Local TTS Providers"</h4>
+                            <p class="text-sm text-[var(--text-muted)]">"Offline voice synthesis engines"</p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        // Piper Status
+                        <div class="p-4 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-lg">"⚡"</span>
+                                    <span class="font-medium text-[var(--text-primary)]">"Piper"</span>
+                                </div>
+                                {move || {
+                                    let status = piper_status.get();
+                                    match status {
+                                        Some(s) if s.installed => view! {
+                                            <span class="px-2 py-1 text-xs rounded bg-green-900/30 text-green-400 border border-green-700">
+                                                "Installed"
+                                            </span>
+                                        }.into_any(),
+                                        Some(_) => view! {
+                                            <span class="px-2 py-1 text-xs rounded bg-yellow-900/30 text-yellow-400 border border-yellow-700">
+                                                "Not Installed"
+                                            </span>
+                                        }.into_any(),
+                                        None => view! {
+                                            <span class="px-2 py-1 text-xs rounded bg-[var(--bg-deep)] text-[var(--text-muted)] animate-pulse">
+                                                "Checking..."
+                                            </span>
+                                        }.into_any(),
+                                    }
+                                }}
+                            </div>
+                            <p class="text-xs text-[var(--text-muted)] mb-3">"Fast, lightweight neural TTS"</p>
+                            {move || {
+                                let status = piper_status.get();
+                                let installing = installing_provider.get();
+                                match status {
+                                    Some(s) if s.installed => {
+                                        let version = s.version.clone().unwrap_or_default();
+                                        let voices = s.voices_available;
+                                        view! {
+                                            <div class="text-xs text-[var(--text-muted)]">
+                                                {if !version.is_empty() {
+                                                    format!("v{} • ", version)
+                                                } else {
+                                                    String::new()
+                                                }}
+                                                {format!("{} voice(s)", voices)}
+                                            </div>
+                                        }.into_any()
+                                    }
+                                    Some(_) => {
+                                        let is_installing = installing.as_deref() == Some("Piper");
+                                        view! {
+                                            <Button
+                                                variant=ButtonVariant::Primary
+                                                disabled=is_installing
+                                                on_click=move |_: ev::MouseEvent| {
+                                                    installing_provider.set(Some("Piper".to_string()));
+                                                    spawn_local(async move {
+                                                        match install_voice_provider(VoiceProviderType::Piper).await {
+                                                            Ok(new_status) => {
+                                                                piper_status.set(Some(new_status));
+                                                                show_success("Piper Installed", Some("Piper TTS is now ready to use"));
+                                                            }
+                                                            Err(e) => {
+                                                                show_error("Installation Failed", Some(&e), None);
+                                                            }
+                                                        }
+                                                        installing_provider.set(None);
+                                                    });
+                                                }
+                                            >
+                                                {if is_installing { "Installing..." } else { "Install Piper" }}
+                                            </Button>
+                                        }.into_any()
+                                    }
+                                    None => view! { <span/> }.into_any(),
+                                }
+                            }}
+                        </div>
+
+                        // Coqui Status
+                        <div class="p-4 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-lg">"🎭"</span>
+                                    <span class="font-medium text-[var(--text-primary)]">"Coqui TTS"</span>
+                                </div>
+                                {move || {
+                                    let status = coqui_status.get();
+                                    match status {
+                                        Some(s) if s.installed => view! {
+                                            <span class="px-2 py-1 text-xs rounded bg-green-900/30 text-green-400 border border-green-700">
+                                                "Installed"
+                                            </span>
+                                        }.into_any(),
+                                        Some(_) => view! {
+                                            <span class="px-2 py-1 text-xs rounded bg-yellow-900/30 text-yellow-400 border border-yellow-700">
+                                                "Not Installed"
+                                            </span>
+                                        }.into_any(),
+                                        None => view! {
+                                            <span class="px-2 py-1 text-xs rounded bg-[var(--bg-deep)] text-[var(--text-muted)] animate-pulse">
+                                                "Checking..."
+                                            </span>
+                                        }.into_any(),
+                                    }
+                                }}
+                            </div>
+                            <p class="text-xs text-[var(--text-muted)] mb-3">"High-quality voice cloning & XTTS"</p>
+                            {move || {
+                                let status = coqui_status.get();
+                                let installing = installing_provider.get();
+                                match status {
+                                    Some(s) if s.installed => {
+                                        let version = s.version.clone().unwrap_or_default();
+                                        view! {
+                                            <div class="text-xs text-[var(--text-muted)]">
+                                                {if !version.is_empty() {
+                                                    format!("v{}", version)
+                                                } else {
+                                                    "Ready".to_string()
+                                                }}
+                                            </div>
+                                        }.into_any()
+                                    }
+                                    Some(_) => {
+                                        let is_installing = installing.as_deref() == Some("Coqui");
+                                        view! {
+                                            <Button
+                                                variant=ButtonVariant::Primary
+                                                disabled=is_installing
+                                                on_click=move |_: ev::MouseEvent| {
+                                                    installing_provider.set(Some("Coqui".to_string()));
+                                                    spawn_local(async move {
+                                                        match install_voice_provider(VoiceProviderType::Coqui).await {
+                                                            Ok(new_status) => {
+                                                                coqui_status.set(Some(new_status));
+                                                                show_success("Coqui Installed", Some("Coqui TTS is now ready to use"));
+                                                            }
+                                                            Err(e) => {
+                                                                show_error("Installation Failed", Some(&e), None);
+                                                            }
+                                                        }
+                                                        installing_provider.set(None);
+                                                    });
+                                                }
+                                            >
+                                                {if is_installing { "Installing..." } else { "Install Coqui" }}
+                                            </Button>
+                                        }.into_any()
+                                    }
+                                    None => view! { <span/> }.into_any(),
+                                }
+                            }}
+                        </div>
+                    </div>
+                </div>
+            </Card>
 
             <Card class="p-6">
                 <div class="grid grid-cols-1 gap-6">
