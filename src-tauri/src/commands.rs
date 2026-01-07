@@ -6143,6 +6143,10 @@ pub async fn configure_meilisearch_chat(
             api_key: api_key.ok_or("DeepSeek requires an API key")?,
             model: model.ok_or("DeepSeek requires a model")?,
         },
+        "grok" => ChatProviderConfig::Grok {
+            api_key: api_key.ok_or("Grok requires an API key")?,
+            model,
+        },
         "claude-code" => ChatProviderConfig::ClaudeCode {
             timeout_secs: Some(300),
             model,
@@ -6151,7 +6155,14 @@ pub async fn configure_meilisearch_chat(
             port: None,
             timeout_secs: Some(120),
         },
-        _ => return Err(format!("Unknown provider: {}. Valid providers: openai, claude, mistral, gemini, ollama, openrouter, groq, together, cohere, deepseek, claude-code, claude-desktop", provider)),
+        _ => {
+            let valid_providers = crate::core::meilisearch_chat::list_chat_providers()
+                .into_iter()
+                .map(|p| p.id)
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(format!("Unknown provider: {}. Valid providers: {}", provider, valid_providers));
+        }
     };
 
     // Build custom prompts if system prompt provided

@@ -29,6 +29,12 @@
 //! - Circuit breaker behavior
 //! - Health tracking and recovery
 //!
+//! ## Chat Provider Integration (`chat_provider_integration`)
+//! - OpenAI provider configuration
+//! - Claude provider configuration (proxy-based)
+//! - Grok (xAI) provider configuration
+//! - All provider chat completions
+//!
 //! # Running Tests
 //!
 //! ```bash
@@ -42,8 +48,10 @@
 //! cargo test integration::database_integration
 //! cargo test integration::meilisearch_integration
 //! cargo test integration::llm_integration
+//! cargo test integration::chat_provider_integration
 //! ```
 
+pub mod chat_provider_integration;
 pub mod database_integration;
 pub mod llm_integration;
 pub mod meilisearch_integration;

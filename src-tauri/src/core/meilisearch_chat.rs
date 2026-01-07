@@ -115,6 +115,12 @@ When answering questions:
 You have access to the player's rulebooks, campaign notes, and lore documents.
 Use the search tool to find relevant information before answering."#;
 
+/// Default model for Grok/xAI provider
+pub const GROK_DEFAULT_MODEL: &str = "grok-3-mini";
+
+/// Base URL for Grok/xAI API (OpenAI-compatible)
+pub const GROK_API_BASE_URL: &str = "https://api.x.ai/v1";
+
 // ============================================================================
 // Chat Provider Configuration
 // ============================================================================
@@ -189,6 +195,12 @@ pub enum ChatProviderConfig {
         api_key: String,
         model: String,
     },
+    /// Grok/xAI (OpenAI-compatible, native via VLlm source with xAI base URL)
+    Grok {
+        api_key: String,
+        #[serde(default)]
+        model: Option<String>,
+    },
     /// Claude Code CLI (via proxy, no API key needed)
     ClaudeCode {
         #[serde(default)]
@@ -220,6 +232,7 @@ impl ChatProviderConfig {
             ChatProviderConfig::Together { .. } => "together",
             ChatProviderConfig::Cohere { .. } => "cohere",
             ChatProviderConfig::DeepSeek { .. } => "deepseek",
+            ChatProviderConfig::Grok { .. } => "grok",
             ChatProviderConfig::ClaudeCode { .. } => "claude-code",
             ChatProviderConfig::ClaudeDesktop { .. } => "claude-desktop",
         }
@@ -232,6 +245,7 @@ impl ChatProviderConfig {
             ChatProviderConfig::OpenAI { .. }
                 | ChatProviderConfig::Mistral { .. }
                 | ChatProviderConfig::AzureOpenAI { .. }
+                | ChatProviderConfig::Grok { .. }  // OpenAI-compatible
         )
     }
 
@@ -261,6 +275,9 @@ impl ChatProviderConfig {
             ChatProviderConfig::Together { model, .. } => model.as_str(),
             ChatProviderConfig::Cohere { model, .. } => model.as_str(),
             ChatProviderConfig::DeepSeek { model, .. } => model.as_str(),
+            ChatProviderConfig::Grok { model, .. } => {
+                model.as_deref().unwrap_or(GROK_DEFAULT_MODEL)
+            }
             ChatProviderConfig::ClaudeCode { model, .. } => {
                 return format!(
                     "claude-code:{}",
@@ -341,6 +358,20 @@ impl ChatProviderConfig {
                 }),
                 base_url: Some(base_url.clone()),
             },
+            // Grok/xAI - OpenAI-compatible, uses VLlm source with xAI base URL
+            ChatProviderConfig::Grok { api_key, .. } => ChatWorkspaceSettings {
+                source: ChatLLMSource::VLlm,
+                api_key: Some(api_key.clone()),
+                deployment_id: None,
+                api_version: None,
+                org_id: None,
+                project_id: None,
+                prompts: Some(ChatPrompts {
+                    system: Some(DEFAULT_DM_SYSTEM_PROMPT.to_string()),
+                    ..Default::default()
+                }),
+                base_url: Some(GROK_API_BASE_URL.to_string()),
+            },
             // All other providers route through proxy
             _ => ChatWorkspaceSettings {
                 source: ChatLLMSource::VLlm,
@@ -417,6 +448,14 @@ impl ChatProviderConfig {
             ChatProviderConfig::DeepSeek { api_key, model } => ProviderConfig::DeepSeek {
                 api_key: api_key.clone(),
                 model: model.clone(),
+            },
+            // Grok/xAI uses OpenAI-compatible API
+            ChatProviderConfig::Grok { api_key, model } => ProviderConfig::OpenAI {
+                api_key: api_key.clone(),
+                model: model.as_deref().unwrap_or(GROK_DEFAULT_MODEL).to_string(),
+                max_tokens: 4096,
+                organization_id: None,
+                base_url: Some(GROK_API_BASE_URL.to_string()),
             },
             ChatProviderConfig::ClaudeCode { timeout_secs, model } => ProviderConfig::ClaudeCode {
                 timeout_secs: timeout_secs.unwrap_or(300),
@@ -522,6 +561,13 @@ pub fn list_chat_providers() -> Vec<ChatProviderInfo> {
             description: "DeepSeek Coder, DeepSeek Chat",
             requires_api_key: true,
             is_native: false,
+        },
+        ChatProviderInfo {
+            id: "grok",
+            name: "Grok (xAI)",
+            description: "Grok models from xAI",
+            requires_api_key: true,
+            is_native: true,  // OpenAI-compatible, no proxy needed
         },
         ChatProviderInfo {
             id: "claude-code",
