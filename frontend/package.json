@@ -4,11 +4,7 @@
   "description": "TTRPG Assistant Frontend",
   "private": true,
   "scripts": {
-    "css": "tailwindcss -i input.css -o public/main.css --minify",
-    "css:watch": "tailwindcss -i input.css -o public/main.css --watch"
-  },
-  "devDependencies": {
-    "@tailwindcss/cli": "^4.1.18",
-    "tailwindcss": "^4.1.18"
+    "css": "./tailwindcss -i input.css -o public/main.css --minify",
+    "css:watch": "./tailwindcss -i input.css -o public/main.css --watch"
   }
 }
