@@ -57,9 +57,6 @@ use tokio::process::Command;
 use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info, warn};
 
-/// Fallback model when rate limited (429)
-const RATE_LIMIT_FALLBACK_MODEL: &str = "claude-sonnet-4-20250514";
-
 // ============================================================================
 // Constants
 // ============================================================================
@@ -70,8 +67,8 @@ const DEFAULT_TIMEOUT_SECS: u64 = 300;
 /// Default model (Claude Code auto-selects based on task complexity).
 const DEFAULT_MODEL: &str = "claude-sonnet-4-20250514";
 
-/// Fallback model when rate limited (faster, cheaper).
-const FALLBACK_MODEL: &str = "claude-haiku-4-20250514";
+/// Fallback model when rate limited (429) - faster, cheaper.
+const RATE_LIMIT_FALLBACK_MODEL: &str = "claude-sonnet-4-20250514";
 
 // ============================================================================
 // Response Types
@@ -169,7 +166,7 @@ impl Default for ClaudeCodeProviderBuilder {
     fn default() -> Self {
         Self {
             model: None,
-            fallback_model: Some(FALLBACK_MODEL.to_string()),
+            fallback_model: Some(RATE_LIMIT_FALLBACK_MODEL.to_string()),
             timeout_secs: None,
             working_dir: None,
             persist_sessions: true,
@@ -296,7 +293,7 @@ impl ClaudeCodeProvider {
         Self {
             timeout_secs,
             model,
-            fallback_model: Some(FALLBACK_MODEL.to_string()),
+            fallback_model: Some(RATE_LIMIT_FALLBACK_MODEL.to_string()),
             working_dir,
             session_store,
             current_session: RwLock::new(None),
