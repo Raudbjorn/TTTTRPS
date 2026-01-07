@@ -368,6 +368,9 @@ build_frontend() {
     print_section "Building Frontend (Leptos WASM)"
     cd "$FRONTEND_DIR"
 
+    # Ensure node_modules exists (trunk fails on missing watch ignore paths)
+    mkdir -p node_modules
+
     print_info "Compiling Leptos frontend with Trunk..."
 
     if [ "$RELEASE" = true ]; then
@@ -427,6 +430,9 @@ build_desktop() {
 run_dev() {
     print_section "Starting Development Server"
     cd "$BACKEND_DIR"
+
+    # Ensure node_modules exists (trunk fails on missing watch ignore paths)
+    mkdir -p "$FRONTEND_DIR/node_modules"
 
     print_info "Running cargo tauri dev..."
 
