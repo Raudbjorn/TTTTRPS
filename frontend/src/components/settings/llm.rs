@@ -3,6 +3,9 @@ use leptos::ev;
 use wasm_bindgen_futures::spawn_local;
 use std::collections::HashMap;
 use gloo_timers::callback::Timeout;
+
+/// GitHub URL for the Sidecar DM Gemini extension
+const SIDECAR_DM_EXTENSION_URL: &str = "https://github.com/Raudbjorn/sidecar-dm-gemini-extension";
 use crate::bindings::{
     check_llm_health, configure_llm, get_llm_config, list_claude_models, list_gemini_models,
     list_ollama_models, list_openai_models, list_openrouter_models, list_provider_models,
@@ -10,6 +13,9 @@ use crate::bindings::{
     // Claude Code CLI
     get_claude_code_status, claude_code_login, claude_code_logout,
     claude_code_install_cli, claude_code_install_skill, ClaudeCodeStatus,
+    // Gemini CLI
+    check_gemini_cli_status, launch_gemini_cli_login, check_gemini_cli_extension,
+    install_gemini_cli_extension, GeminiCliStatus, GeminiCliExtensionStatus,
     // LLM Proxy
     is_llm_proxy_running, get_llm_proxy_url, list_proxy_providers,
 };
@@ -30,6 +36,7 @@ pub enum LLMProvider {
     DeepSeek,
     ClaudeCode,
     ClaudeDesktop,
+    GeminiCli,
 }
 
 impl std::fmt::Display for LLMProvider {
@@ -47,6 +54,7 @@ impl std::fmt::Display for LLMProvider {
             LLMProvider::DeepSeek => write!(f, "DeepSeek"),
             LLMProvider::ClaudeCode => write!(f, "Claude Code"),
             LLMProvider::ClaudeDesktop => write!(f, "Claude Desktop"),
+            LLMProvider::GeminiCli => write!(f, "Gemini CLI"),
         }
     }
 }
@@ -66,6 +74,7 @@ impl LLMProvider {
             LLMProvider::DeepSeek => "deepseek".to_string(),
             LLMProvider::ClaudeCode => "claude-code".to_string(),
             LLMProvider::ClaudeDesktop => "claude-desktop".to_string(),
+            LLMProvider::GeminiCli => "gemini-cli".to_string(),
         }
     }
 
@@ -82,6 +91,7 @@ impl LLMProvider {
             "DeepSeek" | "deepseek" => LLMProvider::DeepSeek,
             "ClaudeCode" | "claude-code" => LLMProvider::ClaudeCode,
             "ClaudeDesktop" | "claude-desktop" => LLMProvider::ClaudeDesktop,
+            "GeminiCli" | "gemini-cli" => LLMProvider::GeminiCli,
             _ => LLMProvider::Ollama,
         }
     }
@@ -100,6 +110,7 @@ impl LLMProvider {
             LLMProvider::DeepSeek => "sk-...",
             LLMProvider::ClaudeCode => "Uses CLI authentication",
             LLMProvider::ClaudeDesktop => "Uses Desktop authentication",
+            LLMProvider::GeminiCli => "Uses Google account authentication",
         }
     }
 
@@ -108,6 +119,7 @@ impl LLMProvider {
             LLMProvider::Ollama => "Ollama Host",
             LLMProvider::ClaudeCode => "Status",
             LLMProvider::ClaudeDesktop => "Status",
+            LLMProvider::GeminiCli => "Status",
             _ => "API Key",
         }
     }
@@ -126,6 +138,7 @@ impl LLMProvider {
             LLMProvider::DeepSeek => "deepseek-chat",
             LLMProvider::ClaudeCode => "claude-sonnet-4-20250514",
             LLMProvider::ClaudeDesktop => "claude-sonnet-4-20250514",
+            LLMProvider::GeminiCli => "gemini-3-pro-preview",
         }
     }
 
@@ -143,6 +156,7 @@ impl LLMProvider {
             LLMProvider::Ollama => Some("https://ollama.com/download"),
             LLMProvider::ClaudeCode => None, // Uses CLI authentication
             LLMProvider::ClaudeDesktop => None, // Uses Desktop authentication
+            LLMProvider::GeminiCli => None, // Uses Google account authentication
         }
     }
 
@@ -155,6 +169,7 @@ impl LLMProvider {
             LLMProvider::OpenRouter => "text-violet-400",
             LLMProvider::ClaudeCode => "text-orange-400", // Anthropic Sienna
             LLMProvider::ClaudeDesktop => "text-orange-400", // Anthropic Sienna
+            LLMProvider::GeminiCli => "text-blue-400", // Gemini Blue
             _ => "text-[var(--accent-primary)]",
         }
     }
@@ -182,6 +197,16 @@ pub fn LLMSettingsView() -> impl IntoView {
     let provider_statuses = RwSignal::new(HashMap::<String, bool>::new());
     let claude_code_status = RwSignal::new(ClaudeCodeStatus::default());
     let claude_code_loading = RwSignal::new(false);
+    let gemini_cli_status = RwSignal::new(GeminiCliStatus {
+        is_installed: false,
+        is_authenticated: false,
+        message: String::new(),
+    });
+    let gemini_cli_extension = RwSignal::new(GeminiCliExtensionStatus {
+        is_installed: false,
+        message: String::new(),
+    });
+    let gemini_cli_loading = RwSignal::new(false);
 
     // Proxy status
     let proxy_running = RwSignal::new(false);
@@ -267,6 +292,22 @@ pub fn LLMSettingsView() -> impl IntoView {
                 }
             }
 
+            // Check Gemini CLI status
+            match check_gemini_cli_status().await {
+                Ok(status) => {
+                    statuses.insert(LLMProvider::GeminiCli.to_string_key(), status.is_installed && status.is_authenticated);
+                    gemini_cli_status.set(status);
+                }
+                Err(_) => {
+                    statuses.insert(LLMProvider::GeminiCli.to_string_key(), false);
+                }
+            }
+
+            // Check Gemini CLI extension status
+            if let Ok(ext_status) = check_gemini_cli_extension().await {
+                gemini_cli_extension.set(ext_status);
+            }
+
             provider_statuses.set(statuses);
         });
     };
@@ -286,6 +327,29 @@ pub fn LLMSettingsView() -> impl IntoView {
                 }
             }
             claude_code_loading.set(false);
+        });
+    };
+
+    // Refresh Gemini CLI status
+    let refresh_gemini_cli_status = move || {
+        gemini_cli_loading.set(true);
+        spawn_local(async move {
+            match check_gemini_cli_status().await {
+                Ok(status) => {
+                    let is_ready = status.is_installed && status.is_authenticated;
+                    provider_statuses.update(|map| { map.insert(LLMProvider::GeminiCli.to_string_key(), is_ready); });
+                    gemini_cli_status.set(status);
+                }
+                Err(e) => {
+                    show_error("Gemini CLI Status", Some(&e), None);
+                }
+            }
+            // Also check extension status
+            match check_gemini_cli_extension().await {
+                Ok(ext_status) => gemini_cli_extension.set(ext_status),
+                Err(e) => show_error("Gemini Extension Status", Some(&e), None),
+            }
+            gemini_cli_loading.set(false);
         });
     };
 
@@ -358,10 +422,10 @@ pub fn LLMSettingsView() -> impl IntoView {
              is_saving.set(true);
              save_status.set("Saving...".to_string());
              spawn_local(async move {
-                 // ClaudeCode and ClaudeDesktop don't need API keys - they use CLI/Desktop auth
+                 // ClaudeCode, ClaudeDesktop, and GeminiCli don't need API keys - they use CLI/Desktop/Google auth
                  let needs_api_key = !matches!(
                      provider,
-                     LLMProvider::Ollama | LLMProvider::ClaudeCode | LLMProvider::ClaudeDesktop
+                     LLMProvider::Ollama | LLMProvider::ClaudeCode | LLMProvider::ClaudeDesktop | LLMProvider::GeminiCli
                  );
                  let key_to_save = if needs_api_key && !key_or_host.is_empty() {
                       match save_api_key(provider.to_string_key(), key_or_host.clone()).await {
@@ -424,6 +488,12 @@ pub fn LLMSettingsView() -> impl IntoView {
                  model_name.set(p.default_model().to_string());
                  cloud_models.set(Vec::new());
             },
+            LLMProvider::GeminiCli => {
+                 // No API key needed - uses Google account authentication
+                 api_key_or_host.set(String::new());
+                 model_name.set(p.default_model().to_string());
+                 cloud_models.set(Vec::new());
+            },
             _ => {
                  api_key_or_host.set(String::new());
                  model_name.set(p.default_model().to_string());
@@ -443,6 +513,7 @@ pub fn LLMSettingsView() -> impl IntoView {
         LLMProvider::Claude,
         LLMProvider::ClaudeCode,
         LLMProvider::Gemini,
+        LLMProvider::GeminiCli,
         LLMProvider::OpenRouter,
         LLMProvider::Mistral,
         LLMProvider::Groq,
@@ -483,6 +554,7 @@ pub fn LLMSettingsView() -> impl IntoView {
                                     LLMProvider::Ollama => "Running locally on your machine.",
                                     LLMProvider::ClaudeCode => "Uses Claude Code CLI authentication.",
                                     LLMProvider::ClaudeDesktop => "Uses Claude Desktop authentication.",
+                                    LLMProvider::GeminiCli => "Uses Google account authentication (free tier).",
                                     _ => "Cloud-based inference.",
                                 }}
                             </p>
@@ -618,6 +690,148 @@ pub fn LLMSettingsView() -> impl IntoView {
                                                     }.into_any()
                                                 } else {
                                                     view! { <span></span> }.into_any()
+                                                }}
+                                            </div>
+                                        </div>
+                                    }.into_any()
+                                } else if selected_provider.get() == LLMProvider::GeminiCli {
+                                    // Gemini CLI status panel - capture signals for reactive updates
+                                    view! {
+                                        <div class="p-4 rounded-lg bg-[var(--bg-deep)] border border-[var(--border-subtle)] space-y-3">
+                                            // Status indicators
+                                            <div class="flex flex-wrap gap-2">
+                                                <div class=move || {
+                                                    let status = gemini_cli_status.get();
+                                                    format!(
+                                                        "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium {}",
+                                                        if status.is_installed { "bg-green-500/20 text-green-400" } else { "bg-red-500/20 text-red-400" }
+                                                    )
+                                                }>
+                                                    <span class=move || {
+                                                        let status = gemini_cli_status.get();
+                                                        format!(
+                                                            "w-2 h-2 rounded-full {}",
+                                                            if status.is_installed { "bg-green-400" } else { "bg-red-400" }
+                                                        )
+                                                    }></span>
+                                                    {move || if gemini_cli_status.get().is_installed { "CLI Installed" } else { "CLI Not Installed" }}
+                                                </div>
+                                                <div class=move || {
+                                                    let status = gemini_cli_status.get();
+                                                    format!(
+                                                        "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium {}",
+                                                        if status.is_authenticated { "bg-green-500/20 text-green-400" } else { "bg-yellow-500/20 text-yellow-400" }
+                                                    )
+                                                }>
+                                                    <span class=move || {
+                                                        let status = gemini_cli_status.get();
+                                                        format!(
+                                                            "w-2 h-2 rounded-full {}",
+                                                            if status.is_authenticated { "bg-green-400" } else { "bg-yellow-400" }
+                                                        )
+                                                    }></span>
+                                                    {move || if gemini_cli_status.get().is_authenticated { "Authenticated" } else { "Not Authenticated" }}
+                                                </div>
+                                                <div class=move || {
+                                                    let ext_status = gemini_cli_extension.get();
+                                                    format!(
+                                                        "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium {}",
+                                                        if ext_status.is_installed { "bg-green-500/20 text-green-400" } else { "bg-gray-500/20 text-gray-400" }
+                                                    )
+                                                }>
+                                                    <span class=move || {
+                                                        let ext_status = gemini_cli_extension.get();
+                                                        format!(
+                                                            "w-2 h-2 rounded-full {}",
+                                                            if ext_status.is_installed { "bg-green-400" } else { "bg-gray-400" }
+                                                        )
+                                                    }></span>
+                                                    {move || if gemini_cli_extension.get().is_installed { "Extension Installed" } else { "Extension Not Installed" }}
+                                                </div>
+                                            </div>
+
+                                            // Status message
+                                            {move || {
+                                                let status = gemini_cli_status.get();
+                                                (!status.message.is_empty()).then(|| view! {
+                                                    <p class="text-xs text-[var(--text-muted)]">{status.message.clone()}</p>
+                                                })
+                                            }}
+
+                                            // Action buttons
+                                            <div class="flex flex-wrap gap-2 pt-2">
+                                                {move || {
+                                                    let status = gemini_cli_status.get();
+                                                    let is_loading = gemini_cli_loading.get();
+                                                    if !status.is_installed {
+                                                        view! {
+                                                            <a
+                                                                href="https://github.com/google-gemini/gemini-cli"
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                class="px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--accent-primary)] text-white hover:opacity-90 transition-opacity"
+                                                            >
+                                                                "Install Gemini CLI"
+                                                            </a>
+                                                        }.into_any()
+                                                    } else if !status.is_authenticated {
+                                                        view! {
+                                                            <button
+                                                                class="px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--accent-primary)] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+                                                                disabled=is_loading
+                                                                on:click=move |_| {
+                                                                    spawn_local(async move {
+                                                                        match launch_gemini_cli_login().await {
+                                                                            Ok(_) => show_success("Launching Gemini CLI", Some("Opening terminal for authentication...")),
+                                                                            Err(e) => show_error("Launch Failed", Some(&e), None),
+                                                                        }
+                                                                    });
+                                                                }
+                                                            >
+                                                                "Login with Google"
+                                                            </button>
+                                                        }.into_any()
+                                                    } else {
+                                                        view! { <span></span> }.into_any()
+                                                    }
+                                                }}
+
+                                                <button
+                                                    class="px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] transition-colors disabled:opacity-50"
+                                                    disabled=move || gemini_cli_loading.get()
+                                                    on:click=move |_| refresh_gemini_cli_status()
+                                                >
+                                                    {move || if gemini_cli_loading.get() { "Checking..." } else { "Refresh Status" }}
+                                                </button>
+
+                                                {move || {
+                                                    let status = gemini_cli_status.get();
+                                                    let ext_status = gemini_cli_extension.get();
+                                                    let is_loading = gemini_cli_loading.get();
+                                                    if status.is_installed && status.is_authenticated && !ext_status.is_installed {
+                                                        view! {
+                                                            <button
+                                                                class="px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] transition-colors disabled:opacity-50"
+                                                                disabled=is_loading
+                                                                on:click=move |_| {
+                                                                    spawn_local(async move {
+                                                                        // Install extension from GitHub repository
+                                                                        match install_gemini_cli_extension(SIDECAR_DM_EXTENSION_URL.to_string()).await {
+                                                                            Ok(msg) => {
+                                                                                show_success("Extension Installed", Some(&msg));
+                                                                                refresh_gemini_cli_status();
+                                                                            }
+                                                                            Err(e) => show_error("Install Failed", Some(&e), None),
+                                                                        }
+                                                                    });
+                                                                }
+                                                            >
+                                                                "Install Sidecar DM Extension"
+                                                            </button>
+                                                        }.into_any()
+                                                    } else {
+                                                        view! { <span></span> }.into_any()
+                                                    }
                                                 }}
                                             </div>
                                         </div>
