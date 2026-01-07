@@ -4,8 +4,8 @@
 
 use tauri::{State, Manager};
 use crate::core::voice::{
-    VoiceManager, VoiceConfig, VoiceProviderType, ElevenLabsConfig,
-    OllamaConfig, SynthesisRequest, OutputFormat, VoiceProviderDetection,
+    VoiceManager, VoiceConfig, VoiceProviderType,
+    SynthesisRequest, OutputFormat, VoiceProviderDetection,
     detect_providers, ProviderInstaller, InstallStatus,
     AvailablePiperVoice, get_recommended_piper_voices,
     types::{QueuedVoice, VoiceStatus}
@@ -21,7 +21,7 @@ use crate::database::{Database, NpcConversation, ConversationMessage};
 
 // Core modules
 // use crate::core::database::Database;
-use crate::core::llm::{LLMConfig, LLMClient, ChatMessage, ChatRequest, MessageRole};
+use crate::core::llm::{LLMConfig, LLMClient, ChatMessage, MessageRole};
 use crate::core::llm::router::{LLMRouter, RouterConfig, ProviderStats};
 use crate::core::campaign_manager::{
     CampaignManager, SessionNote, SnapshotSummary, ThemeWeights
@@ -46,7 +46,7 @@ use crate::core::claude_cdp::{ClaudeDesktopManager, ClaudeDesktopStatus};
 use crate::core::sidecar_manager::{SidecarManager, MeilisearchConfig};
 use crate::core::search_client::SearchClient;
 use crate::core::meilisearch_pipeline::MeilisearchPipeline;
-use crate::core::meilisearch_chat::{DMChatManager, ChatMessage as MeiliChatMessage};
+// Note: DMChatManager used for meilisearch chat operations - temporarily unused
 use crate::core::campaign::versioning::VersionManager;
 use crate::core::campaign::world_state::WorldStateManager;
 use crate::core::campaign::relationships::RelationshipManager;
@@ -215,6 +215,32 @@ pub fn load_llm_config_disk(app_handle: &tauri::AppHandle) -> Option<LLMConfig> 
 
 fn save_llm_config_disk(app_handle: &tauri::AppHandle, config: &LLMConfig) {
     let path = get_config_path(app_handle);
+    if let Ok(json) = serde_json::to_string_pretty(config) {
+        let _ = std::fs::write(path, json);
+    }
+}
+
+// Voice config persistence
+fn get_voice_config_path(app_handle: &tauri::AppHandle) -> PathBuf {
+    let dir = app_handle.path().app_data_dir().unwrap_or(PathBuf::from("."));
+    if !dir.exists() {
+        let _ = std::fs::create_dir_all(&dir);
+    }
+    dir.join("voice_config.json")
+}
+
+pub fn load_voice_config_disk(app_handle: &tauri::AppHandle) -> Option<VoiceConfig> {
+    let path = get_voice_config_path(app_handle);
+    if path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            return serde_json::from_str(&content).ok();
+        }
+    }
+    None
+}
+
+fn save_voice_config_disk(app_handle: &tauri::AppHandle, config: &VoiceConfig) {
+    let path = get_voice_config_path(app_handle);
     if let Ok(json) = serde_json::to_string_pretty(config) {
         let _ = std::fs::write(path, json);
     }
@@ -1212,6 +1238,7 @@ pub fn correct_query(query: String) -> crate::core::spell_correction::Correction
 pub async fn configure_voice(
     config: VoiceConfig,
     state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
     // 1. If API keys are provided in config, save them securely and mask them in config
     if let Some(elevenlabs) = config.elevenlabs.clone() {
@@ -1231,6 +1258,9 @@ pub async fn configure_voice(
              }
         }
     }
+
+    // Save config to disk (with secrets restored for persistence)
+    save_voice_config_disk(&app_handle, &effective_config);
 
     let new_manager = VoiceManager::new(effective_config);
 
@@ -1331,6 +1361,54 @@ pub async fn download_piper_voice(voice_key: String, quality: Option<String>) ->
         .map_err(|e| e.to_string())?;
 
     Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub async fn play_tts(
+    text: String,
+    voice_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    // Synthesize audio first, keeping the lock scope minimal.
+    let audio_path = {
+        let manager = state.voice_manager.read().await;
+        let request = SynthesisRequest {
+            text,
+            voice_id,
+            settings: None,
+            output_format: OutputFormat::Wav,
+        };
+        let result = manager.synthesize(request).await.map_err(|e| e.to_string())?;
+        result.audio_path
+    }; // Read lock is released here.
+
+    // Read audio data in a blocking task to avoid blocking async runtime
+    let audio_data = tokio::task::spawn_blocking(move || std::fs::read(&audio_path))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+
+    // Play audio in a blocking task to avoid blocking async runtime
+    tokio::task::spawn_blocking(move || {
+        use rodio::{Decoder, OutputStream, Sink};
+        use std::io::Cursor;
+
+        let (_stream, stream_handle) = OutputStream::try_default().map_err(|e| e.to_string())?;
+        let sink = Sink::try_new(&stream_handle).map_err(|e| e.to_string())?;
+        let cursor = Cursor::new(audio_data);
+        let source = Decoder::new(cursor).map_err(|e| e.to_string())?;
+
+        sink.append(source);
+        sink.sleep_until_end();
+        Ok::<(), String>(())
+    }).await.map_err(|e| e.to_string())??;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn list_all_voices(state: State<'_, AppState>) -> Result<Vec<Voice>, String> {
+    state.voice_manager.read().await.list_voices().await.map_err(|e| e.to_string())
 }
 
 // ============================================================================
@@ -2479,82 +2557,67 @@ pub async fn list_available_voices(state: State<'_, AppState>) -> Result<Vec<Voi
     manager.list_voices().await.map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub async fn speak(text: String, state: State<'_, AppState>) -> Result<(), String> {
-    // 1. Determine config
-    let config = {
-        let config_guard = state.llm_config.read().map_err(|e| e.to_string())?;
+/// Audio data returned from speak command for frontend playback
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpeakResult {
+    /// Base64-encoded audio data
+    pub audio_data: String,
+    /// Audio format (e.g., "wav")
+    pub format: String,
+}
 
-        if let Some(c) = config_guard.as_ref() {
-            match c {
-                LLMConfig::Ollama { host, .. } => VoiceConfig {
-                    provider: VoiceProviderType::Ollama,
-                    ollama: Some(OllamaConfig {
-                        base_url: host.clone(),
-                        model: "bark".to_string(), // Default placeholder
-                    }),
-                    ..Default::default()
-                },
-                LLMConfig::Claude { api_key, .. } => VoiceConfig {
-                    provider: VoiceProviderType::ElevenLabs,
-                    elevenlabs: Some(ElevenLabsConfig {
-                        api_key: api_key.clone(),
-                        model_id: None,
-                    }),
-                    ..Default::default()
-                },
-                LLMConfig::Gemini { .. } => VoiceConfig::default(),
-                LLMConfig::OpenAI { api_key, .. } => VoiceConfig {
-                    provider: VoiceProviderType::OpenAI,
-                    openai: Some(crate::core::voice::OpenAIVoiceConfig {
-                        api_key: api_key.clone(),
-                        model: "tts-1".to_string(),
-                        voice: "alloy".to_string(),
-                    }),
-                    ..Default::default()
-                },
-                // Other providers don't have native TTS - use default (disabled)
-                LLMConfig::OpenRouter { .. } |
-                LLMConfig::Mistral { .. } |
-                LLMConfig::Groq { .. } |
-                LLMConfig::Together { .. } |
-                LLMConfig::Cohere { .. } |
-                LLMConfig::DeepSeek { .. } |
-                LLMConfig::ClaudeDesktop { .. } |
-                LLMConfig::ClaudeCode { .. } |
-                LLMConfig::GeminiCli { .. } => VoiceConfig::default(),
-                LLMConfig::Meilisearch { .. } => VoiceConfig::default(),
-            }
-        } else {
-             VoiceConfig::default()
-        }
-    };
+#[tauri::command]
+pub async fn speak(text: String, app_handle: tauri::AppHandle) -> Result<Option<SpeakResult>, String> {
+    use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+
+    // 1. Load voice config from disk (saved by the settings UI)
+    let config = load_voice_config_disk(&app_handle)
+        .unwrap_or_else(|| {
+            log::warn!("No voice config found on disk, using default");
+            VoiceConfig::default()
+        });
+
+    // Check if voice is disabled
+    if matches!(config.provider, VoiceProviderType::Disabled) {
+        log::info!("Voice synthesis disabled, skipping speak request");
+        return Ok(None);
+    }
+
+    // Get the default voice ID from config
+    let voice_id = config.default_voice_id.clone()
+        .unwrap_or_else(|| "default".to_string());
+
+    log::info!("Speaking with provider {:?}, voice_id: '{}', piper_config: {:?}",
+        config.provider, voice_id, config.piper);
 
     let manager = VoiceManager::new(config);
 
     // 2. Synthesize (async)
     let request = SynthesisRequest {
         text,
-        voice_id: "default".to_string(),
+        voice_id,
         settings: None,
-        output_format: OutputFormat::Mp3,
+        output_format: OutputFormat::Wav, // Piper outputs WAV natively
     };
 
-    if let Ok(result) = manager.synthesize(request).await {
-         // Read bytes from file (or implementation could return bytes directly if we changed it, but manager returns result with path)
-         let bytes = std::fs::read(&result.audio_path).map_err(|e| e.to_string())?;
+    match manager.synthesize(request).await {
+        Ok(result) => {
+            // Read bytes from file
+            let bytes = std::fs::read(&result.audio_path).map_err(|e| e.to_string())?;
 
-         // 3. Play
-         tauri::async_runtime::spawn_blocking(move || {
-             if let Err(e) = manager.play_audio(bytes) {
-                 log::error!("Playback failed: {}", e);
-             }
-         }).await.map_err(|e| e.to_string())?;
+            // Return base64-encoded audio for frontend playback
+            let audio_data = BASE64.encode(&bytes);
+            log::info!("Synthesis complete, returning {} bytes as base64", bytes.len());
 
-         Ok(())
-    } else {
-        log::info!("Speak request received (synthesis skipped/failed)");
-        Ok(())
+            Ok(Some(SpeakResult {
+                audio_data,
+                format: "wav".to_string(),
+            }))
+        }
+        Err(e) => {
+            log::error!("Synthesis failed: {}", e);
+            Err(format!("Voice synthesis failed: {}", e))
+        }
     }
 }
 

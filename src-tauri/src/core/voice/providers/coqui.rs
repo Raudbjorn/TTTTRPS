@@ -176,7 +176,7 @@ impl CoquiProvider {
     fn default_voice_list(&self) -> Vec<Voice> {
         vec![
             Voice {
-                id: "tts_models/en/ljspeech/tacotron2-DDC".to_string(),
+                id: "coqui:tts_models/en/ljspeech/tacotron2-DDC".to_string(),
                 name: "LJSpeech Tacotron2".to_string(),
                 provider: "coqui".to_string(),
                 description: Some("High quality English TTS".to_string()),
@@ -184,7 +184,7 @@ impl CoquiProvider {
                 labels: vec!["en".to_string(), "tacotron2".to_string()],
             },
             Voice {
-                id: "tts_models/en/ljspeech/vits".to_string(),
+                id: "coqui:tts_models/en/ljspeech/vits".to_string(),
                 name: "LJSpeech VITS".to_string(),
                 provider: "coqui".to_string(),
                 description: Some("Fast VITS model".to_string()),
@@ -192,7 +192,7 @@ impl CoquiProvider {
                 labels: vec!["en".to_string(), "vits".to_string()],
             },
             Voice {
-                id: "tts_models/multilingual/multi-dataset/xtts_v2".to_string(),
+                id: "coqui:tts_models/multilingual/multi-dataset/xtts_v2".to_string(),
                 name: "XTTS v2 (Multilingual)".to_string(),
                 provider: "coqui".to_string(),
                 description: Some("High quality multilingual TTS with voice cloning".to_string()),
@@ -200,7 +200,7 @@ impl CoquiProvider {
                 labels: vec!["multilingual".to_string(), "voice-clone".to_string()],
             },
             Voice {
-                id: "tts_models/de/thorsten/vits".to_string(),
+                id: "coqui:tts_models/de/thorsten/vits".to_string(),
                 name: "Thorsten VITS".to_string(),
                 provider: "coqui".to_string(),
                 description: Some("German VITS model".to_string()),
@@ -228,7 +228,8 @@ impl VoiceProvider for CoquiProvider {
 
         if !self.is_available() {
             // Use model from config or request voice_id
-            let model = if request.voice_id.is_empty() { &cfg.model } else { &request.voice_id };
+            let voice_id = request.voice_id.strip_prefix("coqui:").unwrap_or(&request.voice_id);
+            let model = if voice_id.is_empty() { &cfg.model } else { voice_id };
             self.start_server(Some(model)).await?;
         }
 
@@ -289,7 +290,7 @@ impl VoiceProvider for CoquiProvider {
         match self.fetch_server_info().await {
             Ok(info) => {
                 let voice = Voice {
-                    id: info.model.clone().unwrap_or_else(|| "default".to_string()),
+                    id: format!("coqui:{}", info.model.clone().unwrap_or_else(|| "default".to_string())),
                     name: info
                         .model
                         .clone()

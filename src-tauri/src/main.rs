@@ -81,6 +81,16 @@ fn main() {
                 }
             });
 
+            // Load persisted voice config or use default
+            let voice_manager = if let Some(voice_config) = commands::load_voice_config_disk(&app.handle()) {
+                log::info!("Loading voice config from disk: provider={:?}", voice_config.provider);
+                std::sync::Arc::new(tokio::sync::RwLock::new(
+                    ttrpg_assistant::core::voice::VoiceManager::new(voice_config)
+                ))
+            } else {
+                vm
+            };
+
             app.manage(commands::AppState {
                 llm_client: std::sync::RwLock::new(None),
                 llm_config: std::sync::RwLock::new(commands::load_llm_config_disk(&app.handle())),
@@ -89,7 +99,7 @@ fn main() {
                 session_manager: sm,
                 npc_store: ns,
                 credentials: creds,
-                voice_manager: vm,
+                voice_manager,
                 sidecar_manager: sidecar_manager.clone(),
                 search_client,
                 personality_store,
@@ -380,6 +390,8 @@ fn main() {
             commands::queue_voice,
             commands::get_voice_queue,
             commands::cancel_voice,
+            commands::play_tts,
+            commands::list_all_voices,
 
             // Audio Cache Commands (TASK-005)
             commands::get_audio_cache_stats,

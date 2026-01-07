@@ -268,6 +268,8 @@ pub struct VoiceConfig {
     pub fish_audio: Option<FishAudioConfig>,
     pub ollama: Option<OllamaConfig>,
     pub openai: Option<OpenAIVoiceConfig>,
+    pub piper: Option<PiperConfig>,
+    pub coqui: Option<CoquiConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -293,6 +295,30 @@ pub struct OpenAIVoiceConfig {
     pub api_key: String,
     pub model: String,
     pub voice: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PiperConfig {
+    pub models_dir: Option<String>,
+    pub length_scale: f32,
+    pub noise_scale: f32,
+    pub noise_w: f32,
+    pub sentence_silence: f32,
+    pub speaker_id: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CoquiConfig {
+    pub port: u16,
+    pub model: String,
+    pub speaker: Option<String>,
+    pub language: Option<String>,
+    pub speed: f32,
+    pub speaker_wav: Option<String>,
+    pub temperature: f32,
+    pub top_k: u32,
+    pub top_p: f32,
+    pub repetition_penalty: f32,
 }
 
 /// Voice information from a TTS provider
@@ -332,6 +358,22 @@ pub async fn list_elevenlabs_voices(api_key: String) -> Result<Vec<Voice>, Strin
 /// List voices from the currently configured voice provider
 pub async fn list_available_voices() -> Result<Vec<Voice>, String> {
     invoke_no_args("list_available_voices").await
+}
+
+/// List all available voices from all providers
+pub async fn list_all_voices() -> Result<Vec<Voice>, String> {
+    invoke_no_args("list_all_voices").await
+}
+
+/// Synthesize and play TTS for the given text and voice ID
+pub async fn play_tts(text: String, voice_id: String) -> Result<(), String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        text: String,
+        voice_id: String,
+    }
+    invoke_void("play_tts", &Args { text, voice_id }).await
 }
 
 // ============================================================================
@@ -435,16 +477,138 @@ pub async fn get_voice_config() -> Result<VoiceConfig, String> {
     invoke_no_args("get_voice_config").await
 }
 
+// ============================================================================
+// Piper Voice Download
+// ============================================================================
+
+/// Available Piper voice from Hugging Face repository
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AvailablePiperVoice {
+    pub key: String,
+    pub name: String,
+    pub language: PiperLanguage,
+    pub quality: String,
+    pub num_speakers: u32,
+    pub sample_rate: u32,
+    pub files: PiperVoiceFiles,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PiperLanguage {
+    pub code: String,
+    pub family: String,
+    pub region: String,
+    pub name_native: String,
+    pub name_english: String,
+    pub country_english: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PiperVoiceFiles {
+    pub model: PiperFileInfo,
+    pub config: PiperFileInfo,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PiperFileInfo {
+    pub size_bytes: u64,
+    pub md5_digest: String,
+}
+
+/// Popular/recommended Piper voice entry (key, name, description)
+pub type PopularPiperVoice = (String, String, String);
+
+/// List all downloadable Piper voices from Hugging Face (requires network)
+pub async fn list_downloadable_piper_voices() -> Result<Vec<AvailablePiperVoice>, String> {
+    invoke_no_args("list_downloadable_piper_voices").await
+}
+
+/// Get popular/recommended Piper voices (no network call, instant)
+pub async fn get_popular_piper_voices() -> Result<Vec<PopularPiperVoice>, String> {
+    invoke_no_args("get_popular_piper_voices").await
+}
+
+/// Download a Piper voice by key (e.g., "en_US-lessac-medium")
+/// Returns the path to the downloaded model file
+pub async fn download_piper_voice(voice_key: String, quality: Option<String>) -> Result<String, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        voice_key: String,
+        quality: Option<String>,
+    }
+    invoke("download_piper_voice", &Args { voice_key, quality }).await
+}
+
 pub async fn get_vector_store_status() -> Result<String, String> {
     invoke("get_vector_store_status", &()).await
 }
 
-pub async fn speak(text: String) -> Result<(), String> {
+/// Audio data returned from speak command for frontend playback
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpeakResult {
+    /// Base64-encoded audio data
+    pub audio_data: String,
+    /// Audio format (e.g., "wav")
+    pub format: String,
+}
+
+pub async fn speak(text: String) -> Result<Option<SpeakResult>, String> {
     #[derive(Serialize)]
     struct Args {
         text: String,
     }
-    invoke_void("speak", &Args { text }).await
+    invoke("speak", &Args { text }).await
+}
+
+// ============================================================================
+// Voice Provider Installation
+// ============================================================================
+
+/// Installation status for a voice provider
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InstallStatus {
+    pub provider: VoiceProviderType,
+    pub installed: bool,
+    pub version: Option<String>,
+    pub binary_path: Option<String>,
+    pub voices_available: u32,
+    pub install_method: InstallMethod,
+    pub install_instructions: Option<String>,
+}
+
+/// How to install a provider
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum InstallMethod {
+    PackageManager(String),
+    Python(String),
+    Binary(String),
+    Docker(String),
+    Manual(String),
+    AppManaged,
+}
+
+/// Check installation status for a specific voice provider
+pub async fn check_voice_provider_status(provider: VoiceProviderType) -> Result<InstallStatus, String> {
+    #[derive(Serialize)]
+    struct Args {
+        provider: VoiceProviderType,
+    }
+    invoke("check_voice_provider_status", &Args { provider }).await
+}
+
+/// Check installation status for all local voice providers
+pub async fn check_voice_provider_installations() -> Result<Vec<InstallStatus>, String> {
+    invoke_no_args("check_voice_provider_installations").await
+}
+
+/// Install a voice provider (Piper or Coqui)
+pub async fn install_voice_provider(provider: VoiceProviderType) -> Result<InstallStatus, String> {
+    #[derive(Serialize)]
+    struct Args {
+        provider: VoiceProviderType,
+    }
+    invoke("install_voice_provider", &Args { provider }).await
 }
 
 // ============================================================================
@@ -3494,6 +3658,7 @@ pub enum VoiceProviderType {
     XttsV2,
     FishSpeech,
     Dia,
+    Coqui,
     System,
     Disabled,
 }
@@ -3516,6 +3681,7 @@ impl VoiceProviderType {
             Self::XttsV2 => "XTTS-v2 (Coqui)",
             Self::FishSpeech => "Fish Speech",
             Self::Dia => "Dia",
+            Self::Coqui => "Coqui TTS",
             Self::Piper => "Piper (Local)",
             Self::System => "System TTS",
             Self::Disabled => "Disabled",
@@ -3533,6 +3699,7 @@ impl VoiceProviderType {
             Self::XttsV2 => "xtts_v2",
             Self::FishSpeech => "fish_speech",
             Self::Dia => "dia",
+            Self::Coqui => "coqui",
             Self::Piper => "piper",
             Self::System => "system",
             Self::Disabled => "disabled",
@@ -3545,6 +3712,7 @@ impl VoiceProviderType {
             Self::ElevenLabs,
             Self::FishAudio,
             Self::Piper,
+            Self::Coqui,
             Self::Ollama,
             Self::Chatterbox,
             Self::GptSoVits,

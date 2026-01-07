@@ -11,7 +11,6 @@
 use super::cost::{CostSummary, CostTracker, CostTrackerConfig, ProviderPricing, TokenUsage};
 use super::health::{CircuitState, HealthTracker, HealthTrackerConfig, ProviderHealth, HealthSummary};
 use async_trait::async_trait;
-use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;

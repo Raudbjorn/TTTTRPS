@@ -149,7 +149,7 @@ impl PiperProvider {
         }
 
         Some(Voice {
-            id: model_path.to_string_lossy().to_string(),
+            id: format!("piper:{}", model_path.to_string_lossy()),
             name,
             provider: "piper".to_string(),
             description,
@@ -190,7 +190,11 @@ impl VoiceProvider for PiperProvider {
             VoiceError::NotConfigured("Piper executable not found".to_string())
         })?;
 
-        let model_path = self.get_model_path(&request.voice_id)?;
+        info!("Piper synthesize called with voice_id: {}", request.voice_id);
+        let voice_id = request.voice_id.strip_prefix("piper:").unwrap_or(&request.voice_id);
+        info!("After strip_prefix, voice_id: {}", voice_id);
+        let model_path = self.get_model_path(voice_id)?;
+        info!("Resolved model_path: {:?}", model_path);
 
         // Use settings from config (thread-safe read, extracted before async)
         let (length_scale, noise_scale, noise_w, sentence_silence, speaker_id) = {
@@ -240,6 +244,14 @@ impl VoiceProvider for PiperProvider {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            warn!(
+                model = ?model_path,
+                exit_code = ?output.status.code(),
+                stderr = %stderr,
+                stdout = %stdout,
+                "Piper command failed"
+            );
             return Err(VoiceError::ApiError(format!("Piper failed: {}", stderr)));
         }
 

@@ -11,7 +11,7 @@ use tokio::time::sleep;
 use tracing::{debug, error, info, warn};
 
 use super::client::{ClaudeClient, ConnectionState, Message};
-use super::config::{ClaudeConfig, CLAUDE_BINARY_PATHS, DEFAULT_CDP_PORT};
+use super::config::{ClaudeConfig, CLAUDE_BINARY_PATHS};
 use super::error::{ClaudeCdpError, Result};
 
 /// Status information for the Claude Desktop connection.

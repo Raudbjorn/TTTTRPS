@@ -22,6 +22,39 @@ use crate::core::voice::cache::{AudioCache, CacheKeyParams, CacheConfig, CacheSt
 use rodio::{Decoder, OutputStream, Sink};
 use std::io::Cursor;
 
+/// Known provider prefixes for voice IDs
+const PROVIDER_PREFIXES: &[(&str, &str)] = &[
+    ("piper:", "piper"),
+    ("coqui:", "coqui"),
+    ("elevenlabs:", "elevenlabs"),
+    ("openai:", "openai"),
+    ("ollama:", "ollama"),
+    ("fish_audio:", "fish_audio"),
+];
+
+/// Result of parsing a voice ID with optional provider prefix
+pub struct ParsedVoiceId<'a> {
+    /// The provider ID (e.g., "piper", "elevenlabs")
+    pub provider_id: &'a str,
+    /// The voice ID with prefix stripped (if present)
+    pub voice_id: &'a str,
+}
+
+/// Parse a voice ID that may contain a provider prefix (e.g., "piper:en_US-amy-medium")
+/// Returns the provider ID and the normalized voice ID (with prefix stripped).
+/// If no known prefix is found, returns None.
+fn parse_prefixed_voice_id(voice_id: &str) -> Option<ParsedVoiceId<'_>> {
+    for (prefix, provider_id) in PROVIDER_PREFIXES {
+        if let Some(stripped) = voice_id.strip_prefix(prefix) {
+            return Some(ParsedVoiceId {
+                provider_id,
+                voice_id: stripped,
+            });
+        }
+    }
+    None
+}
+
 /// Voice Manager with integrated audio caching
 pub struct VoiceManager {
     config: VoiceConfig,
@@ -225,16 +258,42 @@ impl VoiceManager {
     /// Tags can be used to group cache entries (e.g., by session_id, npc_id, campaign_id)
     /// for bulk operations like clearing all audio for a specific session.
     pub async fn synthesize_with_tags(&self, request: SynthesisRequest, tags: &[String]) -> Result<SynthesisResult> {
-        // Get the provider
-        let provider_id = self.get_provider_id()?;
+        // Determine provider from voice_id prefix or fallback to active provider config
+        let provider_id = match parse_prefixed_voice_id(&request.voice_id) {
+            Some(parsed) => parsed.provider_id,
+            None => match self.get_active_provider_id() {
+                Ok(id) => id,
+                Err(VoiceError::NotConfigured(message)) if message.contains("disabled") => {
+                    return Err(VoiceError::NotConfigured(format!(
+                        "{} (voice_id='{}' may have an unrecognized prefix)",
+                        message,
+                        request.voice_id
+                    )));
+                }
+                Err(e) => return Err(e),
+            },
+        };
+
         let provider = self.providers.get(provider_id)
             .ok_or_else(|| VoiceError::NotConfigured(format!("Provider {} not configured", provider_id)))?;
 
         // Generate cache key using SHA256
         let settings = request.settings.clone().unwrap_or_default();
+        // Use the selected provider_id in the cache key to prevent collisions
+        let provider_type_enum = self.get_provider_type_from_id(provider_id);
+
+        // Validation: If we got Disabled but the ID wasn't "disabled", it means we have an unknown provider.
+        // We must fail fast to avoid cache collisions where multiple unknown providers map to the same Disabled key.
+        if matches!(provider_type_enum, VoiceProviderType::Disabled) && provider_id != "disabled" {
+             return Err(VoiceError::NotConfigured(format!(
+                "Unsupported voice provider: '{}'. Please check your configuration.",
+                 provider_id
+             )));
+        }
+
         let cache_key_params = CacheKeyParams::new(
             &request.text,
-            self.config.provider.clone(),
+            provider_type_enum,
             &request.voice_id,
             &settings,
             request.output_format.clone(),
@@ -284,8 +343,8 @@ impl VoiceManager {
         }
     }
 
-    /// Get the provider ID string for the current provider
-    fn get_provider_id(&self) -> Result<&'static str> {
+    /// Get the provider ID string based on the legacy configuration
+    fn get_active_provider_id(&self) -> Result<&'static str> {
         match self.config.provider {
             VoiceProviderType::ElevenLabs => Ok("elevenlabs"),
             VoiceProviderType::FishAudio => Ok("fish_audio"),
@@ -300,6 +359,24 @@ impl VoiceManager {
             VoiceProviderType::Coqui => Ok("coqui"),
             VoiceProviderType::System => Err(VoiceError::NotConfigured("System TTS not supported yet".to_string())),
             VoiceProviderType::Disabled => Err(VoiceError::NotConfigured("Voice synthesis disabled".to_string())),
+        }
+    }
+
+    /// Helper to convert string ID to enum for CacheKeyParams
+    fn get_provider_type_from_id(&self, id: &str) -> VoiceProviderType {
+        match id {
+            "elevenlabs" => VoiceProviderType::ElevenLabs,
+            "fish_audio" => VoiceProviderType::FishAudio,
+            "openai" => VoiceProviderType::OpenAI,
+            "piper" => VoiceProviderType::Piper,
+            "ollama" => VoiceProviderType::Ollama,
+            "chatterbox" => VoiceProviderType::Chatterbox,
+            "gpt_sovits" => VoiceProviderType::GptSoVits,
+            "xtts_v2" => VoiceProviderType::XttsV2,
+            "fish_speech" => VoiceProviderType::FishSpeech,
+            "dia" => VoiceProviderType::Dia,
+            "coqui" => VoiceProviderType::Coqui,
+            _ => VoiceProviderType::Disabled,
         }
     }
 
