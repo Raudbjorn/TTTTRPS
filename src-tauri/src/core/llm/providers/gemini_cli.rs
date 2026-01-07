@@ -31,14 +31,18 @@ use crate::core::llm::cost::{ProviderPricing, TokenUsage};
 use crate::core::llm::router::{
     ChatChunk, ChatRequest, ChatResponse, LLMError, LLMProvider, Result,
 };
+use crate::core::llm::session::{
+    ProviderSession, SessionError, SessionId, SessionInfo, SessionResult, SessionStore,
+};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::{Command as StdCommand, Stdio};
+use std::sync::Arc;
 use std::time::Instant;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info, warn};
 
 /// Default timeout in seconds for CLI operations.
@@ -49,6 +53,26 @@ const DEFAULT_MODEL: &str = "gemini-3-pro-preview";
 
 /// Fallback model when rate limited (faster, higher quota).
 const FALLBACK_MODEL: &str = "gemini-3-flash-preview";
+
+// ============================================================================
+// Session Configuration
+// ============================================================================
+
+/// Session mode for requests (Gemini CLI uses --resume for sessions).
+#[derive(Debug, Clone, Default)]
+pub enum SessionMode {
+    /// Start a new session
+    #[default]
+    New,
+    /// Continue the most recent session
+    Continue,
+    /// Resume a specific session by ID
+    Resume(SessionId),
+}
+
+// ============================================================================
+// Response Types
+// ============================================================================
 
 /// Gemini CLI JSON response structure.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -101,7 +125,6 @@ pub struct GeminiCliStreamChunk {
 }
 
 /// Gemini CLI provider configuration.
-#[derive(Debug, Clone)]
 pub struct GeminiCliProvider {
     model: String,
     fallback_model: Option<String>,
@@ -111,6 +134,27 @@ pub struct GeminiCliProvider {
     sandbox: bool,
     /// Whether to automatically fallback on rate limit errors.
     auto_fallback: bool,
+    /// Session store for tracking conversations.
+    session_store: Arc<SessionStore>,
+    /// Current active session ID.
+    current_session: RwLock<Option<SessionId>>,
+    /// Whether to persist sessions to disk.
+    persist_sessions: bool,
+}
+
+impl std::fmt::Debug for GeminiCliProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GeminiCliProvider")
+            .field("model", &self.model)
+            .field("fallback_model", &self.fallback_model)
+            .field("timeout_secs", &self.timeout_secs)
+            .field("working_dir", &self.working_dir)
+            .field("yolo_mode", &self.yolo_mode)
+            .field("sandbox", &self.sandbox)
+            .field("auto_fallback", &self.auto_fallback)
+            .field("persist_sessions", &self.persist_sessions)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Builder for GeminiCliProvider.
@@ -123,6 +167,7 @@ pub struct GeminiCliProviderBuilder {
     yolo_mode: bool,
     sandbox: bool,
     auto_fallback: bool,
+    persist_sessions: bool,
 }
 
 impl Default for GeminiCliProviderBuilder {
@@ -135,6 +180,7 @@ impl Default for GeminiCliProviderBuilder {
             yolo_mode: false,
             sandbox: false,
             auto_fallback: true, // Enable by default
+            persist_sessions: true,
         }
     }
 }
@@ -194,8 +240,26 @@ impl GeminiCliProviderBuilder {
         self
     }
 
+    /// Enable/disable session persistence to disk.
+    pub fn persist_sessions(mut self, enabled: bool) -> Self {
+        self.persist_sessions = enabled;
+        self
+    }
+
     /// Build the provider.
     pub fn build(self) -> GeminiCliProvider {
+        let store_path = if self.persist_sessions {
+            dirs::data_local_dir()
+                .map(|d| d.join("ttrpg-assistant").join("gemini-sessions.json"))
+        } else {
+            None
+        };
+
+        let session_store = match store_path {
+            Some(path) => Arc::new(SessionStore::with_persistence(path)),
+            None => Arc::new(SessionStore::new()),
+        };
+
         GeminiCliProvider {
             model: self.model.unwrap_or_else(|| DEFAULT_MODEL.to_string()),
             fallback_model: self.fallback_model,
@@ -204,6 +268,9 @@ impl GeminiCliProviderBuilder {
             yolo_mode: self.yolo_mode,
             sandbox: self.sandbox,
             auto_fallback: self.auto_fallback,
+            session_store,
+            current_session: RwLock::new(None),
+            persist_sessions: self.persist_sessions,
         }
     }
 }
@@ -458,6 +525,114 @@ impl GeminiCliProvider {
             let stderr = String::from_utf8_lossy(&output.stderr);
             Err(format!("Uninstall failed: {}", stderr.trim()))
         }
+    }
+
+    /// Logout from Gemini CLI by removing cached credentials.
+    pub async fn logout() -> std::result::Result<(), String> {
+        // Gemini CLI stores OAuth credentials in ~/.gemini/oauth_creds.json
+        if let Some(home) = dirs::home_dir() {
+            let gemini_dir = home.join(".gemini");
+            if gemini_dir.exists() {
+                // The actual credential file used by Gemini CLI
+                let auth_files = ["oauth_creds.json"];
+                for file in auth_files {
+                    let path = gemini_dir.join(file);
+                    if path.exists() {
+                        tokio::fs::remove_file(&path)
+                            .await
+                            .map_err(|e| format!("Failed to remove {}: {}", file, e))?;
+                        info!("Removed Gemini CLI credential file: {:?}", path);
+                    }
+                }
+                return Ok(());
+            }
+        }
+        Ok(())
+    }
+
+    /// Install Gemini CLI via npm.
+    pub async fn install_cli() -> std::result::Result<(), String> {
+        let npm = which::which("npm")
+            .or_else(|_| which::which("pnpm"))
+            .or_else(|_| which::which("bun"))
+            .map_err(|_| "No package manager found. Please install npm, pnpm, or bun.")?;
+
+        let pkg_manager = npm
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("npm");
+
+        let install_cmd = format!("{} install -g @google/gemini-cli", pkg_manager);
+
+        #[cfg(target_os = "linux")]
+        {
+            let terminals = [
+                ("kitty", vec!["-e", "bash", "-c"]),
+                ("gnome-terminal", vec!["--", "bash", "-c"]),
+                ("konsole", vec!["-e", "bash", "-c"]),
+                ("xterm", vec!["-e", "bash", "-c"]),
+                ("alacritty", vec!["-e", "bash", "-c"]),
+            ];
+
+            for (term, args) in terminals {
+                if which::which(term).is_ok() {
+                    let mut cmd = Command::new(term);
+                    for arg in &args {
+                        cmd.arg(arg);
+                    }
+                    cmd.arg(format!(
+                        "{}; echo ''; echo 'Press Enter to close...'; read",
+                        install_cmd
+                    ));
+
+                    if cmd.spawn().is_ok() {
+                        return Ok(());
+                    }
+                }
+            }
+            Err(format!(
+                "Could not open terminal. Please run manually: {}",
+                install_cmd
+            ))
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            Command::new("osascript")
+                .args([
+                    "-e",
+                    &format!(r#"tell application "Terminal" to do script "{}""#, install_cmd),
+                ])
+                .spawn()
+                .map_err(|e| format!("Failed to open Terminal: {}", e))?;
+            Ok(())
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            Command::new("cmd")
+                .args(["/c", "start", "cmd", "/k", &install_cmd])
+                .spawn()
+                .map_err(|e| format!("Failed to open terminal: {}", e))?;
+            Ok(())
+        }
+
+        #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+        Err(format!(
+            "Unsupported platform. Please run manually: {}",
+            install_cmd
+        ))
+    }
+
+    /// Get the current session ID.
+    pub async fn get_current_session(&self) -> Option<SessionId> {
+        self.current_session.read().await.clone()
+    }
+
+    /// Set the current session ID.
+    pub async fn set_current_session(&self, session_id: Option<SessionId>) {
+        let mut current = self.current_session.write().await;
+        *current = session_id;
     }
 
     /// Build command arguments for a chat request with a specific model.
@@ -916,6 +1091,96 @@ impl LLMProvider for GeminiCliProvider {
     }
 }
 
+// ============================================================================
+// ProviderSession Implementation
+// ============================================================================
+
+#[async_trait]
+impl ProviderSession for GeminiCliProvider {
+    fn supports_sessions(&self) -> bool {
+        // Gemini CLI doesn't have native session support like Claude Code,
+        // but we track sessions locally for conversation continuity
+        true
+    }
+
+    async fn current_session(&self) -> Option<SessionId> {
+        self.current_session.read().await.clone()
+    }
+
+    async fn resume_session(&self, session_id: &SessionId) -> SessionResult<SessionInfo> {
+        // Verify session exists in our store
+        let info = self
+            .session_store
+            .get(session_id)
+            .await
+            .ok_or_else(|| SessionError::NotFound(session_id.clone()))?;
+
+        // Set as current session
+        {
+            let mut current = self.current_session.write().await;
+            *current = Some(session_id.clone());
+        }
+
+        // Touch to update last used time
+        let _ = self.session_store.touch(session_id).await;
+
+        Ok(info)
+    }
+
+    async fn continue_session(&self) -> SessionResult<SessionInfo> {
+        let recent = self
+            .session_store
+            .most_recent("gemini-cli")
+            .await
+            .ok_or_else(|| SessionError::NotFound("no recent session".to_string()))?;
+
+        self.resume_session(&recent.id).await
+    }
+
+    async fn fork_session(&self, session_id: &SessionId) -> SessionResult<SessionId> {
+        // Verify source session exists
+        let source = self
+            .session_store
+            .get(session_id)
+            .await
+            .ok_or_else(|| SessionError::NotFound(session_id.clone()))?;
+
+        // Create a new session based on the source with a canonical UUID ID
+        let new_session_id = uuid::Uuid::new_v4().to_string();
+
+        let mut new_info = SessionInfo::new(new_session_id.clone(), "gemini-cli");
+        new_info.working_dir = source.working_dir;
+        new_info.title = source.title.map(|t| format!("{} (fork)", t));
+        self.session_store.store(new_info).await?;
+
+        // Set as current
+        {
+            let mut current = self.current_session.write().await;
+            *current = Some(new_session_id.clone());
+        }
+
+        Ok(new_session_id)
+    }
+
+    async fn compact_session(&self) -> SessionResult<()> {
+        // Gemini CLI doesn't support session compaction
+        Err(SessionError::OperationFailed(
+            "Gemini CLI does not support session compaction".to_string(),
+        ))
+    }
+
+    async fn get_session_info(&self, session_id: &SessionId) -> SessionResult<SessionInfo> {
+        self.session_store
+            .get(session_id)
+            .await
+            .ok_or_else(|| SessionError::NotFound(session_id.clone()))
+    }
+
+    async fn list_sessions(&self, limit: usize) -> SessionResult<Vec<SessionInfo>> {
+        Ok(self.session_store.list_by_provider("gemini-cli", limit).await)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1329,5 +1594,77 @@ mod tests {
 
         assert_eq!(stats.input_tokens, Some(100));
         assert_eq!(stats.output_tokens, Some(50));
+    }
+
+    // ==================== Session Management Tests ====================
+
+    #[test]
+    fn test_builder_with_persist_sessions() {
+        let provider = GeminiCliProvider::builder()
+            .persist_sessions(false)
+            .build();
+        assert!(!provider.persist_sessions);
+    }
+
+    #[test]
+    fn test_builder_default_persist_sessions() {
+        let provider = GeminiCliProvider::new();
+        assert!(provider.persist_sessions);
+    }
+
+    #[tokio::test]
+    async fn test_session_store_integration() {
+        let provider = GeminiCliProvider::builder()
+            .persist_sessions(false)
+            .build();
+
+        // Initially no session
+        assert!(provider.current_session().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_set_current_session() {
+        let provider = GeminiCliProvider::builder()
+            .persist_sessions(false)
+            .build();
+
+        // Set a session
+        provider.set_current_session(Some("test-session".to_string())).await;
+        assert_eq!(provider.get_current_session().await, Some("test-session".to_string()));
+
+        // Clear session
+        provider.set_current_session(None).await;
+        assert!(provider.get_current_session().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_list_sessions_empty() {
+        let provider = GeminiCliProvider::builder()
+            .persist_sessions(false)
+            .build();
+
+        let sessions = provider.list_sessions(10).await.unwrap();
+        assert!(sessions.is_empty());
+    }
+
+    #[test]
+    fn test_supports_sessions() {
+        let provider = GeminiCliProvider::new();
+        assert!(provider.supports_sessions());
+    }
+
+    // ==================== SessionMode Tests ====================
+
+    #[test]
+    fn test_session_mode_default() {
+        let mode = SessionMode::default();
+        assert!(matches!(mode, SessionMode::New));
+    }
+
+    #[test]
+    fn test_session_mode_clone() {
+        let mode = SessionMode::Resume("test-123".to_string());
+        let cloned = mode.clone();
+        assert!(matches!(cloned, SessionMode::Resume(id) if id == "test-123"));
     }
 }
