@@ -34,6 +34,109 @@ print_header() {
     echo -e "\n${PURPLE}╔═══════════════════════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${PURPLE}║              TTRPG Assistant (Sidecar DM) Build System                        ║${NC}"
     echo -e "${PURPLE}╚═══════════════════════════════════════════════════════════════════════════════╝${NC}"
+
+    # Show git/GitHub status warnings
+    check_git_status
+}
+
+# Git repository status check
+check_git_status() {
+    if ! git rev-parse --git-dir > /dev/null 2>&1; then
+        return 0  # Not a git repo, skip checks
+    fi
+
+    local warnings=()
+
+    # Check for uncommitted changes
+    local uncommitted=$(git status --porcelain 2>/dev/null | wc -l)
+    if [ "$uncommitted" -gt 20 ]; then
+        warnings+=("🔄 You have $uncommitted uncommitted changes - consider committing or stashing")
+    elif [ "$uncommitted" -gt 5 ]; then
+        warnings+=("📝 You have $uncommitted uncommitted changes")
+    fi
+
+    # Check for unpushed commits and branch divergence
+    local current_branch=$(git branch --show-current 2>/dev/null || echo "")
+    if [ -n "$current_branch" ]; then
+        local unpushed=$(git rev-list --count @{u}..HEAD 2>/dev/null || echo "0")
+        if [ "$unpushed" -gt 0 ]; then
+            warnings+=("📤 You have $unpushed unpushed commits on branch '$current_branch'")
+        fi
+
+        # Check if branch is behind main/master
+        check_branch_divergence warnings "$current_branch"
+    fi
+
+    # Check for GitHub status (if gh CLI is available)
+    if command_exists gh; then
+        check_github_status warnings
+    fi
+
+    # Display warnings if any
+    if [ ${#warnings[@]} -gt 0 ]; then
+        echo -e "\n${YELLOW}${WARNING} Git Status Notifications:${NC}"
+        for warning in "${warnings[@]}"; do
+            echo -e "  ${YELLOW}$warning${NC}"
+        done
+        echo ""
+    fi
+}
+
+# Check branch divergence from main/master
+check_branch_divergence() {
+    local -n warnings_ref=$1
+    local current_branch=$2
+
+    # Skip if we're on main/master
+    if [[ "$current_branch" == "main" || "$current_branch" == "master" ]]; then
+        return 0
+    fi
+
+    # Find the default branch
+    local default_branch=""
+    if git show-ref --verify --quiet refs/heads/main; then
+        default_branch="main"
+    elif git show-ref --verify --quiet refs/heads/master; then
+        default_branch="master"
+    else
+        return 0
+    fi
+
+    # Check how far behind we are
+    local behind=$(git rev-list --count HEAD.."$default_branch" 2>/dev/null || echo "0")
+
+    if [ "$behind" -gt 20 ]; then
+        warnings_ref+=("📉 Branch '$current_branch' is $behind commits behind '$default_branch' - consider rebasing")
+    elif [ "$behind" -gt 5 ]; then
+        warnings_ref+=("📋 Branch '$current_branch' is $behind commits behind '$default_branch'")
+    fi
+}
+
+# GitHub CLI integration for PR checks
+check_github_status() {
+    local -n warnings_ref=$1
+
+    # Check if we're in a GitHub repo
+    local github_repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || echo "")
+    if [ -z "$github_repo" ]; then
+        return 0
+    fi
+
+    # Check for open pull requests
+    local pr_count=$(gh pr list --state open --json number 2>/dev/null | jq length 2>/dev/null || echo "0")
+
+    if [ "$pr_count" -gt 0 ]; then
+        warnings_ref+=("🔀 There are $pr_count open pull request(s) in $github_repo")
+    fi
+
+    # Check for failed CI/CD runs on current branch
+    local current_branch=$(git branch --show-current 2>/dev/null || echo "")
+    if [ -n "$current_branch" ]; then
+        local failed_runs=$(gh run list --branch "$current_branch" --status failure --limit 3 --json conclusion 2>/dev/null | jq length 2>/dev/null || echo "0")
+        if [ "$failed_runs" -gt 0 ]; then
+            warnings_ref+=("❌ Recent CI/CD failures on branch '$current_branch'")
+        fi
+    fi
 }
 
 print_section() {
@@ -434,18 +537,14 @@ run_dev() {
     # Ensure node_modules exists (trunk fails on missing watch ignore paths)
     mkdir -p "$FRONTEND_DIR/node_modules"
 
-    print_info "Running cargo tauri dev..."
-
-    # Check and clean up ports
-    # Check and clean up ports
+    # Check for port conflicts (3030 is trunk dev server, 1420 is Tauri)
     for port in 3030 1420; do
-        if lsof -i :$port > /dev/null 2>&1; then
-            print_warning "Port $port is in use. Attempting to cleanup..."
-            lsof -t -i:$port | xargs kill -9 > /dev/null 2>&1 || true
-            sleep 1
+        if ! check_port_usage "$port" "$SEIZE_PORT"; then
+            exit 1
         fi
     done
 
+    print_info "Running cargo tauri dev..."
     cargo tauri dev
 
     cd "$PROJECT_ROOT"
@@ -502,30 +601,206 @@ clean_artifacts() {
     print_success "Cleaned all build artifacts"
 }
 
+run_lint() {
+    print_section "Running Clippy Lints"
+
+    print_info "Linting backend..."
+    cd "$BACKEND_DIR"
+    cargo clippy -- -D warnings
+
+    print_info "Linting frontend..."
+    cd "$FRONTEND_DIR"
+    cargo clippy -- -D warnings
+
+    cd "$PROJECT_ROOT"
+    print_success "Linting passed"
+}
+
+run_format() {
+    print_section "Formatting Code"
+
+    print_info "Formatting backend..."
+    cd "$BACKEND_DIR"
+    cargo fmt
+
+    print_info "Formatting frontend..."
+    cd "$FRONTEND_DIR"
+    cargo fmt
+
+    cd "$PROJECT_ROOT"
+    print_success "Code formatted"
+}
+
+run_format_check() {
+    print_section "Checking Code Formatting"
+
+    print_info "Checking backend formatting..."
+    cd "$BACKEND_DIR"
+    cargo fmt --check
+
+    print_info "Checking frontend formatting..."
+    cd "$FRONTEND_DIR"
+    cargo fmt --check
+
+    cd "$PROJECT_ROOT"
+    print_success "Formatting check passed"
+}
+
+show_status() {
+    print_section "Repository Status"
+
+    if ! git rev-parse --git-dir > /dev/null 2>&1; then
+        print_warning "Not in a git repository"
+        return 0
+    fi
+
+    # Basic git status
+    echo -e "${BLUE}Git Status:${NC}"
+    local current_branch=$(git branch --show-current 2>/dev/null || echo "detached")
+    local uncommitted=$(git status --porcelain 2>/dev/null | wc -l)
+    local unpushed=$(git rev-list --count @{u}..HEAD 2>/dev/null || echo "unknown")
+
+    echo -e "  Branch: ${CYAN}$current_branch${NC}"
+    echo -e "  Uncommitted changes: ${CYAN}$uncommitted${NC}"
+    echo -e "  Unpushed commits: ${CYAN}$unpushed${NC}"
+
+    # GitHub status if available
+    if command_exists gh; then
+        local github_repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || echo "")
+        if [ -n "$github_repo" ]; then
+            echo -e "\n${BLUE}GitHub Status (${CYAN}$github_repo${BLUE}):${NC}"
+
+            # Pull requests
+            local open_prs=$(gh pr list --state open --json number,title,author 2>/dev/null)
+            local pr_count=$(echo "$open_prs" | jq length 2>/dev/null || echo "0")
+            echo -e "  Open pull requests: ${CYAN}$pr_count${NC}"
+
+            if [ "$pr_count" -gt 0 ] && [ "$pr_count" -le 5 ]; then
+                echo "$open_prs" | jq -r '.[] | "    • #\(.number): \(.title) (@\(.author.login))"' 2>/dev/null | head -5
+            fi
+
+            # Issues
+            local open_issues=$(gh issue list --state open --json number 2>/dev/null | jq length 2>/dev/null || echo "0")
+            echo -e "  Open issues: ${CYAN}$open_issues${NC}"
+
+            # Dependabot alerts
+            local vuln_count=$(gh api repos/:owner/:repo/dependabot/alerts --jq '[.[] | select(.state == "open")] | length' 2>/dev/null || echo "0")
+            if [ "$vuln_count" -gt 0 ]; then
+                echo -e "  ${YELLOW}Security vulnerabilities: $vuln_count${NC}"
+            fi
+        else
+            echo -e "\n${YELLOW}  Not authenticated with GitHub CLI or not a GitHub repo${NC}"
+        fi
+    else
+        echo -e "\n${YELLOW}  GitHub CLI (gh) not available for enhanced status${NC}"
+    fi
+}
+
 show_help() {
     echo -e "${CYAN}Usage:${NC} $0 [command] [options]"
     echo ""
-    echo -e "${CYAN}Commands:${NC}"
-    echo "  dev         Start development server with hot-reload"
-    echo "  build       Build everything (frontend + desktop bundle)"
-    echo "  frontend    Build only the frontend"
-    echo "  backend     Build only the backend"
-    echo "  test        Run all tests"
-    echo "  check       Run cargo check"
-    echo "  clean       Remove all build artifacts"
-    echo "  setup       Install all required dependencies"
-    echo "  help        Show this help message"
+    echo -e "${YELLOW}Build Commands:${NC}"
+    echo "  dev           Start development server with hot-reload"
+    echo "  build         Build everything (frontend + desktop bundle)"
+    echo "  frontend      Build only the frontend"
+    echo "  backend       Build only the backend"
     echo ""
-    echo -e "${CYAN}Options:${NC}"
+    echo -e "${YELLOW}Quality Commands:${NC}"
+    echo "  test          Run all tests"
+    echo "  check         Run cargo check"
+    echo "  lint          Run clippy lints on all code"
+    echo "  format        Format all code with rustfmt"
+    echo "  format-check  Check formatting without modifying"
+    echo ""
+    echo -e "${YELLOW}Utility Commands:${NC}"
+    echo "  status        Show git and GitHub repository status"
+    echo "  clean         Remove all build artifacts"
+    echo "  setup         Install all required dependencies"
+    echo "  help          Show this help message"
+    echo ""
+    echo -e "${YELLOW}Options:${NC}"
     echo "  --release      Build in release mode (optimized)"
     echo "  --integration  Run integration tests (requires Meilisearch)"
     echo "  --auto-deps    Automatically install dependencies without prompting"
+    echo "  --seize-port   Automatically kill processes using required ports (3030, 1420)"
+    echo ""
+    echo -e "${YELLOW}Detected Tools:${NC}"
+    echo -e "  Rust/Cargo: ${CYAN}$(command_exists cargo && cargo --version 2>/dev/null || echo "not found")${NC}"
+    echo -e "  Trunk: ${CYAN}$(command_exists trunk && trunk --version 2>/dev/null || echo "not found")${NC}"
+    echo -e "  Tauri CLI: ${CYAN}$(command_exists cargo-tauri && cargo tauri --version 2>/dev/null || echo "not found")${NC}"
+    echo -e "  GitHub CLI: ${CYAN}$(command_exists gh && echo "available" || echo "not found")${NC}"
+    echo ""
+    echo -e "${YELLOW}Examples:${NC}"
+    echo -e "  ${CYAN}$0 dev${NC}                    # Start development server"
+    echo -e "  ${CYAN}$0 build --release${NC}        # Production build"
+    echo -e "  ${CYAN}$0 lint && $0 test${NC}        # Lint then test"
+    echo -e "  ${CYAN}$0 status${NC}                 # Check repo status"
+}
+
+# Check if port is in use and get process info
+check_port_usage() {
+    local port=$1
+    local seize=$2
+
+    # Check if port is in use
+    local pid=$(lsof -t -i:"$port" 2>/dev/null | head -1)
+
+    if [ -z "$pid" ]; then
+        return 0  # Port is free
+    fi
+
+    # Get process info
+    local proc_name=$(ps -p "$pid" -o comm= 2>/dev/null || echo "unknown")
+    local proc_cmd=$(ps -p "$pid" -o args= 2>/dev/null || echo "unknown")
+    local proc_user=$(ps -p "$pid" -o user= 2>/dev/null || echo "unknown")
+    local proc_start=$(ps -p "$pid" -o lstart= 2>/dev/null || echo "unknown")
+
+    echo -e "\n${YELLOW}${WARNING} Port $port is already in use${NC}"
+    echo -e "${BLUE}Process Information:${NC}"
+    echo -e "  PID:     ${CYAN}$pid${NC}"
+    echo -e "  Name:    ${CYAN}$proc_name${NC}"
+    echo -e "  User:    ${CYAN}$proc_user${NC}"
+    echo -e "  Command: ${CYAN}$proc_cmd${NC}"
+    echo -e "  Started: ${CYAN}$proc_start${NC}"
+
+    if [ "$seize" = true ]; then
+        print_warning "Killing process $pid (--seize-port specified)..."
+        kill -9 "$pid" 2>/dev/null
+        sleep 1
+        # Verify it's dead
+        if lsof -t -i:"$port" > /dev/null 2>&1; then
+            print_error "Failed to kill process on port $port"
+            return 1
+        fi
+        print_success "Port $port is now free"
+        return 0
+    fi
+
+    # Interactive prompt
+    echo -e "\n${YELLOW}Would you like to kill this process? (y/n)${NC}"
+    read -r response
+    if [[ "$response" =~ ^[Yy]$ ]]; then
+        print_info "Killing process $pid..."
+        kill -9 "$pid" 2>/dev/null
+        sleep 1
+        if lsof -t -i:"$port" > /dev/null 2>&1; then
+            print_error "Failed to kill process on port $port"
+            return 1
+        fi
+        print_success "Port $port is now free"
+        return 0
+    else
+        print_error "Cannot start dev server while port $port is in use"
+        print_info "You can also use --seize-port to automatically kill conflicting processes"
+        return 1
+    fi
 }
 
 # Parse arguments
 RELEASE=false
 RUN_INTEGRATION=false
 AUTO_INSTALL_DEPS=false
+SEIZE_PORT=false
 COMMAND="build"
 
 while [[ $# -gt 0 ]]; do
@@ -542,7 +817,11 @@ while [[ $# -gt 0 ]]; do
             AUTO_INSTALL_DEPS=true
             shift
             ;;
-        dev|build|frontend|backend|test|check|clean|setup|help)
+        --seize-port)
+            SEIZE_PORT=true
+            shift
+            ;;
+        dev|build|frontend|backend|test|check|clean|setup|help|lint|format|format-check|status)
             COMMAND=$1
             shift
             ;;
@@ -629,6 +908,18 @@ case $COMMAND in
         ;;
     clean)
         clean_artifacts
+        ;;
+    lint)
+        run_lint
+        ;;
+    format)
+        run_format
+        ;;
+    format-check)
+        run_format_check
+        ;;
+    status)
+        show_status
         ;;
     help|*)
         show_help
