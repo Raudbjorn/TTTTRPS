@@ -12,7 +12,7 @@ pub mod ttrpg;
 // Legacy PDF parser kept for reference but not exported
 // Use kreuzberg_extractor for all document extraction
 #[allow(dead_code)]
-mod pdf_parser;
+
 
 pub use adaptive_learning::AdaptiveLearningSystem;
 pub use kreuzberg_extractor::{
