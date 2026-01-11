@@ -1,9 +1,0 @@
-{
-  "sorted_numbers": [1, 2, 3, 4, 5],
-  "unique_ids": ["id1", "id2", "id3"],
-  "time_series": [
-    {"timestamp": "2024-01-01T00:00:00Z", "value": 100},
-    {"timestamp": "2024-01-02T00:00:00Z", "value": 200},
-    {"timestamp": "2024-01-03T00:00:00Z", "value": 300}
-  ]
-}

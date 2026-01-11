@@ -107,8 +107,8 @@ impl TextBlock {
 pub struct ColumnDetector {
     /// Minimum gap between columns to consider a column break
     min_column_gap: f32,
-    /// Minimum column width to consider valid
-    min_column_width: f32,
+    // Minimum column width to consider valid
+    // min_column_width: f32, // Unused
 }
 
 impl Default for ColumnDetector {
@@ -122,15 +122,15 @@ impl ColumnDetector {
     pub fn new() -> Self {
         Self {
             min_column_gap: DEFAULT_MIN_COLUMN_GAP,
-            min_column_width: DEFAULT_MIN_COLUMN_WIDTH,
+            // min_column_width: DEFAULT_MIN_COLUMN_WIDTH,
         }
     }
 
     /// Create a column detector with custom gap and width thresholds.
-    pub fn with_thresholds(min_gap: f32, min_width: f32) -> Self {
+    pub fn with_thresholds(min_gap: f32, _min_width: f32) -> Self {
         Self {
             min_column_gap: min_gap,
-            min_column_width: min_width,
+            // min_column_width: _min_width,
         }
     }
 
@@ -235,7 +235,7 @@ impl ColumnDetector {
             if !col_x_positions.is_empty() {
                 let col_min_x = col_x_positions[0];
                 // Find max right edge of blocks in this column
-                let col_max_x = blocks.iter()
+                let _col_max_x = blocks.iter()
                     .filter(|b| col_x_positions.iter().any(|&x| (b.x - x).abs() < 1.0))
                     .map(|b| b.right())
                     .fold(col_min_x, f32::max);
@@ -251,16 +251,17 @@ impl ColumnDetector {
         // Add final column (after last gap)
         if start_idx < x_positions.len() {
             let col_x_positions = &x_positions[start_idx..];
-            let col_min_x = col_x_positions[0];
-            let col_max_x = blocks.iter()
+            let _col_min_x = col_x_positions[0];
+            let _col_max_x = blocks.iter()
                 .filter(|b| col_x_positions.iter().any(|&x| (b.x - x).abs() < 1.0))
                 .map(|b| b.right())
                 .fold(page_width, f32::max);
 
             // Use midpoint of last gap as left boundary
-            let last_gap_idx = gap_indices[gap_indices.len() - 1];
-            let gap_midpoint = (x_positions[last_gap_idx] + x_positions[last_gap_idx + 1]) / 2.0;
-            columns.push(ColumnBoundary::new(gap_midpoint, page_width));
+            if let Some(&last_gap_idx) = gap_indices.last() {
+                let gap_midpoint = (x_positions[last_gap_idx] + x_positions[last_gap_idx + 1]) / 2.0;
+                columns.push(ColumnBoundary::new(gap_midpoint, page_width));
+            }
         }
 
         // If no valid columns were found, return a single full-width column

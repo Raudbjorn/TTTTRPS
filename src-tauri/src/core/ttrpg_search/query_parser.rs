@@ -195,49 +195,61 @@ impl QueryParser {
 
         // Check damage types
         for damage in self.vocabulary.damage_types() {
-            if query_lower.contains(damage) && !seen.contains(*damage) {
-                seen.insert(*damage);
-                attrs.push(RequiredAttribute {
-                    category: "damage_type".to_string(),
-                    value: damage.to_string(),
-                    required: true,
-                });
+            let pattern = format!(r"\b{}\b", regex::escape(damage));
+            if let Ok(re) = Regex::new(&pattern) {
+                if re.is_match(&query_lower) && !seen.contains(*damage) {
+                    seen.insert(*damage);
+                    attrs.push(RequiredAttribute {
+                        category: "damage_type".to_string(),
+                        value: damage.to_string(),
+                        required: true,
+                    });
+                }
             }
         }
 
         // Check creature types
         for creature in self.vocabulary.creature_types() {
-            if query_lower.contains(creature) && !seen.contains(*creature) {
-                seen.insert(*creature);
-                attrs.push(RequiredAttribute {
-                    category: "creature_type".to_string(),
-                    value: creature.to_string(),
-                    required: true,
-                });
+            let pattern = format!(r"\b{}\b", regex::escape(creature));
+            if let Ok(re) = Regex::new(&pattern) {
+                if re.is_match(&query_lower) && !seen.contains(*creature) {
+                    seen.insert(*creature);
+                    attrs.push(RequiredAttribute {
+                        category: "creature_type".to_string(),
+                        value: creature.to_string(),
+                        required: true,
+                    });
+                }
             }
         }
 
         // Check conditions
         for condition in self.vocabulary.conditions() {
-            if query_lower.contains(condition) && !seen.contains(*condition) {
-                seen.insert(*condition);
-                attrs.push(RequiredAttribute {
-                    category: "condition".to_string(),
-                    value: condition.to_string(),
-                    required: true,
-                });
+            let pattern = format!(r"\b{}\b", regex::escape(condition));
+            if let Ok(re) = Regex::new(&pattern) {
+                if re.is_match(&query_lower) && !seen.contains(*condition) {
+                    seen.insert(*condition);
+                    attrs.push(RequiredAttribute {
+                        category: "condition".to_string(),
+                        value: condition.to_string(),
+                        required: true,
+                    });
+                }
             }
         }
 
         // Check sizes
         for size in self.vocabulary.sizes() {
-            if query_lower.contains(size) && !seen.contains(*size) {
-                seen.insert(*size);
-                attrs.push(RequiredAttribute {
-                    category: "size".to_string(),
-                    value: size.to_string(),
-                    required: true,
-                });
+            let pattern = format!(r"\b{}\b", regex::escape(size));
+            if let Ok(re) = Regex::new(&pattern) {
+                if re.is_match(&query_lower) && !seen.contains(*size) {
+                    seen.insert(*size);
+                    attrs.push(RequiredAttribute {
+                        category: "size".to_string(),
+                        value: size.to_string(),
+                        required: true,
+                    });
+                }
             }
         }
 

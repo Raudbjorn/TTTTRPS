@@ -316,8 +316,13 @@ impl StatBlockParser {
             let cr_value = if cr_str.contains('/') {
                 let parts: Vec<&str> = cr_str.split('/').collect();
                 if parts.len() == 2 {
-                    parts[0].parse::<f32>().unwrap_or(0.0) /
-                        parts[1].parse::<f32>().unwrap_or(1.0)
+                    let num = parts[0].parse::<f32>().unwrap_or(0.0);
+                    let denom = parts[1].parse::<f32>().unwrap_or(1.0);
+                    if denom.abs() < f32::EPSILON {
+                        0.0
+                    } else {
+                        num / denom
+                    }
                 } else {
                     0.0
                 }
