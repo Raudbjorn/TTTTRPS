@@ -660,6 +660,7 @@ impl MeilisearchPipeline {
         // Generate deterministic slug from filename
         let slug = generate_source_slug(path, title_override);
         let raw_index = raw_index_name(&slug);
+        let chunks_index = chunks_index_name(&slug);
 
         let source_name = path
             .file_name()
@@ -667,11 +668,28 @@ impl MeilisearchPipeline {
             .unwrap_or("unknown")
             .to_string();
 
-        log::info!("Extracting '{}' to raw index '{}'", source_name, raw_index);
+        log::info!(
+            "Two-phase ingestion: '{}' → raw='{}', chunks='{}'",
+            source_name, raw_index, chunks_index
+        );
 
-        // Ensure raw index exists with appropriate settings
+        // FAIL-FAST: Create both indexes BEFORE expensive extraction
+        // This ensures we have somewhere to persist results before doing OCR
+        log::info!("Creating raw index '{}' (if not exists)...", raw_index);
         search_client.ensure_index(&raw_index, Some("id")).await
-            .map_err(|e| SearchError::ConfigError(format!("Failed to create raw index: {}", e)))?;
+            .map_err(|e| SearchError::ConfigError(format!(
+                "Failed to create raw index '{}': {}. Aborting before extraction.",
+                raw_index, e
+            )))?;
+
+        log::info!("Creating chunks index '{}' (if not exists)...", chunks_index);
+        search_client.ensure_index(&chunks_index, Some("id")).await
+            .map_err(|e| SearchError::ConfigError(format!(
+                "Failed to create chunks index '{}': {}. Aborting before extraction.",
+                chunks_index, e
+            )))?;
+
+        log::info!("Indexes ready. Starting document extraction (this may take a while for OCR)...");
 
         // Extract content using kreuzberg
         let extractor = DocumentExtractor::with_ocr();
