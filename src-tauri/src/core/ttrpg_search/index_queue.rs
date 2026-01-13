@@ -127,21 +127,23 @@ impl IndexQueue {
     ///
     /// Only returns documents that are ready for retry.
     ///
-    /// # Performance Note
+    /// # Performance
     ///
-    /// Current implementation is O(N) where N is the queue size. For large queues
-    /// with many documents waiting for retry, this could become a bottleneck.
-    ///
-    /// Potential optimization: Use two data structures:
-    /// - A `VecDeque` for new/ready documents (O(1) dequeue from front)
-    /// - A `BinaryHeap` or sorted structure for documents with retry delays,
-    ///   ordered by next-retry-time for O(log N) insertion and O(1) peek
-    ///
-    /// For typical usage with <1000 documents, the current O(N) is acceptable.
+    /// Uses a fast-path O(1) check on the front of the queue (common case for new
+    /// documents) before falling back to O(N) scan for documents with retry delays.
+    /// For typical usage patterns, most dequeues complete in O(1).
     pub fn dequeue(&self) -> Option<PendingDocument> {
         let mut queue = self.queue.lock().unwrap();
 
-        // Find first document ready for retry (O(N) scan)
+        // Fast path: check front first (O(1)) - handles new documents
+        if let Some(front) = queue.front() {
+            if !front.exceeded_retries(self.max_retries) && front.ready_for_retry(self.retry_delay)
+            {
+                return queue.pop_front();
+            }
+        }
+
+        // Slow path: scan for ready document with expired retry delay (O(N))
         let pos = queue.iter().position(|doc| {
             !doc.exceeded_retries(self.max_retries) && doc.ready_for_retry(self.retry_delay)
         })?;

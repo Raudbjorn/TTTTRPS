@@ -1228,7 +1228,11 @@ pub struct TTRPGSearchDocument {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub level: Option<u32>,
 
-    /// Element type (stat_block, random_table, spell, etc.)
+    /// TTRPG element type (stat_block, random_table, spell, etc.)
+    ///
+    /// Note: This is distinct from `base.source_type` which is set to "ttrpg"
+    /// to identify content as TTRPG-related. This field provides the specific
+    /// element categorization for filtering and faceted search.
     #[serde(default)]
     pub element_type: String,
 
@@ -1274,8 +1278,8 @@ impl TTRPGSearchDocument {
             id: chunk.id.clone(),
             content: chunk.content.clone(),
             source: chunk.source_id.clone(),
-            // Use "ttrpg" as source_type to indicate this is TTRPG content
-            // element_type field provides the specific categorization (stat_block, spell, etc.)
+            // "ttrpg" identifies this as TTRPG content (vs generic documents)
+            // TTRPGSearchDocument.element_type provides specific categorization
             source_type: "ttrpg".to_string(),
             page_number: chunk.page_number,
             chunk_index: Some(chunk.chunk_index as u32),
