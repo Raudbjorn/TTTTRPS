@@ -1274,7 +1274,9 @@ impl TTRPGSearchDocument {
             id: chunk.id.clone(),
             content: chunk.content.clone(),
             source: chunk.source_id.clone(),
-            source_type: element_type.to_string(),
+            // Use "ttrpg" as source_type to indicate this is TTRPG content
+            // element_type field provides the specific categorization (stat_block, spell, etc.)
+            source_type: "ttrpg".to_string(),
             page_number: chunk.page_number,
             chunk_index: Some(chunk.chunk_index as u32),
             campaign_id: None,

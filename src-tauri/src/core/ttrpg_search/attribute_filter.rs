@@ -3,6 +3,7 @@
 //! Builds Meilisearch filter strings from QueryConstraints.
 
 use super::QueryConstraints;
+use crate::ingestion::ttrpg::{GameVocabulary, DnD5eVocabulary};
 
 // ============================================================================
 // Attribute Filter Builder
@@ -150,49 +151,40 @@ impl AttributeFilter {
         }
     }
 
-    /// Guess which field a value might belong to
+    /// Guess which field a value might belong to using GameVocabulary
+    ///
+    /// Uses the D&D 5e vocabulary by default but could be extended to support
+    /// other game systems by passing a vocabulary parameter.
     fn guess_field_for_value(value: &str) -> &'static str {
+        Self::guess_field_for_value_with_vocabulary(value, &DnD5eVocabulary)
+    }
+
+    /// Guess which field a value might belong to using a specific vocabulary
+    fn guess_field_for_value_with_vocabulary(value: &str, vocabulary: &dyn GameVocabulary) -> &'static str {
         let lower = value.to_lowercase();
 
-        // Damage types
-        let damage_types = [
-            "acid", "bludgeoning", "cold", "fire", "force", "lightning",
-            "necrotic", "piercing", "poison", "psychic", "radiant",
-            "slashing", "thunder",
-        ];
-        if damage_types.iter().any(|d| lower == *d) {
+        // Check damage types from vocabulary
+        if vocabulary.damage_types().iter().any(|d| lower == *d) {
             return "damage_types";
         }
 
-        // Creature types
-        let creature_types = [
-            "aberration", "beast", "celestial", "construct", "dragon",
-            "elemental", "fey", "fiend", "giant", "humanoid", "monstrosity",
-            "ooze", "plant", "undead",
-        ];
-        if creature_types.iter().any(|c| lower == *c) {
+        // Check creature types from vocabulary
+        if vocabulary.creature_types().iter().any(|c| lower == *c) {
             return "creature_types";
         }
 
-        // Conditions
-        let conditions = [
-            "blinded", "charmed", "deafened", "exhaustion", "frightened",
-            "grappled", "incapacitated", "invisible", "paralyzed", "petrified",
-            "poisoned", "prone", "restrained", "stunned", "unconscious",
-        ];
-        if conditions.iter().any(|c| lower == *c) {
+        // Check conditions from vocabulary
+        if vocabulary.conditions().iter().any(|c| lower == *c) {
             return "conditions";
         }
 
-        // Sizes
-        let sizes = ["tiny", "small", "medium", "large", "huge", "gargantuan"];
-        if sizes.iter().any(|s| lower == *s) {
+        // Check sizes from vocabulary
+        if vocabulary.sizes().iter().any(|s| lower == *s) {
             return "sizes";
         }
 
-        // Rarities
-        let rarities = ["common", "uncommon", "rare", "very rare", "legendary", "artifact"];
-        if rarities.iter().any(|r| lower == *r) {
+        // Check rarities from vocabulary
+        if vocabulary.rarities().iter().any(|r| lower == *r) {
             return "rarities";
         }
 

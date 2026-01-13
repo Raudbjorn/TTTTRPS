@@ -229,10 +229,10 @@ impl ResultRanker {
             .filter(|qa| doc_attrs.iter().any(|da| da.to_lowercase() == qa.to_lowercase()))
             .count();
 
-        let attribute_match_bonus = if !query_attrs.is_empty() {
-            (matching_count as f32 / query_attrs.len() as f32) * self.config.attribute_match_bonus
-        } else {
-            0.0
+        // Calculate attribute match ratio, defaulting to 0 if no query attributes
+        let attribute_match_bonus = match query_attrs.len() {
+            0 => 0.0,
+            n => (matching_count as f32 / n as f32) * self.config.attribute_match_bonus,
         };
 
         // Antonym penalty
