@@ -91,6 +91,8 @@ pub struct AppState {
     pub location_manager: crate::core::location_manager::LocationManager,
     // Claude Desktop CDP bridge
     pub claude_desktop_manager: Arc<AsyncRwLock<ClaudeDesktopManager>>,
+    // Document extraction settings
+    pub extraction_settings: AsyncRwLock<crate::ingestion::ExtractionSettings>,
 }
 
 // Helper init for default state components
@@ -949,6 +951,84 @@ pub async fn ingest_document(
         "Ingested '{}': {} chunks into '{}' index",
         result.source, result.stored_chunks, result.index_used
     ))
+}
+
+// ============================================================================
+// Two-Phase Ingestion (Per-Document Indexes)
+// ============================================================================
+
+/// Result of two-phase document ingestion
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TwoPhaseIngestResult {
+    /// Generated slug for this source (used as index name base)
+    pub slug: String,
+    /// Human-readable source name
+    pub source_name: String,
+    /// Index containing raw pages
+    pub raw_index: String,
+    /// Index containing semantic chunks
+    pub chunks_index: String,
+    /// Number of pages extracted
+    pub page_count: usize,
+    /// Number of semantic chunks created
+    pub chunk_count: usize,
+    /// Total characters extracted
+    pub total_chars: usize,
+    /// Detected game system (if any)
+    pub game_system: Option<String>,
+    /// Detected content category
+    pub content_category: Option<String>,
+}
+
+/// Ingest a document using two-phase pipeline with per-document indexes.
+///
+/// Phase 1: Extract pages to `<slug>-raw` index (one doc per page)
+/// Phase 2: Create semantic chunks in `<slug>` index with provenance tracking
+///
+/// This enables page number attribution in search results by tracking
+/// which raw pages each chunk was derived from.
+#[tauri::command]
+pub async fn ingest_document_two_phase(
+    path: String,
+    title_override: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<TwoPhaseIngestResult, String> {
+    use crate::core::meilisearch_pipeline::MeilisearchPipeline;
+
+    let path_buf = std::path::Path::new(&path);
+    if !path_buf.exists() {
+        return Err(format!("File not found: {}", path));
+    }
+
+    let pipeline = MeilisearchPipeline::with_defaults();
+
+    let (extraction, chunking) = pipeline
+        .ingest_two_phase(
+            &state.search_client,
+            path_buf,
+            title_override.as_deref(),
+        )
+        .await
+        .map_err(|e| format!("Two-phase ingestion failed: {}", e))?;
+
+    log::info!(
+        "Two-phase ingestion complete: {} pages -> {} chunks in '{}'",
+        extraction.page_count,
+        chunking.chunk_count,
+        chunking.chunks_index
+    );
+
+    Ok(TwoPhaseIngestResult {
+        slug: extraction.slug,
+        source_name: extraction.source_name,
+        raw_index: extraction.raw_index,
+        chunks_index: chunking.chunks_index,
+        page_count: extraction.page_count,
+        chunk_count: chunking.chunk_count,
+        total_chars: extraction.total_chars,
+        game_system: extraction.ttrpg_metadata.game_system,
+        content_category: extraction.ttrpg_metadata.content_category,
+    })
 }
 
 // ============================================================================
@@ -2551,6 +2631,133 @@ pub struct OllamaEmbeddingModel {
     pub name: String,
     pub size: String,
     pub dimensions: u32,
+}
+
+/// Local embedding model info (HuggingFace/ONNX - runs locally via Meilisearch)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalEmbeddingModel {
+    pub id: String,
+    pub name: String,
+    pub dimensions: u32,
+    pub description: String,
+}
+
+/// List available local embedding models (HuggingFace/ONNX - no external service required)
+///
+/// These models run locally within Meilisearch using the HuggingFace embedder.
+/// No GPU required - uses ONNX runtime for CPU inference.
+#[tauri::command]
+pub async fn list_local_embedding_models() -> Result<Vec<LocalEmbeddingModel>, String> {
+    // Curated list of recommended HuggingFace embedding models
+    // These are known to work well with Meilisearch and have reasonable performance
+    Ok(vec![
+        LocalEmbeddingModel {
+            id: "BAAI/bge-base-en-v1.5".to_string(),
+            name: "BGE Base (English)".to_string(),
+            dimensions: 768,
+            description: "Balanced performance and quality. Good for general use.".to_string(),
+        },
+        LocalEmbeddingModel {
+            id: "BAAI/bge-small-en-v1.5".to_string(),
+            name: "BGE Small (English)".to_string(),
+            dimensions: 384,
+            description: "Faster, smaller. Good for limited resources.".to_string(),
+        },
+        LocalEmbeddingModel {
+            id: "BAAI/bge-large-en-v1.5".to_string(),
+            name: "BGE Large (English)".to_string(),
+            dimensions: 1024,
+            description: "Highest quality. Slower, needs more memory.".to_string(),
+        },
+        LocalEmbeddingModel {
+            id: "sentence-transformers/all-MiniLM-L6-v2".to_string(),
+            name: "MiniLM-L6 (Multilingual)".to_string(),
+            dimensions: 384,
+            description: "Fast and small. Supports 100+ languages.".to_string(),
+        },
+        LocalEmbeddingModel {
+            id: "sentence-transformers/all-mpnet-base-v2".to_string(),
+            name: "MPNet Base".to_string(),
+            dimensions: 768,
+            description: "High quality general-purpose embeddings.".to_string(),
+        },
+        LocalEmbeddingModel {
+            id: "thenlper/gte-base".to_string(),
+            name: "GTE Base".to_string(),
+            dimensions: 768,
+            description: "Excellent retrieval performance.".to_string(),
+        },
+        LocalEmbeddingModel {
+            id: "thenlper/gte-small".to_string(),
+            name: "GTE Small".to_string(),
+            dimensions: 384,
+            description: "Compact with good retrieval quality.".to_string(),
+        },
+    ])
+}
+
+/// Setup local embeddings on all content indexes using HuggingFace embedder
+///
+/// This configures Meilisearch to use local ONNX models for AI-powered semantic search.
+/// Models are downloaded and cached automatically by Meilisearch.
+/// No external service (like Ollama) is required.
+#[tauri::command]
+pub async fn setup_local_embeddings(
+    model: String,
+    state: State<'_, AppState>,
+) -> Result<SetupEmbeddingsResult, String> {
+    use crate::core::search_client::EmbedderConfig;
+
+    // Get dimensions for the model
+    let dimensions = huggingface_embedding_dimensions(&model);
+
+    // Configure HuggingFace embedder on all content indexes
+    let indexes = vec!["documents", "chat_history", "rules", "campaigns"];
+    let mut configured = Vec::new();
+
+    for index_name in indexes {
+        let config = EmbedderConfig::HuggingFace {
+            model: model.clone(),
+        };
+
+        match state.search_client
+            .configure_embedder(index_name, "default", &config)
+            .await
+        {
+            Ok(_) => {
+                configured.push(index_name.to_string());
+                log::info!("Configured HuggingFace embedder on index '{}'", index_name);
+            }
+            Err(e) => {
+                log::warn!("Failed to configure embedder on '{}': {}", index_name, e);
+            }
+        }
+    }
+
+    Ok(SetupEmbeddingsResult {
+        indexes_configured: configured,
+        model: model.clone(),
+        dimensions,
+        host: "local".to_string(),
+    })
+}
+
+/// Get dimensions for HuggingFace embedding models
+fn huggingface_embedding_dimensions(model: &str) -> u32 {
+    match model.to_lowercase().as_str() {
+        m if m.contains("bge-small") => 384,
+        m if m.contains("bge-base") => 768,
+        m if m.contains("bge-large") => 1024,
+        m if m.contains("minilm") => 384,
+        m if m.contains("mpnet") => 768,
+        m if m.contains("gte-small") => 384,
+        m if m.contains("gte-base") => 768,
+        m if m.contains("gte-large") => 1024,
+        m if m.contains("e5-small") => 384,
+        m if m.contains("e5-base") => 768,
+        m if m.contains("e5-large") => 1024,
+        _ => 768, // Default assumption
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -6908,4 +7115,133 @@ pub async fn list_active_ttrpg_ingestion_jobs(
     db.list_active_ttrpg_ingestion_jobs()
         .await
         .map_err(|e| e.to_string())
+}
+
+// ============================================================================
+// Extraction Settings Commands
+// ============================================================================
+
+use crate::ingestion::{ExtractionSettings, TokenReductionLevel, OcrBackend, SupportedFormats};
+
+/// Get current extraction settings
+#[tauri::command]
+pub async fn get_extraction_settings(
+    state: tauri::State<'_, AppState>,
+) -> Result<ExtractionSettings, String> {
+    // Try to load from state or return defaults
+    let settings_guard = state.extraction_settings.read().await;
+    Ok(settings_guard.clone())
+}
+
+/// Save extraction settings
+#[tauri::command]
+pub async fn save_extraction_settings(
+    settings: ExtractionSettings,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    // Validate settings
+    settings.validate()?;
+
+    // Save to state
+    let mut settings_guard = state.extraction_settings.write().await;
+    *settings_guard = settings;
+
+    log::info!("Extraction settings saved");
+    Ok(())
+}
+
+/// Get supported file formats for extraction
+#[tauri::command]
+pub fn get_supported_formats() -> SupportedFormats {
+    SupportedFormats::get_all()
+}
+
+/// Get extraction settings presets
+#[tauri::command]
+pub fn get_extraction_presets() -> Vec<ExtractionPreset> {
+    vec![
+        ExtractionPreset {
+            name: "Default".to_string(),
+            description: "Balanced settings for most documents".to_string(),
+            settings: ExtractionSettings::default(),
+        },
+        ExtractionPreset {
+            name: "TTRPG Rulebooks".to_string(),
+            description: "Optimized for tabletop RPG rulebooks and sourcebooks".to_string(),
+            settings: ExtractionSettings::for_rulebooks(),
+        },
+        ExtractionPreset {
+            name: "Scanned Documents".to_string(),
+            description: "For scanned PDFs requiring OCR processing".to_string(),
+            settings: ExtractionSettings::for_scanned_documents(),
+        },
+        ExtractionPreset {
+            name: "Quick Extract".to_string(),
+            description: "Fast extraction with minimal processing".to_string(),
+            settings: ExtractionSettings::quick(),
+        },
+    ]
+}
+
+/// Extraction settings preset
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ExtractionPreset {
+    pub name: String,
+    pub description: String,
+    pub settings: ExtractionSettings,
+}
+
+/// Check if OCR is available on the system
+#[tauri::command]
+pub async fn check_ocr_availability() -> OcrAvailability {
+    use tokio::process::Command;
+
+    let tesseract_available = Command::new("tesseract")
+        .arg("--version")
+        .output()
+        .await
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    let pdftoppm_available = Command::new("pdftoppm")
+        .arg("-v")
+        .output()
+        .await
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    // Get installed tesseract languages
+    let languages = if tesseract_available {
+        Command::new("tesseract")
+            .arg("--list-langs")
+            .output()
+            .await
+            .ok()
+            .map(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .lines()
+                    .skip(1) // Skip header line
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+
+    OcrAvailability {
+        tesseract_installed: tesseract_available,
+        pdftoppm_installed: pdftoppm_available,
+        available_languages: languages,
+        external_ocr_ready: tesseract_available && pdftoppm_available,
+    }
+}
+
+/// OCR availability status
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct OcrAvailability {
+    pub tesseract_installed: bool,
+    pub pdftoppm_installed: bool,
+    pub available_languages: Vec<String>,
+    pub external_ocr_ready: bool,
 }
