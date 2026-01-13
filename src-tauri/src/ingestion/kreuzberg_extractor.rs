@@ -121,6 +121,15 @@ impl DocumentExtractor {
         Self::with_settings(settings)
     }
 
+    /// Create an extractor for text checking only (no OCR fallback).
+    /// Use this to quickly check if a PDF has extractable text.
+    pub fn text_check_only() -> Self {
+        let mut settings = ExtractionSettings::default();
+        settings.ocr_enabled = false;
+        settings.ocr_backend = OcrBackend::Disabled;
+        Self::with_settings(settings)
+    }
+
     /// Create an extractor optimized for TTRPG rulebooks
     pub fn for_rulebooks() -> Self {
         Self::with_settings(ExtractionSettings::for_rulebooks())
@@ -365,7 +374,332 @@ impl DocumentExtractor {
         })
     }
 
+    /// Incremental OCR extraction with per-page callback for resumable ingestion.
+    ///
+    /// This method extracts pages one at a time, calling the provided callback
+    /// after each page is OCR'd. This allows the caller to persist each page
+    /// immediately, enabling resume from the last successfully persisted page.
+    ///
+    /// # Arguments
+    /// * `path` - Path to the PDF file
+    /// * `start_page` - 1-indexed page number to start from (for resuming)
+    /// * `total_pages` - Total expected pages (0 to auto-detect)
+    /// * `on_page` - Callback called after each page: (page_number, content) -> Result
+    ///
+    /// # Returns
+    /// Number of pages successfully processed
+    pub async fn extract_pages_incrementally<F>(
+        &self,
+        path: &Path,
+        start_page: usize,
+        total_pages: usize,
+        mut on_page: F,
+    ) -> Result<usize>
+    where
+        F: FnMut(usize, String) -> std::result::Result<(), String> + Send,
+    {
+        let temp_dir = tempfile::Builder::new()
+            .prefix("ocr_incr_")
+            .tempdir()
+            .map_err(ExtractionError::IoError)?;
 
+        let temp_path = temp_dir.path();
+
+        // If total_pages is 0, we need to get page count first
+        let actual_total = if total_pages == 0 {
+            self.get_pdf_page_count(path).await.unwrap_or(1)
+        } else {
+            total_pages
+        };
+
+        if start_page > actual_total {
+            log::info!("Start page {} > total pages {}, nothing to extract", start_page, actual_total);
+            return Ok(0);
+        }
+
+        log::info!(
+            "Incremental OCR: pages {}-{} of {} from {:?}",
+            start_page, actual_total, actual_total, path.file_name().unwrap_or_default()
+        );
+
+        let mut pages_processed = 0;
+
+        // Process pages in small batches to balance efficiency vs. resumability
+        // Batch size of 10 pages means we lose at most ~10 pages of work on interrupt
+        const BATCH_SIZE: usize = 10;
+
+        let mut current_page = start_page;
+        while current_page <= actual_total {
+            let batch_end = (current_page + BATCH_SIZE - 1).min(actual_total);
+
+            log::info!("OCR batch: pages {}-{}", current_page, batch_end);
+
+            // Convert this batch of pages to images
+            let prefix = format!("batch_{}", current_page);
+            let status = Command::new("pdftoppm")
+                .arg("-png")
+                .arg("-r")
+                .arg("300")
+                .arg("-f")
+                .arg(current_page.to_string())
+                .arg("-l")
+                .arg(batch_end.to_string())
+                .arg(path)
+                .arg(temp_path.join(&prefix))
+                .status()
+                .await
+                .map_err(ExtractionError::IoError)?;
+
+            if !status.success() {
+                log::error!("pdftoppm failed for pages {}-{}", current_page, batch_end);
+                return Err(ExtractionError::KreuzbergError(
+                    format!("pdftoppm failed for pages {}-{}", current_page, batch_end)
+                ));
+            }
+
+            // Find and sort the generated images
+            let mut image_files = Vec::new();
+            let mut read_dir = tokio::fs::read_dir(temp_path).await?;
+
+            while let Some(entry) = read_dir.next_entry().await? {
+                let img_path = entry.path();
+                if img_path.extension().and_then(|e| e.to_str()) == Some("png") {
+                    if let Some(stem) = img_path.file_stem().and_then(|s| s.to_str()) {
+                        // Match our batch prefix
+                        if stem.starts_with(&prefix) {
+                            if let Some(idx) = stem.rfind('-') {
+                                if let Ok(num) = stem[idx+1..].parse::<usize>() {
+                                    image_files.push((num, img_path));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            image_files.sort_by_key(|k| k.0);
+
+            // OCR each image and call the callback
+            for (page_num, img_path) in image_files {
+                let output = Command::new("tesseract")
+                    .arg(&img_path)
+                    .arg("stdout")
+                    .arg("-l")
+                    .arg(&self.settings.ocr_language)
+                    .output()
+                    .await
+                    .map_err(ExtractionError::IoError)?;
+
+                if !output.status.success() {
+                    log::warn!("Tesseract failed for page {}, skipping", page_num);
+                    continue;
+                }
+
+                let page_text = String::from_utf8_lossy(&output.stdout).to_string();
+                let cleaned_text = page_text.replace('\x0c', ""); // Remove form feed
+
+                // Call the callback to persist this page
+                on_page(page_num, cleaned_text)
+                    .map_err(|e| ExtractionError::KreuzbergError(
+                        format!("Failed to persist page {}: {}", page_num, e)
+                    ))?;
+
+                pages_processed += 1;
+
+                if page_num % 10 == 0 {
+                    log::info!("OCR progress: {}/{} pages", page_num, actual_total);
+                }
+
+                // Clean up the image file to save disk space
+                let _ = tokio::fs::remove_file(&img_path).await;
+            }
+
+            current_page = batch_end + 1;
+        }
+
+        log::info!("Incremental OCR complete: {} pages processed", pages_processed);
+        Ok(pages_processed)
+    }
+
+    /// Extract a single wave of pages concurrently (for resumable extraction).
+    ///
+    /// Processes `concurrency` batches in parallel, returns sorted pages.
+    /// Caller should write to storage, then call again with updated start_page.
+    ///
+    /// # Returns
+    /// (pages_extracted, next_start_page) - pages sorted by number, and where to resume
+    pub async fn extract_one_wave(
+        &self,
+        path: &Path,
+        start_page: usize,
+        total_pages: usize,
+        concurrency: usize,
+    ) -> Result<(Vec<(usize, String)>, usize)> {
+        const BATCH_SIZE: usize = 10;
+        let concurrency = concurrency.max(1).min(8);
+
+        if start_page > total_pages {
+            return Ok((Vec::new(), start_page));
+        }
+
+        let mut tasks = Vec::new();
+
+        // Launch concurrent batch tasks for this wave
+        for batch_idx in 0..concurrency {
+            let batch_start = start_page + (batch_idx * BATCH_SIZE);
+            if batch_start > total_pages {
+                break;
+            }
+            let batch_end = (batch_start + BATCH_SIZE - 1).min(total_pages);
+
+            let path_clone = path.to_path_buf();
+            let ocr_language = self.settings.ocr_language.clone();
+
+            let task = tokio::spawn(async move {
+                Self::process_batch_static(&path_clone, batch_start, batch_end, &ocr_language).await
+            });
+
+            tasks.push((batch_start, batch_end, task));
+        }
+
+        if tasks.is_empty() {
+            return Ok((Vec::new(), start_page));
+        }
+
+        let batch_count = tasks.len();
+        log::info!("OCR wave: {} concurrent batches starting at page {}", batch_count, start_page);
+
+        // Collect results
+        let mut wave_pages: Vec<(usize, String)> = Vec::new();
+
+        for (batch_start, batch_end, task) in tasks {
+            match task.await {
+                Ok(Ok(pages)) => {
+                    wave_pages.extend(pages);
+                }
+                Ok(Err(e)) => {
+                    log::error!("Batch {}-{} failed: {}", batch_start, batch_end, e);
+                }
+                Err(e) => {
+                    log::error!("Batch {}-{} task panicked: {}", batch_start, batch_end, e);
+                }
+            }
+        }
+
+        // Sort by page number
+        wave_pages.sort_by_key(|(num, _)| *num);
+
+        let next_start = start_page + (batch_count * BATCH_SIZE);
+        Ok((wave_pages, next_start))
+    }
+
+    /// Static helper to process a single batch (used by concurrent extraction)
+    async fn process_batch_static(
+        path: &Path,
+        batch_start: usize,
+        batch_end: usize,
+        ocr_language: &str,
+    ) -> Result<Vec<(usize, String)>> {
+        let temp_dir = tempfile::Builder::new()
+            .prefix(&format!("ocr_batch_{}_", batch_start))
+            .tempdir()
+            .map_err(ExtractionError::IoError)?;
+
+        let temp_path = temp_dir.path();
+        let prefix = format!("p{}", batch_start);
+
+        // Convert batch to images
+        let status = Command::new("pdftoppm")
+            .arg("-png")
+            .arg("-r")
+            .arg("300")
+            .arg("-f")
+            .arg(batch_start.to_string())
+            .arg("-l")
+            .arg(batch_end.to_string())
+            .arg(path)
+            .arg(temp_path.join(&prefix))
+            .status()
+            .await
+            .map_err(ExtractionError::IoError)?;
+
+        if !status.success() {
+            return Err(ExtractionError::KreuzbergError(
+                format!("pdftoppm failed for pages {}-{}", batch_start, batch_end)
+            ));
+        }
+
+        // Find and sort images
+        let mut image_files = Vec::new();
+        let mut read_dir = tokio::fs::read_dir(temp_path).await?;
+
+        while let Some(entry) = read_dir.next_entry().await? {
+            let img_path = entry.path();
+            if img_path.extension().and_then(|e| e.to_str()) == Some("png") {
+                if let Some(stem) = img_path.file_stem().and_then(|s| s.to_str()) {
+                    if stem.starts_with(&prefix) {
+                        if let Some(idx) = stem.rfind('-') {
+                            if let Ok(num) = stem[idx+1..].parse::<usize>() {
+                                image_files.push((num, img_path));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        image_files.sort_by_key(|k| k.0);
+
+        // OCR each image
+        let mut results = Vec::new();
+        for (page_num, img_path) in image_files {
+            let output = Command::new("tesseract")
+                .arg(&img_path)
+                .arg("stdout")
+                .arg("-l")
+                .arg(ocr_language)
+                .output()
+                .await
+                .map_err(ExtractionError::IoError)?;
+
+            if output.status.success() {
+                let page_text = String::from_utf8_lossy(&output.stdout).to_string();
+                let cleaned_text = page_text.replace('\x0c', "");
+                results.push((page_num, cleaned_text));
+            } else {
+                log::warn!("Tesseract failed for page {}", page_num);
+            }
+        }
+
+        // temp_dir is cleaned up automatically when dropped
+        Ok(results)
+    }
+
+    /// Get PDF page count using pdfinfo
+    async fn get_pdf_page_count(&self, path: &Path) -> Result<usize> {
+        let output = Command::new("pdfinfo")
+            .arg(path)
+            .output()
+            .await
+            .map_err(ExtractionError::IoError)?;
+
+        if !output.status.success() {
+            return Err(ExtractionError::KreuzbergError("pdfinfo failed".to_string()));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for line in stdout.lines() {
+            if line.starts_with("Pages:") {
+                if let Some(count_str) = line.split_whitespace().nth(1) {
+                    if let Ok(count) = count_str.parse::<usize>() {
+                        return Ok(count);
+                    }
+                }
+            }
+        }
+
+        Err(ExtractionError::KreuzbergError("Could not parse page count from pdfinfo".to_string()))
+    }
 
     /// Extract content from bytes with a specified MIME type (async)
     pub async fn extract_bytes<F>(&self, bytes: &[u8], mime_type: &str, _progress_callback: Option<F>) -> Result<ExtractedContent>

@@ -9251,6 +9251,7 @@ dependencies = [
  "log",
  "meilisearch-sdk",
  "mockall",
+ "num_cpus",
  "once_cell",
  "pbkdf2",
  "proptest",

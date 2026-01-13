@@ -1080,6 +1080,50 @@ Type: {{ doc.chunk_type | default: "text" }}
         Ok(())
     }
 
+    /// Configure a raw document index for the two-phase ingestion pipeline.
+    /// Raw indexes store page-level documents and need sorting by page_number.
+    pub async fn ensure_raw_index(&self, index_name: &str) -> Result<Index> {
+        // Create index if it doesn't exist
+        let index = self.ensure_index(index_name, Some("id")).await?;
+
+        // Configure settings for raw document indexes
+        let settings = Settings::new()
+            .with_searchable_attributes(["raw_content", "source_slug"])
+            .with_sortable_attributes(["page_number"]);
+
+        let task = index.set_settings(&settings).await?;
+        task.wait_for_completion(
+            &self.client,
+            Some(std::time::Duration::from_millis(100)),
+            Some(std::time::Duration::from_secs(30)),
+        ).await?;
+
+        log::info!("Configured raw index '{}'", index_name);
+        Ok(index)
+    }
+
+    /// Configure a chunks index for the two-phase ingestion pipeline.
+    /// Chunks indexes store semantic chunks with TTRPG metadata.
+    pub async fn ensure_chunks_index(&self, index_name: &str) -> Result<Index> {
+        // Create index if it doesn't exist
+        let index = self.ensure_index(index_name, Some("id")).await?;
+
+        // Configure settings for chunked document indexes
+        let settings = Settings::new()
+            .with_searchable_attributes(["content", "source_slug", "book_title", "game_system"])
+            .with_sortable_attributes(["page_start", "chunk_index"]);
+
+        let task = index.set_settings(&settings).await?;
+        task.wait_for_completion(
+            &self.client,
+            Some(std::time::Duration::from_millis(100)),
+            Some(std::time::Duration::from_secs(30)),
+        ).await?;
+
+        log::info!("Configured chunks index '{}'", index_name);
+        Ok(index)
+    }
+
     /// Add TTRPG documents with game-specific metadata
     pub async fn add_ttrpg_documents(
         &self,

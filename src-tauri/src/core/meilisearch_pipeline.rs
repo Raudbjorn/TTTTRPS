@@ -4,7 +4,7 @@
 //! Uses kreuzberg for fast document extraction with OCR fallback.
 //! Includes TTRPG-specific metadata extraction for semantic search.
 
-use crate::core::search_client::{SearchClient, SearchDocument, SearchError};
+use crate::core::search_client::{SearchClient, SearchDocument, SearchError, LibraryDocumentMetadata};
 use crate::ingestion::kreuzberg_extractor::DocumentExtractor;
 use crate::ingestion::ttrpg::game_detector::{detect_game_system_with_confidence, GameSystem};
 use crate::ingestion::ttrpg::{detect_mechanic_type, extract_semantic_keywords};
@@ -644,6 +644,10 @@ impl MeilisearchPipeline {
     /// This creates a per-document index with one document per page, preserving
     /// the original page structure for provenance tracking.
     ///
+    /// **Incremental/Resumable**: For OCR-based extraction, pages are written to
+    /// Meilisearch as they are processed. If interrupted, the next run will
+    /// resume from the last successfully persisted page.
+    ///
     /// # Arguments
     /// * `search_client` - Meilisearch client for indexing
     /// * `path` - Path to the document file
@@ -675,29 +679,86 @@ impl MeilisearchPipeline {
 
         // FAIL-FAST: Create both indexes BEFORE expensive extraction
         // This ensures we have somewhere to persist results before doing OCR
+        // Also configures sortable attributes needed for incremental extraction
         log::info!("Creating raw index '{}' (if not exists)...", raw_index);
-        search_client.ensure_index(&raw_index, Some("id")).await
+        search_client.ensure_raw_index(&raw_index).await
             .map_err(|e| SearchError::ConfigError(format!(
                 "Failed to create raw index '{}': {}. Aborting before extraction.",
                 raw_index, e
             )))?;
 
         log::info!("Creating chunks index '{}' (if not exists)...", chunks_index);
-        search_client.ensure_index(&chunks_index, Some("id")).await
+        search_client.ensure_chunks_index(&chunks_index).await
             .map_err(|e| SearchError::ConfigError(format!(
                 "Failed to create chunks index '{}': {}. Aborting before extraction.",
                 chunks_index, e
             )))?;
 
-        log::info!("Indexes ready. Starting document extraction (this may take a while for OCR)...");
+        log::info!("Indexes ready. Starting document extraction...");
 
-        // Extract content using kreuzberg
-        let extractor = DocumentExtractor::with_ocr();
+        // Determine source type from file extension
+        let source_type = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.to_lowercase())
+            .unwrap_or_else(|| "unknown".to_string());
+
+        // Write initial library_metadata entry with status="processing"
+        // Uses slug as ID for deterministic upsert behavior
+        let initial_metadata = LibraryDocumentMetadata {
+            id: slug.clone(),
+            name: source_name.clone(),
+            source_type: source_type.clone(),
+            file_path: Some(path.to_string_lossy().to_string()),
+            page_count: 0,
+            chunk_count: 0,
+            character_count: 0,
+            content_index: chunks_index.clone(),
+            status: "processing".to_string(),
+            error_message: None,
+            ingested_at: Utc::now().to_rfc3339(),
+        };
+
+        if let Err(e) = search_client.save_library_document(&initial_metadata).await {
+            log::warn!("Failed to create initial library_metadata entry for '{}': {}", slug, e);
+            // Continue anyway - this is not fatal
+        } else {
+            log::info!("Created library_metadata entry '{}' with status=processing", slug);
+        }
+
+        // First, try fast extraction with kreuzberg WITHOUT OCR (to check text content)
+        // Using text_check_only() to avoid triggering the expensive OCR fallback
+        let extractor = DocumentExtractor::text_check_only();
         let cb: Option<fn(f32, &str)> = None;
         let extracted = extractor.extract(path, cb)
             .await
             .map_err(|e| SearchError::ConfigError(format!("Document extraction failed: {}", e)))?;
 
+        // Check if we got meaningful text (OCR threshold is typically 5000 chars)
+        let is_pdf = extracted.mime_type == "application/pdf";
+        let low_text = extracted.char_count < 5000;
+        let needs_ocr = is_pdf && low_text;
+
+        if needs_ocr {
+            // Use incremental OCR extraction with per-page persistence
+            // This writes pages to Meilisearch as they're OCR'd, enabling resumability
+            log::info!(
+                "Low text ({} chars) detected - using incremental OCR for '{}'",
+                extracted.char_count, source_name
+            );
+
+            return self.extract_to_raw_incremental(
+                search_client,
+                path,
+                &slug,
+                &raw_index,
+                &chunks_index,
+                &source_name,
+                &source_type,
+            ).await;
+        }
+
+        // Fast path: text extracted successfully, store all pages at once
         let total_chars = extracted.char_count;
         let mut page_count = 0;
         let mut raw_documents = Vec::new();
@@ -750,6 +811,27 @@ impl MeilisearchPipeline {
 
         log::info!("Stored {} raw pages in '{}'", page_count, raw_index);
 
+        // Update library_metadata with final stats and status="ready"
+        let final_metadata = LibraryDocumentMetadata {
+            id: slug.clone(),
+            name: source_name.clone(),
+            source_type,
+            file_path: Some(path.to_string_lossy().to_string()),
+            page_count: page_count as u32,
+            chunk_count: 0, // Will be updated after chunking phase
+            character_count: total_chars as u64,
+            content_index: chunks_index,
+            status: "ready".to_string(),
+            error_message: None,
+            ingested_at: Utc::now().to_rfc3339(),
+        };
+
+        if let Err(e) = search_client.save_library_document(&final_metadata).await {
+            log::warn!("Failed to update library_metadata for '{}': {}", slug, e);
+        } else {
+            log::info!("Updated library_metadata '{}' with status=ready", slug);
+        }
+
         Ok(ExtractionResult {
             slug,
             source_name,
@@ -758,6 +840,270 @@ impl MeilisearchPipeline {
             total_chars,
             ttrpg_metadata,
         })
+    }
+
+    /// Incremental OCR extraction with per-page persistence for resumability.
+    ///
+    /// This method:
+    /// 1. Queries the raw index for already-extracted pages
+    /// 2. Resumes from the last page if partially complete
+    /// 3. Writes each page to Meilisearch immediately after OCR
+    async fn extract_to_raw_incremental(
+        &self,
+        search_client: &SearchClient,
+        path: &Path,
+        slug: &str,
+        raw_index: &str,
+        chunks_index: &str,
+        source_name: &str,
+        source_type: &str,
+    ) -> Result<ExtractionResult, SearchError> {
+        // Query existing pages to find where to resume
+        let existing_page_count = self.get_highest_page_number(search_client, raw_index).await;
+        let start_page = existing_page_count + 1;
+
+        log::info!(
+            "Incremental extraction: {} existing pages, starting from page {}",
+            existing_page_count, start_page
+        );
+
+        // Get total page count
+        let extractor = DocumentExtractor::with_ocr();
+        let total_pages = extractor.settings().get_pdf_page_count_sync(path).unwrap_or(0);
+
+        if total_pages == 0 {
+            return Err(SearchError::ConfigError(
+                "Could not determine PDF page count".to_string()
+            ));
+        }
+
+        if start_page > total_pages {
+            log::info!("All {} pages already extracted, skipping OCR", total_pages);
+
+            // Still need to return metadata - fetch sample from existing pages
+            let content_sample = self.get_content_sample(search_client, raw_index).await;
+            let ttrpg_metadata = TTRPGMetadata::extract(path, &content_sample, "document");
+
+            // Update library_metadata with status="ready" (already complete)
+            let final_metadata = LibraryDocumentMetadata {
+                id: slug.to_string(),
+                name: source_name.to_string(),
+                source_type: source_type.to_string(),
+                file_path: Some(path.to_string_lossy().to_string()),
+                page_count: total_pages as u32,
+                chunk_count: 0,
+                character_count: 0,
+                content_index: chunks_index.to_string(),
+                status: "ready".to_string(),
+                error_message: None,
+                ingested_at: Utc::now().to_rfc3339(),
+            };
+
+            if let Err(e) = search_client.save_library_document(&final_metadata).await {
+                log::warn!("Failed to update library_metadata for '{}': {}", slug, e);
+            }
+
+            return Ok(ExtractionResult {
+                slug: slug.to_string(),
+                source_name: source_name.to_string(),
+                raw_index: raw_index.to_string(),
+                page_count: total_pages,
+                total_chars: 0, // We don't recalculate for resumed extractions
+                ttrpg_metadata,
+            });
+        }
+
+        log::info!(
+            "OCR extraction: pages {}-{} of {} for '{}'",
+            start_page, total_pages, total_pages, source_name
+        );
+
+        // Auto-detect concurrency based on physical CPU cores
+        // Override with TTRPG_OCR_CONCURRENCY env var if needed
+        let concurrency = std::env::var("TTRPG_OCR_CONCURRENCY")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or_else(|| {
+                // Default: physical_cores / 2, clamped to 2-8
+                let physical = num_cpus::get_physical();
+                (physical / 2).max(2).min(8)
+            });
+
+        log::info!(
+            "OCR concurrency: {} (physical cores: {}, set TTRPG_OCR_CONCURRENCY to override)",
+            concurrency, num_cpus::get_physical()
+        );
+
+        let mut total_chars_extracted = 0usize;
+        let mut pages_written = 0usize;
+        let mut current_page = start_page;
+        let index = search_client.get_client().index(raw_index);
+
+        // Process wave by wave with immediate persistence
+        while current_page <= total_pages {
+            let (wave_pages, next_page) = extractor.extract_one_wave(
+                path,
+                current_page,
+                total_pages,
+                concurrency,
+            ).await.map_err(|e| SearchError::ConfigError(format!("OCR wave failed: {}", e)))?;
+
+            if wave_pages.is_empty() {
+                break;
+            }
+
+            // Convert to RawDocuments and write immediately
+            let raw_docs: Vec<RawDocument> = wave_pages
+                .into_iter()
+                .map(|(page_num, content)| {
+                    total_chars_extracted += content.len();
+                    RawDocument::new(slug, page_num as u32, content)
+                })
+                .collect();
+
+            let doc_count = raw_docs.len();
+
+            match index.add_documents(&raw_docs, Some("id")).await {
+                Ok(task) => {
+                    let _ = task.wait_for_completion(
+                        &index.client,
+                        Some(std::time::Duration::from_millis(100)),
+                        Some(std::time::Duration::from_secs(60)),
+                    ).await;
+                    pages_written += doc_count;
+                    log::info!("Wave complete: indexed {} pages (total: {}/{})",
+                        doc_count, pages_written + existing_page_count, total_pages);
+                }
+                Err(e) => {
+                    log::error!("Failed to index wave: {}", e);
+                    // Continue to next wave - partial progress is still saved
+                }
+            }
+
+            current_page = next_page;
+        }
+
+        // Build result
+        let result: Result<usize, crate::ingestion::kreuzberg_extractor::ExtractionError> = Ok(pages_written);
+
+        match result {
+            Ok(pages_processed) => {
+                let final_page_count = existing_page_count + pages_processed;
+                log::info!(
+                    "Incremental OCR complete: {} new pages extracted, {} total in index",
+                    pages_processed, final_page_count
+                );
+
+                // Get content sample for metadata detection
+                let content_sample = self.get_content_sample(search_client, raw_index).await;
+                let ttrpg_metadata = TTRPGMetadata::extract(path, &content_sample, "document");
+
+                // Update library_metadata with final stats and status="ready"
+                let final_metadata = LibraryDocumentMetadata {
+                    id: slug.to_string(),
+                    name: source_name.to_string(),
+                    source_type: source_type.to_string(),
+                    file_path: Some(path.to_string_lossy().to_string()),
+                    page_count: final_page_count as u32,
+                    chunk_count: 0, // Will be updated after chunking phase
+                    character_count: total_chars_extracted as u64,
+                    content_index: chunks_index.to_string(),
+                    status: "ready".to_string(),
+                    error_message: None,
+                    ingested_at: Utc::now().to_rfc3339(),
+                };
+
+                if let Err(e) = search_client.save_library_document(&final_metadata).await {
+                    log::warn!("Failed to update library_metadata for '{}': {}", slug, e);
+                } else {
+                    log::info!("Updated library_metadata '{}' with status=ready", slug);
+                }
+
+                Ok(ExtractionResult {
+                    slug: slug.to_string(),
+                    source_name: source_name.to_string(),
+                    raw_index: raw_index.to_string(),
+                    page_count: final_page_count,
+                    total_chars: total_chars_extracted,
+                    ttrpg_metadata,
+                })
+            }
+            Err(e) => {
+                // Update library_metadata with status="error"
+                let error_metadata = LibraryDocumentMetadata {
+                    id: slug.to_string(),
+                    name: source_name.to_string(),
+                    source_type: source_type.to_string(),
+                    file_path: Some(path.to_string_lossy().to_string()),
+                    page_count: (existing_page_count + pages_written) as u32,
+                    chunk_count: 0,
+                    character_count: total_chars_extracted as u64,
+                    content_index: chunks_index.to_string(),
+                    status: "error".to_string(),
+                    error_message: Some(e.to_string()),
+                    ingested_at: Utc::now().to_rfc3339(),
+                };
+
+                let _ = search_client.save_library_document(&error_metadata).await;
+
+                log::error!("Incremental extraction failed: {}. {} pages may have been saved.", e, pages_written);
+                Err(SearchError::ConfigError(format!("Incremental extraction failed: {}", e)))
+            }
+        }
+    }
+
+    /// Query the raw index to find the highest page number already extracted.
+    /// Returns 0 if no pages exist.
+    async fn get_highest_page_number(&self, search_client: &SearchClient, raw_index: &str) -> usize {
+        let index = search_client.get_client().index(raw_index);
+
+        // Fetch documents sorted by page_number descending, limit 1
+        // Meilisearch doesn't have a direct "max" query, so we fetch with sort
+        let result: Result<meilisearch_sdk::search::SearchResults<RawDocument>, _> = index
+            .search()
+            .with_query("*")
+            .with_sort(&["page_number:desc"])
+            .with_limit(1)
+            .execute()
+            .await;
+
+        match result {
+            Ok(results) => {
+                if let Some(hit) = results.hits.first() {
+                    hit.result.page_number as usize
+                } else {
+                    0
+                }
+            }
+            Err(e) => {
+                log::warn!("Could not query existing pages from '{}': {}", raw_index, e);
+                0
+            }
+        }
+    }
+
+    /// Get a content sample from the raw index for metadata detection
+    async fn get_content_sample(&self, search_client: &SearchClient, raw_index: &str) -> String {
+        let index = search_client.get_client().index(raw_index);
+
+        let result: Result<meilisearch_sdk::search::SearchResults<RawDocument>, _> = index
+            .search()
+            .with_query("*")
+            .with_sort(&["page_number:asc"])
+            .with_limit(20)
+            .execute()
+            .await;
+
+        match result {
+            Ok(results) => {
+                results.hits
+                    .iter()
+                    .map(|h| h.result.raw_content.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            }
+            Err(_) => String::new()
+        }
     }
 
     /// Phase 2: Create semantic chunks from raw pages and store in `<slug>` index.
@@ -782,8 +1128,8 @@ impl MeilisearchPipeline {
 
         log::info!("Chunking from '{}' to '{}'", raw_index, chunks_index);
 
-        // Ensure chunks index exists
-        search_client.ensure_index(&chunks_index, Some("id")).await
+        // Ensure chunks index exists with proper settings
+        search_client.ensure_chunks_index(&chunks_index).await
             .map_err(|e| SearchError::ConfigError(format!("Failed to create chunks index: {}", e)))?;
 
         // Fetch all raw documents from the raw index

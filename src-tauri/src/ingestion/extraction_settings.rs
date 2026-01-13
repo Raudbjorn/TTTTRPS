@@ -285,6 +285,34 @@ impl ExtractionSettings {
         }
         Ok(())
     }
+
+    /// Get PDF page count synchronously using pdfinfo.
+    /// Returns None if the file is not a PDF or pdfinfo fails.
+    pub fn get_pdf_page_count_sync(&self, path: &std::path::Path) -> Option<usize> {
+        use std::process::Command;
+
+        let output = Command::new("pdfinfo")
+            .arg(path)
+            .output()
+            .ok()?;
+
+        if !output.status.success() {
+            return None;
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for line in stdout.lines() {
+            if line.starts_with("Pages:") {
+                if let Some(count_str) = line.split_whitespace().nth(1) {
+                    if let Ok(count) = count_str.parse::<usize>() {
+                        return Some(count);
+                    }
+                }
+            }
+        }
+
+        None
+    }
 }
 
 /// Supported file formats for extraction
