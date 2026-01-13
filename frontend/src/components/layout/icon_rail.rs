@@ -77,7 +77,6 @@ pub fn IconRail() -> impl IntoView {
     let make_nav = move |path: &'static str, view: ViewType| {
         let nav = nav_for_make.clone();
         Callback::new(move |_: ()| {
-            web_sys::console::log_1(&format!("Navigating to {}", path).into());
             layout.active_view.set(view);
             nav(path, NavigateOptions::default());
         })

@@ -872,3 +872,159 @@ impl ChatMessageRecord {
         MessageRole::try_from(self.role.as_str())
     }
 }
+
+// ============================================================================
+// TTRPG Document Models
+// ============================================================================
+
+/// TTRPG document record for storing parsed game content elements
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct TTRPGDocumentRecord {
+    pub id: String,
+    pub source_document_id: String,
+    pub name: String,
+    pub element_type: String,  // "stat_block", "spell", "item", "random_table", etc.
+    pub game_system: String,   // "dnd5e", "pathfinder2e", etc.
+    pub content: String,       // Full text content
+    pub attributes_json: String, // JSON object of extracted attributes
+    pub challenge_rating: Option<f64>,
+    pub level: Option<i32>,
+    pub page_number: Option<i32>,
+    pub confidence: f64,
+    pub meilisearch_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl TTRPGDocumentRecord {
+    pub fn new(
+        source_document_id: String,
+        name: String,
+        element_type: String,
+        game_system: String,
+        content: String,
+    ) -> Self {
+        let now = chrono::Utc::now().to_rfc3339();
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            source_document_id,
+            name,
+            element_type,
+            game_system,
+            content,
+            attributes_json: "{}".to_string(),
+            challenge_rating: None,
+            level: None,
+            page_number: None,
+            confidence: 0.0,
+            meilisearch_id: None,
+            created_at: now.clone(),
+            updated_at: now,
+        }
+    }
+
+    pub fn with_attributes(mut self, attributes_json: String) -> Self {
+        self.attributes_json = attributes_json;
+        self
+    }
+
+    pub fn with_cr(mut self, cr: f64) -> Self {
+        self.challenge_rating = Some(cr);
+        self
+    }
+
+    pub fn with_level(mut self, level: i32) -> Self {
+        self.level = Some(level);
+        self
+    }
+
+    pub fn with_page(mut self, page: i32) -> Self {
+        self.page_number = Some(page);
+        self
+    }
+
+    pub fn with_confidence(mut self, confidence: f64) -> Self {
+        self.confidence = confidence;
+        self
+    }
+
+    pub fn with_meilisearch_id(mut self, meilisearch_id: String) -> Self {
+        self.meilisearch_id = Some(meilisearch_id);
+        self
+    }
+}
+
+/// TTRPG document attribute record for searchable metadata
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct TTRPGDocumentAttribute {
+    pub id: i64,
+    pub document_id: String,
+    pub attribute_type: String,  // "damage_type", "creature_type", "condition", etc.
+    pub attribute_value: String, // "fire", "undead", "poisoned", etc.
+}
+
+impl TTRPGDocumentAttribute {
+    pub fn new(document_id: String, attribute_type: String, attribute_value: String) -> Self {
+        Self {
+            id: 0, // Will be set by database
+            document_id,
+            attribute_type,
+            attribute_value,
+        }
+    }
+}
+
+/// TTRPG ingestion job record for tracking parsing progress
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct TTRPGIngestionJob {
+    pub id: String,
+    pub document_id: String,
+    pub status: String,  // "pending", "processing", "completed", "failed"
+    pub total_pages: i32,
+    pub processed_pages: i32,
+    pub elements_found: i32,
+    pub errors_json: Option<String>,  // JSON array of error messages
+    pub started_at: Option<String>,
+    pub completed_at: Option<String>,
+    pub created_at: String,
+}
+
+impl TTRPGIngestionJob {
+    pub fn new(document_id: String, total_pages: i32) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            document_id,
+            status: "pending".to_string(),
+            total_pages,
+            processed_pages: 0,
+            elements_found: 0,
+            errors_json: None,
+            started_at: None,
+            completed_at: None,
+            created_at: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+
+    pub fn start(&mut self) {
+        self.status = "processing".to_string();
+        self.started_at = Some(chrono::Utc::now().to_rfc3339());
+    }
+
+    pub fn complete(&mut self) {
+        self.status = "completed".to_string();
+        self.completed_at = Some(chrono::Utc::now().to_rfc3339());
+    }
+
+    pub fn fail(&mut self, errors: Vec<String>) {
+        self.status = "failed".to_string();
+        self.completed_at = Some(chrono::Utc::now().to_rfc3339());
+        self.errors_json = Some(serde_json::to_string(&errors).unwrap_or_default());
+    }
+
+    pub fn progress(&self) -> f32 {
+        if self.total_pages == 0 {
+            return 0.0;
+        }
+        (self.processed_pages as f32) / (self.total_pages as f32)
+    }
+}

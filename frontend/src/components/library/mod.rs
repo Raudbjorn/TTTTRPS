@@ -27,9 +27,10 @@ use crate::services::notification_service::{show_error, show_success, ToastActio
 use std::sync::Arc;
 
 use crate::bindings::{
-    check_meilisearch_health, ingest_document_with_progress, listen_event,
+    check_meilisearch_health, ingest_document_two_phase, listen_event,
     pick_document_file, hybrid_search, HybridSearchOptions,
-    HybridSearchResultPayload,
+    HybridSearchResultPayload, list_library_documents, LibraryDocument,
+    rebuild_library_metadata,
 };
 use crate::components::design_system::{Badge, BadgeVariant, Button, ButtonVariant, Card, CardHeader, CardBody, Input, Modal, LoadingSpinner};
 
@@ -276,6 +277,19 @@ impl SortOption {
 // Library State Context
 // ============================================================================
 
+// Flag to prevent concurrent auto-repairs (primitive, not a signal)
+thread_local! {
+    static AUTO_REPAIR_DONE: std::cell::Cell<bool> = std::cell::Cell::new(false);
+}
+
+fn should_auto_repair() -> bool {
+    AUTO_REPAIR_DONE.with(|cell| !cell.get())
+}
+
+fn mark_auto_repair_done() {
+    AUTO_REPAIR_DONE.with(|cell| cell.set(true));
+}
+
 /// Shared library state that can be provided to child components
 #[derive(Clone)]
 pub struct LibraryState {
@@ -379,26 +393,125 @@ pub fn Library() -> impl IntoView {
         }
     });
 
+    // Load persisted documents from Meilisearch on mount
+    // Auto-repair: if library is empty but content exists, rebuild metadata
+    Effect::new({
+        let documents = state.documents;
+        let total_chunks = state.total_chunks;
+        let ingestion_status = state.ingestion_status;
+        move |_| {
+            spawn_local(async move {
+                // Helper to convert LibraryDocument to SourceDocument
+                let convert_docs = |docs: Vec<LibraryDocument>| -> Vec<SourceDocument> {
+                    docs.into_iter()
+                        .map(|d| SourceDocument {
+                            id: d.id,
+                            name: d.name,
+                            source_type: SourceType::from_str(&d.source_type),
+                            status: match d.status.as_str() {
+                                "ready" | "indexed" => DocumentStatus::Indexed,
+                                "pending" => DocumentStatus::Pending,
+                                "processing" => DocumentStatus::Indexing,
+                                _ => DocumentStatus::Failed,
+                            },
+                            chunk_count: d.chunk_count as usize,
+                            page_count: d.page_count as usize,
+                            file_size_bytes: 0,
+                            ingested_at: Some(d.ingested_at),
+                            file_path: d.file_path,
+                            description: None,
+                            tags: Vec::new(),
+                        })
+                        .collect()
+                };
+
+                match list_library_documents().await {
+                    Ok(docs) => {
+                        if docs.is_empty() && should_auto_repair() {
+                            // Library metadata is empty - check if we have indexed content
+                            // and auto-repair if so (only once per session)
+                            mark_auto_repair_done(); // Prevent re-running on subsequent mounts
+
+                            if let Ok(health) = check_meilisearch_health().await {
+                                let total_indexed: u64 = health.document_counts
+                                    .as_ref()
+                                    .map(|c| c.values().sum())
+                                    .unwrap_or(0);
+
+                                if total_indexed > 0 {
+                                    log::info!("Library empty but {} docs indexed, auto-repairing...", total_indexed);
+                                    ingestion_status.set("Recovering library metadata...".to_string());
+
+                                    // Auto-repair
+                                    if let Ok(count) = rebuild_library_metadata().await {
+                                        if count > 0 {
+                                            log::info!("Auto-repaired {} documents", count);
+                                            // Reload the list
+                                            if let Ok(repaired_docs) = list_library_documents().await {
+                                                let source_docs = convert_docs(repaired_docs);
+                                                let chunks: usize = source_docs.iter().map(|d| d.chunk_count).sum();
+                                                documents.set(source_docs);
+                                                total_chunks.set(chunks);
+                                                ingestion_status.set(format!("Recovered {} documents", count));
+                                            }
+                                        } else {
+                                            ingestion_status.set(String::new());
+                                        }
+                                    }
+                                }
+                            }
+                        } else if !docs.is_empty() {
+                            let source_docs = convert_docs(docs);
+                            let chunks: usize = source_docs.iter().map(|d| d.chunk_count).sum();
+                            documents.set(source_docs);
+                            total_chunks.set(chunks);
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to load library documents: {}", e);
+                    }
+                }
+            });
+        }
+    });
+
     // Set up event listener for progress updates
+    // This automatically shows/hides the progress bar based on backend events
     Effect::new({
         let ingestion_progress = state.ingestion_progress;
         let ingestion_status = state.ingestion_status;
+        let is_ingesting = state.is_ingesting;
         move |_| {
             let _ = listen_event("ingest-progress", move |event: JsValue| {
                 if let Ok(payload) = js_sys::Reflect::get(&event, &JsValue::from_str("payload")) {
-                    if let Ok(progress_val) =
-                        js_sys::Reflect::get(&payload, &JsValue::from_str("progress"))
-                    {
-                        if let Some(progress) = progress_val.as_f64() {
-                            ingestion_progress.set(progress as f32);
-                        }
+                    // Extract progress value
+                    let progress = js_sys::Reflect::get(&payload, &JsValue::from_str("progress"))
+                        .ok()
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0);
+
+                    // Extract stage
+                    let stage = js_sys::Reflect::get(&payload, &JsValue::from_str("stage"))
+                        .ok()
+                        .and_then(|v| v.as_string())
+                        .unwrap_or_default();
+
+                    // Extract message
+                    let message = js_sys::Reflect::get(&payload, &JsValue::from_str("message"))
+                        .ok()
+                        .and_then(|v| v.as_string());
+
+                    // Update progress and status
+                    ingestion_progress.set(progress as f32);
+                    if let Some(msg) = message {
+                        ingestion_status.set(msg);
                     }
-                    if let Ok(message_val) =
-                        js_sys::Reflect::get(&payload, &JsValue::from_str("message"))
-                    {
-                        if let Some(message) = message_val.as_string() {
-                            ingestion_status.set(message);
-                        }
+
+                    // Auto-manage is_ingesting based on stage/progress
+                    if stage == "complete" || progress >= 1.0 {
+                        is_ingesting.set(false);
+                    } else if progress > 0.0 {
+                        is_ingesting.set(true);
                     }
                 }
             });
@@ -448,43 +561,36 @@ pub fn Library() -> impl IntoView {
                     let filename = path.split('/').last().unwrap_or(&path).to_string();
                     ingestion_status.set(format!("Starting {}...", filename));
 
-                    let source_type = selected_source_type.get();
-                    let source_type_str = if source_type == SourceType::All {
-                        "documents".to_string()
-                    } else {
-                        source_type.as_str().to_string()
-                    };
+                    let source_type = selected_source_type.get_untracked();
 
-                    match ingest_document_with_progress(path.clone(), Some(source_type_str.clone()))
-                        .await
-                    {
+                    // Use two-phase ingestion pipeline
+                    match ingest_document_two_phase(path.clone(), None).await {
                         Ok(result) => {
-                            let doc_id = format!("doc-{}", documents.get().len() + 1);
                             let doc = SourceDocument {
-                                id: doc_id,
+                                id: result.slug.clone(),
                                 name: result.source_name.clone(),
                                 source_type,
                                 status: DocumentStatus::Indexed,
-                                chunk_count: result.character_count / 500,
+                                chunk_count: result.chunk_count,
                                 page_count: result.page_count,
-                                file_size_bytes: result.character_count,
+                                file_size_bytes: result.total_chars,
                                 ingested_at: Some(chrono_now()),
                                 file_path: Some(path),
-                                description: None,
-                                tags: Vec::new(),
+                                description: result.game_system.clone(),
+                                tags: result.content_category.map(|c| vec![c]).unwrap_or_default(),
                             };
                             documents.update(|docs| docs.push(doc));
-                            total_chunks.update(|c| *c += result.character_count / 500);
+                            total_chunks.update(|c| *c += result.chunk_count);
                             ingestion_status.set(format!(
-                                "Indexed {} ({} pages, {} chars)",
-                                result.source_name, result.page_count, result.character_count
+                                "Indexed '{}' → {} pages → {} chunks",
+                                result.source_name, result.page_count, result.chunk_count
                             ));
                             ingestion_progress.set(1.0);
                         }
                         Err(e) => {
                             ingestion_status.set(format!("Failed: {}", e));
                             ingestion_progress.set(0.0);
-                             show_error(
+                            show_error(
                                 "Ingestion Failed",
                                 Some(&format!("Could not process {}.\nReason: {}\n\nCheck file permissions or format.", filename, e)),
                                 None
@@ -585,8 +691,8 @@ pub fn Library() -> impl IntoView {
                         <Button
                             variant=ButtonVariant::Primary
                             on_click=handle_ingest
-                            disabled=state.is_ingesting.get()
-                            loading=state.is_ingesting.get()
+                            disabled=Signal::derive(move || state.is_ingesting.get())
+                            loading=Signal::derive(move || state.is_ingesting.get())
                             class="flex items-center gap-2"
                             title="Import a new document into the library"
                         >
@@ -663,45 +769,50 @@ fn LibrarySidebar() -> impl IntoView {
             </div>
 
             <div class="flex-1 overflow-y-auto p-4 space-y-6">
-                // Ingestion Progress
-                {move || {
-                    if state.is_ingesting.get() {
-                        let progress = (state.ingestion_progress.get() * 100.0) as u32;
-                        let stage = if progress < 30 {
-                            "Parsing document..."
-                        } else if progress < 50 {
-                            "Extracting text..."
-                        } else if progress < 70 {
-                            "Chunking content..."
-                        } else if progress < 90 {
-                            "Generating embeddings..."
-                        } else if progress < 100 {
-                            "Indexing..."
-                        } else {
-                            "Complete!"
-                        };
-                        Some(view! {
-                            <Card>
-                                <CardBody>
-                                    <div class="space-y-2">
-                                        <div class="flex justify-between text-sm">
-                                            <span class="text-[var(--text-muted)]">{stage}</span>
-                                            <span class="font-mono text-[var(--accent)]">{format!("{}%", progress)}</span>
-                                        </div>
-                                        <div class="w-full bg-[var(--bg-deep)] rounded-full h-2 overflow-hidden">
-                                            <div
-                                                class="bg-[var(--accent)] h-2 rounded-full transition-all duration-300"
-                                                style=format!("width: {}%", progress)
-                                            />
-                                        </div>
-                                    </div>
-                                </CardBody>
-                            </Card>
-                        })
-                    } else {
-                        None
-                    }
-                }}
+                // Ingestion Progress - always rendered when ingesting, reactively updated
+                <Show when=move || state.is_ingesting.get()>
+                    <Card>
+                        <CardBody>
+                            <div class="space-y-2">
+                                <div class="flex justify-between text-sm">
+                                    <span class="text-[var(--text-muted)]">
+                                        {move || {
+                                            let progress = (state.ingestion_progress.get() * 100.0) as u32;
+                                            if progress < 30 {
+                                                "Parsing document..."
+                                            } else if progress < 50 {
+                                                "Extracting text..."
+                                            } else if progress < 70 {
+                                                "Chunking content..."
+                                            } else if progress < 90 {
+                                                "Generating embeddings..."
+                                            } else if progress < 100 {
+                                                "Indexing..."
+                                            } else {
+                                                "Complete!"
+                                            }
+                                        }}
+                                    </span>
+                                    <span class="font-mono text-[var(--accent)]">
+                                        {move || format!("{}%", (state.ingestion_progress.get() * 100.0) as u32)}
+                                    </span>
+                                </div>
+                                <div class="w-full bg-[var(--bg-deep)] rounded-full h-2 overflow-hidden">
+                                    <div
+                                        class="bg-[var(--accent)] h-2 rounded-full transition-all duration-300"
+                                        style:width=move || format!("{}%", (state.ingestion_progress.get() * 100.0) as u32)
+                                    />
+                                </div>
+                                // Show status message from backend
+                                <Show when=move || !state.ingestion_status.get().is_empty()>
+                                    <p class="text-xs text-[var(--text-muted)] mt-1 truncate">
+                                        {move || state.ingestion_status.get()}
+                                    </p>
+                                </Show>
+                            </div>
+                        </CardBody>
+                    </Card>
+                </Show>
 
                 // Statistics
                 <Card>

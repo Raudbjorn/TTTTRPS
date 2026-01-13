@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 
 use crate::ingestion::chunker::{SemanticChunker, ChunkConfig, ContentChunk};
+use crate::ingestion::ttrpg::vocabulary::chunking_config;
 
 // ============================================================================
 // Test Fixtures
@@ -66,10 +67,11 @@ mod default_config_tests {
     fn test_default_config_values() {
         let config = ChunkConfig::default();
 
-        assert_eq!(config.target_size, 1000);
-        assert_eq!(config.min_size, 200);
-        assert_eq!(config.max_size, 2000);
-        assert_eq!(config.overlap_size, 100);
+        // Uses MDMAI-derived constants from chunking_config
+        assert_eq!(config.target_size, chunking_config::TARGET_CHUNK_SIZE);
+        assert_eq!(config.min_size, chunking_config::MIN_CHUNK_SIZE);
+        assert_eq!(config.max_size, chunking_config::MAX_CHUNK_SIZE);
+        assert_eq!(config.overlap_size, chunking_config::CHUNK_OVERLAP);
         assert!(config.preserve_sentences);
         assert!(config.preserve_paragraphs);
     }
@@ -78,20 +80,22 @@ mod default_config_tests {
     fn test_small_config_preset() {
         let config = ChunkConfig::small();
 
-        assert_eq!(config.target_size, 500);
-        assert_eq!(config.min_size, 100);
-        assert_eq!(config.max_size, 800);
-        assert_eq!(config.overlap_size, 50);
+        // Half of default values
+        assert_eq!(config.target_size, chunking_config::TARGET_CHUNK_SIZE / 2);
+        assert_eq!(config.min_size, chunking_config::MIN_CHUNK_SIZE / 2);
+        assert_eq!(config.max_size, chunking_config::MAX_CHUNK_SIZE / 2);
+        assert_eq!(config.overlap_size, chunking_config::CHUNK_OVERLAP / 2);
     }
 
     #[test]
     fn test_large_config_preset() {
         let config = ChunkConfig::large();
 
-        assert_eq!(config.target_size, 2000);
-        assert_eq!(config.min_size, 500);
-        assert_eq!(config.max_size, 4000);
-        assert_eq!(config.overlap_size, 200);
+        // Double of default values
+        assert_eq!(config.target_size, chunking_config::TARGET_CHUNK_SIZE * 2);
+        assert_eq!(config.min_size, chunking_config::MIN_CHUNK_SIZE * 2);
+        assert_eq!(config.max_size, chunking_config::MAX_CHUNK_SIZE * 2);
+        assert_eq!(config.overlap_size, chunking_config::CHUNK_OVERLAP * 2);
     }
 
     #[test]
@@ -308,7 +312,8 @@ mod boundary_detection_tests {
     #[test]
     fn test_header_detection_through_chunking() {
         // Test header detection indirectly through chunk sectioning
-        let chunker = SemanticChunker::new();
+        // Use small config since test text is relatively short
+        let chunker = SemanticChunker::with_config(ChunkConfig::small());
         let chunks = chunker.chunk_text(&text_with_headers(), "test");
 
         // Chunks should be created for text with headers
@@ -563,6 +568,7 @@ mod content_chunk_tests {
             chunk_type: "text".to_string(),
             chunk_index: 0,
             metadata: HashMap::new(),
+            ..Default::default()
         };
 
         assert_eq!(chunk.id, "test-id");
@@ -585,6 +591,7 @@ mod content_chunk_tests {
             chunk_type: "text".to_string(),
             chunk_index: 0,
             metadata: HashMap::new(),
+            ..Default::default()
         };
 
         let json = serde_json::to_string(&chunk);
@@ -615,6 +622,7 @@ mod content_chunk_tests {
             chunk_type: "text".to_string(),
             chunk_index: 0,
             metadata,
+            ..Default::default()
         };
 
         assert_eq!(chunk.metadata.len(), 2);
@@ -632,6 +640,7 @@ mod content_chunk_tests {
             chunk_type: "text".to_string(),
             chunk_index: 0,
             metadata: HashMap::new(),
+            ..Default::default()
         };
 
         let cloned = chunk.clone();

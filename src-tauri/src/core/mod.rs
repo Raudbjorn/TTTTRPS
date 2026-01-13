@@ -24,6 +24,9 @@ pub mod meilisearch_chat;
 // Enhanced search with hybrid search, embeddings, and TTRPG synonyms
 pub mod search;
 
+// TTRPG-specific search enhancement (query parsing, ranking, filtering)
+pub mod ttrpg_search;
+
 // Extended feature modules
 pub mod streaming;
 pub mod budget;

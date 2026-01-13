@@ -19,11 +19,17 @@
 //!
 //! Documents appearing in multiple result sets accumulate higher scores,
 //! making RRF naturally boost cross-method agreement.
+//!
+//! # Configuration
+//!
+//! Default parameters are derived from the MDMAI codebase via `fusion_config` in the
+//! vocabulary module, providing RAG-optimized defaults.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::core::search_client::SearchDocument;
+use crate::ingestion::ttrpg::vocabulary::fusion_config;
 
 // ============================================================================
 // Configuration
@@ -34,14 +40,17 @@ use crate::core::search_client::SearchDocument;
 pub struct RRFConfig {
     /// RRF constant (k parameter). Higher values reduce the impact of rank position.
     /// Typical values range from 50 to 70, with 60 being the most common.
+    /// Default: 60 (from fusion_config::RRF_K)
     #[serde(default = "default_k")]
     pub k: u32,
 
-    /// Minimum score threshold - results below this are excluded
-    #[serde(default)]
+    /// Minimum score threshold - results below this are excluded.
+    /// Default: 0.1 (from fusion_config::MIN_SCORE)
+    #[serde(default = "default_min_score")]
     pub min_score: f32,
 
-    /// Maximum number of results to return after fusion
+    /// Maximum number of results to return after fusion.
+    /// Default: 20 (from fusion_config::MAX_RESULTS)
     #[serde(default = "default_max_results")]
     pub max_results: usize,
 
@@ -51,11 +60,15 @@ pub struct RRFConfig {
 }
 
 fn default_k() -> u32 {
-    60
+    fusion_config::RRF_K as u32
+}
+
+fn default_min_score() -> f32 {
+    fusion_config::MIN_SCORE
 }
 
 fn default_max_results() -> usize {
-    100
+    fusion_config::MAX_RESULTS
 }
 
 fn default_true() -> bool {
@@ -63,11 +76,41 @@ fn default_true() -> bool {
 }
 
 impl Default for RRFConfig {
+    /// Default configuration using MDMAI-derived constants from fusion_config.
+    ///
+    /// Values:
+    /// - k: 60 (RRF constant)
+    /// - min_score: 0.1 (minimum score threshold)
+    /// - max_results: 20 (maximum results to return)
     fn default() -> Self {
         Self {
-            k: 60,
+            k: fusion_config::RRF_K as u32,
+            min_score: fusion_config::MIN_SCORE,
+            max_results: fusion_config::MAX_RESULTS,
+            normalize_scores: true,
+        }
+    }
+}
+
+impl RRFConfig {
+    /// Create a lenient configuration with no minimum score and more results.
+    /// Good for exploration or when you want to see lower-ranked results.
+    pub fn lenient() -> Self {
+        Self {
+            k: fusion_config::RRF_K as u32,
             min_score: 0.0,
-            max_results: 100,
+            max_results: fusion_config::MAX_RESULTS * 5, // 100 results
+            normalize_scores: true,
+        }
+    }
+
+    /// Create a strict configuration with higher minimum score threshold.
+    /// Good for precision-focused searches where only top matches matter.
+    pub fn strict() -> Self {
+        Self {
+            k: fusion_config::RRF_K as u32,
+            min_score: fusion_config::MIN_SCORE * 2.0, // 0.2
+            max_results: fusion_config::MAX_RESULTS / 2, // 10 results
             normalize_scores: true,
         }
     }
@@ -352,6 +395,9 @@ pub enum FusionStrategy {
     KeywordPrimary,
     /// Semantic only - keyword as tiebreaker (0.1, 0.9)
     SemanticPrimary,
+    /// MDMAI vocabulary config weights (BM25: 0.4, Vector: 0.6)
+    /// Optimized for TTRPG RAG based on empirical testing
+    VocabularyOptimized,
     /// Custom weights
     Custom(f32, f32),
 }
@@ -366,6 +412,10 @@ impl FusionStrategy {
             FusionStrategy::SemanticStrong => (0.2, 0.8),
             FusionStrategy::KeywordPrimary => (0.9, 0.1),
             FusionStrategy::SemanticPrimary => (0.1, 0.9),
+            FusionStrategy::VocabularyOptimized => (
+                fusion_config::BM25_WEIGHT,
+                fusion_config::VECTOR_WEIGHT,
+            ),
             FusionStrategy::Custom(k, s) => (*k, *s),
         }
     }
@@ -380,11 +430,24 @@ impl FusionStrategy {
             FusionStrategy::Balanced
         }
     }
+
+    /// Get the MDMAI-derived optimal weights for TTRPG content
+    /// Returns (BM25_WEIGHT, VECTOR_WEIGHT) from vocabulary config
+    pub fn vocabulary_weights() -> (f32, f32) {
+        (fusion_config::BM25_WEIGHT, fusion_config::VECTOR_WEIGHT)
+    }
+
+    /// Get boost factors for special matches
+    pub fn boost_factors() -> (f32, f32) {
+        (fusion_config::EXACT_MATCH_BOOST, fusion_config::HEADER_MATCH_BOOST)
+    }
 }
 
 impl Default for FusionStrategy {
+    /// Default to VocabularyOptimized for TTRPG RAG applications.
+    /// Uses BM25_WEIGHT (0.4) and VECTOR_WEIGHT (0.6) from MDMAI config.
     fn default() -> Self {
-        FusionStrategy::Balanced
+        FusionStrategy::VocabularyOptimized
     }
 }
 
@@ -409,6 +472,7 @@ mod tests {
             session_id: None,
             created_at: "2024-01-01".to_string(),
             metadata: HashMap::new(),
+            ..Default::default()
         }
     }
 
@@ -438,9 +502,11 @@ mod tests {
 
     #[test]
     fn test_fuse_keyword_semantic() {
+        // Use lenient config to disable min_score filtering for test
         let engine = RRFEngine::new(RRFConfig {
             k: 60,
             normalize_scores: false,
+            min_score: 0.0,  // Disable filtering for test
             ..Default::default()
         });
 
@@ -475,9 +541,11 @@ mod tests {
 
     #[test]
     fn test_overlap_boosting() {
+        // Use lenient config to disable min_score filtering for test
         let engine = RRFEngine::new(RRFConfig {
             k: 60,
             normalize_scores: false,
+            min_score: 0.0,  // Disable filtering for test
             ..Default::default()
         });
 
@@ -504,10 +572,59 @@ mod tests {
     }
 
     #[test]
+    fn test_fusion_strategy_vocabulary_optimized() {
+        let (kw, sem) = FusionStrategy::VocabularyOptimized.weights();
+        // Should use fusion_config values: BM25=0.4, Vector=0.6
+        assert_eq!(kw, fusion_config::BM25_WEIGHT);
+        assert_eq!(sem, fusion_config::VECTOR_WEIGHT);
+        assert!((kw + sem - 1.0).abs() < 0.01, "Weights should sum to 1.0");
+    }
+
+    #[test]
+    fn test_fusion_strategy_default_is_vocabulary_optimized() {
+        let default_strategy = FusionStrategy::default();
+        let vocab_strategy = FusionStrategy::VocabularyOptimized;
+        assert_eq!(default_strategy.weights(), vocab_strategy.weights());
+    }
+
+    #[test]
+    fn test_rrf_config_default_uses_vocabulary() {
+        let config = RRFConfig::default();
+        assert_eq!(config.k, fusion_config::RRF_K as u32);
+        assert_eq!(config.min_score, fusion_config::MIN_SCORE);
+        assert_eq!(config.max_results, fusion_config::MAX_RESULTS);
+    }
+
+    #[test]
+    fn test_rrf_config_presets() {
+        let lenient = RRFConfig::lenient();
+        let strict = RRFConfig::strict();
+
+        // Lenient should have no min_score and more results
+        assert_eq!(lenient.min_score, 0.0);
+        assert!(lenient.max_results > strict.max_results);
+
+        // Strict should have higher min_score and fewer results
+        assert!(strict.min_score > fusion_config::MIN_SCORE);
+        assert!(strict.max_results < fusion_config::MAX_RESULTS);
+    }
+
+    #[test]
+    fn test_boost_factors() {
+        let (exact, header) = FusionStrategy::boost_factors();
+        assert_eq!(exact, fusion_config::EXACT_MATCH_BOOST);
+        assert_eq!(header, fusion_config::HEADER_MATCH_BOOST);
+        assert!(exact > 1.0, "Exact match boost should be > 1.0");
+        assert!(header > 1.0, "Header match boost should be > 1.0");
+    }
+
+    #[test]
     fn test_normalized_scores() {
+        // Use min_score: 0.0 to prevent filtering
         let engine = RRFEngine::new(RRFConfig {
             k: 60,
             normalize_scores: true,
+            min_score: 0.0,  // Disable filtering for test
             ..Default::default()
         });
 
@@ -526,7 +643,8 @@ mod tests {
 
     #[test]
     fn test_generic_fusion() {
-        let engine = RRFEngine::with_defaults();
+        // Use lenient config to prevent min_score filtering
+        let engine = RRFEngine::new(RRFConfig::lenient());
 
         let set1 = vec![
             RankedItem {

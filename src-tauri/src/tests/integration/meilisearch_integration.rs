@@ -45,6 +45,7 @@ fn test_doc(id: &str, content: &str, source: &str, source_type: &str) -> SearchD
         session_id: None,
         created_at: chrono::Utc::now().to_rfc3339(),
         metadata: HashMap::new(),
+        ..Default::default()
     }
 }
 
@@ -67,6 +68,7 @@ fn test_doc_with_metadata(
         session_id: None,
         created_at: chrono::Utc::now().to_rfc3339(),
         metadata,
+        ..Default::default()
     }
 }
 

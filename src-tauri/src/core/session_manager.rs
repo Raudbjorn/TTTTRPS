@@ -1532,7 +1532,7 @@ impl SessionManager {
         let mut trackers = self.condition_trackers.write().unwrap();
         let tracker = trackers.entry(combatant_id.to_string())
             .or_insert_with(ConditionTracker::new);
-        tracker.add_condition(condition);
+        let _ = tracker.add_condition(condition);
         Ok(())
     }
 

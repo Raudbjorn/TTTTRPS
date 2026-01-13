@@ -7,6 +7,7 @@ mod native_features;
 
 use ttrpg_assistant::commands;
 use ttrpg_assistant::backstory_commands;
+use ttrpg_assistant::ingestion;
 use tauri::{Manager, RunEvent};
 use native_features::NativeFeaturesState;
 
@@ -112,6 +113,7 @@ fn main() {
                 location_manager,
                 claude_desktop_manager,
                 llm_manager: llm_manager.clone(), // Clone for auto-configure block
+                extraction_settings: tokio::sync::RwLock::new(ingestion::ExtractionSettings::default()),
             });
 
             // Start LLM proxy service for OpenAI-compatible API
@@ -377,12 +379,22 @@ fn main() {
 
             // Document Ingestion & Search (Meilisearch)
             commands::ingest_document,
-            commands::ingest_document_with_progress,
+            commands::ingest_document_two_phase,
+            commands::list_library_documents,
+            commands::delete_library_document,
+            commands::rebuild_library_metadata,
+            commands::clear_and_reingest_document,
             commands::ingest_pdf,
             commands::search,
             commands::check_meilisearch_health,
             commands::reindex_library,
             commands::get_vector_store_status,
+            commands::configure_meilisearch_embedder,
+            commands::setup_ollama_embeddings,
+            commands::get_embedder_status,
+            commands::list_ollama_embedding_models,
+            commands::list_local_embedding_models,
+            commands::setup_local_embeddings,
 
             // Voice Commands
             commands::speak,
@@ -538,6 +550,30 @@ fn main() {
             commands::get_model_selection,
             commands::get_model_selection_for_prompt,
             commands::set_model_override,
+
+            // TTRPG Document Commands
+            commands::list_ttrpg_documents_by_source,
+            commands::list_ttrpg_documents_by_type,
+            commands::list_ttrpg_documents_by_system,
+            commands::search_ttrpg_documents_by_name,
+            commands::list_ttrpg_documents_by_cr,
+            commands::get_ttrpg_document,
+            commands::get_ttrpg_document_attributes,
+            commands::find_ttrpg_documents_by_attribute,
+            commands::delete_ttrpg_document,
+            commands::get_ttrpg_document_stats,
+            commands::count_ttrpg_documents_by_type,
+            commands::get_ttrpg_ingestion_job,
+            commands::get_ttrpg_ingestion_job_by_document,
+            commands::list_pending_ttrpg_ingestion_jobs,
+            commands::list_active_ttrpg_ingestion_jobs,
+
+            // Extraction Settings Commands
+            commands::get_extraction_settings,
+            commands::save_extraction_settings,
+            commands::get_supported_formats,
+            commands::get_extraction_presets,
+            commands::check_ocr_availability,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

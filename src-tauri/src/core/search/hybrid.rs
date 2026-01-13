@@ -11,6 +11,11 @@
 //!    falls back to embedding-based similarity search
 //! 3. **Hybrid Search**: Combines both using Reciprocal Rank Fusion (RRF)
 //!
+//! # Configuration
+//!
+//! Default parameters are derived from the MDMAI codebase via `fusion_config` in the
+//! vocabulary module, providing RAG-optimized defaults for TTRPG content.
+//!
 //! # Performance
 //!
 //! Target latency: <500ms for typical queries
@@ -29,6 +34,7 @@ use super::synonyms::TTRPGSynonyms;
 use crate::core::query_expansion::QueryExpander;
 use crate::core::search_client::{SearchClient, SearchDocument};
 use crate::core::spell_correction::SpellCorrector;
+use crate::ingestion::ttrpg::vocabulary::fusion_config;
 
 // ============================================================================
 // Error Types
@@ -91,25 +97,27 @@ pub struct HybridConfig {
     #[serde(default = "default_true")]
     pub enable_vector_search: bool,
 
-    /// Minimum score threshold (0.0 to disable)
-    #[serde(default)]
+    /// Minimum score threshold.
+    /// Default: 0.1 (from fusion_config::MIN_SCORE)
+    #[serde(default = "default_min_score")]
     pub min_score: f32,
 
     /// Fusion strategy preset (optional, overrides weights if set)
+    /// Options: "balanced", "keyword_heavy", "semantic_heavy", "vocabulary_optimized"
     #[serde(default)]
     pub fusion_strategy: Option<String>,
 }
 
 fn default_semantic_weight() -> f32 {
-    0.5
+    fusion_config::VECTOR_WEIGHT
 }
 
 fn default_keyword_weight() -> f32 {
-    0.5
+    fusion_config::BM25_WEIGHT
 }
 
 fn default_rrf_k() -> u32 {
-    60
+    fusion_config::RRF_K as u32
 }
 
 fn default_true() -> bool {
@@ -117,53 +125,78 @@ fn default_true() -> bool {
 }
 
 fn default_semantic_ratio() -> f32 {
-    0.5
+    fusion_config::VECTOR_WEIGHT
 }
 
 fn default_max_per_type() -> usize {
-    50
+    fusion_config::MAX_RESULTS * 2 // Fetch more per type before fusion
+}
+
+fn default_min_score() -> f32 {
+    fusion_config::MIN_SCORE
 }
 
 impl Default for HybridConfig {
+    /// Default configuration using MDMAI-derived constants from fusion_config.
+    ///
+    /// Values:
+    /// - semantic_weight: 0.6 (VECTOR_WEIGHT)
+    /// - keyword_weight: 0.4 (BM25_WEIGHT)
+    /// - rrf_k: 60 (RRF_K)
+    /// - min_score: 0.1 (MIN_SCORE)
+    /// - max_results_per_type: 40 (MAX_RESULTS * 2)
     fn default() -> Self {
         Self {
-            semantic_weight: 0.5,
-            keyword_weight: 0.5,
-            rrf_k: 60,
+            semantic_weight: fusion_config::VECTOR_WEIGHT,
+            keyword_weight: fusion_config::BM25_WEIGHT,
+            rrf_k: fusion_config::RRF_K as u32,
             query_expansion: true,
             spell_correction: true,
-            semantic_ratio: 0.5,
-            max_results_per_type: 50,
+            semantic_ratio: fusion_config::VECTOR_WEIGHT,
+            max_results_per_type: fusion_config::MAX_RESULTS * 2,
             normalize_scores: true,
             enable_vector_search: true,
-            min_score: 0.0,
-            fusion_strategy: None,
+            min_score: fusion_config::MIN_SCORE,
+            fusion_strategy: Some("vocabulary_optimized".to_string()),
         }
     }
 }
 
 impl HybridConfig {
-    /// Create a config with balanced weights
+    /// Create a config with balanced weights (0.5, 0.5)
     pub fn balanced() -> Self {
-        Self::default()
+        Self {
+            semantic_weight: 0.5,
+            keyword_weight: 0.5,
+            fusion_strategy: Some("balanced".to_string()),
+            ..Default::default()
+        }
     }
 
-    /// Create a config favoring keyword search
+    /// Create a config favoring keyword search (0.7, 0.3)
     pub fn keyword_heavy() -> Self {
         Self {
             semantic_weight: 0.3,
             keyword_weight: 0.7,
+            fusion_strategy: Some("keyword_heavy".to_string()),
             ..Default::default()
         }
     }
 
-    /// Create a config favoring semantic search
+    /// Create a config favoring semantic search (0.3, 0.7)
     pub fn semantic_heavy() -> Self {
         Self {
             semantic_weight: 0.7,
             keyword_weight: 0.3,
+            fusion_strategy: Some("semantic_heavy".to_string()),
             ..Default::default()
         }
+    }
+
+    /// Create a config using vocabulary-optimized weights (BM25: 0.4, Vector: 0.6)
+    /// This is the default and recommended for TTRPG RAG applications.
+    pub fn vocabulary_optimized() -> Self {
+        Self::default()
     }
 
     /// Create a config from a fusion strategy
@@ -186,11 +219,20 @@ impl HybridConfig {
                 "semantic_strong" | "semantic-strong" => (0.2, 0.8),
                 "keyword_primary" | "keyword-primary" => (0.9, 0.1),
                 "semantic_primary" | "semantic-primary" => (0.1, 0.9),
+                "vocabulary_optimized" | "vocabulary-optimized" | "mdmai" => (
+                    fusion_config::BM25_WEIGHT,
+                    fusion_config::VECTOR_WEIGHT,
+                ),
                 _ => (self.keyword_weight, self.semantic_weight),
             }
         } else {
             (self.keyword_weight, self.semantic_weight)
         }
+    }
+
+    /// Get boost factors for special matches (exact match, header match)
+    pub fn boost_factors(&self) -> (f32, f32) {
+        (fusion_config::EXACT_MATCH_BOOST, fusion_config::HEADER_MATCH_BOOST)
     }
 
     /// Convert to RRF configuration
@@ -680,13 +722,16 @@ mod tests {
     #[test]
     fn test_config_defaults() {
         let config = HybridConfig::default();
-        assert_eq!(config.semantic_weight, 0.5);
-        assert_eq!(config.keyword_weight, 0.5);
-        assert_eq!(config.rrf_k, 60);
+        // Default uses vocabulary-optimized weights from fusion_config
+        assert_eq!(config.semantic_weight, fusion_config::VECTOR_WEIGHT);
+        assert_eq!(config.keyword_weight, fusion_config::BM25_WEIGHT);
+        assert_eq!(config.rrf_k, fusion_config::RRF_K as u32);
         assert!(config.query_expansion);
         assert!(config.spell_correction);
         assert!(config.normalize_scores);
         assert!(config.enable_vector_search);
+        // Default strategy is vocabulary_optimized
+        assert_eq!(config.fusion_strategy, Some("vocabulary_optimized".to_string()));
     }
 
     #[test]
@@ -723,9 +768,11 @@ mod tests {
 
     #[test]
     fn test_effective_weights_without_strategy() {
+        // When fusion_strategy is None, effective_weights uses the explicit weights
         let config = HybridConfig {
             keyword_weight: 0.6,
             semantic_weight: 0.4,
+            fusion_strategy: None,  // Override default strategy
             ..Default::default()
         };
 

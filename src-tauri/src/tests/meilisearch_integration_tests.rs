@@ -30,6 +30,7 @@ mod tests {
             session_id: None,
             created_at: chrono::Utc::now().to_rfc3339(),
             metadata: HashMap::new(),
+            ..Default::default()
         }
     }
 

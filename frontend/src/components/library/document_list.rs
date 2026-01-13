@@ -11,7 +11,7 @@ use leptos::prelude::*;
 use leptos::ev;
 use leptos::task::spawn_local;
 
-use crate::bindings::{pick_document_file, ingest_document_with_progress};
+use crate::bindings::{pick_document_file, ingest_document_two_phase};
 use crate::components::design_system::{Badge, BadgeVariant, LoadingSpinner};
 use super::{use_library_state, SourceType, SearchResult, ViewMode, SourceDocument, DocumentStatus};
 
@@ -59,33 +59,28 @@ pub fn DocumentList() -> impl IntoView {
                     ingestion_status.set(format!("Ingesting {}...", filename));
 
                     let source_type = selected_source_type.get();
-                    let source_type_str = if source_type == SourceType::All {
-                        "documents".to_string()
-                    } else {
-                        source_type.as_str().to_string()
-                    };
 
-                    match ingest_document_with_progress(path.clone(), Some(source_type_str.clone())).await {
+                    // Use two-phase ingestion pipeline
+                    match ingest_document_two_phase(path.clone(), None).await {
                         Ok(result) => {
-                            let doc_id = format!("doc-{}", documents.get().len() + 1);
                             let doc = SourceDocument {
-                                id: doc_id,
+                                id: result.slug.clone(),
                                 name: result.source_name.clone(),
                                 source_type,
                                 status: DocumentStatus::Indexed,
-                                chunk_count: result.character_count / 500,
+                                chunk_count: result.chunk_count,
                                 page_count: result.page_count,
-                                file_size_bytes: result.character_count,
+                                file_size_bytes: result.total_chars,
                                 ingested_at: Some("Just now".to_string()),
                                 file_path: Some(path),
-                                description: None,
-                                tags: Vec::new(),
+                                description: result.game_system.clone(),
+                                tags: result.content_category.map(|c| vec![c]).unwrap_or_default(),
                             };
                             documents.update(|docs| docs.push(doc));
-                            total_chunks.update(|c| *c += result.character_count / 500);
+                            total_chunks.update(|c| *c += result.chunk_count);
                             ingestion_status.set(format!(
-                                "Indexed {} ({} pages)",
-                                result.source_name, result.page_count
+                                "Indexed '{}' → {} pages → {} chunks",
+                                result.source_name, result.page_count, result.chunk_count
                             ));
                             ingestion_progress.set(1.0);
                         }

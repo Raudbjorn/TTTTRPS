@@ -720,15 +720,95 @@ pub struct IngestProgress {
     pub source_name: String,
 }
 
-/// Ingest document with progress reporting via events
-pub async fn ingest_document_with_progress(path: String, source_type: Option<String>) -> Result<IngestResult, String> {
+/// Result of two-phase document ingestion with per-document indexes
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TwoPhaseIngestResult {
+    /// Generated slug for this source (used as index name base)
+    pub slug: String,
+    /// Human-readable source name
+    pub source_name: String,
+    /// Index containing raw pages (<slug>-raw)
+    pub raw_index: String,
+    /// Index containing semantic chunks (<slug>)
+    pub chunks_index: String,
+    /// Number of pages extracted
+    pub page_count: usize,
+    /// Number of semantic chunks created
+    pub chunk_count: usize,
+    /// Total characters extracted
+    pub total_chars: usize,
+    /// Detected game system (if any)
+    pub game_system: Option<String>,
+    /// Detected content category
+    pub content_category: Option<String>,
+}
+
+/// Ingest document using two-phase pipeline with per-document indexes.
+///
+/// Phase 1: Extract pages to `<slug>-raw` index (one doc per page)
+/// Phase 2: Create semantic chunks in `<slug>` index with provenance tracking
+///
+/// This enables page number attribution in search results.
+pub async fn ingest_document_two_phase(path: String, title_override: Option<String>) -> Result<TwoPhaseIngestResult, String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
     struct Args {
         path: String,
-        source_type: Option<String>,
+        title_override: Option<String>,
     }
-    invoke("ingest_document_with_progress", &Args { path, source_type }).await
+    invoke("ingest_document_two_phase", &Args { path, title_override }).await
+}
+
+/// Library document metadata (persisted in Meilisearch)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LibraryDocument {
+    pub id: String,
+    pub name: String,
+    pub source_type: String,
+    #[serde(default)]
+    pub file_path: Option<String>,
+    pub page_count: u32,
+    pub chunk_count: u32,
+    pub character_count: u64,
+    pub content_index: String,
+    pub status: String,
+    #[serde(default)]
+    pub error_message: Option<String>,
+    pub ingested_at: String,
+}
+
+/// List all documents from the library (persisted in Meilisearch)
+pub async fn list_library_documents() -> Result<Vec<LibraryDocument>, String> {
+    invoke("list_library_documents", &()).await
+}
+
+/// Delete a document from the library (removes metadata and content chunks)
+pub async fn delete_library_document(id: String) -> Result<(), String> {
+    #[derive(Serialize)]
+    struct Args {
+        id: String,
+    }
+    invoke("delete_library_document", &Args { id }).await
+}
+
+/// Rebuild library metadata from existing content indices.
+///
+/// Scans all content indices for unique sources and creates metadata entries
+/// for sources that don't already have entries. Returns number of entries created.
+pub async fn rebuild_library_metadata() -> Result<usize, String> {
+    invoke("rebuild_library_metadata", &()).await
+}
+
+/// Clear a document's content and re-ingest from the original file.
+///
+/// Useful when ingestion produced garbage content (e.g., failed font decoding)
+/// and you want to try again (possibly with OCR this time).
+pub async fn clear_and_reingest_document(id: String) -> Result<IngestResult, String> {
+    #[derive(Serialize)]
+    struct Args {
+        id: String,
+    }
+    invoke("clear_and_reingest_document", &Args { id }).await
 }
 
 // ============================================================================
@@ -2104,6 +2184,76 @@ pub async fn reindex_library(index_name: Option<String>) -> Result<String, Strin
         index_name: Option<String>,
     }
     invoke("reindex_library", &Args { index_name }).await
+}
+
+// ============================================================================
+// Embedder Configuration
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetupEmbeddingsResult {
+    pub indexes_configured: Vec<String>,
+    pub model: String,
+    pub dimensions: u32,
+    pub host: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OllamaEmbeddingModel {
+    pub name: String,
+    pub size: String,
+    pub dimensions: u32,
+}
+
+/// Setup Ollama embeddings on all content indexes
+pub async fn setup_ollama_embeddings(host: String, model: String) -> Result<SetupEmbeddingsResult, String> {
+    #[derive(Serialize)]
+    struct Args {
+        host: String,
+        model: String,
+    }
+    invoke("setup_ollama_embeddings", &Args { host, model }).await
+}
+
+/// Get embedder configuration for an index
+pub async fn get_embedder_status(index_name: String) -> Result<Option<serde_json::Value>, String> {
+    #[derive(Serialize)]
+    struct Args {
+        index_name: String,
+    }
+    invoke("get_embedder_status", &Args { index_name }).await
+}
+
+/// List available Ollama embedding models
+pub async fn list_ollama_embedding_models(host: String) -> Result<Vec<OllamaEmbeddingModel>, String> {
+    #[derive(Serialize)]
+    struct Args {
+        host: String,
+    }
+    invoke("list_ollama_embedding_models", &Args { host }).await
+}
+
+/// Local embedding model info (HuggingFace/ONNX - runs locally via Meilisearch)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalEmbeddingModel {
+    pub id: String,
+    pub name: String,
+    pub dimensions: u32,
+    pub description: String,
+}
+
+/// List available local embedding models (HuggingFace/ONNX - no external service required)
+pub async fn list_local_embedding_models() -> Result<Vec<LocalEmbeddingModel>, String> {
+    invoke("list_local_embedding_models", &()).await
+}
+
+/// Setup local embeddings on all content indexes using HuggingFace embedder
+pub async fn setup_local_embeddings(model: String) -> Result<SetupEmbeddingsResult, String> {
+    #[derive(Serialize)]
+    struct Args {
+        model: String,
+    }
+    invoke("setup_local_embeddings", &Args { model }).await
 }
 
 // ============================================================================
@@ -4532,4 +4682,140 @@ pub async fn set_model_override(model: Option<String>) -> Result<(), String> {
         model: Option<String>,
     }
     invoke_void("set_model_override", &Args { model }).await
+}
+
+// ============================================================================
+// Extraction Settings
+// ============================================================================
+
+/// Token reduction aggressiveness levels
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum TokenReductionLevel {
+    #[default]
+    Off,
+    Light,
+    Moderate,
+    Aggressive,
+    Maximum,
+}
+
+/// OCR backend selection
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum OcrBackend {
+    #[default]
+    External,
+    Builtin,
+    Disabled,
+}
+
+/// Document extraction settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtractionSettings {
+    // OCR Settings
+    pub ocr_enabled: bool,
+    pub ocr_backend: OcrBackend,
+    pub force_ocr: bool,
+    pub ocr_language: String,
+    pub ocr_min_text_threshold: usize,
+    // Chunking Settings
+    pub chunking_enabled: bool,
+    pub max_chunk_chars: usize,
+    pub chunk_overlap: usize,
+    // Quality Settings
+    pub quality_processing: bool,
+    pub token_reduction: TokenReductionLevel,
+    // Language Detection
+    pub language_detection: bool,
+    // Image Extraction
+    pub image_dpi: u32,
+    pub max_image_dimension: u32,
+    // Caching
+    pub use_cache: bool,
+    pub max_concurrent_extractions: usize,
+}
+
+impl Default for ExtractionSettings {
+    fn default() -> Self {
+        Self {
+            ocr_enabled: true,
+            ocr_backend: OcrBackend::External,
+            force_ocr: false,
+            ocr_language: "eng".to_string(),
+            ocr_min_text_threshold: 500,
+            chunking_enabled: false,
+            max_chunk_chars: 1000,
+            chunk_overlap: 200,
+            quality_processing: true,
+            token_reduction: TokenReductionLevel::Off,
+            language_detection: true,
+            image_dpi: 300,
+            max_image_dimension: 4096,
+            use_cache: true,
+            max_concurrent_extractions: 4,
+        }
+    }
+}
+
+/// Extraction preset with name and description
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtractionPreset {
+    pub name: String,
+    pub description: String,
+    pub settings: ExtractionSettings,
+}
+
+/// Supported file format info
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FormatInfo {
+    pub extension: String,
+    pub description: String,
+    pub requires_ocr: bool,
+}
+
+/// All supported file formats
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SupportedFormats {
+    pub documents: Vec<FormatInfo>,
+    pub images: Vec<FormatInfo>,
+    pub web: Vec<FormatInfo>,
+}
+
+/// OCR availability status
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OcrAvailability {
+    pub tesseract_installed: bool,
+    pub pdftoppm_installed: bool,
+    pub available_languages: Vec<String>,
+    pub external_ocr_ready: bool,
+}
+
+/// Get current extraction settings
+pub async fn get_extraction_settings() -> Result<ExtractionSettings, String> {
+    invoke_no_args("get_extraction_settings").await
+}
+
+/// Save extraction settings
+pub async fn save_extraction_settings(settings: ExtractionSettings) -> Result<(), String> {
+    #[derive(Serialize)]
+    struct Args {
+        settings: ExtractionSettings,
+    }
+    invoke_void("save_extraction_settings", &Args { settings }).await
+}
+
+/// Get supported file formats for extraction
+pub async fn get_supported_formats() -> Result<SupportedFormats, String> {
+    invoke_no_args("get_supported_formats").await
+}
+
+/// Get extraction settings presets
+pub async fn get_extraction_presets() -> Result<Vec<ExtractionPreset>, String> {
+    invoke_no_args("get_extraction_presets").await
+}
+
+/// Check OCR availability on the system
+pub async fn check_ocr_availability() -> Result<OcrAvailability, String> {
+    invoke_no_args("check_ocr_availability").await
 }

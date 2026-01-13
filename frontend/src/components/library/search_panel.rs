@@ -288,8 +288,8 @@ pub fn SearchPanel() -> impl IntoView {
                     <Button
                         variant=ButtonVariant::Primary
                         on_click=on_search_click
-                        disabled=state.is_searching.get()
-                        loading=state.is_searching.get()
+                        disabled=Signal::derive(move || state.is_searching.get())
+                        loading=Signal::derive(move || state.is_searching.get())
                         class="px-6"
                     >
                         "Search"

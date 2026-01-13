@@ -7,7 +7,7 @@ use sqlx::Row;
 use tracing::{info, warn};
 
 /// Current database schema version
-const SCHEMA_VERSION: i32 = 19;
+const SCHEMA_VERSION: i32 = 20;
 
 /// Run all pending migrations
 pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
@@ -76,6 +76,7 @@ async fn run_migration(pool: &SqlitePool, version: i32) -> Result<(), sqlx::Erro
         17 => ("search_analytics", MIGRATION_V17),
         18 => ("global_chat_sessions", MIGRATION_V18),
         19 => ("chat_session_unique_active", MIGRATION_V19),
+        20 => ("ttrpg_documents", MIGRATION_V20),
         _ => {
             warn!("Unknown migration version: {}", version);
             return Ok(());
@@ -760,4 +761,64 @@ const MIGRATION_V19: &str = r#"
 -- Ensure only one chat session can be active at a time
 CREATE UNIQUE INDEX IF NOT EXISTS idx_global_chat_sessions_single_active
 ON global_chat_sessions(status) WHERE status = 'active';
+"#;
+
+/// Migration v20: TTRPG document storage for parsed PDF elements
+/// Stores extracted stat blocks, spells, items, tables, and other TTRPG elements
+const MIGRATION_V20: &str = r#"
+-- TTRPG documents table for storing parsed game content elements
+CREATE TABLE IF NOT EXISTS ttrpg_documents (
+    id TEXT PRIMARY KEY,
+    source_document_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    element_type TEXT NOT NULL,
+    game_system TEXT NOT NULL,
+    content TEXT NOT NULL,
+    attributes_json TEXT NOT NULL DEFAULT '{}',
+    challenge_rating REAL,
+    level INTEGER,
+    page_number INTEGER,
+    confidence REAL NOT NULL DEFAULT 0.0,
+    meilisearch_id TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (source_document_id) REFERENCES documents(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_ttrpg_documents_source ON ttrpg_documents(source_document_id);
+CREATE INDEX IF NOT EXISTS idx_ttrpg_documents_type ON ttrpg_documents(element_type);
+CREATE INDEX IF NOT EXISTS idx_ttrpg_documents_system ON ttrpg_documents(game_system);
+CREATE INDEX IF NOT EXISTS idx_ttrpg_documents_name ON ttrpg_documents(name);
+CREATE INDEX IF NOT EXISTS idx_ttrpg_documents_cr ON ttrpg_documents(challenge_rating);
+CREATE INDEX IF NOT EXISTS idx_ttrpg_documents_level ON ttrpg_documents(level);
+
+-- TTRPG document attributes for searchable metadata
+CREATE TABLE IF NOT EXISTS ttrpg_document_attributes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    document_id TEXT NOT NULL,
+    attribute_type TEXT NOT NULL,
+    attribute_value TEXT NOT NULL,
+    FOREIGN KEY (document_id) REFERENCES ttrpg_documents(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_ttrpg_attrs_document ON ttrpg_document_attributes(document_id);
+CREATE INDEX IF NOT EXISTS idx_ttrpg_attrs_type_value ON ttrpg_document_attributes(attribute_type, attribute_value);
+
+-- TTRPG ingestion jobs for tracking parsing progress
+CREATE TABLE IF NOT EXISTS ttrpg_ingestion_jobs (
+    id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    total_pages INTEGER NOT NULL DEFAULT 0,
+    processed_pages INTEGER NOT NULL DEFAULT 0,
+    elements_found INTEGER NOT NULL DEFAULT 0,
+    errors_json TEXT,
+    started_at TEXT,
+    completed_at TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_ttrpg_jobs_document ON ttrpg_ingestion_jobs(document_id);
+CREATE INDEX IF NOT EXISTS idx_ttrpg_jobs_status ON ttrpg_ingestion_jobs(status);
 "#;

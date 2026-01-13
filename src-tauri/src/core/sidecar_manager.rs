@@ -27,10 +27,13 @@ pub struct MeilisearchConfig {
 
 impl Default for MeilisearchConfig {
     fn default() -> Self {
+        // Try to read system meilisearch config first
+        let (host, port, master_key) = Self::read_system_config();
+
         Self {
-            host: "127.0.0.1".to_string(),
-            port: 7700,
-            master_key: "ttrpg-assistant-dev-key".to_string(),
+            host,
+            port,
+            master_key,
             data_dir: dirs::data_local_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
                 .join("ttrpg-assistant")
@@ -42,6 +45,66 @@ impl Default for MeilisearchConfig {
 impl MeilisearchConfig {
     pub fn url(&self) -> String {
         format!("http://{}:{}", self.host, self.port)
+    }
+
+    /// Read configuration from /etc/meilisearch.conf (system meilisearch)
+    /// Returns (host, port, master_key)
+    fn read_system_config() -> (String, u16, String) {
+        let default_host = "127.0.0.1".to_string();
+        let default_port = 7700u16;
+        let default_key = "ttrpg-assistant-dev-key".to_string();
+
+        let config_path = std::path::Path::new("/etc/meilisearch.conf");
+        if !config_path.exists() {
+            return (default_host, default_port, default_key);
+        }
+
+        let content = match std::fs::read_to_string(config_path) {
+            Ok(c) => c,
+            Err(_) => return (default_host, default_port, default_key),
+        };
+
+        let mut host = default_host;
+        let mut port = default_port;
+        let mut master_key = default_key;
+        let mut found_any = false;
+
+        // Parse env-style config
+        for line in content.lines() {
+            let line = line.trim();
+            if line.starts_with('#') || line.is_empty() {
+                continue;
+            }
+
+            if line.starts_with("MEILI_MASTER_KEY=") {
+                let value = line.trim_start_matches("MEILI_MASTER_KEY=");
+                let value = value.trim_matches('"').trim_matches('\'');
+                if !value.is_empty() {
+                    master_key = value.to_string();
+                    found_any = true;
+                }
+            } else if line.starts_with("MEILI_HTTP_ADDR=") {
+                let value = line.trim_start_matches("MEILI_HTTP_ADDR=");
+                let value = value.trim_matches('"').trim_matches('\'');
+                // Parse host:port format (e.g., "127.0.0.1:7700" or "localhost:7700")
+                if let Some((h, p)) = value.split_once(':') {
+                    host = h.to_string();
+                    if let Ok(parsed_port) = p.parse::<u16>() {
+                        port = parsed_port;
+                    }
+                    found_any = true;
+                }
+            }
+        }
+
+        if found_any {
+            log::info!(
+                "Using system Meilisearch from /etc/meilisearch.conf: {}:{}",
+                host, port
+            );
+        }
+
+        (host, port, master_key)
     }
 }
 
@@ -90,9 +153,19 @@ impl SidecarManager {
     }
 
     /// Check if Meilisearch is healthy (HTTP health endpoint)
+    /// Note: /health endpoint doesn't require auth per Meilisearch docs,
+    /// but we include it anyway for consistency with protected instances
     pub async fn health_check(&self) -> bool {
         let url = format!("{}/health", self.config.url());
-        match reqwest::get(&url).await {
+        let client = reqwest::Client::new();
+        let mut request = client.get(&url);
+
+        // Include auth header for protected instances
+        if !self.config.master_key.is_empty() {
+            request = request.header("Authorization", format!("Bearer {}", self.config.master_key));
+        }
+
+        match request.send().await {
             Ok(resp) => resp.status().is_success(),
             Err(_) => false,
         }

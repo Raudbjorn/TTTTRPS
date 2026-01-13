@@ -12,7 +12,8 @@ use leptos::ev;
 use leptos::task::spawn_local;
 
 use crate::bindings::{
-    pick_document_file, ingest_document_with_progress, reindex_library,
+    pick_document_file, ingest_document_two_phase, reindex_library, delete_library_document,
+    rebuild_library_metadata, list_library_documents, clear_and_reingest_document,
 };
 use crate::components::design_system::{
     Badge, BadgeVariant, Button, ButtonVariant, Card, CardHeader, CardBody, Input, Modal,
@@ -98,15 +99,31 @@ pub fn SourceManager() -> impl IntoView {
     let execute_delete = {
         let documents = state.documents;
         let total_chunks = state.total_chunks;
+        let ingestion_status = state.ingestion_status;
         move |_: ev::MouseEvent| {
             let id = delete_target_id.get();
-            documents.update(|docs| {
-                if let Some(idx) = docs.iter().position(|d| d.id == id) {
-                    let removed = docs.remove(idx);
-                    total_chunks.update(|c| *c = c.saturating_sub(removed.chunk_count));
+            show_delete_confirm.set(false);
+
+            // Call backend to delete from Meilisearch
+            spawn_local(async move {
+                match delete_library_document(id.clone()).await {
+                    Ok(()) => {
+                        // Remove from UI state on success
+                        documents.update(|docs| {
+                            if let Some(idx) = docs.iter().position(|d| d.id == id) {
+                                let removed = docs.remove(idx);
+                                total_chunks.update(|c| *c = c.saturating_sub(removed.chunk_count));
+                            }
+                        });
+                        ingestion_status.set("Document deleted successfully".to_string());
+                    }
+                    Err(e) => {
+                        ingestion_status.set(format!("Failed to delete document: {}", e));
+                        log::error!("Failed to delete document: {}", e);
+                    }
                 }
             });
-            show_delete_confirm.set(false);
+
             delete_target_id.set(String::new());
         }
     };
@@ -115,6 +132,65 @@ pub fn SourceManager() -> impl IntoView {
     let cancel_delete = move |_: ev::MouseEvent| {
         show_delete_confirm.set(false);
         delete_target_id.set(String::new());
+    };
+
+    // Re-ingest a document (clear and re-ingest from original file)
+    let handle_reingest = {
+        let documents = state.documents;
+        let total_chunks = state.total_chunks;
+        let ingestion_status = state.ingestion_status;
+        let is_ingesting = state.is_ingesting;
+        move |id: String| {
+            is_ingesting.set(true);
+            ingestion_status.set("Clearing and re-ingesting document...".to_string());
+            spawn_local(async move {
+                match clear_and_reingest_document(id.clone()).await {
+                    Ok(result) => {
+                        ingestion_status.set(format!(
+                            "Re-ingested {} ({} pages, {} chars)",
+                            result.source_name, result.page_count, result.character_count
+                        ));
+                        // Refresh the document list
+                        match list_library_documents().await {
+                            Ok(docs) => {
+                                let source_docs: Vec<SourceDocument> = docs
+                                    .into_iter()
+                                    .map(|d| SourceDocument {
+                                        id: d.id,
+                                        name: d.name,
+                                        source_type: SourceType::from_str(&d.source_type),
+                                        status: match d.status.as_str() {
+                                            "ready" | "indexed" => DocumentStatus::Indexed,
+                                            "pending" => DocumentStatus::Pending,
+                                            "processing" => DocumentStatus::Indexing,
+                                            _ => DocumentStatus::Failed,
+                                        },
+                                        chunk_count: d.chunk_count as usize,
+                                        page_count: d.page_count as usize,
+                                        file_size_bytes: 0,
+                                        ingested_at: Some(d.ingested_at),
+                                        file_path: d.file_path,
+                                        description: None,
+                                        tags: Vec::new(),
+                                    })
+                                    .collect();
+                                let chunks: usize = source_docs.iter().map(|d| d.chunk_count).sum();
+                                documents.set(source_docs);
+                                total_chunks.set(chunks);
+                            }
+                            Err(e) => {
+                                log::warn!("Failed to refresh document list: {}", e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        ingestion_status.set(format!("Re-ingest failed: {}", e));
+                        log::error!("Failed to re-ingest document: {}", e);
+                    }
+                }
+                is_ingesting.set(false);
+            });
+        }
     };
 
     // Reindex all documents
@@ -136,7 +212,63 @@ pub fn SourceManager() -> impl IntoView {
         }
     };
 
-    // Ingest new document
+    // Repair library (rebuild metadata from existing content)
+    let is_repairing = RwSignal::new(false);
+    let handle_repair = {
+        let documents = state.documents;
+        let total_chunks = state.total_chunks;
+        let ingestion_status = state.ingestion_status;
+        move |_: ev::MouseEvent| {
+            is_repairing.set(true);
+            ingestion_status.set("Scanning indices for existing documents...".to_string());
+            spawn_local(async move {
+                match rebuild_library_metadata().await {
+                    Ok(count) => {
+                        ingestion_status.set(format!("Found {} documents, refreshing list...", count));
+                        // Reload the document list
+                        match list_library_documents().await {
+                            Ok(docs) => {
+                                let source_docs: Vec<SourceDocument> = docs
+                                    .into_iter()
+                                    .map(|d| SourceDocument {
+                                        id: d.id,
+                                        name: d.name,
+                                        source_type: SourceType::from_str(&d.source_type),
+                                        status: match d.status.as_str() {
+                                            "ready" | "indexed" => DocumentStatus::Indexed,
+                                            "pending" => DocumentStatus::Pending,
+                                            "processing" => DocumentStatus::Indexing,
+                                            _ => DocumentStatus::Failed,
+                                        },
+                                        chunk_count: d.chunk_count as usize,
+                                        page_count: d.page_count as usize,
+                                        file_size_bytes: 0,
+                                        ingested_at: Some(d.ingested_at),
+                                        file_path: d.file_path,
+                                        description: None,
+                                        tags: Vec::new(),
+                                    })
+                                    .collect();
+                                let chunks: usize = source_docs.iter().map(|d| d.chunk_count).sum();
+                                documents.set(source_docs);
+                                total_chunks.set(chunks);
+                                ingestion_status.set(format!("Library repaired: {} documents recovered", count));
+                            }
+                            Err(e) => {
+                                ingestion_status.set(format!("Repaired but failed to refresh: {}", e));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        ingestion_status.set(format!("Repair failed: {}", e));
+                    }
+                }
+                is_repairing.set(false);
+            });
+        }
+    };
+
+    // Ingest new document using two-phase pipeline
     let handle_ingest = {
         let is_ingesting = state.is_ingesting;
         let ingestion_progress = state.ingestion_progress;
@@ -150,36 +282,40 @@ pub fn SourceManager() -> impl IntoView {
                     is_ingesting.set(true);
                     ingestion_progress.set(0.0);
                     let filename = path.split('/').last().unwrap_or(&path).to_string();
-                    ingestion_status.set(format!("Ingesting {}...", filename));
+                    ingestion_status.set(format!("Extracting {}...", filename));
 
                     let source_type = selected_source_type.get();
-                    let source_type_str = if source_type == SourceType::All {
-                        "documents".to_string()
-                    } else {
-                        source_type.as_str().to_string()
-                    };
 
-                    match ingest_document_with_progress(path.clone(), Some(source_type_str.clone())).await {
+                    // Use two-phase pipeline: extract pages → create chunks
+                    match ingest_document_two_phase(path.clone(), None).await {
                         Ok(result) => {
-                            let doc_id = format!("doc-{}", documents.get().len() + 1);
+                            ingestion_progress.set(0.5);
+                            ingestion_status.set(format!(
+                                "Chunking {} pages...",
+                                result.page_count
+                            ));
+
                             let doc = SourceDocument {
-                                id: doc_id,
+                                id: result.slug.clone(),
                                 name: result.source_name.clone(),
                                 source_type,
                                 status: DocumentStatus::Indexed,
-                                chunk_count: result.character_count / 500,
+                                chunk_count: result.chunk_count,
                                 page_count: result.page_count,
-                                file_size_bytes: result.character_count,
+                                file_size_bytes: result.total_chars,
                                 ingested_at: Some("Just now".to_string()),
                                 file_path: Some(path),
-                                description: None,
-                                tags: Vec::new(),
+                                description: result.game_system.clone(),
+                                tags: result.content_category.map(|c| vec![c]).unwrap_or_default(),
                             };
                             documents.update(|docs| docs.push(doc));
-                            total_chunks.update(|c| *c += result.character_count / 500);
+                            total_chunks.update(|c| *c += result.chunk_count);
                             ingestion_status.set(format!(
-                                "Indexed {} ({} pages)",
-                                result.source_name, result.page_count
+                                "Indexed '{}' → {} pages → {} chunks ({})",
+                                result.source_name,
+                                result.page_count,
+                                result.chunk_count,
+                                result.chunks_index
                             ));
                             ingestion_progress.set(1.0);
                         }
@@ -237,6 +373,19 @@ pub fn SourceManager() -> impl IntoView {
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                         </svg>
                         "Reindex"
+                    </Button>
+                    <Button
+                        variant=ButtonVariant::Secondary
+                        on_click=handle_repair
+                        disabled=is_repairing.get()
+                        loading=is_repairing.get()
+                        title="Scan existing indices and rebuild library list"
+                    >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        "Repair"
                     </Button>
                 </div>
 
@@ -319,6 +468,8 @@ pub fn SourceManager() -> impl IntoView {
                                         let is_editing = editing.as_ref().map(|e| e.id == doc.id).unwrap_or(false);
                                         let doc_for_edit = doc.clone();
                                         let doc_for_delete = doc.id.clone();
+                                        let doc_for_reingest = doc.id.clone();
+                                        let has_file_path = doc.file_path.is_some();
 
                                         if is_editing {
                                             view! {
@@ -434,6 +585,23 @@ pub fn SourceManager() -> impl IntoView {
                                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                                                 </svg>
                                                             </button>
+                                                            {if has_file_path {
+                                                                let id = doc_for_reingest.clone();
+                                                                let reingest = handle_reingest.clone();
+                                                                Some(view! {
+                                                                    <button
+                                                                        class="p-1.5 rounded hover:bg-blue-900/30 text-[var(--text-muted)] hover:text-blue-400 transition-colors"
+                                                                        title="Clear & Re-ingest (try with OCR)"
+                                                                        on:click=move |_| reingest(id.clone())
+                                                                    >
+                                                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                                                        </svg>
+                                                                    </button>
+                                                                })
+                                                            } else {
+                                                                None
+                                                            }}
                                                             <button
                                                                 class="p-1.5 rounded hover:bg-red-900/30 text-[var(--text-muted)] hover:text-red-400 transition-colors"
                                                                 title="Delete"

@@ -1,0 +1,662 @@
+metadata:
+  name: Docling
+  description: Document processing library for parsing diverse formats with AI-powered understanding
+  license: MIT
+  language: Python
+  org: LF AI & Data Foundation (IBM Research)
+  sources: docling/*.py, docs/*
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CORE CONCEPTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+concepts:
+  DocumentConverter: Main entry point for converting documents to DoclingDocument
+  DoclingDocument: Unified representation format for all document types
+  Pipeline: Processing chain (Standard, VLM, ASR, Simple) for different document types
+  Backend: Format-specific parser (PDF, DOCX, HTML, etc.)
+  ConversionResult: Contains DoclingDocument + metadata + errors
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# INPUT FORMATS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+input_formats[14]{format,extensions,mime_types,pipeline}:
+  PDF,pdf,application/pdf,StandardPdfPipeline
+  DOCX,"docx,dotx,docm,dotm",application/vnd.openxmlformats-officedocument.wordprocessingml.*,SimplePipeline
+  PPTX,"pptx,potx,ppsx,pptm",application/vnd.openxmlformats-officedocument.presentationml.*,SimplePipeline
+  XLSX,"xlsx,xlsm",application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,SimplePipeline
+  HTML,"html,htm,xhtml","text/html,application/xhtml+xml",SimplePipeline
+  MD,md,"text/markdown,text/x-markdown",SimplePipeline
+  CSV,csv,text/csv,SimplePipeline
+  IMAGE,"jpg,jpeg,png,tif,tiff,bmp,webp","image/png,image/jpeg,image/tiff,image/bmp,image/webp",StandardPdfPipeline
+  ASCIIDOC,"adoc,asciidoc,asc",text/asciidoc,SimplePipeline
+  XML_JATS,"xml,nxml",application/xml,SimplePipeline
+  XML_USPTO,"xml,txt",application/xml,SimplePipeline
+  AUDIO,"wav,mp3,m4a,aac,ogg,flac,mp4,avi,mov","audio/*,video/*",AsrPipeline
+  VTT,vtt,text/vtt,SimplePipeline
+  JSON_DOCLING,json,application/json,SimplePipeline
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# OUTPUT FORMATS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+output_formats[7]{format,extension,method,description}:
+  MARKDOWN,md,export_to_markdown(),Markdown with optional images
+  JSON,json,save_as_json(),Full DoclingDocument structure
+  YAML,yaml,save_as_yaml(),YAML representation
+  HTML,html,save_as_html(),HTML with optional split page view
+  TEXT,txt,export_to_markdown(strict_text=True),Plain text without formatting
+  DOCTAGS,doctags,save_as_doctags(),DocTags format for LLM training
+  HTML_SPLIT_PAGE,html,save_as_html(split_page_view=True),HTML with per-page layout
+
+image_export_modes[3]{mode,description}:
+  PLACEHOLDER,Only marks image position in output
+  EMBEDDED,Base64 encoded images inline
+  REFERENCED,PNG files exported separately and referenced
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PIPELINES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+pipelines[4]{name,class,description,use_case}:
+  STANDARD,StandardPdfPipeline,Full PDF processing with layout/OCR/tables,PDF and images with traditional ML
+  VLM,VlmPipeline,Vision-Language Model processing,PDF/images with VLM (GraniteDocling)
+  ASR,AsrPipeline,Automatic Speech Recognition,Audio/video transcription
+  SIMPLE,SimplePipeline,Direct backend parsing,Office docs/HTML/Markdown
+
+pipeline_stages:
+  StandardPdfPipeline:
+    - PagePreprocessing: Normalize page images
+    - LayoutModel: Detect document structure (headers/paragraphs/tables/figures)
+    - TableStructureModel: Extract table cells and structure
+    - OCRModel: Extract text from images/scans
+    - CodeFormulaModel: Enrich code blocks and formulas
+    - PictureClassifier: Classify image types
+    - PictureDescriptionModel: Generate image descriptions
+    - ReadingOrderModel: Determine reading sequence
+    - PageAssembleModel: Build final document
+
+  VlmPipeline:
+    - PagePreprocessing: Prepare page images
+    - VlmModel: Process with Vision-Language Model
+    - PageAssemble: Build document from VLM output
+
+  AsrPipeline:
+    - AudioLoading: Load audio/video file
+    - WhisperModel: Transcribe speech to text
+    - DocumentAssembly: Build transcript document
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# OCR ENGINES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+ocr_engines[6]{engine,kind,default_langs,description}:
+  Auto,auto,[],Automatically selects best available engine
+  RapidOCR,rapidocr,"english,chinese",Fast ONNX-based OCR (recommended)
+  EasyOCR,easyocr,"fr,de,es,en",Deep learning OCR with 80+ languages
+  TesseractCLI,tesseract,"fra,deu,spa,eng",Command-line Tesseract
+  Tesserocr,tesserocr,"fra,deu,spa,eng",Python Tesseract bindings
+  OcrMac,ocrmac,"fr-FR,de-DE,es-ES,en-US",macOS native Vision framework
+
+ocr_options{option,type,default,description}:
+  lang,list[str],[],OCR language codes
+  force_full_page_ocr,bool,false,Always OCR entire page
+  bitmap_area_threshold,float,0.05,Min page percentage for OCR
+
+rapidocr_options{option,type,default}:
+  backend,enum,onnxruntime,"onnxruntime|openvino|paddle|torch"
+  text_score,float,0.5,Confidence threshold
+  use_det,bool,None,Enable detection
+  use_cls,bool,None,Enable classification
+  use_rec,bool,None,Enable recognition
+
+tesseract_options{option,type,default}:
+  tesseract_cmd,str,tesseract,Path to tesseract executable
+  psm,int,None,Page Segmentation Mode (0-13)
+  path,str,None,Custom tessdata path
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# VLM MODELS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+vlm_models[10]{name,type,repo_id,framework,description}:
+  GraniteDocling,granitedocling,ibm-granite/granite-docling-258M,transformers|mlx,Default VLM for document parsing
+  SmolDocling,smoldocling,ds4sd/SmolDocling-256M,transformers|mlx,Small efficient document VLM
+  GraniteVision,granite_vision,ibm-granite/granite-vision-3.1-2b,transformers|ollama,General vision model
+  GOT-OCR2,got_ocr_2,stepfun-ai/GOT-OCR2_0,transformers,OCR-focused VLM
+  SmolDoclingVLLM,smoldocling_vllm,ds4sd/SmolDocling-256M,vllm,SmolDocling via vLLM server
+  GraniteDoclingVLLM,granitedocling_vllm,ibm-granite/granite-docling-258M,vllm,GraniteDocling via vLLM
+  DeepSeekOCR,deepseekocr_ollama,deepseek-ai/deepseek-vl2,ollama,DeepSeek vision via Ollama
+  NuExtract2B,nuextract,numind/NuExtract-2-4B,transformers,Information extraction model
+  GraniteVisionOllama,granite_vision_ollama,granite3.1-dense:2b,ollama,GraniteVision via Ollama
+  SmolVLM,smolvlm,HuggingFaceTB/SmolVLM-256M-Instruct,transformers,Picture description
+
+vlm_options{option,type,default,description}:
+  repo_id,str,required,HuggingFace model repository
+  prompt,str,model-specific,System prompt for generation
+  generation_config,dict,{max_new_tokens:4096},Generation parameters
+  scale,float,1.0,Image scaling factor
+  batch_size,int,1,Batch size for processing
+  response_format,enum,doctags,"doctags|markdown"
+
+inference_frameworks[4]{framework,description}:
+  transformers,HuggingFace Transformers (default)
+  mlx,Apple MLX for Apple Silicon
+  vllm,vLLM server for high-throughput
+  ollama,Ollama local model server
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ASR MODELS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+asr_models[18]{name,size,variants}:
+  whisper_tiny,39M,"auto,mlx,native"
+  whisper_small,244M,"auto,mlx,native"
+  whisper_base,74M,"auto,mlx,native"
+  whisper_medium,769M,"auto,mlx,native"
+  whisper_large,1.5B,"auto,mlx,native"
+  whisper_turbo,809M,"auto,mlx,native"
+
+asr_options{option,type,default,description}:
+  repo_id,str,required,HuggingFace model repository
+  language,str,None,Force language (None=auto-detect)
+  task,enum,transcribe,"transcribe|translate"
+  batch_size,int,24,Audio chunk batch size
+  chunk_length_s,float,30,Audio chunk length in seconds
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TABLE STRUCTURE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+table_structure_options{option,type,default,description}:
+  mode,enum,accurate,"fast|accurate"
+  do_cell_matching,bool,true,Match predictions to PDF cells
+
+table_former_modes[2]{mode,description}:
+  fast,Quick table detection with basic structure
+  accurate,Detailed cell-level structure extraction
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# LAYOUT MODELS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+layout_models[6]{name,description}:
+  DOCLING_LAYOUT_HERON,Default fast layout model (Heron)
+  DOCLING_LAYOUT_HERON_101,Heron v1.0.1
+  DOCLING_LAYOUT_V2,Legacy layout model v2
+  DOCLING_LAYOUT_EGRET_MEDIUM,Medium Egret model
+  DOCLING_LAYOUT_EGRET_LARGE,Large Egret model
+  DOCLING_LAYOUT_EGRET_XLARGE,Extra-large Egret model
+
+layout_options{option,type,default,description}:
+  model_spec,LayoutModelConfig,HERON,Layout model to use
+  keep_empty_clusters,bool,false,Keep clusters without text
+  skip_cell_assignment,bool,false,Skip cell-to-cluster for VLM
+  create_orphan_clusters,bool,true,Create clusters for orphaned cells
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DOCUMENT ELEMENTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+doc_item_labels[20]{label,description}:
+  TITLE,Document title
+  SECTION_HEADER,Section heading
+  PARAGRAPH,Body paragraph
+  LIST_ITEM,List item (bulleted/numbered)
+  TABLE,Table element
+  FIGURE,Figure/image
+  CAPTION,Caption for figure/table
+  FORMULA,Mathematical formula
+  CODE,Code block
+  FOOTNOTE,Footnote text
+  PAGE_HEADER,Page header
+  PAGE_FOOTER,Page footer
+  CHECKBOX_SELECTED,Checked checkbox
+  CHECKBOX_UNSELECTED,Unchecked checkbox
+  FORM,Form element
+  KEY_VALUE_REGION,Key-value pair region
+  PICTURE,Generic picture
+  TEXT,Generic text
+  REFERENCE,Citation/reference
+  DOCUMENT_INDEX,Table of contents
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PYTHON API
+# ═══════════════════════════════════════════════════════════════════════════════
+
+api:
+
+  basic_usage: |
+    from docling.document_converter import DocumentConverter
+
+    converter = DocumentConverter()
+    result = converter.convert("document.pdf")
+    print(result.document.export_to_markdown())
+
+  convert_url: |
+    from docling.document_converter import DocumentConverter
+
+    converter = DocumentConverter()
+    result = converter.convert("https://arxiv.org/pdf/2408.09869")
+    result.document.save_as_json("output.json")
+
+  batch_conversion: |
+    from docling.document_converter import DocumentConverter
+    from pathlib import Path
+
+    converter = DocumentConverter()
+    results = converter.convert_all([
+        Path("doc1.pdf"),
+        Path("doc2.pdf"),
+        "https://example.com/doc3.pdf"
+    ])
+    for result in results:
+        print(f"{result.input.file}: {result.status}")
+
+  custom_pipeline_options: |
+    from docling.document_converter import DocumentConverter, PdfFormatOption
+    from docling.datamodel.pipeline_options import PdfPipelineOptions
+    from docling.datamodel.base_models import InputFormat
+
+    pipeline_options = PdfPipelineOptions(
+        do_ocr=True,
+        do_table_structure=True,
+        do_code_enrichment=True,
+        do_formula_enrichment=True,
+        generate_page_images=True,
+    )
+
+    converter = DocumentConverter(
+        format_options={
+            InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
+        }
+    )
+    result = converter.convert("document.pdf")
+
+  custom_ocr: |
+    from docling.document_converter import DocumentConverter, PdfFormatOption
+    from docling.datamodel.pipeline_options import PdfPipelineOptions, RapidOcrOptions
+    from docling.datamodel.base_models import InputFormat
+
+    pipeline_options = PdfPipelineOptions(
+        do_ocr=True,
+        ocr_options=RapidOcrOptions(lang=["english", "chinese"])
+    )
+
+    converter = DocumentConverter(
+        format_options={
+            InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
+        }
+    )
+
+  vlm_pipeline: |
+    from docling.document_converter import DocumentConverter, PdfFormatOption
+    from docling.datamodel.pipeline_options import VlmPipelineOptions
+    from docling.datamodel import vlm_model_specs
+    from docling.datamodel.base_models import InputFormat
+    from docling.pipeline.vlm_pipeline import VlmPipeline
+
+    pipeline_options = VlmPipelineOptions(
+        vlm_options=vlm_model_specs.GRANITEDOCLING_TRANSFORMERS
+    )
+
+    converter = DocumentConverter(
+        format_options={
+            InputFormat.PDF: PdfFormatOption(
+                pipeline_cls=VlmPipeline,
+                pipeline_options=pipeline_options
+            )
+        }
+    )
+
+  asr_pipeline: |
+    from docling.document_converter import DocumentConverter, AudioFormatOption
+    from docling.datamodel.pipeline_options import AsrPipelineOptions
+    from docling.datamodel.asr_model_specs import WHISPER_MEDIUM
+    from docling.datamodel.base_models import InputFormat
+    from docling.pipeline.asr_pipeline import AsrPipeline
+
+    pipeline_options = AsrPipelineOptions(asr_options=WHISPER_MEDIUM)
+
+    converter = DocumentConverter(
+        format_options={
+            InputFormat.AUDIO: AudioFormatOption(
+                pipeline_cls=AsrPipeline,
+                pipeline_options=pipeline_options
+            )
+        }
+    )
+    result = converter.convert("audio.mp3")
+
+  export_options: |
+    # Markdown
+    result.document.export_to_markdown()
+    result.document.save_as_markdown("output.md", image_mode=ImageRefMode.EMBEDDED)
+
+    # JSON
+    result.document.save_as_json("output.json", image_mode=ImageRefMode.REFERENCED)
+
+    # HTML
+    result.document.save_as_html("output.html", split_page_view=True)
+
+    # Plain text
+    result.document.export_to_markdown(strict_text=True)
+
+    # DocTags (for LLM training)
+    result.document.save_as_doctags("output.doctags")
+
+  accelerator_options: |
+    from docling.datamodel.accelerator_options import AcceleratorOptions, AcceleratorDevice
+    from docling.datamodel.pipeline_options import PdfPipelineOptions
+
+    pipeline_options = PdfPipelineOptions(
+        accelerator_options=AcceleratorOptions(
+            num_threads=4,
+            device=AcceleratorDevice.CUDA  # or CPU, MPS, AUTO
+        )
+    )
+
+  page_range: |
+    from docling.datamodel.settings import PageRange
+
+    # Convert specific pages
+    result = converter.convert(
+        "document.pdf",
+        page_range=PageRange(start=1, end=10)
+    )
+
+  error_handling: |
+    from docling.datamodel.base_models import ConversionStatus
+
+    result = converter.convert("document.pdf", raises_on_error=False)
+
+    if result.status == ConversionStatus.SUCCESS:
+        print(result.document.export_to_markdown())
+    elif result.status == ConversionStatus.PARTIAL_SUCCESS:
+        print("Partial conversion:", result.errors)
+    else:
+        print("Failed:", result.errors)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CLI
+# ═══════════════════════════════════════════════════════════════════════════════
+
+cli:
+  command: docling
+  install: pip install docling
+
+  basic_usage: |
+    # Convert PDF to Markdown
+    docling document.pdf
+
+    # Convert URL
+    docling https://arxiv.org/pdf/2408.09869
+
+    # Convert directory
+    docling ./documents/
+
+  output_formats: |
+    docling document.pdf --to md          # Markdown (default)
+    docling document.pdf --to json        # JSON
+    docling document.pdf --to yaml        # YAML
+    docling document.pdf --to html        # HTML
+    docling document.pdf --to text        # Plain text
+    docling document.pdf --to doctags     # DocTags
+    docling document.pdf --to md --to json  # Multiple formats
+
+  vlm_mode: |
+    # Use VLM pipeline with GraniteDocling
+    docling --pipeline vlm --vlm-model granite_docling document.pdf
+
+    # Other VLM models
+    docling --pipeline vlm --vlm-model smoldocling document.pdf
+    docling --pipeline vlm --vlm-model granite_vision document.pdf
+
+  audio_transcription: |
+    docling audio.mp3 --asr-model whisper_tiny
+    docling audio.wav --asr-model whisper_medium
+    docling video.mp4 --asr-model whisper_large
+
+  ocr_options: |
+    docling document.pdf --ocr                     # Enable OCR (default)
+    docling document.pdf --no-ocr                  # Disable OCR
+    docling document.pdf --force-ocr               # Force full-page OCR
+    docling document.pdf --ocr-engine rapidocr     # Specific engine
+    docling document.pdf --ocr-engine tesseract --ocr-lang deu,eng
+
+  table_options: |
+    docling document.pdf --tables                  # Enable tables (default)
+    docling document.pdf --no-tables               # Disable tables
+    docling document.pdf --table-mode accurate     # Accurate mode
+    docling document.pdf --table-mode fast         # Fast mode
+
+  enrichment: |
+    docling document.pdf --enrich-code             # Code block enrichment
+    docling document.pdf --enrich-formula          # Formula to LaTeX
+    docling document.pdf --enrich-picture-classes  # Picture classification
+    docling document.pdf --enrich-picture-description  # Picture descriptions
+
+  image_handling: |
+    docling document.pdf --image-export-mode embedded   # Base64 inline
+    docling document.pdf --image-export-mode referenced # Separate files
+    docling document.pdf --image-export-mode placeholder # Position only
+
+  performance: |
+    docling document.pdf --num-threads 8           # Thread count
+    docling document.pdf --device cuda             # GPU acceleration
+    docling document.pdf --device mps              # Apple Metal
+    docling document.pdf --document-timeout 60     # Timeout in seconds
+
+  other_options: |
+    docling document.pdf --output ./results        # Output directory
+    docling document.pdf -v                        # Verbose (info)
+    docling document.pdf -vv                       # Debug logging
+    docling document.pdf --profiling               # Show timing stats
+    docling document.pdf --abort-on-error          # Stop on first error
+    docling document.pdf --pdf-password secret     # Protected PDF
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PIPELINE OPTIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+pipeline_options{option,type,default,description}:
+  document_timeout,float,None,Max processing time per document
+  accelerator_options,AcceleratorOptions,default,Hardware acceleration config
+  enable_remote_services,bool,false,Allow external API calls
+  allow_external_plugins,bool,false,Allow third-party plugins
+  artifacts_path,Path,None,Local model artifacts directory
+
+pdf_pipeline_options{option,type,default,description}:
+  do_ocr,bool,true,Enable OCR processing
+  do_table_structure,bool,true,Enable table extraction
+  do_code_enrichment,bool,false,Enrich code blocks
+  do_formula_enrichment,bool,false,Convert formulas to LaTeX
+  do_picture_classification,bool,false,Classify pictures
+  do_picture_description,bool,false,Generate picture descriptions
+  force_backend_text,bool,false,Use backend text over VLM
+  images_scale,float,1.0,Image scaling factor
+  generate_page_images,bool,false,Generate page images
+  generate_picture_images,bool,false,Generate picture images
+  ocr_options,OcrOptions,OcrAutoOptions(),OCR configuration
+  table_structure_options,TableStructureOptions,default,Table config
+  layout_options,LayoutOptions,default,Layout model config
+  ocr_batch_size,int,4,OCR batch size
+  layout_batch_size,int,4,Layout batch size
+  table_batch_size,int,4,Table batch size
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONVERSION RESULT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+conversion_result{field,type,description}:
+  document,DoclingDocument,The converted document (if successful)
+  input,InputDocument,Source document metadata
+  status,ConversionStatus,Conversion status
+  errors,list[ErrorItem],List of errors encountered
+  timings,dict,Profiling information per stage
+
+conversion_status[6]{status,description}:
+  PENDING,Not yet started
+  STARTED,Currently processing
+  SUCCESS,Completed successfully
+  PARTIAL_SUCCESS,Completed with some errors
+  FAILURE,Failed to convert
+  SKIPPED,Skipped (format not allowed)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DOCLING DOCUMENT STRUCTURE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+docling_document:
+  description: Unified document representation with hierarchical structure
+
+  key_attributes:
+    - name: Document name/title
+    - origin: Source file information
+    - pages: List of page objects
+    - body: Main content items
+    - furniture: Headers/footers/page numbers
+    - pictures: Image elements
+    - tables: Table elements
+
+  methods:
+    - export_to_markdown(): Export as Markdown string
+    - save_as_markdown(path): Save Markdown to file
+    - save_as_json(path): Save JSON to file
+    - save_as_yaml(path): Save YAML to file
+    - save_as_html(path): Save HTML to file
+    - save_as_doctags(path): Save DocTags format
+    - iterate_items(): Iterate document items
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# INTEGRATIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+integrations[7]{name,description,usage}:
+  LangChain,Document loader for LangChain,"DoclingLoader, DoclingReader"
+  LlamaIndex,Document reader for LlamaIndex,DoclingReader
+  Haystack,Document converter for Haystack,DoclingConverter
+  CrewAI,Tool for CrewAI agents,DoclingTool
+  MCP,Model Context Protocol server,docling-mcp-server
+  Chroma,Vector store chunking,DoclingChunker
+  Milvus,Vector store integration,DoclingChunker
+
+mcp_server: |
+  # Start MCP server
+  python -m docling.mcp.server
+
+  # Configure in Claude Desktop
+  # ~/.config/claude/claude_desktop_config.json
+  {
+    "mcpServers": {
+      "docling": {
+        "command": "python",
+        "args": ["-m", "docling.mcp.server"]
+      }
+    }
+  }
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# INSTALLATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+installation:
+  basic: pip install docling
+
+  with_ocr: |
+    pip install docling[ocr]          # All OCR engines
+    pip install docling[tesseract]    # Tesseract only
+    pip install docling[rapidocr]     # RapidOCR only
+    pip install docling[easyocr]      # EasyOCR only
+
+  with_vlm: |
+    pip install docling[vlm]          # VLM models
+    pip install mlx-vlm               # Apple MLX acceleration
+
+  with_asr: |
+    pip install docling[asr]          # ASR models
+
+  full: pip install docling[all]
+
+  system_deps: |
+    # Ubuntu/Debian
+    apt-get install tesseract-ocr libtesseract-dev
+
+    # macOS
+    brew install tesseract
+
+    # Poppler for PDF (optional)
+    apt-get install poppler-utils  # Linux
+    brew install poppler           # macOS
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# BEST PRACTICES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+best_practices:
+
+  performance:
+    - Use RapidOCR for best speed/quality balance
+    - Set appropriate num_threads for your CPU
+    - Use GPU acceleration (CUDA/MPS) when available
+    - Set document_timeout for batch processing
+    - Disable unused enrichment options
+
+  quality:
+    - Use accurate table mode for complex tables
+    - Enable OCR for scanned documents
+    - Use VLM pipeline for challenging layouts
+    - Generate page images for verification
+
+  memory:
+    - Process large documents in batches
+    - Clear page images after processing
+    - Use page_range for partial conversion
+    - Set appropriate batch sizes
+
+  formats:
+    - Use JSON for programmatic access
+    - Use Markdown for LLM consumption
+    - Use DocTags for model training
+    - Use HTML for visualization
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ARCHITECTURE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+modules{module,purpose}:
+  docling.document_converter,Main API entry point
+  docling.datamodel,Pydantic models and options
+  docling.backend,Format-specific parsers
+  docling.pipeline,Processing pipelines
+  docling.models,ML models (OCR/layout/table/VLM)
+  docling.chunking,Document chunking utilities
+  docling.cli,Command-line interface
+  docling.experimental,Beta features
+
+backends{backend,formats}:
+  DoclingParseV4DocumentBackend,PDF (default)
+  PyPdfiumDocumentBackend,PDF (alternative)
+  MsWordDocumentBackend,DOCX
+  MsPowerpointDocumentBackend,PPTX
+  MsExcelDocumentBackend,XLSX
+  HTMLDocumentBackend,HTML
+  MarkdownDocumentBackend,Markdown
+  ImageDocumentBackend,Images
+  CsvDocumentBackend,CSV
+  WebVTTDocumentBackend,VTT
+  JatsDocumentBackend,XML JATS
+  PatentUsptoDocumentBackend,USPTO XML
+
+models{model,purpose}:
+  LayoutModel,Document layout detection
+  TableStructureModel,Table cell extraction
+  RapidOcrModel,RapidOCR integration
+  EasyOcrModel,EasyOCR integration
+  TesseractOcrModel,Tesseract integration
+  CodeFormulaModel,Code/formula enrichment
+  DocumentPictureClassifier,Picture classification
+  PictureDescriptionVlmModel,Picture description
+  ReadingOrderModel,Reading order detection
+  PageAssembleModel,Document assembly

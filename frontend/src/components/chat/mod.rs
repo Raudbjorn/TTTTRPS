@@ -263,7 +263,7 @@ pub fn Chat() -> impl IntoView {
                             let _ = streaming_message_id.try_set(None);
 
                             // Persist final message content to database
-                            if let Some(Some(pid)) = streaming_persistent_id.try_get() {
+                            if let Some(pid) = streaming_persistent_id.get_untracked() {
                                 // Find message by its persistent_id (the exact message we created)
                                 let final_content = messages.try_with(|msgs| {
                                     msgs.iter()

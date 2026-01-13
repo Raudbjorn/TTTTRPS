@@ -60,10 +60,26 @@ which = "7.0"
 
 reqwest = { version = "0.11", features = ["json", "multipart", "stream"] }
 rodio = "0.19"
-lopdf = "0.32"
-epub = "2.1"
-zip = "2.1"
-quick-xml = "0.36"
+# Document extraction with kreuzberg - comprehensive extraction library
+# Using git version to get latest features
+# Note: "office", "excel", and "archives" features excluded due to zip -> lzma-rust2 -> crc conflict with sqlx
+kreuzberg = { git = "https://github.com/kreuzberg-dev/kreuzberg", default-features = false, features = [
+    # PDF support with bundled pdfium (auto-downloads, embeds in binary)
+    "pdf",
+    "bundled-pdfium",
+    # Document formats (office/excel excluded due to zip -> lzma-rust2 -> crc conflict)
+    "html",             # HTML/XHTML extraction
+    "xml",              # XML/DocBook/JATS
+    "email",            # eml, msg
+    # Advanced capabilities
+    "quality",          # Text quality post-processing
+    "chunking",         # Text chunking with overlap for RAG
+    "language-detection", # Auto-detect document languages
+    # Runtime
+    "tokio-runtime",    # Async support
+    "simd-utf8",        # SIMD-accelerated UTF-8 validation
+] }
+image = "0.25"       # Image processing for OCR pipeline
 futures-util = "0.3"
 async-trait = "0.1"
 
@@ -76,9 +92,11 @@ axum = "0.7"
 tower = "0.5"
 tower-http = { version = "0.5", features = ["cors"] }
 async-stream = "0.3"
+once_cell = "1.19"
 
 # Claude Desktop CDP bridge
 chromiumoxide = { version = "0.7", default-features = false, features = ["tokio-runtime"] }
+num_cpus = "1.17.0"
 
 # Platform-specific dependencies
 [target.'cfg(windows)'.dependencies]
@@ -95,10 +113,19 @@ mockall = "0.13"
 wiremock = "0.6"
 fake = "4.1"
 rstest = "0.24"
+zip = "2.1"
+quick-xml = "0.36"
 
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
+# Enable kreuzberg's built-in embeddings for users without Ollama
+embeddings = ["kreuzberg/embeddings"]
+# Enable kreuzberg's built-in OCR (requires tesseract system dependency)
+# Note: May conflict with some crates - use if your build supports it
+kreuzberg-ocr = ["kreuzberg/ocr"]
+# Enable keyword extraction for semantic search enhancement
+keywords = ["kreuzberg/keywords"]
 
 [[bin]]
 name = "ttrpg-assistant"

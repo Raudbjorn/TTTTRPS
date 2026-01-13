@@ -1,0 +1,279 @@
+meta:
+  name: Docling Document Processing SDK
+  version: 2.67.0
+  description: Parse diverse document formats into unified DoclingDocument representation
+  license: MIT
+  python: 3.9 - 3.14
+  organization: LF AI & Data Foundation
+  repo: https://github.com/docling-project/docling
+  docs: https://docling-project.github.io/docling/
+
+overview:
+  what: Open-source document processing SDK for parsing PDFs, Office docs, HTML, images, and audio into structured format
+  by: IBM Research
+  core_features[12]: Multi-format parsing (PDF DOCX PPTX XLSX HTML MD images audio),Advanced PDF understanding (layout tables reading-order),Local execution (air-gapped environments),OCR support (RapidOCR EasyOCR Tesseract),Vision Language Models (GraniteDocling SmolDocling),Table structure extraction (TableFormer),Code and formula recognition,Picture classification and description,Chunking for RAG workflows,LangChain/LlamaIndex/Haystack integrations,MCP server support,Structured information extraction
+
+input_formats[14]: PDF,DOCX,DOCM,DOTX,PPTX,POTX,PPSX,XLSX,XLSM,HTML,XHTML,Markdown,AsciiDoc,CSV,PNG,JPEG,TIFF,BMP,WEBP,USPTO XML,JATS XML,WebVTT,WAV,MP3,M4A,AAC,OGG,FLAC,MP4,AVI,MOV
+
+output_formats[7]: Markdown,HTML,HTML (split-page),JSON (lossless),YAML,Plain Text,DocTags
+
+installation:
+  basic: pip install docling
+  ocr_easyocr: pip install docling[easyocr]
+  ocr_tesseract: pip install docling[tesseract]
+  ocr_mac: pip install docling[ocrmac]
+  vlm: pip install docling[vlm]
+  asr: pip install docling[asr]
+  all: pip install docling[easyocr,tesseract,vlm,asr]
+  models: docling-tools models download
+
+api_basic:
+  import: from docling.document_converter import DocumentConverter
+  init: converter = DocumentConverter()
+  convert_single: result = converter.convert("document.pdf")
+  convert_batch: for result in converter.convert_all(["a.pdf", "b.docx"]): ...
+  convert_string: result = converter.convert_string(content, InputFormat.MD)
+  get_document: doc = result.document
+  export_markdown: doc.export_to_markdown()
+  export_dict: doc.export_to_dict()
+  save_markdown: doc.save_as_markdown("output.md", image_mode=ImageRefMode.EMBEDDED)
+  save_html: doc.save_as_html("output.html", split_page_view=False)
+  save_json: doc.save_as_json("output.json")
+
+converter_methods[4]{method,signature,description}:
+  convert,"(source, headers=None, raises_on_error=True, max_num_pages=maxsize, max_file_size=maxsize, page_range=DEFAULT) -> ConversionResult",Single document conversion
+  convert_all,"(source: Iterable, ...) -> Iterator[ConversionResult]",Batch conversion iterator
+  convert_string,"(content: str, format: InputFormat, name=None) -> ConversionResult",Convert MD or HTML string
+  initialize_pipeline,"(format: InputFormat) -> None",Pre-initialize pipeline for format
+
+conversion_result:
+  input: InputDocument
+  status: ConversionStatus (SUCCESS FAILURE PARTIAL_SUCCESS PENDING SKIPPED)
+  errors: list[ErrorItem]
+  pages: list[Page]
+  timings: dict[str ProfilingItem]
+  confidence: ConfidenceReport
+  document: DoclingDocument
+
+docling_document:
+  name: str
+  main: DocItemList
+  header: Optional[DocItemList]
+  footer: Optional[DocItemList]
+  body: Optional[DocItemList]
+  methods[7]: iterate_items(),export_to_dict(),export_to_markdown(),export_to_text(),save_as_json(),save_as_html(),save_as_yaml(),save_as_doctags()
+
+doc_item_types[15]: TextItem,SectionHeaderItem,ListItem,TableItem,PictureItem,FormItem,FormulaItem,CodeItem,PageFooterItem,PageHeaderItem,FootnoteItem,CaptionItem,CheckboxItem,KeyValueRegionItem,TableCell
+
+pipeline_options:
+  pdf:
+    do_table_structure: true
+    do_ocr: false
+    do_code_enrichment: false
+    do_formula_enrichment: false
+    generate_page_images: false
+    images_scale: 1.0
+    ocr_options: OcrAutoOptions()
+    table_structure_options: TableStructureOptions(mode=ACCURATE)
+    layout_options: LayoutOptions(model_spec=DOCLING_LAYOUT_HERON)
+
+pipeline_options_example: |
+  from docling.datamodel.pipeline_options import PdfPipelineOptions, TableStructureOptions, TableFormerMode, RapidOcrOptions
+  from docling.document_converter import DocumentConverter, PdfFormatOption
+  from docling.datamodel.base_models import InputFormat
+
+  options = PdfPipelineOptions(
+      do_table_structure=True,
+      do_ocr=True,
+      ocr_options=RapidOcrOptions(lang=["english"]),
+      table_structure_options=TableStructureOptions(mode=TableFormerMode.ACCURATE)
+  )
+  converter = DocumentConverter(format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=options)})
+
+ocr_engines[5]{engine,install,languages,notes}:
+  RapidOCR,built-in,100+,Default ONNX-based fast OCR
+  EasyOCR,docling[easyocr],80+,PyTorch GPU-friendly
+  Tesseract CLI,docling[tesseract],40+,Traditional OCR engine
+  tesserocr,docling[tesserocr],40+,Direct Python binding
+  OCR Mac,docling[ocrmac],built-in,macOS Vision API (Apple Silicon)
+
+ocr_options:
+  OcrAutoOptions: lang=[] force_full_page_ocr=False bitmap_area_threshold=0.05
+  RapidOcrOptions: lang=["english"] backend="onnxruntime" text_score=0.5
+  EasyOcrOptions: lang=["en"] gpu=True
+  TesseractCliOcrOptions: lang=["eng"] psm=3 tesseract_cmd="tesseract"
+  OcrMacOptions: lang=["en-US"] recognition_level="accurate"
+
+table_extraction:
+  model: TableFormer
+  modes[2]: fast,accurate
+  options: TableStructureOptions(mode=TableFormerMode.ACCURATE, do_cell_matching=True)
+  output: TableItem with TableData containing rows cells and bounding boxes
+
+layout_models[6]{name,description}:
+  DOCLING_LAYOUT_HERON,Default faster model
+  DOCLING_LAYOUT_HERON_101,Heron v1.0.1
+  DOCLING_LAYOUT_V2,Legacy layout model
+  DOCLING_LAYOUT_EGRET_MEDIUM,More powerful medium
+  DOCLING_LAYOUT_EGRET_LARGE,More powerful large
+  DOCLING_LAYOUT_EGRET_XLARGE,Most powerful
+
+vlm_models[8]{name,params,notes}:
+  GRANITEDOCLING_TRANSFORMERS,258M,IBM Granite DocTags output
+  GRANITEDOCLING_MLX,258M,Apple Silicon optimized
+  GRANITEDOCLING_VLLM,258M,vLLM API-based
+  GRANITEDOCLING_OLLAMA,258M,Ollama API-based
+  SMOLDOCLING_TRANSFORMERS,256M,Compact efficient
+  SMOLDOCLING_MLX,256M,Apple Silicon
+  SMOLVLM256_TRANSFORMERS,256M,Multi-purpose VLM
+  NU_EXTRACT_2B_TRANSFORMERS,2B,Extraction focused
+
+asr_models[7]: WHISPER_TINY,WHISPER_BASE,WHISPER_SMALL,WHISPER_MEDIUM,WHISPER_LARGE,WHISPER_TURBO,MLX variants
+
+pipelines[6]{name,use_case}:
+  SimplePipeline,Declarative backends (DOCX HTML MD)
+  StandardPdfPipeline,Production PDF with layout OCR tables
+  ThreadedStandardPdfPipeline,Thread-safe parallel PDF processing
+  VlmPipeline,Vision Language Model conversion
+  AsrPipeline,Audio-to-text with Whisper
+  ExtractionVlmPipeline,Structured information extraction
+
+backends[15]{backend,formats}:
+  DoclingParseV4DocumentBackend,PDF (default)
+  DoclingParseV2DocumentBackend,PDF (v2)
+  PyPdfiumDocumentBackend,PDF (alternative)
+  MsWordDocumentBackend,DOCX DOCM DOTX
+  MsPowerpointDocumentBackend,PPTX POTX PPSX
+  MsExcelDocumentBackend,XLSX XLSM
+  HTMLDocumentBackend,HTML XHTML
+  MarkdownDocumentBackend,MD
+  CsvDocumentBackend,CSV
+  ImageDocumentBackend,PNG JPEG TIFF BMP WEBP
+  AsciiDocBackend,AsciiDoc
+  JatsDocumentBackend,JATS XML
+  PatentUsptoDocumentBackend,USPTO XML
+  WebVTTDocumentBackend,WebVTT
+  DoclingJSONBackend,Docling JSON
+
+backend_options:
+  PdfBackendOptions: password="secret"
+  HTMLBackendOptions: fetch_images=True source_uri="https://..." add_title=True infer_furniture=True
+  MarkdownBackendOptions: fetch_images=False source_uri=Path("./docs")
+  MsExcelBackendOptions: treat_singleton_as_text=False
+
+image_modes[3]: EMBEDDED (base64),REFERENCED (separate PNG files),PLACEHOLDER ([Image] markers)
+
+cli:
+  basic: docling document.pdf
+  output_format: docling --to md,json file.pdf
+  with_ocr: docling --ocr --ocr-engine easyocr --ocr-lang eng,deu input.pdf
+  force_ocr: docling --force-ocr input.pdf
+  with_tables: docling --tables --table-mode accurate document.pdf
+  with_vlm: docling --pipeline vlm --vlm-model granite_docling document.pdf
+  with_asr: docling --pipeline asr --asr-model whisper-base audio.mp3
+  output_dir: docling -o ./output/ document.pdf
+  code_formulas: docling --enrich-code --enrich-formula technical.pdf
+  picture_desc: docling --enrich-picture-desc document.pdf
+  show_layout: docling --show-layout document.pdf
+  version: docling --version
+
+cli_options[25]{option,description}:
+  --from FORMAT,Input format(s) to accept
+  --to FORMAT,Output format(s) (md json html txt yaml doctags html_split_page)
+  --pipeline PIPELINE,Processing pipeline (standard vlm legacy asr)
+  --vlm-model MODEL,VLM model name
+  --asr-model MODEL,ASR model name
+  --ocr,Enable OCR for scanned documents
+  --force-ocr,Force full-page OCR (replace text)
+  --ocr-engine ENGINE,OCR engine (auto easyocr tesseract rapidocr ocrmac)
+  --ocr-lang LANGS,Languages for OCR (comma-separated)
+  --tables,Extract table structure
+  --table-mode MODE,Table extraction mode (fast accurate)
+  --enrich-code,Enable code block OCR
+  --enrich-formula,Enable LaTeX formula extraction
+  --enrich-picture-classes,Enable picture classification
+  --enrich-picture-desc,Enable VLM picture description
+  --pdf-backend BACKEND,PDF parser (pypdfium2 dlparse_v1 dlparse_v2 dlparse_v4)
+  --pdf-password PASSWORD,Password for protected PDFs
+  --image-export-mode MODE,Image handling (embedded referenced placeholder)
+  --show-layout,Visualize layout bounding boxes
+  --artifacts-path PATH,Pre-downloaded model artifacts location
+  --enable-remote-services,Allow external API calls
+  --allow-external-plugins,Load external third-party plugins
+  -o --output-dir DIR,Output directory
+  --images-scale SCALE,Scale factor for page images (default 1.0)
+  --version,Show version info
+
+settings:
+  env_prefix: DOCLING_
+  cache_dir: ~/.cache/docling
+  artifacts_path: path to model files
+  perf.doc_batch_size: 1
+  perf.doc_batch_concurrency: 1
+  perf.page_batch_size: 4
+  perf.elements_batch_size: 16
+  debug.visualize_layout: false
+  debug.debug_output_path: null
+
+env_vars[8]: DOCLING_ARTIFACTS_PATH,DOCLING_PERF_DOC_BATCH_SIZE,DOCLING_PERF_DOC_BATCH_CONCURRENCY,DOCLING_PERF_PAGE_BATCH_SIZE,DOCLING_PERF_ELEMENTS_BATCH_SIZE,DOCLING_DEBUG_VISUALIZE_LAYOUT,DOCLING_DEBUG_OUTPUT_PATH,DOCLING_CACHE_DIR
+
+extraction_api:
+  import: from docling.document_extractor import DocumentExtractor
+  init: extractor = DocumentExtractor()
+  extract: result = extractor.extract("invoice.pdf", template={"invoice_number": "str", "amount": "float"})
+  extract_all: for result in extractor.extract_all(sources, template): ...
+
+integrations[6]: LangChain,LlamaIndex,Crew AI,Haystack,MCP (Model Context Protocol),RAG pipelines
+
+dependencies_core[20]: pydantic>=2.0,docling-core>=2.50.1,docling-parse>=4.7.0,docling-ibm-models>=3.9.1,pypdfium2>=4.30.0,filetype>=1.2.0,huggingface_hub>=0.23,requests>=2.32.2,rapidocr>=3.3,typer>=0.12.5,python-docx>=1.1.2,python-pptx>=1.0.2,beautifulsoup4>=4.12.3,pandas>=2.1.4,marko>=2.1.2,openpyxl>=3.1.5,lxml>=4.0.0,pillow>=10.0.0,accelerate>=1.0.0,scipy>=1.6.0
+
+architecture:
+  flow: DocumentConverter → InputDocument → Backend → Pipeline → ConversionResult
+  pipeline_stages[3]: _build_document(),_assemble_document(),_enrich_document()
+  storage: LMDB for caching
+  ml_models: Heron (layout) TableFormer (tables) VLMs (understanding) Whisper (ASR)
+
+usage_patterns:
+  basic_pdf: |
+    from docling.document_converter import DocumentConverter
+    converter = DocumentConverter()
+    result = converter.convert("document.pdf")
+    print(result.document.export_to_markdown())
+
+  batch_with_errors: |
+    for result in converter.convert_all(docs, raises_on_error=False):
+        if result.status == ConversionStatus.SUCCESS:
+            result.document.save_as_markdown(f"{result.input.file.stem}.md")
+
+  advanced_pdf: |
+    options = PdfPipelineOptions(do_ocr=True, do_table_structure=True)
+    converter = DocumentConverter(format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=options)})
+    result = converter.convert("scanned.pdf")
+
+  extract_tables: |
+    for item, depth in doc.iterate_items():
+        if isinstance(item, TableItem):
+            for row in item.table.rows:
+                print([cell.text for cell in row.cells])
+
+error_handling:
+  error_item: component_type module_name error_message
+  component_types: BACKEND PIPELINE OCR TABLE_STRUCTURE LAYOUT VLM ASR
+  check_status: if result.status == ConversionStatus.FAILURE: print(result.errors)
+
+performance:
+  batch_processing: convert_all() for multiple documents
+  threading: ThreadedStandardPdfPipeline for parallel PDF
+  caching: Pipeline caching via initialize_pipeline()
+  pre_download: docling-tools models download
+  memory: page_batch_size controls memory usage
+
+best_practices[8]:
+  - Use convert_all() for batch processing
+  - Pre-download models with docling-tools models download
+  - Set raises_on_error=False for batch error handling
+  - Use NDJSON output for streaming large documents
+  - Configure page_batch_size for memory-constrained environments
+  - Use ThreadedStandardPdfPipeline for concurrent PDF processing
+  - Enable only needed enrichments (OCR tables formulas)
+  - Use ImageRefMode.PLACEHOLDER for smaller output files
