@@ -4710,9 +4710,31 @@ pub enum OcrBackend {
     Disabled,
 }
 
+/// Text extraction provider selection
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum TextExtractionProvider {
+    /// Use kreuzberg for fast local extraction (default)
+    #[default]
+    Kreuzberg,
+    /// Use Claude API for extraction (better quality, requires API auth)
+    ClaudeGate,
+}
+
+impl TextExtractionProvider {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Kreuzberg => "kreuzberg",
+            Self::ClaudeGate => "claude_gate",
+        }
+    }
+}
+
 /// Document extraction settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtractionSettings {
+    // Provider Settings
+    pub text_extraction_provider: TextExtractionProvider,
     // OCR Settings
     pub ocr_enabled: bool,
     pub ocr_backend: OcrBackend,
@@ -4734,11 +4756,15 @@ pub struct ExtractionSettings {
     // Caching
     pub use_cache: bool,
     pub max_concurrent_extractions: usize,
+    // Large PDF Handling
+    pub large_pdf_page_threshold: usize,
+    pub large_pdf_chunk_size: usize,
 }
 
 impl Default for ExtractionSettings {
     fn default() -> Self {
         Self {
+            text_extraction_provider: TextExtractionProvider::default(),
             ocr_enabled: true,
             ocr_backend: OcrBackend::External,
             force_ocr: false,
@@ -4754,6 +4780,8 @@ impl Default for ExtractionSettings {
             max_image_dimension: 4096,
             use_cache: true,
             max_concurrent_extractions: 4,
+            large_pdf_page_threshold: 500,
+            large_pdf_chunk_size: 100,
         }
     }
 }
@@ -4818,4 +4846,128 @@ pub async fn get_extraction_presets() -> Result<Vec<ExtractionPreset>, String> {
 /// Check OCR availability on the system
 pub async fn check_ocr_availability() -> Result<OcrAvailability, String> {
     invoke_no_args("check_ocr_availability").await
+}
+
+// ============================================================================
+// Claude Gate OAuth Commands
+// ============================================================================
+
+/// Storage backend options for Claude Gate tokens
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ClaudeGateStorageBackend {
+    /// Auto-select best available (keyring if available, else file)
+    #[default]
+    Auto,
+    /// System keyring (GNOME Keyring, macOS Keychain, Windows Credential Manager)
+    Keyring,
+    /// File-based storage (~/.config/cld/auth.json)
+    File,
+}
+
+impl std::fmt::Display for ClaudeGateStorageBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ClaudeGateStorageBackend::Auto => write!(f, "Auto"),
+            ClaudeGateStorageBackend::Keyring => write!(f, "Keyring"),
+            ClaudeGateStorageBackend::File => write!(f, "File"),
+        }
+    }
+}
+
+/// Status of Claude Gate OAuth authentication
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ClaudeGateStatus {
+    /// Whether the user is authenticated
+    pub authenticated: bool,
+    /// Storage backend being used
+    pub storage_backend: String,
+    /// Token expiration timestamp (Unix seconds)
+    pub token_expires_at: Option<i64>,
+    /// Human-readable time until expiry
+    pub expiration_display: Option<String>,
+    /// Error message if any
+    pub error: Option<String>,
+    /// Whether keyring (secret service) is available on this system
+    #[serde(default)]
+    pub keyring_available: bool,
+}
+
+/// Get Claude Gate OAuth status
+pub async fn claude_gate_get_status() -> Result<ClaudeGateStatus, String> {
+    invoke_no_args("claude_gate_get_status").await
+}
+
+/// Response from starting OAuth flow
+#[derive(Debug, Clone, Deserialize)]
+pub struct ClaudeGateOAuthStartResponse {
+    /// URL to open in user's browser for OAuth authorization
+    pub auth_url: String,
+    /// State parameter for CSRF protection (pass back to complete_oauth)
+    pub state: String,
+}
+
+/// Start OAuth flow - returns the authorization URL and CSRF state
+pub async fn claude_gate_start_oauth() -> Result<ClaudeGateOAuthStartResponse, String> {
+    invoke_no_args("claude_gate_start_oauth").await
+}
+
+/// Response from completing OAuth flow
+#[derive(Debug, Clone, Deserialize)]
+pub struct ClaudeGateOAuthCompleteResponse {
+    pub success: bool,
+    pub error: Option<String>,
+}
+
+/// Complete OAuth flow with authorization code
+pub async fn claude_gate_complete_oauth(code: String, oauth_state: Option<String>) -> Result<ClaudeGateOAuthCompleteResponse, String> {
+    #[derive(Serialize)]
+    struct Args {
+        code: String,
+        oauth_state: Option<String>,
+    }
+    invoke("claude_gate_complete_oauth", &Args { code, oauth_state }).await
+}
+
+/// Logout from Claude Gate (remove stored token)
+pub async fn claude_gate_logout() -> Result<(), String> {
+    invoke_void_no_args("claude_gate_logout").await
+}
+
+/// Set storage backend for Claude Gate tokens
+pub async fn claude_gate_set_storage_backend(backend: ClaudeGateStorageBackend) -> Result<(), String> {
+    #[derive(Serialize)]
+    struct Args {
+        backend: ClaudeGateStorageBackend,
+    }
+    invoke_void("claude_gate_set_storage_backend", &Args { backend }).await
+}
+
+/// Model info from Claude Gate API
+#[derive(Debug, Clone, Deserialize)]
+pub struct ClaudeGateModelInfo {
+    pub id: String,
+    pub name: String,
+}
+
+/// List available models from Claude Gate API
+///
+/// Requires authentication. Returns list of models the user can access.
+pub async fn claude_gate_list_models() -> Result<Vec<ClaudeGateModelInfo>, String> {
+    invoke_no_args("claude_gate_list_models").await
+}
+
+// ============================================================================
+// Utility Commands
+// ============================================================================
+
+/// Open a URL in the system's default browser
+///
+/// Uses Tauri's shell plugin to open URLs properly on all platforms.
+pub async fn open_url_in_browser(url: String) -> Result<(), String> {
+    #[derive(Serialize)]
+    struct Args {
+        url: String,
+    }
+    invoke_void("open_url_in_browser", &Args { url }).await
 }

@@ -117,8 +117,10 @@ zip = "2.1"
 quick-xml = "0.36"
 
 [features]
-default = ["custom-protocol"]
+default = ["custom-protocol", "keyring"]
 custom-protocol = ["tauri/custom-protocol"]
+# Enable keyring storage backend for claude-gate OAuth tokens
+keyring = []
 # Enable kreuzberg's built-in embeddings for users without Ollama
 embeddings = ["kreuzberg/embeddings"]
 # Enable kreuzberg's built-in OCR (requires tesseract system dependency)

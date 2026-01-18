@@ -1,0 +1,65 @@
+  Filter Test Results ✓
+
+  Working Filters on delta-green-agents-handbook-re-extract
+  ┌──────────────────────────┬────────────────────────────────────────────────┬───────────────────────────────┐
+  │       Filter Type        │                    Example                     │            Result             │
+  ├──────────────────────────┼────────────────────────────────────────────────┼───────────────────────────────┤
+  │ Exact match              │ content_mode = crunch                          │ ✓ Returns 1 chunk             │
+  ├──────────────────────────┼────────────────────────────────────────────────┼───────────────────────────────┤
+  │ Exact match              │ content_mode = fiction                         │ ✓ Returns 4 chunks            │
+  ├──────────────────────────┼────────────────────────────────────────────────┼───────────────────────────────┤
+  │ Exact match              │ element_type = random_table                    │ ✓ Returns 2 chunks            │
+  ├──────────────────────────┼────────────────────────────────────────────────┼───────────────────────────────┤
+  │ Exact match              │ element_type = item                            │ ✓ Returns 16 chunks           │
+  ├──────────────────────────┼────────────────────────────────────────────────┼───────────────────────────────┤
+  │ OR filter                │ content_mode = crunch OR content_mode = mixed  │ ✓ Combined results            │
+  ├──────────────────────────┼────────────────────────────────────────────────┼───────────────────────────────┤
+  │ EXISTS                   │ dice_expressions EXISTS                        │ ✓ Returns 5 chunks with dice  │
+  ├──────────────────────────┼────────────────────────────────────────────────┼───────────────────────────────┤
+  │ EXISTS                   │ cross_refs EXISTS                              │ ✓ Returns 15 chunks with refs │
+  ├──────────────────────────┼────────────────────────────────────────────────┼───────────────────────────────┤
+  │ Range                    │ page_start >= 15 AND page_start <= 18          │ ✓ Returns 10 chunks           │
+  ├──────────────────────────┼────────────────────────────────────────────────┼───────────────────────────────┤
+  │ Combined search + filter │ q: "character creation" + filter: content_mode │ ✓ Works with highlighting     │
+  └──────────────────────────┴────────────────────────────────────────────────┴───────────────────────────────┘
+  ---
+  Filterable Attributes Comparison
+
+  Original index: [] (none configured)
+
+  Re-extract index (13 attributes):
+  [
+    "element_type",
+    "content_mode",
+    "section_depth",
+    "parent_sections",
+    "cross_refs",
+    "dice_expressions",
+    "game_system",
+    "game_system_id",
+    "content_category",
+    "mechanic_type",
+    "page_start",
+    "page_end",
+    "source_slug"
+  ]
+
+  ---
+  Original Index Correctly Rejects Filters
+
+  {
+    "message": "Attribute `content_mode` is not filterable. This index does not have configured filterable attributes.",
+    "code": "invalid_search_filter"
+  }
+
+  ---
+  Use Cases Enabled
+
+  1. GM Prep Mode: filter: "content_mode = crunch" → Only show rules/mechanics
+  2. Story Mode: filter: "content_mode = fiction OR content_mode = fluff" → Narrative content only
+  3. Quick Reference: filter: "element_type = random_table" → Find roll tables
+  4. Page Lookup: filter: "cross_refs EXISTS" → Find pages with internal links
+  5. Dice Mechanics: filter: "dice_expressions EXISTS" → Find mechanical content
+  6. Page Range: filter: "page_start >= 50 AND page_start <= 75" → Chapter browsing
+
+  The v2 semantic chunking pipeline successfully adds rich filterable metadata to enable advanced search workflows.

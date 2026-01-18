@@ -1,0 +1,126 @@
+>  ---
+  Meilisearch Index Comparison Report
+
+  delta-green-agents-handbook vs delta-green-agents-handbook-re-extract
+
+  ---
+  Summary Statistics
+  ┌──────────────┬─────────────┬─────────────┬────────┐
+  │    Metric    │  Original   │ Re-Extract  │ Change │
+  ├──────────────┼─────────────┼─────────────┼────────┤
+  │ Documents    │ 66          │ 66          │ —      │
+  ├──────────────┼─────────────┼─────────────┼────────┤
+  │ Avg Doc Size │ 1,977 bytes │ 3,591 bytes │ +81%   │
+  ├──────────────┼─────────────┼─────────────┼────────┤
+  │ Field Count  │ 12          │ 18          │ +6 new │
+  └──────────────┴─────────────┴─────────────┴────────┘
+  ---
+  New V2 Fields in Re-Extract
+  ┌───────────────────────────┬──────────────┬──────────────────────────────────────┐
+  │           Field           │   Coverage   │             Description              │
+  ├───────────────────────────┼──────────────┼──────────────────────────────────────┤
+  │ element_type              │ 66/66 (100%) │ TTRPG element classification         │
+  ├───────────────────────────┼──────────────┼──────────────────────────────────────┤
+  │ content_mode              │ 66/66 (100%) │ Crunch/fluff/mixed/fiction           │
+  ├───────────────────────────┼──────────────┼──────────────────────────────────────┤
+  │ classification_confidence │ 66/66 (100%) │ Confidence score                     │
+  ├───────────────────────────┼──────────────┼──────────────────────────────────────┤
+  │ embedding_content         │ 66/66 (100%) │ Context-injected text for embeddings │
+  ├───────────────────────────┼──────────────┼──────────────────────────────────────┤
+  │ cross_refs                │ 15/66 (23%)  │ Page/section references              │
+  ├───────────────────────────┼──────────────┼──────────────────────────────────────┤
+  │ dice_expressions          │ 5/66 (8%)    │ Detected dice notation               │
+  └───────────────────────────┴──────────────┴──────────────────────────────────────┘
+  ---
+  Element Type Distribution
+  ┌──────────────┬───────┬───────────────────────────────────┐
+  │     Type     │ Count │               Notes               │
+  ├──────────────┼───────┼───────────────────────────────────┤
+  │ text         │ 48    │ Generic body text                 │
+  ├──────────────┼───────┼───────────────────────────────────┤
+  │ item         │ 16    │ Magic item/equipment descriptions │
+  ├──────────────┼───────┼───────────────────────────────────┤
+  │ random_table │ 2     │ Roll tables detected              │
+  └──────────────┴───────┴───────────────────────────────────┘
+  ---
+  Content Mode Distribution
+  ┌─────────┬───────┬──────────────────────────────────┐
+  │  Mode   │ Count │             Examples             │
+  ├─────────┼───────┼──────────────────────────────────┤
+  │ mixed   │ 54    │ Rules mixed with flavor          │
+  ├─────────┼───────┼──────────────────────────────────┤
+  │ fluff   │ 7     │ Narrative/descriptive            │
+  ├─────────┼───────┼──────────────────────────────────┤
+  │ fiction │ 4     │ In-character letters, stories    │
+  ├─────────┼───────┼──────────────────────────────────┤
+  │ crunch  │ 1     │ Pure mechanics (stat assignment) │
+  └─────────┴───────┴──────────────────────────────────┘
+  ---
+  Classification Confidence
+  ┌────────────┬──────────┐
+  │ Confidence │  Count   │
+  ├────────────┼──────────┤
+  │ 1.0        │ 48 (73%) │
+  ├────────────┼──────────┤
+  │ 0.7        │ 18 (27%) │
+  └────────────┴──────────┘
+  ---
+  Cross-Reference Detection
+
+  15 chunks contain detected cross-references. Examples:
+  ┌───────┬──────┬───────────────────────────────────────────────────────┐
+  │ Chunk │ Page │                      References                       │
+  ├───────┼──────┼───────────────────────────────────────────────────────┤
+  │ c0038 │ 12   │ page:12, page:40, page:48, page:64                    │
+  ├───────┼──────┼───────────────────────────────────────────────────────┤
+  │ c0056 │ 18   │ page:14, page:19, page:18, page:20, page:104, page:27 │
+  ├───────┼──────┼───────────────────────────────────────────────────────┤
+  │ c0063 │ 20   │ page:73, page:47, page:168, page:44                   │
+  ├───────┼──────┼───────────────────────────────────────────────────────┤
+  │ c0028 │ 10   │ section:restricted                                    │
+  └───────┴──────┴───────────────────────────────────────────────────────┘
+  ---
+  Dice Expression Detection
+
+  5 chunks contain dice notation:
+  ┌───────┬──────┬───────────────┐
+  │ Chunk │ Page │  Expressions  │
+  ├───────┼──────┼───────────────┤
+  │ c0036 │ 11   │ d8, 2d4, d100 │
+  ├───────┼──────┼───────────────┤
+  │ c0061 │ 20   │ d100, 4d6     │
+  ├───────┼──────┼───────────────┤
+  │ c0062 │ 20   │ 4d6           │
+  └───────┴──────┴───────────────┘
+  ---
+  Side-by-Side Example (c0036)
+
+  Original:
+  {
+    "id": "delta-green-agents-handbook-c0036",
+    "page_start": 11,
+    "content": "...uses polyhedral dice, 1D8 means one eight-sided die, 2D4 means two..."
+  }
+
+  Re-Extract (with V2 enhancements):
+  {
+    "id": "delta-green-agents-handbook-re-extract-c0036",
+    "page_start": 11,
+    "element_type": "text",
+    "content_mode": "mixed",
+    "classification_confidence": 1.0,
+    "dice_expressions": ["d8", "2d4", "d100"],
+    "embedding_content": "[Type: text] [System: Delta Green] ou are arrested..."
+  }
+
+  ---
+  Key Improvements
+
+  1. Semantic Context Injection: Every chunk now has embedding_content prefixed with [Type: X] [System: Delta Green] for better embedding quality
+  2. Filterable Metadata: New fields enable queries like:
+    - "Find all crunch content" → content_mode = crunch
+    - "Find roll tables" → element_type = random_table
+    - "Find pages referencing page 47" → cross_refs CONTAINS page:47
+  3. Cross-Reference Linking: 23% of chunks have detected internal page/section references that could enable knowledge graph construction
+  4. Dice Notation Indexing: 8% of chunks have extracted dice expressions for mechanical filtering
+  5. Content Classification: Fiction, fluff, and crunch are now distinguishable for GM workflows (e.g., only show mechanics during combat)

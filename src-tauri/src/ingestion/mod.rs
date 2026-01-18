@@ -1,5 +1,6 @@
 pub mod adaptive_learning;
 pub mod kreuzberg_extractor;
+pub mod claude_extractor;
 pub mod extraction_settings;
 pub mod personality;
 pub mod flavor;
@@ -10,7 +11,7 @@ pub mod hash;
 pub mod layout;
 pub mod ttrpg;
 
-// All document extraction handled by kreuzberg_extractor
+// Document extraction via kreuzberg_extractor (local) or claude_extractor (API)
 
 pub use adaptive_learning::AdaptiveLearningSystem;
 pub use kreuzberg_extractor::{
@@ -19,7 +20,11 @@ pub use kreuzberg_extractor::{
 };
 pub use extraction_settings::{
     ExtractionSettings, TokenReductionLevel, OcrBackend,
-    SupportedFormats, FormatInfo,
+    SupportedFormats, FormatInfo, TextExtractionProvider,
+};
+pub use claude_extractor::{
+    ClaudeDocumentExtractor, ClaudeExtractorConfig, ClaudeExtractionError,
+    extract_with_claude, extract_document_with_claude,
 };
 pub use chunker::{
     SemanticChunker, ChunkConfig, ContentChunk,

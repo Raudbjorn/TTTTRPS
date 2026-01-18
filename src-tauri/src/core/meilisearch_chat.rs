@@ -323,9 +323,9 @@ pub struct ChatPrompts {
     /// Description of the index selection parameter
     #[serde(skip_serializing_if = "Option::is_none")]
     pub search_index_uid_param: Option<String>,
-    /// Description of the limit parameter
+    /// Description of the filter parameter for the AI
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub search_params: Option<serde_json::Value>,
+    pub search_filter_param: Option<String>,
 }
 
 impl Default for ChatPrompts {
@@ -338,10 +338,7 @@ impl Default for ChatPrompts {
             search_description: Some(DEFAULT_SEARCH_DESCRIPTION.to_string()),
             search_q_param: Some(DEFAULT_SEARCH_Q_PARAM.to_string()),
             search_index_uid_param: Some(DEFAULT_SEARCH_INDEX_PARAM.to_string()),
-            search_params: Some(serde_json::json!({
-                "limit": 10,
-                "filter": ""  // Force empty filter as safeguard
-            })),
+            search_filter_param: None, // Let Meilisearch use default filter description
         }
     }
 }
@@ -362,7 +359,7 @@ impl ChatPrompts {
             search_description: None,
             search_q_param: None,
             search_index_uid_param: None,
-            search_params: None,
+            search_filter_param: None,
         }
     }
 }
@@ -540,6 +537,12 @@ pub enum ChatProviderConfig {
         #[serde(default)]
         timeout_secs: Option<u64>,
     },
+    /// Claude Gate OAuth (via proxy, no API key needed - uses OAuth tokens)
+    ClaudeGate {
+        model: String,
+        #[serde(default)]
+        max_tokens: Option<u32>,
+    },
 }
 
 impl ChatProviderConfig {
@@ -560,6 +563,7 @@ impl ChatProviderConfig {
             ChatProviderConfig::Grok { .. } => "grok",
             ChatProviderConfig::ClaudeCode { .. } => "claude-code",
             ChatProviderConfig::ClaudeDesktop { .. } => "claude-desktop",
+            ChatProviderConfig::ClaudeGate { .. } => "claude-gate",
         }
     }
 
@@ -610,6 +614,9 @@ impl ChatProviderConfig {
                 );
             }
             ChatProviderConfig::ClaudeDesktop { .. } => "claude-desktop",
+            ChatProviderConfig::ClaudeGate { model, .. } => {
+                return format!("claude-gate:{}", model);
+            }
         };
         format!("{}:{}", provider, model)
     }
@@ -791,6 +798,13 @@ impl ChatProviderConfig {
                 ProviderConfig::ClaudeDesktop {
                     port: port.unwrap_or(9333),
                     timeout_secs: timeout_secs.unwrap_or(120),
+                }
+            }
+            ChatProviderConfig::ClaudeGate { model, max_tokens } => {
+                ProviderConfig::ClaudeGate {
+                    storage_backend: "auto".to_string(),
+                    model: model.clone(),
+                    max_tokens: max_tokens.unwrap_or(8192),
                 }
             }
         }
@@ -1498,6 +1512,10 @@ impl MeilisearchChatClient {
                 port: Some(*port),
                 timeout_secs: Some(*timeout_secs),
             },
+            ProviderConfig::ClaudeGate { model, max_tokens, .. } => ChatProviderConfig::ClaudeGate {
+                model: model.clone(),
+                max_tokens: Some(*max_tokens),
+            },
             ProviderConfig::GeminiCli { .. } => return Err("Gemini CLI not supported for Meilisearch chat yet".to_string()),
             ProviderConfig::Meilisearch { .. } => return Err("Recursive Meilisearch configuration".to_string()),
         };
@@ -1722,6 +1740,10 @@ impl DMChatManager {
                 port: Some(*port),
                 timeout_secs: Some(*timeout_secs),
             },
+            ProviderConfig::ClaudeGate { model, max_tokens, .. } => ChatProviderConfig::ClaudeGate {
+                model: model.clone(),
+                max_tokens: Some(*max_tokens),
+            },
             // Handle GeminiCLI as generic or unsupported for now if no direct map
             ProviderConfig::GeminiCli { .. } => return Err("Gemini CLI not supported for Meilisearch chat yet".to_string()),
 
@@ -1828,7 +1850,8 @@ mod tests {
         assert!(prompts.search_description.is_some());
         assert!(prompts.search_q_param.is_some());
         assert!(prompts.search_index_uid_param.is_some());
-        assert!(prompts.search_params.is_some());
+        // search_filter_param is None by default (let Meilisearch use its default)
+        assert!(prompts.search_filter_param.is_none());
         // Verify the search_q_param contains anti-filter instructions
         let q_param = prompts.search_q_param.unwrap();
         assert!(q_param.contains("FORBIDDEN"));

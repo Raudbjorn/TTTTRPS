@@ -40,7 +40,7 @@ fn main() {
             }
 
             // Initialize managers (Meilisearch-based)
-            let (cm, sm, ns, creds, vm, sidecar_manager, search_client, personality_store, personality_manager, pipeline, _llm_router, version_manager, world_state_manager, relationship_manager, location_manager, claude_desktop_manager, llm_manager) =
+            let (cm, sm, ns, creds, vm, sidecar_manager, search_client, personality_store, personality_manager, pipeline, _llm_router, version_manager, world_state_manager, relationship_manager, location_manager, claude_desktop_manager, llm_manager, claude_gate) =
                 commands::AppState::init_defaults();
 
             // Initialize Database
@@ -114,6 +114,7 @@ fn main() {
                 claude_desktop_manager,
                 llm_manager: llm_manager.clone(), // Clone for auto-configure block
                 extraction_settings: tokio::sync::RwLock::new(ingestion::ExtractionSettings::default()),
+                claude_gate,
             });
 
             // Start LLM proxy service for OpenAI-compatible API
@@ -574,6 +575,17 @@ fn main() {
             commands::get_supported_formats,
             commands::get_extraction_presets,
             commands::check_ocr_availability,
+
+            // Claude Gate OAuth Commands
+            commands::claude_gate_get_status,
+            commands::claude_gate_start_oauth,
+            commands::claude_gate_complete_oauth,
+            commands::claude_gate_logout,
+            commands::claude_gate_set_storage_backend,
+            commands::claude_gate_list_models,
+
+            // Utility Commands
+            commands::open_url_in_browser,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

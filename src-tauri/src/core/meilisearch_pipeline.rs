@@ -1,11 +1,13 @@
 //! Meilisearch Ingestion Pipeline
 //!
 //! Handles document parsing, chunking, and indexing into Meilisearch.
-//! Uses kreuzberg for fast document extraction with OCR fallback.
+//! Supports multiple extraction providers: kreuzberg (local) or Claude API.
 //! Includes TTRPG-specific metadata extraction for semantic search.
 
 use crate::core::search_client::{SearchClient, SearchDocument, SearchError, LibraryDocumentMetadata};
 use crate::ingestion::kreuzberg_extractor::DocumentExtractor;
+use crate::ingestion::claude_extractor::ClaudeDocumentExtractor;
+use crate::ingestion::extraction_settings::{ExtractionSettings, TextExtractionProvider};
 use crate::ingestion::ttrpg::game_detector::detect_game_system_with_confidence;
 use crate::ingestion::ttrpg::{
     detect_mechanic_type, extract_semantic_keywords,
@@ -775,6 +777,8 @@ pub struct PipelineConfig {
     pub chunk_config: ChunkConfig,
     /// Default source type if not specified
     pub default_source_type: String,
+    /// Extraction settings (provider selection, OCR, etc.)
+    pub extraction_settings: ExtractionSettings,
 }
 
 impl Default for PipelineConfig {
@@ -782,6 +786,18 @@ impl Default for PipelineConfig {
         Self {
             chunk_config: ChunkConfig::default(),
             default_source_type: "document".to_string(),
+            extraction_settings: ExtractionSettings::default(),
+        }
+    }
+}
+
+impl PipelineConfig {
+    /// Create a config with Claude extraction provider
+    pub fn with_claude_extraction() -> Self {
+        Self {
+            chunk_config: ChunkConfig::default(),
+            default_source_type: "document".to_string(),
+            extraction_settings: ExtractionSettings::with_claude(),
         }
     }
 }
@@ -938,6 +954,27 @@ impl MeilisearchPipeline {
             log::info!("Created library_metadata entry '{}' with status=processing", slug);
         }
 
+        // Dispatch based on extraction provider
+        match self.config.extraction_settings.text_extraction_provider {
+            TextExtractionProvider::ClaudeGate => {
+                // Use Claude API for extraction
+                log::info!("Using Claude API for extraction of '{}'", source_name);
+                return self.extract_to_raw_with_claude(
+                    search_client,
+                    path,
+                    &slug,
+                    &raw_index,
+                    &chunks_index,
+                    &source_name,
+                    &source_type,
+                ).await;
+            }
+            TextExtractionProvider::Kreuzberg => {
+                // Continue with kreuzberg extraction below
+                log::info!("Using Kreuzberg (local) for extraction of '{}'", source_name);
+            }
+        }
+
         // First, try fast extraction with kreuzberg WITHOUT OCR (to check text content)
         // Using text_check_only() to avoid triggering the expensive OCR fallback
         let extractor = DocumentExtractor::text_check_only();
@@ -970,88 +1007,17 @@ impl MeilisearchPipeline {
             ).await;
         }
 
-        // Fast path: text extracted successfully, store all pages at once
-        let total_chars = extracted.char_count;
-        let mut page_count = 0;
-        let mut raw_documents = Vec::new();
-
-        // Convert extracted pages to RawDocuments
-        if let Some(pages) = extracted.pages {
-            for page in pages {
-                let raw_doc = RawDocument::new(&slug, page.page_number as u32, page.content);
-                raw_documents.push(raw_doc);
-                page_count += 1;
-            }
-        } else {
-            // Single page fallback (no page structure)
-            let raw_doc = RawDocument::new(&slug, 1, extracted.content.clone());
-            raw_documents.push(raw_doc);
-            page_count = 1;
-        }
-
-        // Combine content sample for metadata detection
-        let content_sample: String = raw_documents
-            .iter()
-            .take(20)
-            .map(|d| d.raw_content.as_str())
-            .collect::<Vec<_>>()
-            .join(" ");
-
-        // Detect TTRPG metadata
-        let ttrpg_metadata = TTRPGMetadata::extract(path, &content_sample, "document");
-
-        log::info!(
-            "Extracted {} pages from '{}': system={:?}, category={:?}",
-            page_count,
-            source_name,
-            ttrpg_metadata.game_system,
-            ttrpg_metadata.content_category
-        );
-
-        // Store raw documents in Meilisearch
-        let index = search_client.get_client().index(&raw_index);
-        let task = index.add_documents(&raw_documents, Some("id")).await
-            .map_err(|e| SearchError::MeilisearchError(format!("Failed to add raw documents: {}", e)))?;
-
-        // Wait for indexing to complete
-        task.wait_for_completion(
-            search_client.get_client(),
-            Some(std::time::Duration::from_millis(100)),
-            Some(std::time::Duration::from_secs(60)),
+        // Fast path: text extracted successfully, store all pages using helper
+        self.store_extracted_content(
+            search_client,
+            path,
+            &slug,
+            &raw_index,
+            &chunks_index,
+            &source_name,
+            &source_type,
+            extracted,
         ).await
-            .map_err(|e| SearchError::MeilisearchError(format!("Raw indexing failed: {}", e)))?;
-
-        log::info!("Stored {} raw pages in '{}'", page_count, raw_index);
-
-        // Update library_metadata with final stats and status="ready"
-        let final_metadata = LibraryDocumentMetadata {
-            id: slug.clone(),
-            name: source_name.clone(),
-            source_type,
-            file_path: Some(path.to_string_lossy().to_string()),
-            page_count: page_count as u32,
-            chunk_count: 0, // Will be updated after chunking phase
-            character_count: total_chars as u64,
-            content_index: chunks_index,
-            status: "ready".to_string(),
-            error_message: None,
-            ingested_at: Utc::now().to_rfc3339(),
-        };
-
-        if let Err(e) = search_client.save_library_document(&final_metadata).await {
-            log::warn!("Failed to update library_metadata for '{}': {}", slug, e);
-        } else {
-            log::info!("Updated library_metadata '{}' with status=ready", slug);
-        }
-
-        Ok(ExtractionResult {
-            slug,
-            source_name,
-            raw_index,
-            page_count,
-            total_chars,
-            ttrpg_metadata,
-        })
     }
 
     /// Incremental OCR extraction with per-page persistence for resumability.
@@ -1262,6 +1228,193 @@ impl MeilisearchPipeline {
                 Err(SearchError::ConfigError(format!("Incremental extraction failed: {}", e)))
             }
         }
+    }
+
+    /// Extract document using Claude API.
+    ///
+    /// This uses Claude's vision capabilities for high-quality text extraction,
+    /// especially useful for:
+    /// - Scanned documents
+    /// - Complex layouts (multi-column, mixed text/images)
+    /// - Documents with handwritten annotations
+    async fn extract_to_raw_with_claude(
+        &self,
+        search_client: &SearchClient,
+        path: &Path,
+        slug: &str,
+        raw_index: &str,
+        chunks_index: &str,
+        source_name: &str,
+        source_type: &str,
+    ) -> Result<ExtractionResult, SearchError> {
+        // Check if Claude extraction supports this format
+        if !ClaudeDocumentExtractor::<crate::claude_gate::FileTokenStorage>::is_supported(path) {
+            log::warn!(
+                "Claude extraction does not support '{}', falling back to kreuzberg",
+                source_type
+            );
+            // Fall back to kreuzberg for unsupported formats
+            let extractor = DocumentExtractor::with_ocr();
+            let cb: Option<fn(f32, &str)> = None;
+            let extracted = extractor.extract(path, cb)
+                .await
+                .map_err(|e| SearchError::ConfigError(format!("Document extraction failed: {}", e)))?;
+
+            return self.store_extracted_content(
+                search_client,
+                path,
+                slug,
+                raw_index,
+                chunks_index,
+                source_name,
+                source_type,
+                extracted,
+            ).await;
+        }
+
+        // Create Claude extractor
+        let claude_extractor = ClaudeDocumentExtractor::new()
+            .map_err(|e| SearchError::ConfigError(format!("Failed to create Claude extractor: {}", e)))?;
+
+        // Check authentication
+        let is_authenticated = claude_extractor.is_authenticated().await
+            .map_err(|e| SearchError::ConfigError(format!("Claude auth check failed: {}", e)))?;
+
+        if !is_authenticated {
+            log::warn!("Claude API not authenticated, falling back to kreuzberg extraction");
+            let extractor = DocumentExtractor::with_ocr();
+            let cb: Option<fn(f32, &str)> = None;
+            let extracted = extractor.extract(path, cb)
+                .await
+                .map_err(|e| SearchError::ConfigError(format!("Document extraction failed: {}", e)))?;
+
+            return self.store_extracted_content(
+                search_client,
+                path,
+                slug,
+                raw_index,
+                chunks_index,
+                source_name,
+                source_type,
+                extracted,
+            ).await;
+        }
+
+        log::info!("Extracting '{}' using Claude API...", source_name);
+
+        // Perform Claude extraction
+        let cb: Option<fn(f32, &str)> = None;
+        let extracted = claude_extractor.extract(path, cb)
+            .await
+            .map_err(|e| SearchError::ConfigError(format!("Claude extraction failed: {}", e)))?;
+
+        self.store_extracted_content(
+            search_client,
+            path,
+            slug,
+            raw_index,
+            chunks_index,
+            source_name,
+            source_type,
+            extracted,
+        ).await
+    }
+
+    /// Store extracted content into the raw index.
+    ///
+    /// Shared helper used by both kreuzberg and Claude extraction paths.
+    async fn store_extracted_content(
+        &self,
+        search_client: &SearchClient,
+        path: &Path,
+        slug: &str,
+        raw_index: &str,
+        chunks_index: &str,
+        source_name: &str,
+        source_type: &str,
+        extracted: crate::ingestion::kreuzberg_extractor::ExtractedContent,
+    ) -> Result<ExtractionResult, SearchError> {
+        let total_chars = extracted.char_count;
+        let mut page_count = 0;
+        let mut raw_documents = Vec::new();
+
+        // Convert extracted pages to RawDocuments
+        if let Some(pages) = extracted.pages {
+            for page in pages {
+                let raw_doc = RawDocument::new(slug, page.page_number as u32, page.content);
+                raw_documents.push(raw_doc);
+                page_count += 1;
+            }
+        } else {
+            // Single page fallback (no page structure)
+            let raw_doc = RawDocument::new(slug, 1, extracted.content.clone());
+            raw_documents.push(raw_doc);
+            page_count = 1;
+        }
+
+        // Combine content sample for metadata detection
+        let content_sample: String = raw_documents
+            .iter()
+            .take(20)
+            .map(|d| d.raw_content.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        // Detect TTRPG metadata
+        let ttrpg_metadata = TTRPGMetadata::extract(path, &content_sample, "document");
+
+        log::info!(
+            "Extracted {} pages from '{}': system={:?}, category={:?}",
+            page_count,
+            source_name,
+            ttrpg_metadata.game_system,
+            ttrpg_metadata.content_category
+        );
+
+        // Store raw documents in Meilisearch
+        let index = search_client.get_client().index(raw_index);
+        let task = index.add_documents(&raw_documents, Some("id")).await
+            .map_err(|e| SearchError::MeilisearchError(format!("Failed to add raw documents: {}", e)))?;
+
+        // Wait for indexing to complete
+        task.wait_for_completion(
+            search_client.get_client(),
+            Some(std::time::Duration::from_millis(100)),
+            Some(std::time::Duration::from_secs(60)),
+        ).await
+            .map_err(|e| SearchError::MeilisearchError(format!("Raw indexing failed: {}", e)))?;
+
+        log::info!("Stored {} raw pages in '{}'", page_count, raw_index);
+
+        // Update library_metadata with final stats and status="ready"
+        let final_metadata = LibraryDocumentMetadata {
+            id: slug.to_string(),
+            name: source_name.to_string(),
+            source_type: source_type.to_string(),
+            file_path: Some(path.to_string_lossy().to_string()),
+            page_count: page_count as u32,
+            chunk_count: 0, // Will be updated after chunking phase
+            character_count: total_chars as u64,
+            content_index: chunks_index.to_string(),
+            status: "ready".to_string(),
+            error_message: None,
+            ingested_at: Utc::now().to_rfc3339(),
+        };
+
+        if let Err(e) = search_client.save_library_document(&final_metadata).await {
+            log::warn!("Failed to update library_metadata for '{}': {}", slug, e);
+        } else {
+            log::info!("Updated library_metadata '{}' with status=ready", slug);
+        }
+
+        Ok(ExtractionResult {
+            slug: slug.to_string(),
+            source_name: source_name.to_string(),
+            raw_index: raw_index.to_string(),
+            page_count,
+            total_chars,
+            ttrpg_metadata,
+        })
     }
 
     /// Query the raw index to find the highest page number already extracted.

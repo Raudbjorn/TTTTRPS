@@ -145,6 +145,147 @@ impl DocumentExtractor {
         &self.settings
     }
 
+    /// Extract a range of pages from a PDF using qpdf
+    async fn extract_pdf_page_range(
+        &self,
+        source: &Path,
+        start_page: usize,
+        end_page: usize,
+        temp_dir: &Path,
+    ) -> Result<std::path::PathBuf> {
+        let chunk_file = temp_dir.join(format!("chunk_{}_{}.pdf", start_page, end_page));
+
+        // Use qpdf to extract page range
+        let status = Command::new("qpdf")
+            .arg(source)
+            .arg("--pages")
+            .arg(".")
+            .arg(format!("{}-{}", start_page, end_page))
+            .arg("--")
+            .arg(&chunk_file)
+            .status()
+            .await
+            .map_err(|e| ExtractionError::IoError(e))?;
+
+        if !status.success() {
+            return Err(ExtractionError::KreuzbergError(format!(
+                "qpdf failed to extract pages {}-{}",
+                start_page, end_page
+            )));
+        }
+
+        Ok(chunk_file)
+    }
+
+    /// Extract large PDF in chunks to avoid memory pressure
+    async fn extract_large_pdf<F>(
+        &self,
+        path: &Path,
+        total_pages: usize,
+        progress_callback: Option<F>,
+    ) -> Result<ExtractedContent>
+    where
+        F: Fn(f32, &str) + Send + Sync + 'static,
+    {
+        let path_str = path.to_string_lossy().to_string();
+        let chunk_size = self.settings.large_pdf_chunk_size;
+        let num_chunks = (total_pages + chunk_size - 1) / chunk_size;
+
+        log::info!(
+            "Large PDF detected ({} pages), extracting in {} chunks of {} pages",
+            total_pages, num_chunks, chunk_size
+        );
+
+        let temp_dir = tempfile::Builder::new()
+            .prefix("pdf_chunks_")
+            .tempdir()
+            .map_err(|e| ExtractionError::IoError(e))?;
+
+        let mut all_pages: Vec<Page> = Vec::with_capacity(total_pages);
+        let mut full_content = String::new();
+        let mut title: Option<String> = None;
+        let mut author: Option<String> = None;
+        let mut detected_language: Option<String> = None;
+
+        // Configure kreuzberg for chunk extraction
+        let mut config = self.config.clone();
+        config.pages = Some(PageConfig {
+            extract_pages: true,
+            insert_page_markers: false,
+            marker_format: "".to_string(),
+        });
+
+        for chunk_idx in 0..num_chunks {
+            let start_page = chunk_idx * chunk_size + 1;
+            let end_page = ((chunk_idx + 1) * chunk_size).min(total_pages);
+
+            if let Some(ref cb) = progress_callback {
+                let progress = (chunk_idx as f32 / num_chunks as f32) * 0.9;
+                cb(progress, &format!("Extracting pages {}-{}/{}", start_page, end_page, total_pages));
+            }
+
+            // Extract chunk to temp file
+            let chunk_path = self.extract_pdf_page_range(
+                path,
+                start_page,
+                end_page,
+                temp_dir.path(),
+            ).await?;
+
+            // Extract text from chunk
+            let result = kreuzberg::extract_file(&chunk_path, None, &config).await?;
+
+            // Capture metadata from first chunk
+            if chunk_idx == 0 {
+                title = result.metadata.title.clone();
+                author = result.metadata.authors
+                    .as_ref()
+                    .map(|authors| authors.join(", "));
+                detected_language = result.metadata.language.clone();
+            }
+
+            // Add content
+            full_content.push_str(&result.content);
+            full_content.push('\n');
+
+            // Add pages with corrected page numbers
+            if let Some(pages) = result.pages {
+                for (idx, p) in pages.into_iter().enumerate() {
+                    all_pages.push(Page {
+                        page_number: start_page + idx,
+                        content: p.content,
+                    });
+                }
+            }
+
+            // Clean up chunk file
+            let _ = tokio::fs::remove_file(&chunk_path).await;
+        }
+
+        if let Some(ref cb) = progress_callback {
+            cb(0.95, "Finalizing extraction...");
+        }
+
+        let char_count = full_content.len();
+
+        log::info!(
+            "Large PDF extraction complete: {} pages, {} chars",
+            all_pages.len(), char_count
+        );
+
+        Ok(ExtractedContent {
+            source_path: path_str,
+            content: full_content,
+            page_count: all_pages.len(),
+            title,
+            author,
+            mime_type: "application/pdf".to_string(),
+            char_count,
+            pages: Some(all_pages),
+            detected_language,
+        })
+    }
+
     /// Extract content from a file (async)
     pub async fn extract<F>(&self, path: &Path, progress_callback: Option<F>) -> Result<ExtractedContent>
     where F: Fn(f32, &str) + Send + Sync + 'static
@@ -155,6 +296,26 @@ impl DocumentExtractor {
 
         if let Some(ref cb) = progress_callback {
             cb(0.0, &format!("Starting extraction for {:?}", path.file_name().unwrap_or_default()));
+        }
+
+        // Check for large PDF - use chunked extraction to avoid memory pressure
+        let is_pdf_file = path.extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("pdf"))
+            .unwrap_or(false);
+
+        if is_pdf_file {
+            // Get page count to check if we should use chunked extraction
+            if let Ok(page_count) = self.get_pdf_page_count(path).await {
+                if page_count > self.settings.large_pdf_page_threshold {
+                    log::info!(
+                        "Large PDF detected ({} pages > {} threshold), using chunked extraction",
+                        page_count,
+                        self.settings.large_pdf_page_threshold
+                    );
+                    return self.extract_large_pdf(path, page_count, progress_callback).await;
+                }
+            }
         }
 
         // Enable page extraction for granular results

@@ -7,6 +7,7 @@ mod ollama;
 mod claude;
 mod claude_code;
 mod claude_desktop;
+mod claude_gate;
 mod openai;
 mod gemini;
 mod gemini_cli;
@@ -22,6 +23,7 @@ pub use ollama::OllamaProvider;
 pub use claude::ClaudeProvider;
 pub use claude_code::{ClaudeCodeProvider, ClaudeCodeStatus};
 pub use claude_desktop::ClaudeDesktopProvider;
+pub use claude_gate::{ClaudeGateProvider, ClaudeGateStatus, StorageBackend};
 pub use openai::OpenAIProvider;
 pub use gemini::GeminiProvider;
 pub use gemini_cli::GeminiCliProvider;
@@ -99,6 +101,12 @@ pub enum ProviderConfig {
         model: String,      // Model to use (default: gemini-2.5-pro)
         timeout_secs: u64,  // Response timeout (default 120s)
     },
+    /// Claude Gate (OAuth-based, no API key needed)
+    ClaudeGate {
+        storage_backend: String,  // Storage backend: "file", "keyring", "memory", "auto"
+        model: String,            // Model to use (e.g., "claude-sonnet-4-20250514")
+        max_tokens: u32,          // Max tokens for responses (default 8192)
+    },
     Meilisearch {
         host: String,
         api_key: Option<String>,
@@ -156,6 +164,18 @@ impl ProviderConfig {
             ProviderConfig::GeminiCli { model, timeout_secs } => {
                 Arc::new(GeminiCliProvider::with_config(model.clone(), *timeout_secs))
             }
+            ProviderConfig::ClaudeGate { storage_backend, model, max_tokens } => {
+                // Attempt to create the provider; fall back to memory storage on failure
+                // In practice, the caller should validate configuration beforehand
+                match ClaudeGateProvider::from_storage_name(storage_backend, model.clone(), *max_tokens) {
+                    Ok(provider) => Arc::new(provider),
+                    Err(e) => {
+                        // Fall back to memory storage on error to avoid panicking
+                        tracing::warn!("Failed to create ClaudeGate provider with {} storage: {}. Falling back to memory.", storage_backend, e);
+                        Arc::new(ClaudeGateProvider::with_memory().expect("Memory storage should always work"))
+                    }
+                }
+            }
 
             ProviderConfig::Meilisearch { host, api_key, workspace_id, model } => {
                 Arc::new(MeilisearchProvider::new(host.clone(), api_key.clone(), workspace_id.clone(), model.clone()))
@@ -179,6 +199,7 @@ impl ProviderConfig {
             ProviderConfig::ClaudeDesktop { .. } => "claude-desktop",
             ProviderConfig::ClaudeCode { .. } => "claude-code",
             ProviderConfig::GeminiCli { .. } => "gemini-cli",
+            ProviderConfig::ClaudeGate { .. } => "claude-gate",
             ProviderConfig::Meilisearch { .. } => "meilisearch",
         }
     }
@@ -196,6 +217,7 @@ impl ProviderConfig {
             ProviderConfig::Claude { .. } => true,
             ProviderConfig::ClaudeDesktop { .. } => true,
             ProviderConfig::ClaudeCode { .. } => true,
+            ProviderConfig::ClaudeGate { .. } => true,
             ProviderConfig::GeminiCli { .. } => true,
 
             // OpenAI-compatible but might need header tweaking or proxy for consistency
@@ -226,6 +248,7 @@ impl ProviderConfig {
             ProviderConfig::ClaudeDesktop { .. } => "claude-desktop".to_string(),
             ProviderConfig::ClaudeCode { model, .. } => model.clone().unwrap_or_else(|| "claude-code".to_string()),
             ProviderConfig::GeminiCli { model, .. } => model.clone(),
+            ProviderConfig::ClaudeGate { model, .. } => model.clone(),
             ProviderConfig::Meilisearch { model, .. } => model.clone(),
         }
     }

@@ -13,6 +13,10 @@ use crate::bindings::{
     // Claude Code CLI
     get_claude_code_status, claude_code_login, claude_code_logout,
     claude_code_install_cli, claude_code_install_skill, ClaudeCodeStatus,
+    // Claude Gate OAuth
+    claude_gate_get_status, claude_gate_start_oauth, claude_gate_complete_oauth,
+    claude_gate_logout, claude_gate_set_storage_backend, claude_gate_list_models, open_url_in_browser,
+    ClaudeGateStatus, ClaudeGateStorageBackend, ClaudeGateOAuthStartResponse, ClaudeGateModelInfo,
     // Gemini CLI
     check_gemini_cli_status, launch_gemini_cli_login, check_gemini_cli_extension,
     install_gemini_cli_extension, GeminiCliStatus, GeminiCliExtensionStatus,
@@ -39,7 +43,74 @@ pub enum LLMProvider {
     DeepSeek,
     ClaudeCode,
     ClaudeDesktop,
+    ClaudeGate,
     GeminiCli,
+}
+
+/// Consolidated UI state machine for Claude Gate authentication.
+/// This provides a cleaner view of the authentication flow state.
+#[derive(Clone, PartialEq, Debug)]
+pub enum ClaudeGateUiState {
+    /// Initial idle state, not performing any operation
+    Idle,
+    /// Loading - checking status, starting OAuth, completing auth, or logging out
+    Loading,
+    /// Waiting for user to input authorization code from browser
+    AwaitingCode,
+    /// Authenticated successfully
+    Authenticated,
+    /// Error state with message
+    Error(String),
+}
+
+impl ClaudeGateUiState {
+    /// Derive the UI state from the individual signals.
+    /// This consolidates the fragmented state into a single state machine view.
+    pub fn derive(
+        status: &ClaudeGateStatus,
+        is_loading: bool,
+        awaiting_code: bool,
+    ) -> Self {
+        if is_loading {
+            return ClaudeGateUiState::Loading;
+        }
+        if awaiting_code {
+            return ClaudeGateUiState::AwaitingCode;
+        }
+        if let Some(ref error) = status.error {
+            return ClaudeGateUiState::Error(error.clone());
+        }
+        if status.authenticated {
+            return ClaudeGateUiState::Authenticated;
+        }
+        ClaudeGateUiState::Idle
+    }
+
+    /// Check if currently in a loading state
+    pub fn is_loading(&self) -> bool {
+        matches!(self, ClaudeGateUiState::Loading)
+    }
+
+    /// Check if authenticated
+    pub fn is_authenticated(&self) -> bool {
+        matches!(self, ClaudeGateUiState::Authenticated)
+    }
+
+    /// Check if awaiting user input
+    pub fn is_awaiting_code(&self) -> bool {
+        matches!(self, ClaudeGateUiState::AwaitingCode)
+    }
+
+    /// Get the display string for the current state
+    pub fn display(&self) -> &str {
+        match self {
+            ClaudeGateUiState::Idle => "Ready to authenticate",
+            ClaudeGateUiState::Loading => "Loading...",
+            ClaudeGateUiState::AwaitingCode => "Waiting for auth code",
+            ClaudeGateUiState::Authenticated => "Authenticated",
+            ClaudeGateUiState::Error(_) => "Error",
+        }
+    }
 }
 
 impl std::fmt::Display for LLMProvider {
@@ -57,6 +128,7 @@ impl std::fmt::Display for LLMProvider {
             LLMProvider::DeepSeek => write!(f, "DeepSeek"),
             LLMProvider::ClaudeCode => write!(f, "Claude Code"),
             LLMProvider::ClaudeDesktop => write!(f, "Claude Desktop"),
+            LLMProvider::ClaudeGate => write!(f, "Claude Gate"),
             LLMProvider::GeminiCli => write!(f, "Gemini CLI"),
         }
     }
@@ -77,6 +149,7 @@ impl LLMProvider {
             LLMProvider::DeepSeek => "deepseek".to_string(),
             LLMProvider::ClaudeCode => "claude-code".to_string(),
             LLMProvider::ClaudeDesktop => "claude-desktop".to_string(),
+            LLMProvider::ClaudeGate => "claude-gate".to_string(),
             LLMProvider::GeminiCli => "gemini-cli".to_string(),
         }
     }
@@ -94,6 +167,7 @@ impl LLMProvider {
             "DeepSeek" | "deepseek" => LLMProvider::DeepSeek,
             "ClaudeCode" | "claude-code" => LLMProvider::ClaudeCode,
             "ClaudeDesktop" | "claude-desktop" => LLMProvider::ClaudeDesktop,
+            "ClaudeGate" | "claude-gate" => LLMProvider::ClaudeGate,
             "GeminiCli" | "gemini-cli" => LLMProvider::GeminiCli,
             _ => LLMProvider::Ollama,
         }
@@ -113,6 +187,7 @@ impl LLMProvider {
             LLMProvider::DeepSeek => "sk-...",
             LLMProvider::ClaudeCode => "Uses CLI authentication",
             LLMProvider::ClaudeDesktop => "Uses Desktop authentication",
+            LLMProvider::ClaudeGate => "Uses OAuth authentication",
             LLMProvider::GeminiCli => "Uses Google account authentication",
         }
     }
@@ -122,6 +197,7 @@ impl LLMProvider {
             LLMProvider::Ollama => "Ollama Host",
             LLMProvider::ClaudeCode => "Status",
             LLMProvider::ClaudeDesktop => "Status",
+            LLMProvider::ClaudeGate => "Status",
             LLMProvider::GeminiCli => "Status",
             _ => "API Key",
         }
@@ -141,6 +217,7 @@ impl LLMProvider {
             LLMProvider::DeepSeek => "deepseek-chat",
             LLMProvider::ClaudeCode => "claude-sonnet-4-20250514",
             LLMProvider::ClaudeDesktop => "claude-sonnet-4-20250514",
+            LLMProvider::ClaudeGate => "claude-sonnet-4-20250514",
             LLMProvider::GeminiCli => "gemini-3-pro-preview",
         }
     }
@@ -159,6 +236,7 @@ impl LLMProvider {
             LLMProvider::Ollama => Some("https://ollama.com/download"),
             LLMProvider::ClaudeCode => None, // Uses CLI authentication
             LLMProvider::ClaudeDesktop => None, // Uses Desktop authentication
+            LLMProvider::ClaudeGate => None, // Uses OAuth authentication
             LLMProvider::GeminiCli => None, // Uses Google account authentication
         }
     }
@@ -172,6 +250,7 @@ impl LLMProvider {
             LLMProvider::OpenRouter => "text-violet-400",
             LLMProvider::ClaudeCode => "text-orange-400", // Anthropic Sienna
             LLMProvider::ClaudeDesktop => "text-orange-400", // Anthropic Sienna
+            LLMProvider::ClaudeGate => "text-orange-400", // Anthropic Sienna
             LLMProvider::GeminiCli => "text-blue-400", // Gemini Blue
             _ => "text-[var(--accent-primary)]",
         }
@@ -246,6 +325,28 @@ pub fn LLMSettingsView() -> impl IntoView {
     });
     let gemini_cli_loading = RwSignal::new(false);
 
+    // Claude Gate OAuth status (individual signals for backward compatibility)
+    let claude_gate_status = RwSignal::new(ClaudeGateStatus::default());
+    let claude_gate_loading = RwSignal::new(false);
+    let claude_gate_storage = RwSignal::new(ClaudeGateStorageBackend::Auto);
+    let claude_gate_auth_code = RwSignal::new(String::new());
+    let claude_gate_awaiting_code = RwSignal::new(false);
+    let claude_gate_oauth_url = RwSignal::new(Option::<String>::None);
+    let claude_gate_csrf_state = RwSignal::new(Option::<String>::None);
+
+    // Consolidated UI state derived from individual signals.
+    // This provides a state machine view for cleaner conditional logic.
+    // Usage: claude_gate_ui_state.get().is_loading(), .is_authenticated(), etc.
+    // Can also be used in views: {move || claude_gate_ui_state.get().display()}
+    // Note: Prefixed with _ to suppress unused warning until UI is fully migrated.
+    let _claude_gate_ui_state = Memo::new(move |_| {
+        ClaudeGateUiState::derive(
+            &claude_gate_status.get(),
+            claude_gate_loading.get(),
+            claude_gate_awaiting_code.get(),
+        )
+    });
+
     // Proxy status
     let proxy_running = RwSignal::new(false);
     let proxy_url = RwSignal::new(String::new());
@@ -302,6 +403,16 @@ pub fn LLMSettingsView() -> impl IntoView {
                 LLMProvider::OpenAI => list_openai_models(api_key).await.unwrap_or_default(),
                 LLMProvider::Gemini => list_gemini_models(api_key).await.unwrap_or_default(),
                 LLMProvider::OpenRouter => list_openrouter_models().await.unwrap_or_default(),
+                LLMProvider::ClaudeGate => {
+                    // Fetch models from Claude Gate API (OAuth authenticated)
+                    match claude_gate_list_models().await {
+                        Ok(gate_models) => gate_models
+                            .into_iter()
+                            .map(|m| ModelInfo { id: m.id.clone(), name: m.name, description: None })
+                            .collect(),
+                        Err(_) => Vec::new(),
+                    }
+                }
                 LLMProvider::Mistral
                 | LLMProvider::Groq
                 | LLMProvider::Together
@@ -370,6 +481,24 @@ pub fn LLMSettingsView() -> impl IntoView {
                 gemini_cli_extension.set(ext_status);
             }
 
+            // Check Claude Gate OAuth status
+            match claude_gate_get_status().await {
+                Ok(status) => {
+                    statuses.insert("claude-gate".to_string(), status.authenticated);
+                    // Sync storage backend dropdown with actual backend
+                    let backend = match status.storage_backend.to_lowercase().as_str() {
+                        "keyring" => ClaudeGateStorageBackend::Keyring,
+                        "file" => ClaudeGateStorageBackend::File,
+                        _ => ClaudeGateStorageBackend::Auto,
+                    };
+                    claude_gate_storage.set(backend);
+                    claude_gate_status.set(status);
+                }
+                Err(_) => {
+                    statuses.insert("claude-gate".to_string(), false);
+                }
+            }
+
             provider_statuses.set(statuses);
         });
     };
@@ -412,6 +541,31 @@ pub fn LLMSettingsView() -> impl IntoView {
                 Err(e) => show_error("Gemini Extension Status", Some(&e), None),
             }
             gemini_cli_loading.set(false);
+        });
+    };
+
+    // Refresh Claude Gate OAuth status
+    let refresh_claude_gate_status = move || {
+        claude_gate_loading.set(true);
+        spawn_local(async move {
+            match claude_gate_get_status().await {
+                Ok(status) => {
+                    let is_ready = status.authenticated;
+                    provider_statuses.update(|map| { map.insert("claude-gate".to_string(), is_ready); });
+                    // Update storage backend signal from status (case-insensitive match)
+                    let backend = match status.storage_backend.to_lowercase().as_str() {
+                        "keyring" => ClaudeGateStorageBackend::Keyring,
+                        "file" => ClaudeGateStorageBackend::File,
+                        _ => ClaudeGateStorageBackend::Auto,
+                    };
+                    claude_gate_storage.set(backend);
+                    claude_gate_status.set(status);
+                }
+                Err(e) => {
+                    show_error("Claude Gate Status", Some(&e), None);
+                }
+            }
+            claude_gate_loading.set(false);
         });
     };
 
@@ -484,10 +638,10 @@ pub fn LLMSettingsView() -> impl IntoView {
              is_saving.set(true);
              save_status.set("Saving...".to_string());
              spawn_local(async move {
-                 // ClaudeCode, ClaudeDesktop, and GeminiCli don't need API keys - they use CLI/Desktop/Google auth
+                 // ClaudeCode, ClaudeDesktop, ClaudeGate, and GeminiCli don't need API keys - they use CLI/Desktop/OAuth/Google auth
                  let needs_api_key = !matches!(
                      provider,
-                     LLMProvider::Ollama | LLMProvider::ClaudeCode | LLMProvider::ClaudeDesktop | LLMProvider::GeminiCli
+                     LLMProvider::Ollama | LLMProvider::ClaudeCode | LLMProvider::ClaudeDesktop | LLMProvider::ClaudeGate | LLMProvider::GeminiCli
                  );
                  let key_to_save = if needs_api_key && !key_or_host.is_empty() {
                       match save_api_key(provider.to_string_key(), key_or_host.clone()).await {
@@ -550,6 +704,13 @@ pub fn LLMSettingsView() -> impl IntoView {
                  model_name.set(p.default_model().to_string());
                  cloud_models.set(Vec::new());
             },
+            LLMProvider::ClaudeGate => {
+                 // No API key needed - uses OAuth authentication
+                 api_key_or_host.set(String::new());
+                 model_name.set(p.default_model().to_string());
+                 // Fetch models from API if authenticated
+                 fetch_cloud_models(LLMProvider::ClaudeGate, None);
+            },
             LLMProvider::GeminiCli => {
                  // No API key needed - uses Google account authentication
                  api_key_or_host.set(String::new());
@@ -574,6 +735,7 @@ pub fn LLMSettingsView() -> impl IntoView {
         LLMProvider::OpenAI,
         LLMProvider::Claude,
         LLMProvider::ClaudeCode,
+        LLMProvider::ClaudeGate,
         LLMProvider::Gemini,
         LLMProvider::GeminiCli,
         LLMProvider::OpenRouter,
@@ -616,6 +778,7 @@ pub fn LLMSettingsView() -> impl IntoView {
                                     LLMProvider::Ollama => "Running locally on your machine.",
                                     LLMProvider::ClaudeCode => "Uses Claude Code CLI authentication.",
                                     LLMProvider::ClaudeDesktop => "Uses Claude Desktop authentication.",
+                                    LLMProvider::ClaudeGate => "Uses Anthropic OAuth authentication.",
                                     LLMProvider::GeminiCli => "Uses Google account authentication (free tier).",
                                     _ => "Cloud-based inference.",
                                 }}
@@ -895,6 +1058,277 @@ pub fn LLMSettingsView() -> impl IntoView {
                                                         view! { <span></span> }.into_any()
                                                     }
                                                 }}
+                                            </div>
+                                        </div>
+                                    }.into_any()
+                                } else if selected_provider.get() == LLMProvider::ClaudeGate {
+                                    // Claude Gate OAuth status panel
+                                    // Note: Signals are accessed directly in closures for reactivity
+                                    let _status = claude_gate_status.get();
+                                    let _is_loading = claude_gate_loading.get();
+                                    view! {
+                                        <div class="p-4 rounded-lg bg-[var(--bg-deep)] border border-[var(--border-subtle)] space-y-3">
+                                            // Status indicators
+                                            <div class="flex flex-wrap gap-2">
+                                                <div class=move || {
+                                                    let s = claude_gate_status.get();
+                                                    format!(
+                                                        "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium {}",
+                                                        if s.authenticated { "bg-green-500/20 text-green-400" } else { "bg-yellow-500/20 text-yellow-400" }
+                                                    )
+                                                }>
+                                                    <span class=move || {
+                                                        let s = claude_gate_status.get();
+                                                        format!(
+                                                            "w-2 h-2 rounded-full {}",
+                                                            if s.authenticated { "bg-green-400" } else { "bg-yellow-400" }
+                                                        )
+                                                    }></span>
+                                                    {move || if claude_gate_status.get().authenticated { "Authenticated" } else { "Not Authenticated" }}
+                                                </div>
+                                                <div class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400">
+                                                    {move || format!("Storage: {}", claude_gate_status.get().storage_backend)}
+                                                </div>
+                                                {move || claude_gate_status.get().expiration_display.map(|exp| view! {
+                                                    <div class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-gray-500/20 text-gray-400">
+                                                        {format!("Expires: {}", exp)}
+                                                    </div>
+                                                })}
+                                            </div>
+
+                                            // Error message if any
+                                            {move || claude_gate_status.get().error.map(|e| view! {
+                                                <p class="text-xs text-red-400">{e}</p>
+                                            })}
+
+                                            // Storage backend selector
+                                            <div class="pt-2">
+                                                <label class="block text-xs text-[var(--text-muted)] mb-1">"Token Storage"</label>
+                                                <select
+                                                    class="w-full p-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] text-xs outline-none focus:border-[var(--accent-primary)]"
+                                                    style="color-scheme: dark;"
+                                                    prop:value=move || claude_gate_storage.get().to_string()
+                                                    on:change=move |ev| {
+                                                        let val = event_target_value(&ev);
+                                                        let new_backend = match val.as_str() {
+                                                            "Keyring" => ClaudeGateStorageBackend::Keyring,
+                                                            "File" => ClaudeGateStorageBackend::File,
+                                                            _ => ClaudeGateStorageBackend::Auto,
+                                                        };
+                                                        // Capture previous value for rollback on failure
+                                                        let previous_backend = claude_gate_storage.get();
+                                                        // Optimistic update
+                                                        claude_gate_storage.set(new_backend.clone());
+                                                        spawn_local(async move {
+                                                            if let Err(e) = claude_gate_set_storage_backend(new_backend).await {
+                                                                // Rollback to previous value on failure
+                                                                claude_gate_storage.set(previous_backend);
+                                                                show_error("Storage Change Failed", Some(&e), None);
+                                                            }
+                                                        });
+                                                    }
+                                                >
+                                                    <option value="Auto" class="bg-[var(--bg-elevated)] text-[var(--text-primary)]">"Auto (recommended)"</option>
+                                                    <option value="Keyring" class="bg-[var(--bg-elevated)] text-[var(--text-primary)]">"System Keyring"</option>
+                                                    <option value="File" class="bg-[var(--bg-elevated)] text-[var(--text-primary)]">"File (~/.config/cld/auth.json)"</option>
+                                                </select>
+                                            </div>
+
+                                            // Action buttons and auth code input
+                                            <div class="flex flex-col gap-3 pt-2">
+                                                // Auth code input (shown when awaiting code)
+                                                {move || {
+                                                    if claude_gate_awaiting_code.get() {
+                                                        view! {
+                                                            <div class="flex flex-col gap-2 p-3 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)]">
+                                                                // Show OAuth URL if available (for manual copy when popup blocked)
+                                                                {move || {
+                                                                    if let Some(url) = claude_gate_oauth_url.get() {
+                                                                        view! {
+                                                                            <div class="flex flex-col gap-1">
+                                                                                <p class="text-xs text-[var(--text-secondary)]">
+                                                                                    "If the browser didn't open, copy this URL:"
+                                                                                </p>
+                                                                                <div class="flex gap-2 items-center">
+                                                                                    <input
+                                                                                        type="text"
+                                                                                        readonly=true
+                                                                                        class="flex-1 px-2 py-1 text-xs rounded bg-[var(--bg-deep)] border border-[var(--border-subtle)] text-[var(--text-muted)] font-mono truncate"
+                                                                                        prop:value=url.clone()
+                                                                                    />
+                                                                                    <button
+                                                                                        class="px-2 py-1 text-xs rounded bg-[var(--accent-primary)]/20 text-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/30"
+                                                                                        on:click={
+                                                                                            let url_copy = url.clone();
+                                                                                            move |_| {
+                                                                                                if let Some(window) = web_sys::window() {
+                                                                                                    let clipboard = window.navigator().clipboard();
+                                                                                                    let url_to_copy = url_copy.clone();
+                                                                                                    spawn_local(async move {
+                                                                                                        let _ = wasm_bindgen_futures::JsFuture::from(
+                                                                                                            clipboard.write_text(&url_to_copy)
+                                                                                                        ).await;
+                                                                                                        show_success("Copied", Some("URL copied to clipboard"));
+                                                                                                    });
+                                                                                                }
+                                                                                            }
+                                                                                        }
+                                                                                    >
+                                                                                        "Copy"
+                                                                                    </button>
+                                                                                </div>
+                                                                            </div>
+                                                                        }.into_any()
+                                                                    } else {
+                                                                        view! { <div></div> }.into_any()
+                                                                    }
+                                                                }}
+                                                                <p class="text-xs text-[var(--text-secondary)]">
+                                                                    "After authorizing in your browser, paste the authorization code here:"
+                                                                </p>
+                                                                <div class="flex gap-2">
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder="Paste authorization code..."
+                                                                        class="flex-1 px-3 py-1.5 text-sm rounded-lg bg-[var(--bg-deep)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-primary)]"
+                                                                        prop:value=move || claude_gate_auth_code.get()
+                                                                        on:input=move |ev| {
+                                                                            claude_gate_auth_code.set(event_target_value(&ev));
+                                                                        }
+                                                                    />
+                                                                    <button
+                                                                        class="px-3 py-1.5 text-xs font-medium rounded-lg bg-green-500/20 text-green-400 hover:bg-green-500/30 transition-colors disabled:opacity-50"
+                                                                        disabled=move || claude_gate_loading.get() || claude_gate_auth_code.get().is_empty()
+                                                                        on:click=move |_| {
+                                                                            let code = claude_gate_auth_code.get();
+                                                                            let csrf_state = claude_gate_csrf_state.get();
+                                                                            spawn_local(async move {
+                                                                                claude_gate_loading.set(true);
+                                                                                match claude_gate_complete_oauth(code, csrf_state).await {
+                                                                                    Ok(result) => {
+                                                                                        if result.success {
+                                                                                            show_success("Login Complete", Some("Successfully authenticated with Claude"));
+                                                                                            claude_gate_awaiting_code.set(false);
+                                                                                            claude_gate_auth_code.set(String::new());
+                                                                                            claude_gate_oauth_url.set(None);
+                                                                                            claude_gate_csrf_state.set(None);
+                                                                                            refresh_claude_gate_status();
+                                                                                        } else {
+                                                                                            show_error("OAuth Failed", result.error.as_deref(), None);
+                                                                                        }
+                                                                                    }
+                                                                                    Err(e) => show_error("OAuth Failed", Some(&e), None),
+                                                                                }
+                                                                                claude_gate_loading.set(false);
+                                                                            });
+                                                                        }
+                                                                    >
+                                                                        "Complete Login"
+                                                                    </button>
+                                                                    <button
+                                                                        class="px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--bg-surface)] text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] transition-colors"
+                                                                        on:click=move |_| {
+                                                                            claude_gate_awaiting_code.set(false);
+                                                                            claude_gate_auth_code.set(String::new());
+                                                                            claude_gate_oauth_url.set(None);
+                                                                            claude_gate_csrf_state.set(None);
+                                                                        }
+                                                                    >
+                                                                        "Cancel"
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        }.into_any()
+                                                    } else {
+                                                        view! { <span /> }.into_any()
+                                                    }
+                                                }}
+
+                                                // Main action buttons
+                                                <div class="flex flex-wrap gap-2">
+                                                    {move || {
+                                                        let s = claude_gate_status.get();
+                                                        let loading = claude_gate_loading.get();
+                                                        let awaiting = claude_gate_awaiting_code.get();
+                                                        if !s.authenticated && !awaiting {
+                                                            view! {
+                                                                <button
+                                                                    class="px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--accent-primary)] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+                                                                    disabled=loading
+                                                                    on:click=move |_| {
+                                                                        spawn_local(async move {
+                                                                            claude_gate_loading.set(true);
+                                                                            match claude_gate_start_oauth().await {
+                                                                                Ok(response) => {
+                                                                                    // Store URL for display if browser fails to open
+                                                                                    claude_gate_oauth_url.set(Some(response.auth_url.clone()));
+                                                                                    // Store CSRF state for verification
+                                                                                    claude_gate_csrf_state.set(Some(response.state));
+                                                                                    // Open URL using Tauri's shell plugin
+                                                                                    match open_url_in_browser(response.auth_url).await {
+                                                                                        Ok(_) => {
+                                                                                            show_success("Login Started", Some("Complete authentication in your browser, then paste the code below"));
+                                                                                            claude_gate_awaiting_code.set(true);
+                                                                                        }
+                                                                                        Err(e) => {
+                                                                                            show_error("Browser Open Failed", Some(&format!("{}. Copy the URL shown below.", e)), None);
+                                                                                            claude_gate_awaiting_code.set(true);
+                                                                                        }
+                                                                                    }
+                                                                                }
+                                                                                Err(e) => show_error("OAuth Failed", Some(&e), None),
+                                                                            }
+                                                                            claude_gate_loading.set(false);
+                                                                        });
+                                                                    }
+                                                                >
+                                                                    "Login with Claude"
+                                                                </button>
+                                                            }.into_any()
+                                                        } else if s.authenticated {
+                                                            view! {
+                                                                <button
+                                                                    class="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors disabled:opacity-50"
+                                                                    disabled=loading
+                                                                    on:click=move |_| {
+                                                                        spawn_local(async move {
+                                                                            claude_gate_loading.set(true);
+                                                                            match claude_gate_logout().await {
+                                                                                Ok(_) => {
+                                                                                    show_success("Logged Out", None);
+                                                                                    refresh_claude_gate_status();
+                                                                                }
+                                                                                Err(e) => show_error("Logout Failed", Some(&e), None),
+                                                                            }
+                                                                            claude_gate_loading.set(false);
+                                                                        });
+                                                                    }
+                                                                >
+                                                                    "Logout"
+                                                                </button>
+                                                            }.into_any()
+                                                        } else {
+                                                            view! { <span /> }.into_any()
+                                                        }
+                                                    }}
+
+                                                    <button
+                                                        class="px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] transition-colors disabled:opacity-50"
+                                                        disabled=move || claude_gate_loading.get()
+                                                        on:click=move |_| refresh_claude_gate_status()
+                                                    >
+                                                        {move || if claude_gate_loading.get() { "Checking..." } else { "Refresh Status" }}
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            // Link to extraction settings
+                                            <div class="pt-2 border-t border-[var(--border-subtle)]">
+                                                <p class="text-xs text-[var(--text-muted)]">
+                                                    "Claude Gate can also be used for document extraction. Configure in "
+                                                    <span class="text-[var(--accent-primary)]">"Extraction Settings"</span>
+                                                    "."
+                                                </p>
                                             </div>
                                         </div>
                                     }.into_any()

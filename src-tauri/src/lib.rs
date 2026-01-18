@@ -10,6 +10,7 @@ pub mod database;
 pub mod ingestion;
 pub mod commands;
 pub mod backstory_commands;
+pub mod claude_gate;
 
 // Test modules
 #[cfg(test)]
