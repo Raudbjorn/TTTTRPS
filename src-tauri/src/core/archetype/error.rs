@@ -178,7 +178,7 @@ pub enum ArchetypeError {
 
     /// YAML parsing error.
     #[error("YAML parse error: {0}")]
-    YamlParse(#[from] serde_yaml::Error),
+    YamlParse(#[from] serde_yaml_ng::Error),
 
     /// File system I/O error.
     #[error("IO error: {0}")]

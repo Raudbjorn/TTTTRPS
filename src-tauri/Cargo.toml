@@ -66,7 +66,7 @@ rodio = "0.19"
 # Document extraction with kreuzberg - comprehensive extraction library
 # Using git version to get latest features
 # Note: "office", "excel", and "archives" features excluded due to zip -> lzma-rust2 -> crc conflict with sqlx
-kreuzberg = { git = "https://github.com/kreuzberg-dev/kreuzberg", default-features = false, features = [
+kreuzberg = { git = "https://github.com/kreuzberg-dev/kreuzberg", rev = "5abdffd090d6bf9be497fbcc7237c90c694b322c", default-features = false, features = [
     # PDF support with bundled pdfium (auto-downloads, embeds in binary)
     "pdf",
     "bundled-pdfium",

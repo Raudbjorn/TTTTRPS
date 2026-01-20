@@ -27,7 +27,7 @@ pub enum VocabularyError {
     ParseFailed {
         bank_id: String,
         #[source]
-        source: serde_yaml::Error,
+        source: serde_yaml_ng::Error,
     },
 
     /// Requested vocabulary bank not found.
@@ -73,7 +73,7 @@ impl VocabularyError {
     }
 
     /// Create a ParseFailed error.
-    pub fn parse_failed(bank_id: impl Into<String>, source: serde_yaml::Error) -> Self {
+    pub fn parse_failed(bank_id: impl Into<String>, source: serde_yaml_ng::Error) -> Self {
         Self::ParseFailed {
             bank_id: bank_id.into(),
             source,
@@ -128,7 +128,7 @@ pub enum NameGenerationError {
     ParseFailed {
         culture: String,
         #[source]
-        source: serde_yaml::Error,
+        source: serde_yaml_ng::Error,
     },
 
     /// Culture not found in name generator.
@@ -177,7 +177,7 @@ impl NameGenerationError {
     }
 
     /// Create a ParseFailed error.
-    pub fn parse_failed(culture: impl Into<String>, source: serde_yaml::Error) -> Self {
+    pub fn parse_failed(culture: impl Into<String>, source: serde_yaml_ng::Error) -> Self {
         Self::ParseFailed {
             culture: culture.into(),
             source,
@@ -236,7 +236,7 @@ pub enum DialectError {
     ParseFailed {
         dialect_id: String,
         #[source]
-        source: serde_yaml::Error,
+        source: serde_yaml_ng::Error,
     },
 
     /// Dialect not found.
@@ -280,7 +280,7 @@ impl DialectError {
     }
 
     /// Create a ParseFailed error.
-    pub fn parse_failed(dialect_id: impl Into<String>, source: serde_yaml::Error) -> Self {
+    pub fn parse_failed(dialect_id: impl Into<String>, source: serde_yaml_ng::Error) -> Self {
         Self::ParseFailed {
             dialect_id: dialect_id.into(),
             source,
@@ -346,7 +346,7 @@ pub enum FileError {
         path: PathBuf,
         format: String,
         #[source]
-        source: serde_yaml::Error,
+        source: serde_yaml_ng::Error,
     },
 
     /// Directory scan failed.
@@ -377,7 +377,7 @@ impl FileError {
     }
 
     /// Create a ParseFailed error.
-    pub fn parse_failed(path: impl Into<PathBuf>, format: impl Into<String>, source: serde_yaml::Error) -> Self {
+    pub fn parse_failed(path: impl Into<PathBuf>, format: impl Into<String>, source: serde_yaml_ng::Error) -> Self {
         Self::ParseFailed {
             path: path.into(),
             format: format.into(),

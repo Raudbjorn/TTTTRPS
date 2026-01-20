@@ -3818,12 +3818,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jotdown"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "086b08ec7a274cd60cd575ed3651ba081ee72dec0d39a6210e8adcff9efe3880"
-
-[[package]]
 name = "js-sys"
 version = "0.3.85"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3907,7 +3901,7 @@ dependencies = [
 [[package]]
 name = "kreuzberg"
 version = "4.0.8"
-source = "git+https://github.com/kreuzberg-dev/kreuzberg#a8ba00673d8ba8826d32fa6f5a316030819a55ac"
+source = "git+https://github.com/kreuzberg-dev/kreuzberg?rev=5abdffd090d6bf9be497fbcc7237c90c694b322c#5abdffd090d6bf9be497fbcc7237c90c694b322c"
 dependencies = [
  "ahash",
  "async-trait",
@@ -3926,7 +3920,6 @@ dependencies = [
  "image",
  "indexmap 2.13.0",
  "infer",
- "jotdown",
  "kamadak-exif",
  "kreuzberg-pdfium-render",
  "kreuzberg-tesseract",
@@ -3997,7 +3990,7 @@ dependencies = [
 [[package]]
 name = "kreuzberg-tesseract"
 version = "4.0.8"
-source = "git+https://github.com/kreuzberg-dev/kreuzberg#a8ba00673d8ba8826d32fa6f5a316030819a55ac"
+source = "git+https://github.com/kreuzberg-dev/kreuzberg?rev=5abdffd090d6bf9be497fbcc7237c90c694b322c#5abdffd090d6bf9be497fbcc7237c90c694b322c"
 dependencies = [
  "cc",
  "cmake",

@@ -36,7 +36,7 @@ use crate::core::character_gen::{CharacterGenerator, GenerationOptions, Characte
 use crate::core::npc_gen::{NPCGenerator, NPCGenerationOptions, NPC, NPCStore};
 // NPC Extensions - Vocabulary, Names, and Dialects
 use crate::core::npc_gen::{
-    VocabularyBank, Formality, PhraseEntry,
+    VocabularyBank as NpcVocabularyBank, Formality, PhraseEntry,
     CulturalNamingRules, NameStructure,
     DialectDefinition, DialectTransformer, DialectTransformResult, Intensity,
     load_yaml_file, get_vocabulary_dir, get_names_dir, get_dialects_dir,
@@ -77,19 +77,18 @@ use crate::core::session::notes::{
 // Archetype Registry imports
 use crate::core::archetype::{
     // Core types
-    Archetype, ArchetypeCategory,
+    Archetype, ArchetypeCategory, ArchetypeSummary,
     // Registry
     ArchetypeRegistry,
     // Resolution
     ResolutionQuery, ResolvedArchetype,
     // Setting packs
+    SettingPackSummary,
     // Vocabulary
     VocabularyBank, VocabularyBankManager, VocabularyBankSummary,
     PhraseFilterOptions, BankListFilter,
     // Component types
     PersonalityAffinity, NpcRoleMapping, NamingCultureWeight, StatTendencies,
-    // Cache
-    // Cache
     // Setting pack loader
     SettingPackLoader,
 };
@@ -2875,9 +2874,9 @@ pub fn search_npcs(
 // NPC Extensions - Vocabulary, Names, and Dialects Commands
 // ============================================================================
 
-/// Load a vocabulary bank from YAML file
+/// Load a vocabulary bank from YAML file (legacy NPC format)
 #[tauri::command]
-pub async fn load_vocabulary_bank(path: String) -> Result<VocabularyBank, String> {
+pub async fn load_vocabulary_bank(path: String) -> Result<NpcVocabularyBank, String> {
     load_yaml_file(&std::path::PathBuf::from(path))
         .await
         .map_err(|e| e.to_string())
@@ -2889,10 +2888,10 @@ pub fn get_vocabulary_directory() -> String {
     get_vocabulary_dir().to_string_lossy().to_string()
 }
 
-/// Get a random phrase from a vocabulary bank
+/// Get a random phrase from a vocabulary bank (legacy NPC format)
 #[tauri::command]
 pub fn get_vocabulary_phrase(
-    bank: VocabularyBank,
+    bank: NpcVocabularyBank,
     category: String,
     formality: String,
 ) -> Result<Option<PhraseEntry>, String> {

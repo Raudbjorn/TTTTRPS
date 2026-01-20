@@ -1,5 +1,7 @@
 # CLI-Based LLM Providers: A Deep Dive
 
+> **⚠️ ARCHIVED**: This feature has been removed from the codebase. This documentation is preserved for historical reference only. The `ClaudeCodeProvider`, `GeminiCliProvider`, and all related Tauri commands have been deleted. See PR #55 for details.
+
 This document provides a comprehensive analysis of how the **Gemini CLI** and **Claude Code CLI** LLM providers work in the TTRPG Assistant (Sidecar DM) application. It covers installation detection, communication patterns, session management, and provides code examples for implementing similar functionality.
 
 ## Table of Contents

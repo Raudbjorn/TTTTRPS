@@ -968,8 +968,8 @@ mod tests {
             .add_culture("human")
             .add_phonetic_rule(PhoneticRule::new("test_rule", "th", "d").with_frequency(0.5));
 
-        let yaml = serde_yaml::to_string(&dialect).unwrap();
-        let parsed: DialectDefinition = serde_yaml::from_str(&yaml).unwrap();
+        let yaml = serde_yaml_ng::to_string(&dialect).unwrap();
+        let parsed: DialectDefinition = serde_yaml_ng::from_str(&yaml).unwrap();
 
         assert_eq!(parsed.id, "test");
         assert_eq!(parsed.name, "Test Dialect");

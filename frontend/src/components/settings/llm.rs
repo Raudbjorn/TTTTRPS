@@ -12,8 +12,6 @@ use crate::bindings::{
     save_api_key, HealthStatus, LLMSettings, ModelInfo, OllamaModel,
     // Claude Gate OAuth
     claude_gate_get_status, claude_gate_list_models, ClaudeGateStatus,
-    // LLM Proxy
-    is_llm_proxy_running, get_llm_proxy_url, list_proxy_providers,
     // Embedding configuration
     list_ollama_embedding_models, setup_ollama_embeddings, OllamaEmbeddingModel,
     list_local_embedding_models, setup_local_embeddings, LocalEmbeddingModel,
@@ -25,7 +23,7 @@ use super::ClaudeGateAuth;
 #[derive(Clone, PartialEq, Debug)]
 pub enum LLMProvider {
     Ollama,
-    Claude,
+    AnthropicAPI,
     Gemini,
     OpenAI,
     OpenRouter,
@@ -34,14 +32,14 @@ pub enum LLMProvider {
     Together,
     Cohere,
     DeepSeek,
-    ClaudeGate,
+    Claude,
 }
 
 impl std::fmt::Display for LLMProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             LLMProvider::Ollama => write!(f, "Ollama"),
-            LLMProvider::Claude => write!(f, "Claude"),
+            LLMProvider::AnthropicAPI => write!(f, "Anthropic API"),
             LLMProvider::Gemini => write!(f, "Gemini"),
             LLMProvider::OpenAI => write!(f, "OpenAI"),
             LLMProvider::OpenRouter => write!(f, "OpenRouter"),
@@ -50,7 +48,7 @@ impl std::fmt::Display for LLMProvider {
             LLMProvider::Together => write!(f, "Together"),
             LLMProvider::Cohere => write!(f, "Cohere"),
             LLMProvider::DeepSeek => write!(f, "DeepSeek"),
-            LLMProvider::ClaudeGate => write!(f, "Claude"),
+            LLMProvider::Claude => write!(f, "Claude"),
         }
     }
 }
@@ -59,7 +57,7 @@ impl LLMProvider {
     fn to_string_key(&self) -> String {
         match self {
             LLMProvider::Ollama => "ollama".to_string(),
-            LLMProvider::Claude => "claude".to_string(),
+            LLMProvider::AnthropicAPI => "anthropic".to_string(),
             LLMProvider::Gemini => "gemini".to_string(),
             LLMProvider::OpenAI => "openai".to_string(),
             LLMProvider::OpenRouter => "openrouter".to_string(),
@@ -68,13 +66,13 @@ impl LLMProvider {
             LLMProvider::Together => "together".to_string(),
             LLMProvider::Cohere => "cohere".to_string(),
             LLMProvider::DeepSeek => "deepseek".to_string(),
-            LLMProvider::ClaudeGate => "claude".to_string(),
+            LLMProvider::Claude => "claude".to_string(),
         }
     }
 
     fn from_string(s: &str) -> Self {
         match s {
-            "Claude" | "claude" => LLMProvider::Claude,
+            "Anthropic API" | "anthropic" => LLMProvider::AnthropicAPI,
             "Gemini" | "gemini" => LLMProvider::Gemini,
             "OpenAI" | "openai" => LLMProvider::OpenAI,
             "OpenRouter" | "openrouter" => LLMProvider::OpenRouter,
@@ -83,7 +81,7 @@ impl LLMProvider {
             "Together" | "together" => LLMProvider::Together,
             "Cohere" | "cohere" => LLMProvider::Cohere,
             "DeepSeek" | "deepseek" => LLMProvider::DeepSeek,
-            "ClaudeGate" | "claude-gate" | "claude" => LLMProvider::ClaudeGate,
+            "Claude" | "claude" | "claude-gate" => LLMProvider::Claude,
             _ => LLMProvider::Ollama,
         }
     }
@@ -91,7 +89,7 @@ impl LLMProvider {
     fn placeholder_text(&self) -> &'static str {
         match self {
             LLMProvider::Ollama => "http://localhost:11434",
-            LLMProvider::Claude => "sk-ant-...",
+            LLMProvider::AnthropicAPI => "sk-ant-...",
             LLMProvider::Gemini => "AIza...",
             LLMProvider::OpenAI => "sk-...",
             LLMProvider::OpenRouter => "sk-or-...",
@@ -100,14 +98,14 @@ impl LLMProvider {
             LLMProvider::Together => "API Key",
             LLMProvider::Cohere => "API Key",
             LLMProvider::DeepSeek => "sk-...",
-            LLMProvider::ClaudeGate => "Uses OAuth authentication",
+            LLMProvider::Claude => "Uses OAuth authentication",
         }
     }
 
     fn label_text(&self) -> &'static str {
         match self {
             LLMProvider::Ollama => "Ollama Host",
-            LLMProvider::ClaudeGate => "Status",
+            LLMProvider::Claude => "Status",
             _ => "API Key",
         }
     }
@@ -115,7 +113,7 @@ impl LLMProvider {
     fn default_model(&self) -> &'static str {
         match self {
             LLMProvider::Ollama => "llama3.2",
-            LLMProvider::Claude => "claude-3-5-sonnet-20241022",
+            LLMProvider::AnthropicAPI => "claude-3-5-sonnet-20241022",
             LLMProvider::Gemini => "gemini-1.5-pro",
             LLMProvider::OpenAI => "gpt-4o",
             LLMProvider::OpenRouter => "openai/gpt-4o",
@@ -124,13 +122,13 @@ impl LLMProvider {
             LLMProvider::Together => "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
             LLMProvider::Cohere => "command-r-plus",
             LLMProvider::DeepSeek => "deepseek-chat",
-            LLMProvider::ClaudeGate => "claude-sonnet-4-20250514",
+            LLMProvider::Claude => "claude-sonnet-4-20250514",
         }
     }
 
     fn api_url(&self) -> Option<&'static str> {
         match self {
-            LLMProvider::Claude => Some("https://console.anthropic.com/settings/keys"),
+            LLMProvider::AnthropicAPI => Some("https://console.anthropic.com/settings/keys"),
             LLMProvider::Gemini => Some("https://aistudio.google.com/app/apikey"),
             LLMProvider::OpenAI => Some("https://platform.openai.com/api-keys"),
             LLMProvider::OpenRouter => Some("https://openrouter.ai/keys"),
@@ -140,18 +138,18 @@ impl LLMProvider {
             LLMProvider::Cohere => Some("https://dashboard.cohere.com/api-keys"),
             LLMProvider::DeepSeek => Some("https://platform.deepseek.com/api_keys"),
             LLMProvider::Ollama => Some("https://ollama.com/download"),
-            LLMProvider::ClaudeGate => None, // Uses OAuth authentication
+            LLMProvider::Claude => None, // Uses OAuth authentication
         }
     }
 
     fn brand_color(&self) -> &'static str {
         match self {
-            LLMProvider::Claude => "text-orange-400", // Anthropic Sienna
+            // Both AnthropicAPI (API key) and Claude (OAuth) are Anthropic providers, sharing brand color
+            LLMProvider::AnthropicAPI | LLMProvider::Claude => "text-orange-400", // Anthropic Sienna — both AnthropicAPI (API key) and Claude (OAuth) are Anthropic-branded providers, so they share this color even though they are separate enum variants
             LLMProvider::Gemini => "text-blue-400", // Gemini Blue
             LLMProvider::OpenAI => "text-emerald-400", // OpenAI Green
             LLMProvider::Ollama => "text-white", // Ollama White
             LLMProvider::OpenRouter => "text-violet-400",
-            LLMProvider::ClaudeGate => "text-orange-400", // Anthropic Sienna
             _ => "text-[var(--accent-primary)]",
         }
     }
@@ -216,11 +214,6 @@ pub fn LLMSettingsView() -> impl IntoView {
     // Claude Gate OAuth status (for badge display and model fetching)
     let claude_gate_status = RwSignal::new(ClaudeGateStatus::default());
 
-    // Proxy status
-    let proxy_running = RwSignal::new(false);
-    let proxy_url = RwSignal::new(String::new());
-    let proxy_providers = RwSignal::new(Vec::<String>::new());
-
     // --- Helpers ---
 
     let fetch_ollama_models = move |host: String| {
@@ -268,12 +261,12 @@ pub fn LLMSettingsView() -> impl IntoView {
         spawn_local(async move {
             is_loading_models.set(true);
             let models = match provider {
-                LLMProvider::Claude => list_claude_models(api_key).await.unwrap_or_default(),
+                LLMProvider::AnthropicAPI => list_claude_models(api_key).await.unwrap_or_default(),
                 LLMProvider::OpenAI => list_openai_models(api_key).await.unwrap_or_default(),
                 LLMProvider::Gemini => list_gemini_models(api_key).await.unwrap_or_default(),
                 LLMProvider::OpenRouter => list_openrouter_models().await.unwrap_or_default(),
-                LLMProvider::ClaudeGate => {
-                    // Fetch models from Claude Gate API (OAuth authenticated)
+                LLMProvider::Claude => {
+                    // Fetch models from Claude API (OAuth authenticated)
                     match claude_gate_list_models().await {
                         Ok(gate_models) => gate_models
                             .into_iter()
@@ -312,7 +305,7 @@ pub fn LLMSettingsView() -> impl IntoView {
             } else {
                  statuses.insert("ollama".to_string(), false);
             }
-            let clouds = vec!["claude", "openai", "gemini", "mistral", "groq", "together", "cohere", "deepseek", "openrouter"];
+            let clouds = vec!["anthropic", "openai", "gemini", "mistral", "groq", "together", "cohere", "deepseek", "openrouter"];
             for p in clouds {
                 if let Ok(Some(key)) = crate::bindings::get_api_key(p.to_string()).await {
                     statuses.insert(p.to_string(), !key.is_empty());
@@ -320,18 +313,15 @@ pub fn LLMSettingsView() -> impl IntoView {
                     statuses.insert(p.to_string(), false);
                 }
             }
-            // Claude Desktop uses Desktop authentication
 
-
-
-            // Check Claude Gate OAuth status
+            // Check Claude OAuth status
             match claude_gate_get_status().await {
                 Ok(status) => {
-                    statuses.insert("claude-gate".to_string(), status.authenticated);
+                    statuses.insert("claude".to_string(), status.authenticated);
                     claude_gate_status.set(status);
                 }
                 Err(_) => {
-                    statuses.insert("claude-gate".to_string(), false);
+                    statuses.insert("claude".to_string(), false);
                 }
             }
 
@@ -377,21 +367,6 @@ pub fn LLMSettingsView() -> impl IntoView {
         });
     });
 
-    // Check proxy status
-    Effect::new(move |_| {
-        spawn_local(async move {
-            if let Ok(running) = is_llm_proxy_running().await {
-                proxy_running.set(running);
-            }
-            if let Ok(url) = get_llm_proxy_url().await {
-                proxy_url.set(url);
-            }
-            if let Ok(providers) = list_proxy_providers().await {
-                proxy_providers.set(providers);
-            }
-        });
-    });
-
     // --- Auto-Save Effect ---
     Effect::new(move |_| {
         // Track dependencies
@@ -411,10 +386,10 @@ pub fn LLMSettingsView() -> impl IntoView {
              is_saving.set(true);
              save_status.set("Saving...".to_string());
              spawn_local(async move {
-                 // ClaudeGate doesn't need API keys - it uses OAuth authentication
+                 // Claude (OAuth) doesn't need API keys - it uses OAuth authentication
                  let needs_api_key = !matches!(
                      provider,
-                     LLMProvider::Ollama | LLMProvider::ClaudeGate
+                     LLMProvider::Ollama | LLMProvider::Claude
                  );
                  let key_to_save = if needs_api_key && !key_or_host.is_empty() {
                       match save_api_key(provider.to_string_key(), key_or_host.clone()).await {
@@ -471,12 +446,12 @@ pub fn LLMSettingsView() -> impl IntoView {
                  model_name.set("llama3.2".to_string());
                  fetch_ollama_models("http://localhost:11434".to_string());
             },
-            LLMProvider::ClaudeGate => {
+            LLMProvider::Claude => {
                  // No API key needed - uses OAuth authentication
                  api_key_or_host.set(String::new());
                  model_name.set(p.default_model().to_string());
                  // Fetch models from API if authenticated
-                 fetch_cloud_models(LLMProvider::ClaudeGate, None);
+                 fetch_cloud_models(LLMProvider::Claude, None);
             },
             _ => {
                  api_key_or_host.set(String::new());
@@ -494,8 +469,8 @@ pub fn LLMSettingsView() -> impl IntoView {
     let providers_list = vec![
         LLMProvider::Ollama,
         LLMProvider::OpenAI,
+        LLMProvider::AnthropicAPI,
         LLMProvider::Claude,
-        LLMProvider::ClaudeGate,
         LLMProvider::Gemini,
         LLMProvider::OpenRouter,
         LLMProvider::Mistral,
@@ -535,7 +510,7 @@ pub fn LLMSettingsView() -> impl IntoView {
                             <p class="text-sm text-[var(--text-muted)]">
                                 {move || match selected_provider.get() {
                                     LLMProvider::Ollama => "Running locally on your machine.",
-                                    LLMProvider::ClaudeGate => "Uses Anthropic OAuth authentication.",
+                                    LLMProvider::Claude => "Uses Anthropic OAuth authentication.",
                                     _ => "Cloud-based inference.",
                                 }}
                             </p>
@@ -561,7 +536,7 @@ pub fn LLMSettingsView() -> impl IntoView {
                                 })}
                             </div>
                             {move || {
-                                if selected_provider.get() == LLMProvider::ClaudeGate {
+                                if selected_provider.get() == LLMProvider::Claude {
                                     // Claude Gate OAuth panel - uses shared component
                                     view! {
                                         <div class="space-y-3">
@@ -908,45 +883,6 @@ pub fn LLMSettingsView() -> impl IntoView {
                         </span>
                     </div>
                 </div>
-            </Card>
-
-            // Proxy Status Card
-            <Card class="p-4 mt-4">
-                <div class="flex items-center justify-between">
-                    <div class="flex items-center gap-3">
-                        <div class=move || {
-                            if proxy_running.get() {
-                                "w-2 h-2 rounded-full bg-green-500"
-                            } else {
-                                "w-2 h-2 rounded-full bg-red-500"
-                            }
-                        }></div>
-                        <div>
-                            <span class="text-sm font-medium text-[var(--text-primary)]">"LLM Proxy"</span>
-                            <span class="text-xs text-[var(--text-muted)] ml-2">
-                                {move || if proxy_running.get() { "Running" } else { "Stopped" }}
-                            </span>
-                        </div>
-                    </div>
-                    <div class="text-xs text-[var(--text-muted)]">
-                        {move || proxy_url.get()}
-                    </div>
-                </div>
-                {move || {
-                    let providers = proxy_providers.get();
-                    if !providers.is_empty() {
-                        view! {
-                            <div class="mt-2 pt-2 border-t border-[var(--border-subtle)]">
-                                <span class="text-xs text-[var(--text-muted)]">"Registered: "</span>
-                                <span class="text-xs text-[var(--text-secondary)]">
-                                    {providers.join(", ")}
-                                </span>
-                            </div>
-                        }.into_any()
-                    } else {
-                        view! { <span/> }.into_any()
-                    }
-                }}
             </Card>
         </div>
     }

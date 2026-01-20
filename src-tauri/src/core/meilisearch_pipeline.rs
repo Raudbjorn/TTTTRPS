@@ -1107,20 +1107,22 @@ impl MeilisearchPipeline {
             start_page, total_pages, total_pages, source_name
         );
 
-        // Auto-detect concurrency based on physical CPU cores
+        // Auto-detect concurrency based on available CPU parallelism
         // Override with TTRPG_OCR_CONCURRENCY env var if needed
+        let cpu_count = std::thread::available_parallelism()
+            .map(|p| p.get())
+            .unwrap_or(4);
         let concurrency = std::env::var("TTRPG_OCR_CONCURRENCY")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
             .unwrap_or_else(|| {
-                // Default: physical_cores / 2, clamped to 2-8
-                let physical = num_cpus::get_physical();
-                (physical / 2).max(2).min(8)
+                // Default: cpu_count / 2, clamped to 2-8
+                (cpu_count / 2).max(2).min(8)
             });
 
         log::info!(
-            "OCR concurrency: {} (physical cores: {}, set TTRPG_OCR_CONCURRENCY to override)",
-            concurrency, num_cpus::get_physical()
+            "OCR concurrency: {} (available parallelism: {}, set TTRPG_OCR_CONCURRENCY to override)",
+            concurrency, cpu_count
         );
 
         let mut total_chars_extracted = 0usize;

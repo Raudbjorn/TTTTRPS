@@ -710,9 +710,9 @@ impl ChatProviderConfig {
                     base_url: None,
                 }
             }
-            ChatProviderConfig::Claude { api_key, model, max_tokens } => {
+            ChatProviderConfig::Claude { api_key: _, model, max_tokens } => {
                 ProviderConfig::Claude {
-                    api_key: api_key.clone(),
+                    storage_backend: "auto".to_string(),
                     model: model.as_deref().unwrap_or("claude-sonnet-4-20250514").to_string(),
                     max_tokens: max_tokens.unwrap_or(4096),
                 }
@@ -1419,11 +1419,7 @@ impl MeilisearchChatClient {
                 model: Some(model.clone()),
                 organization_id: organization_id.clone(),
             },
-            ProviderConfig::Claude { api_key, model, max_tokens } => ChatProviderConfig::Claude {
-                api_key: api_key.clone(),
-                model: Some(model.clone()),
-                max_tokens: Some(*max_tokens),
-            },
+            // Note: ProviderConfig::Claude is OAuth-based - handled by ClaudeGate mapping below
             ProviderConfig::Mistral { api_key, model } => ChatProviderConfig::Mistral {
                 api_key: api_key.clone(),
                 model: Some(model.clone()),
@@ -1505,7 +1501,7 @@ impl DMChatManager {
     pub async fn initialize(
         &self,
         llm_api_key: &str,
-        model: Option<&str>,
+        _model: Option<&str>,
         custom_system_prompt: Option<&str>,
     ) -> Result<(), String> {
         // Enable experimental chat feature
@@ -1633,11 +1629,7 @@ impl DMChatManager {
                 model: Some(model.clone()),
                 organization_id: organization_id.clone(),
             },
-            ProviderConfig::Claude { api_key, model, max_tokens } => ChatProviderConfig::Claude {
-                api_key: api_key.clone(),
-                model: Some(model.clone()),
-                max_tokens: Some(*max_tokens),
-            },
+            // Note: ProviderConfig::Claude is OAuth-based - handled by ClaudeGate mapping below
             ProviderConfig::Mistral { api_key, model } => ChatProviderConfig::Mistral {
                 api_key: api_key.clone(),
                 model: Some(model.clone()),

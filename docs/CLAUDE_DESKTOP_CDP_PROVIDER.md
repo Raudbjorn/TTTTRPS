@@ -1,5 +1,7 @@
 # Claude Desktop CDP Provider
 
+> **⚠️ ARCHIVED**: This feature has been removed from the codebase. This documentation is preserved for historical reference only. The `claude_cdp/` module, `ClaudeDesktopProvider`, and all related Tauri commands have been deleted. See PR #55 for details.
+
 > Complete implementation guide for integrating with Claude Desktop via Chrome DevTools Protocol (CDP)
 
 ## Table of Contents

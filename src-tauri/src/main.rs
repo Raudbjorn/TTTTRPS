@@ -40,7 +40,7 @@ fn main() {
             }
 
             // Initialize managers (Meilisearch-based)
-            let (cm, sm, ns, creds, vm, sidecar_manager, search_client, personality_store, personality_manager, pipeline, _llm_router, version_manager, world_state_manager, relationship_manager, location_manager, claude_desktop_manager, llm_manager, claude_gate, setting_pack_loader,
+            let (cm, sm, ns, creds, vm, sidecar_manager, search_client, personality_store, personality_manager, pipeline, _llm_router, version_manager, world_state_manager, relationship_manager, location_manager, llm_manager, claude_gate, setting_pack_loader,
                 // Phase 4: Personality Extensions
                 template_store, blend_rule_store, personality_blender, contextual_personality_manager) =
                 commands::AppState::init_defaults();
@@ -113,7 +113,6 @@ fn main() {
                 world_state_manager,
                 relationship_manager,
                 location_manager,
-                claude_desktop_manager,
                 llm_manager: llm_manager.clone(), // Clone for auto-configure block
                 extraction_settings: tokio::sync::RwLock::new(ingestion::ExtractionSettings::default()),
                 claude_gate,
@@ -558,25 +557,11 @@ fn main() {
             commands::get_audit_summary,
             commands::get_security_events,
 
-            // Claude Desktop CDP Commands
-            commands::connect_claude_desktop,
-            commands::launch_claude_desktop,
-            commands::connect_or_launch_claude_desktop,
-            commands::disconnect_claude_desktop,
-            commands::get_claude_desktop_status,
-            commands::claude_desktop_new_conversation,
-            commands::claude_desktop_get_history,
-            commands::detect_claude_desktop,
-            commands::claude_desktop_send_message,
-            commands::configure_claude_desktop,
-
-
             // Meilisearch Chat Provider Commands
             commands::list_chat_providers,
             commands::configure_chat_workspace,
             commands::get_chat_workspace_settings,
             commands::configure_meilisearch_chat,
-            commands::get_current_proxy_provider,
 
             // Model Selection Commands
             commands::get_model_selection,

@@ -975,8 +975,8 @@ mod tests {
                 .with_frequency(0.5),
         );
 
-        let yaml = serde_yaml::to_string(&rules).unwrap();
-        let parsed: CulturalNamingRules = serde_yaml::from_str(&yaml).unwrap();
+        let yaml = serde_yaml_ng::to_string(&rules).unwrap();
+        let parsed: CulturalNamingRules = serde_yaml_ng::from_str(&yaml).unwrap();
 
         assert_eq!(parsed.culture_id, "test");
         assert_eq!(parsed.culture_name, "Test Culture");

@@ -249,7 +249,7 @@ impl SettingPackLoader {
             .to_lowercase();
 
         let pack: SettingPack = match extension.as_str() {
-            "yaml" | "yml" => serde_yaml::from_str(&content).map_err(|e| {
+            "yaml" | "yml" => serde_yaml_ng::from_str(&content).map_err(|e| {
                 ArchetypeError::SettingPackInvalid {
                     pack_id: path.display().to_string(),
                     reason: format!("Invalid YAML: {}", e),
@@ -263,7 +263,7 @@ impl SettingPackLoader {
             })?,
             _ => {
                 // Try YAML first, then JSON
-                serde_yaml::from_str(&content)
+                serde_yaml_ng::from_str(&content)
                     .or_else(|_| serde_json::from_str(&content).map_err(ArchetypeError::from))
                     .map_err(|_| ArchetypeError::SettingPackInvalid {
                         pack_id: path.display().to_string(),
@@ -286,7 +286,7 @@ impl SettingPackLoader {
     ///
     /// The version key of the loaded pack.
     pub async fn load_from_yaml(&self, content: &str) -> Result<String> {
-        let pack: SettingPack = serde_yaml::from_str(content)?;
+        let pack: SettingPack = serde_yaml_ng::from_str(content)?;
         self.load_pack(pack).await
     }
 

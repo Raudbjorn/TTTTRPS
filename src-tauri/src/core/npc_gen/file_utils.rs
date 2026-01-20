@@ -58,7 +58,7 @@ pub async fn load_yaml_file<T: DeserializeOwned>(path: impl AsRef<Path>) -> File
     })?;
 
     // Parse YAML
-    serde_yaml::from_str(&content).map_err(|e| FileError::parse_failed(path, "YAML", e))
+    serde_yaml_ng::from_str(&content).map_err(|e| FileError::parse_failed(path, "YAML", e))
 }
 
 /// Load and parse a YAML file, returning a default value if the file doesn't exist.
