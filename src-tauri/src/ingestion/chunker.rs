@@ -305,8 +305,8 @@ impl SemanticChunker {
         let mut current_chunk = String::new();
 
         for sentence in sentences {
-            if current_chunk.len() + sentence.len() > self.config.max_size {
-                if current_chunk.len() >= self.config.min_size {
+            if current_chunk.len() + sentence.len() > self.config.max_size
+                && current_chunk.len() >= self.config.min_size {
                     chunks.push(self.create_chunk(
                         &current_chunk,
                         source_id,
@@ -317,7 +317,6 @@ impl SemanticChunker {
                     *chunk_index += 1;
                     current_chunk = self.get_overlap(&current_chunk);
                 }
-            }
 
             if !current_chunk.is_empty() && !current_chunk.ends_with(' ') {
                 current_chunk.push(' ');
@@ -935,8 +934,8 @@ impl TTRPGChunker {
         let mut current = String::new();
 
         for sentence in sentences {
-            if current.len() + sentence.len() > self.config.base.max_size {
-                if current.len() >= self.config.base.min_size {
+            if current.len() + sentence.len() > self.config.base.max_size
+                && current.len() >= self.config.base.min_size {
                     chunks.push(self.create_chunk_with_hierarchy(
                         &current,
                         source_id,
@@ -947,7 +946,6 @@ impl TTRPGChunker {
                     ));
                     current = self.get_overlap(&current);
                 }
-            }
 
             if !current.is_empty() && !current.ends_with(' ') {
                 current.push(' ');

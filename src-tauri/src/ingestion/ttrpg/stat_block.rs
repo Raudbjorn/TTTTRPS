@@ -13,6 +13,7 @@ use std::collections::HashMap;
 
 /// Parsed stat block data with all creature statistics.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct StatBlockData {
     /// Creature name
     pub name: String,
@@ -62,35 +63,6 @@ pub struct StatBlockData {
     pub unparsed_sections: Vec<String>,
 }
 
-impl Default for StatBlockData {
-    fn default() -> Self {
-        Self {
-            name: String::new(),
-            size: None,
-            creature_type: None,
-            alignment: None,
-            armor_class: None,
-            hit_points: None,
-            speed: Speed::default(),
-            ability_scores: AbilityScores::default(),
-            saving_throws: HashMap::new(),
-            skills: HashMap::new(),
-            damage_vulnerabilities: Vec::new(),
-            damage_resistances: Vec::new(),
-            damage_immunities: Vec::new(),
-            condition_immunities: Vec::new(),
-            senses: Vec::new(),
-            languages: Vec::new(),
-            challenge_rating: None,
-            traits: Vec::new(),
-            actions: Vec::new(),
-            bonus_actions: Vec::new(),
-            reactions: Vec::new(),
-            legendary_actions: Vec::new(),
-            unparsed_sections: Vec::new(),
-        }
-    }
-}
 
 /// Armor Class with optional armor type.
 #[derive(Debug, Clone, Serialize, Deserialize)]

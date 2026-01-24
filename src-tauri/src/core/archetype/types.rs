@@ -160,8 +160,10 @@ impl AsRef<str> for ArchetypeId {
 /// - `Custom("faction")` -> `{"custom": "faction"}`
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ArchetypeCategory {
     /// Role-based archetype (merchant, guard, innkeeper, etc.)
+    #[default]
     Role,
 
     /// Race/species archetype (dwarf, elf, human, etc.)
@@ -215,11 +217,6 @@ impl ArchetypeCategory {
     }
 }
 
-impl Default for ArchetypeCategory {
-    fn default() -> Self {
-        Self::Role
-    }
-}
 
 impl fmt::Display for ArchetypeCategory {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -525,7 +522,7 @@ impl NamingPatternOverrides {
     /// Validate probability bounds.
     pub fn validate(&self) -> Result<()> {
         if let Some(prob) = self.title_probability {
-            if prob < 0.0 || prob > 1.0 {
+            if !(0.0..=1.0).contains(&prob) {
                 return Err(ArchetypeError::ValidationFailed {
                     reason: format!("title_probability must be 0.0-1.0, got {}", prob),
                 });
@@ -533,7 +530,7 @@ impl NamingPatternOverrides {
         }
 
         if let Some(prob) = self.epithet_probability {
-            if prob < 0.0 || prob > 1.0 {
+            if !(0.0..=1.0).contains(&prob) {
                 return Err(ArchetypeError::ValidationFailed {
                     reason: format!("epithet_probability must be 0.0-1.0, got {}", prob),
                 });

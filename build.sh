@@ -406,7 +406,10 @@ install_frontend_tools() {
         needs_install=true
     else
         local current_version
-        current_version=$(./tailwindcss --help 2>&1 | head -1 | grep -oP 'v\K[0-9.]+' || echo "0.0.0")
+        # Use POSIX-compatible version extraction (grep -P not available on macOS)
+        current_version=$(./tailwindcss --help 2>&1 | head -1 | sed -n 's/.*v\([0-9][0-9.]*\).*/\1/p' || echo "0.0.0")
+        # Fallback to 0.0.0 if extraction failed
+        [ -z "$current_version" ] && current_version="0.0.0"
         if [ "$current_version" != "$tailwind_version" ]; then
             print_warning "Tailwind CSS version mismatch (current: $current_version, expected: $tailwind_version)"
             needs_install=true

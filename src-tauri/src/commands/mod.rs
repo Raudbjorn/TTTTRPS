@@ -9,6 +9,7 @@ pub mod macros;
 pub mod oauth;
 #[macro_use]
 pub mod archetype;
+pub mod voice;
 
 // Note: types.rs duplicates types from commands_legacy - commented out during migration
 // pub mod types;
@@ -41,6 +42,9 @@ pub use oauth::{
     start_copilot_auth, poll_copilot_auth, check_copilot_auth,
     logout_copilot, get_copilot_usage, get_copilot_models,
 };
+
+// Re-export voice commands (fully extracted) - using glob to include Tauri __cmd__ macros
+pub use voice::*;
 
 // Re-export extracted domain commands
 pub use archetype::{

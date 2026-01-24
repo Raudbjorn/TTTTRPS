@@ -63,7 +63,7 @@ impl LLMProvider for DeepSeekProvider {
 
     async fn health_check(&self) -> bool {
         // DeepSeek API keys start with "sk-"
-        self.inner.model().len() > 0
+        !self.inner.model().is_empty()
     }
 
     fn pricing(&self) -> Option<ProviderPricing> {

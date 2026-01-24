@@ -437,13 +437,7 @@ pub fn detect_content_category_from_vocabulary(text: &str) -> Option<&'static st
 pub fn detect_publisher_from_vocabulary(text: &str) -> Option<&'static str> {
     let text_lower = text.to_lowercase();
 
-    for publisher in PUBLISHERS.iter() {
-        if text_lower.contains(publisher) {
-            return Some(publisher);
-        }
-    }
-
-    None
+    PUBLISHERS.iter().find(|&publisher| text_lower.contains(publisher)).map(|v| v as _)
 }
 
 // ============================================================================

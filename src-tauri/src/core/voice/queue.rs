@@ -21,12 +21,14 @@ use super::types::{VoiceProviderType, VoiceSettings, OutputFormat};
 /// Priority levels for synthesis jobs
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum JobPriority {
     /// Highest priority - immediate playback requested
     Immediate = 100,
     /// High priority - user is actively waiting
     High = 75,
     /// Normal priority - standard queue processing
+    #[default]
     Normal = 50,
     /// Low priority - background pre-generation
     Low = 25,
@@ -34,11 +36,6 @@ pub enum JobPriority {
     Batch = 10,
 }
 
-impl Default for JobPriority {
-    fn default() -> Self {
-        Self::Normal
-    }
-}
 
 impl From<u8> for JobPriority {
     fn from(value: u8) -> Self {
@@ -67,8 +64,10 @@ impl std::fmt::Display for JobPriority {
 /// Status of a synthesis job
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum JobStatus {
     /// Job is waiting in queue
+    #[default]
     Pending,
     /// Job is currently being processed
     Processing,
@@ -80,11 +79,6 @@ pub enum JobStatus {
     Cancelled,
 }
 
-impl Default for JobStatus {
-    fn default() -> Self {
-        Self::Pending
-    }
-}
 
 impl JobStatus {
     /// Check if job is in a terminal state

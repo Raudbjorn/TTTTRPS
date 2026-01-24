@@ -25,20 +25,17 @@ use crate::commands::AppState;
 /// Storage backend type for Claude Gate
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum ClaudeGateStorageBackend {
     /// File-based storage (~/.config/cld/auth.json)
     File,
     /// System keyring storage
     Keyring,
     /// Auto-select (keyring if available, else file)
+    #[default]
     Auto,
 }
 
-impl Default for ClaudeGateStorageBackend {
-    fn default() -> Self {
-        Self::Auto
-    }
-}
 
 impl std::fmt::Display for ClaudeGateStorageBackend {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

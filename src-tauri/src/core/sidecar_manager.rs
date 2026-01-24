@@ -420,7 +420,7 @@ impl SidecarManager {
             "--master-key",
             &self.config.master_key,
             "--db-path",
-            &db_path,
+            db_path,
             "--env",
             "development",
             "--log-level",

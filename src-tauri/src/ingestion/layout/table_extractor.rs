@@ -165,7 +165,7 @@ impl TableExtractor {
     pub fn detect_dice_notation(&self, text: &str) -> Option<String> {
         for pattern in &self.dice_patterns {
             if let Some(captures) = pattern.captures(text) {
-                return Some(captures.get(0).map(|m| m.as_str().to_string())?);
+                return captures.get(0).map(|m| m.as_str().to_string());
             }
         }
         None

@@ -175,11 +175,10 @@ impl BudgetEnforcer {
         let provider_limits = self.provider_limits.read().unwrap();
         if let Some(&limit) = provider_limits.get(provider) {
             let provider_spent = self.get_provider_spending(provider, BudgetPeriod::Monthly);
-            if provider_spent + estimated_cost >= limit {
-                if action_severity(BudgetAction::Reject) > action_severity(worst_action) {
+            if provider_spent + estimated_cost >= limit
+                && action_severity(BudgetAction::Reject) > action_severity(worst_action) {
                     worst_action = BudgetAction::Reject;
                 }
-            }
         }
 
         worst_action

@@ -68,10 +68,12 @@ pub enum TimelineEventType {
 /// Severity/importance level of timeline events
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum EventSeverity {
     /// Background events (auto-tracking)
     Trace,
     /// Normal session flow
+    #[default]
     Info,
     /// Notable moments
     Notable,
@@ -81,11 +83,6 @@ pub enum EventSeverity {
     Critical,
 }
 
-impl Default for EventSeverity {
-    fn default() -> Self {
-        Self::Info
-    }
-}
 
 // ============================================================================
 // Timeline Event

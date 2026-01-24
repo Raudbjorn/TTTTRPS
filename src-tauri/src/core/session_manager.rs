@@ -1417,9 +1417,8 @@ impl SessionManager {
     /// Update an existing note
     pub fn update_note(&self, note: SessionNote) -> Result<SessionNote> {
         let mut manager = self.notes_manager.write().unwrap();
-        manager.update_note(note.clone())
-            .map(|n| n.clone())
-            .map_err(|e| SessionError::SessionNotFound(e))
+        manager.update_note(note.clone()).cloned()
+            .map_err(SessionError::SessionNotFound)
     }
 
     /// Delete a note
@@ -1531,7 +1530,7 @@ impl SessionManager {
 
         let mut trackers = self.condition_trackers.write().unwrap();
         let tracker = trackers.entry(combatant_id.to_string())
-            .or_insert_with(ConditionTracker::new);
+            .or_default();
         let _ = tracker.add_condition(condition);
         Ok(())
     }

@@ -293,7 +293,9 @@ impl ParsedToolCall {
 /// LLM provider source for Meilisearch Chat
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub enum ChatLLMSource {
+    #[default]
     OpenAi,
     AzureOpenAi,
     Mistral,
@@ -301,11 +303,6 @@ pub enum ChatLLMSource {
     VLlm,
 }
 
-impl Default for ChatLLMSource {
-    fn default() -> Self {
-        Self::OpenAi
-    }
-}
 
 /// Prompt configuration for chat workspace
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1202,8 +1199,7 @@ impl MeilisearchChatClient {
 
                             // Parse SSE event
                             for line in event.lines() {
-                                if line.starts_with("data: ") {
-                                    let data = &line[6..];
+                                if let Some(data) = line.strip_prefix("data: ") {
                                     if data == "[DONE]" {
                                         log::info!("Stream finished with [DONE]");
                                         let _ = tx.send(Ok("[DONE]".to_string())).await;

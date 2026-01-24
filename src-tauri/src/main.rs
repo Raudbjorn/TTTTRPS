@@ -85,7 +85,7 @@ fn main() {
             });
 
             // Load persisted voice config or use default
-            let voice_manager = if let Some(voice_config) = commands::load_voice_config_disk(&app.handle()) {
+            let voice_manager = if let Some(voice_config) = commands::load_voice_config_disk(app.handle()) {
                 log::info!("Loading voice config from disk: provider={:?}", voice_config.provider);
                 std::sync::Arc::new(tokio::sync::RwLock::new(
                     ttrpg_assistant::core::voice::VoiceManager::new(voice_config)
@@ -96,7 +96,7 @@ fn main() {
 
             app.manage(commands::AppState {
                 llm_client: std::sync::RwLock::new(None),
-                llm_config: std::sync::RwLock::new(commands::load_llm_config_disk(&app.handle())),
+                llm_config: std::sync::RwLock::new(commands::load_llm_config_disk(app.handle())),
                 llm_router: tokio::sync::RwLock::new(ttrpg_assistant::core::llm::router::LLMRouter::with_defaults()),
                 campaign_manager: cm,
                 session_manager: sm,
@@ -138,7 +138,7 @@ fn main() {
                     // Get the Meilisearch config to create the client
                     let config = ttrpg_assistant::core::sidecar_manager::MeilisearchConfig::default();
                     let meili_client = match meilisearch_sdk::client::Client::new(
-                        &config.url(),
+                        config.url(),
                         Some(&config.master_key),
                     ) {
                         Ok(client) => client,

@@ -29,20 +29,17 @@ use crate::commands::AppState;
 /// Storage backend type for Gemini Gate
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum GeminiGateStorageBackend {
     /// File-based storage (~/.config/antigravity/auth.json)
     File,
     /// System keyring storage
     Keyring,
     /// Auto-select (keyring if available, else file)
+    #[default]
     Auto,
 }
 
-impl Default for GeminiGateStorageBackend {
-    fn default() -> Self {
-        Self::Auto
-    }
-}
 
 impl std::fmt::Display for GeminiGateStorageBackend {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -112,7 +109,6 @@ impl GeminiGateClientOps for GeminiFileStorageClientWrapper {
         self.client
             .get_token_info()
             .await
-            .map(|opt| opt.map(GateTokenInfo::from))
             .map_err(|e| e.to_string())
     }
     async fn start_oauth_flow_with_state(&self) -> Result<(String, GateOAuthFlowState), String> {
@@ -129,9 +125,7 @@ impl GeminiGateClientOps for GeminiFileStorageClientWrapper {
     ) -> Result<GateTokenInfo, String> {
         self.client
             .complete_oauth_flow(code, state)
-            .await
-            .map(GateTokenInfo::from)
-            .map_err(|e| e.to_string())
+            .await.map_err(|e| e.to_string())
     }
     async fn logout(&self) -> Result<(), String> {
         self.client.logout().await.map_err(|e| e.to_string())
@@ -162,7 +156,6 @@ impl GeminiGateClientOps for GeminiKeyringStorageClientWrapper {
         self.client
             .get_token_info()
             .await
-            .map(|opt| opt.map(GateTokenInfo::from))
             .map_err(|e| e.to_string())
     }
     async fn start_oauth_flow_with_state(&self) -> Result<(String, GateOAuthFlowState), String> {
@@ -179,9 +172,7 @@ impl GeminiGateClientOps for GeminiKeyringStorageClientWrapper {
     ) -> Result<GateTokenInfo, String> {
         self.client
             .complete_oauth_flow(code, state)
-            .await
-            .map(GateTokenInfo::from)
-            .map_err(|e| e.to_string())
+            .await.map_err(|e| e.to_string())
     }
     async fn logout(&self) -> Result<(), String> {
         self.client.logout().await.map_err(|e| e.to_string())
@@ -347,27 +338,40 @@ impl GeminiGateState {
         code: &str,
         state: Option<&str>,
     ) -> Result<GateTokenInfo, String> {
-        // Verify state if provided
-        if let Some(received_state) = state {
-            let pending = self.pending_oauth_state.read().await;
-            if let Some(expected_state) = pending.as_ref() {
-                if received_state != expected_state {
-                    return Err(format!(
-                        "State mismatch: expected {}, got {}",
-                        expected_state, received_state
-                    ));
+        // Verify state - CSRF protection requires a pending OAuth flow
+        // Use write lock for atomic check-and-clear to prevent TOCTOU race
+        {
+            let mut pending = self.pending_oauth_state.write().await;
+            match pending.take() {
+                Some(expected_state) => {
+                    match state {
+                        Some(received_state) if received_state == expected_state => {
+                            // State matches - pending already cleared by take()
+                        }
+                        Some(_received_state) => {
+                            // Note: Don't expose expected/received state in error to prevent info leakage
+                            log::warn!("CSRF state mismatch during OAuth callback");
+                            return Err("OAuth state mismatch - possible CSRF attack".to_string());
+                        }
+                        None => {
+                            log::warn!("Missing CSRF state parameter in OAuth callback");
+                            return Err("Missing state parameter for CSRF verification".to_string());
+                        }
+                    }
+                }
+                None => {
+                    // No pending OAuth flow - reject callback entirely
+                    log::warn!("OAuth callback received but no OAuth flow was initiated");
+                    return Err("No pending OAuth flow - callback rejected".to_string());
                 }
             }
-        }
+        } // Write lock released here
 
         let client = self.client.read().await;
         let client = client
             .as_ref()
             .ok_or("Gemini Gate client not initialized")?;
         let token = client.complete_oauth_flow(code, state).await?;
-
-        // Clear pending state
-        *self.pending_oauth_state.write().await = None;
 
         Ok(token)
     }

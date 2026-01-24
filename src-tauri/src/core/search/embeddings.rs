@@ -301,7 +301,7 @@ impl EmbeddingProvider for CachedEmbeddingProvider {
 
         // Compute uncached embeddings in batch
         if !uncached_texts.is_empty() {
-            let uncached_refs: Vec<&str> = uncached_texts.iter().map(|s| *s).collect();
+            let uncached_refs: Vec<&str> = uncached_texts.to_vec();
             let computed = self.provider.embed_batch(&uncached_refs).await?;
 
             // Cache and fill in results

@@ -20,7 +20,7 @@ impl DungeonWorldGenerator {
 
     fn generate_stats(rng: &mut impl Rng) -> HashMap<String, AttributeValue> {
         // Standard array: 16, 15, 13, 12, 9, 8
-        let mut values = vec![16, 15, 13, 12, 9, 8];
+        let mut values = [16, 15, 13, 12, 9, 8];
         let stats = ["STR", "DEX", "CON", "INT", "WIS", "CHA"];
 
         // Shuffle

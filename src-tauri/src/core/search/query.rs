@@ -370,60 +370,52 @@ impl QueryEnhancer {
         let query_lower = query.to_lowercase();
 
         // Combat-related tips
-        if query_lower.contains("attack")
+        if (query_lower.contains("attack")
             || query_lower.contains("damage")
-            || query_lower.contains("hit")
-        {
-            if !hints.iter().any(|h| h.text.contains("combat")) {
+            || query_lower.contains("hit"))
+            && !hints.iter().any(|h| h.text.contains("combat")) {
                 hints.push(SearchHint {
                     text: "Tip: Use 'crit' for critical hits, 'aoe' for area of effect".to_string(),
                     hint_type: HintType::Tip,
                     icon: Some("sword".to_string()),
                 });
             }
-        }
 
         // Spell-related tips
-        if query_lower.contains("spell")
+        if (query_lower.contains("spell")
             || query_lower.contains("magic")
-            || query_lower.contains("cast")
-        {
-            if !hints.iter().any(|h| h.text.contains("spell")) {
+            || query_lower.contains("cast"))
+            && !hints.iter().any(|h| h.text.contains("spell")) {
                 hints.push(SearchHint {
                     text: "Tip: Use 'conc' for concentration, 'rit' for ritual spells".to_string(),
                     hint_type: HintType::Tip,
                     icon: Some("wand".to_string()),
                 });
             }
-        }
 
         // Character-related tips
-        if query_lower.contains("character")
+        if (query_lower.contains("character")
             || query_lower.contains("class")
-            || query_lower.contains("race")
-        {
-            if !hints.iter().any(|h| h.text.contains("character")) {
+            || query_lower.contains("race"))
+            && !hints.iter().any(|h| h.text.contains("character")) {
                 hints.push(SearchHint {
                     text: "Tip: Ability scores: STR, DEX, CON, INT, WIS, CHA".to_string(),
                     hint_type: HintType::Tip,
                     icon: Some("user".to_string()),
                 });
             }
-        }
 
         // Monster-related tips
-        if query_lower.contains("monster")
+        if (query_lower.contains("monster")
             || query_lower.contains("creature")
-            || query_lower.contains("enemy")
-        {
-            if !hints.iter().any(|h| h.text.contains("monster")) {
+            || query_lower.contains("enemy"))
+            && !hints.iter().any(|h| h.text.contains("monster")) {
                 hints.push(SearchHint {
                     text: "Tip: Use 'CR' for challenge rating, filter by monster type".to_string(),
                     hint_type: HintType::Tip,
                     icon: Some("skull".to_string()),
                 });
             }
-        }
     }
 
     /// Expand a query with TTRPG synonyms (standalone)

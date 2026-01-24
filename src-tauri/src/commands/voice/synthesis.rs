@@ -60,7 +60,7 @@ pub async fn play_tts(
 /// List OpenAI TTS voices (static list)
 #[tauri::command]
 pub fn list_openai_voices() -> Vec<Voice> {
-    crate::core::voice::providers::openai::OpenAIVoiceProvider::list_voices()
+    crate::core::voice::providers::openai::get_openai_voices()
 }
 
 /// List OpenAI TTS models
@@ -75,9 +75,16 @@ pub fn list_openai_tts_models() -> Vec<(String, String)> {
 /// List available ElevenLabs voices
 #[tauri::command]
 pub async fn list_elevenlabs_voices(api_key: String) -> Result<Vec<Voice>, String> {
-    crate::core::voice::providers::elevenlabs::ElevenLabsProvider::list_voices(&api_key)
-        .await
-        .map_err(|e| e.to_string())
+    use crate::core::voice::ElevenLabsConfig;
+    use crate::core::voice::providers::elevenlabs::ElevenLabsProvider;
+    use crate::core::voice::providers::VoiceProvider;
+
+    let provider = ElevenLabsProvider::new(ElevenLabsConfig {
+        api_key,
+        model_id: None,
+    });
+
+    provider.list_voices().await.map_err(|e| e.to_string())
 }
 
 /// List available voices from all configured providers

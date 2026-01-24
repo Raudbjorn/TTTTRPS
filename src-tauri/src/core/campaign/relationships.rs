@@ -43,10 +43,12 @@ pub type Result<T> = std::result::Result<T, RelationshipError>;
 
 /// Type of entity that can participate in relationships
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Default)]
 pub enum EntityType {
     /// Player character
     PC,
     /// Non-player character
+    #[default]
     NPC,
     /// Location (city, dungeon, building, etc.)
     Location,
@@ -66,11 +68,6 @@ pub enum EntityType {
     Custom(String),
 }
 
-impl Default for EntityType {
-    fn default() -> Self {
-        Self::NPC
-    }
-}
 
 impl std::fmt::Display for EntityType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -95,6 +92,7 @@ impl std::fmt::Display for EntityType {
 
 /// Type of relationship between entities
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Default)]
 pub enum RelationshipType {
     // Personal relationships
     /// Friend
@@ -108,6 +106,7 @@ pub enum RelationshipType {
     /// Mentor/mentee
     Mentor,
     /// Acquaintance
+    #[default]
     Acquaintance,
 
     // Professional relationships
@@ -174,11 +173,6 @@ pub enum RelationshipType {
     Custom(String),
 }
 
-impl Default for RelationshipType {
-    fn default() -> Self {
-        Self::Acquaintance
-    }
-}
 
 impl std::fmt::Display for RelationshipType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -269,10 +263,12 @@ impl RelationshipType {
 
 /// Strength/intensity of a relationship
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Default)]
 pub enum RelationshipStrength {
     /// Barely acquainted
     Weak,
     /// Normal relationship
+    #[default]
     Moderate,
     /// Strong relationship
     Strong,
@@ -282,11 +278,6 @@ pub enum RelationshipStrength {
     Custom(u8),
 }
 
-impl Default for RelationshipStrength {
-    fn default() -> Self {
-        Self::Moderate
-    }
-}
 
 impl RelationshipStrength {
     /// Get numeric value (0-100)

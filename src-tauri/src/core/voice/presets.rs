@@ -288,7 +288,7 @@ pub fn get_presets_by_category() -> std::collections::HashMap<String, Vec<VoiceP
         for tag in &preset.metadata.tags {
             categories
                 .entry(tag.clone())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(preset.clone());
         }
     }

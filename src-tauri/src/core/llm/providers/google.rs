@@ -266,8 +266,7 @@ impl LLMProvider for GoogleProvider {
                             let line = sse_buffer[..newline_pos].trim_end_matches('\r').to_string();
                             sse_buffer = sse_buffer[newline_pos + 1..].to_string();
 
-                            if line.starts_with("data: ") {
-                                let data = &line[6..];
+                            if let Some(data) = line.strip_prefix("data: ") {
                                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
                                     if let Some(text) =
                                         json["candidates"][0]["content"]["parts"][0]["text"]
@@ -336,8 +335,7 @@ impl LLMProvider for GoogleProvider {
             // Process any remaining buffer content
             if !sse_buffer.trim().is_empty() {
                 let line = sse_buffer.trim();
-                if line.starts_with("data: ") {
-                    let data = &line[6..];
+                if let Some(data) = line.strip_prefix("data: ") {
                     if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
                         if let Some(text) = json["candidates"][0]["content"]["parts"][0]["text"].as_str() {
                             if !text.is_empty() {

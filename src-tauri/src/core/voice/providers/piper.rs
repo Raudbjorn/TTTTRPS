@@ -165,7 +165,7 @@ impl PiperProvider {
         let walker = walkdir::WalkDir::new(dir).into_iter();
         for entry in walker.filter_map(|e| e.ok()) {
             let path = entry.path();
-            if path.extension().map_or(false, |e| e == "onnx") {
+            if path.extension().is_some_and(|e| e == "onnx") {
                 let config_path = path.with_extension("onnx.json");
                 if config_path.exists() {
                      if let Some(voice) = self.parse_voice_from_model(path, &config_path) {
@@ -205,7 +205,7 @@ impl VoiceProvider for PiperProvider {
         };
 
         let output_file = NamedTempFile::with_suffix(".wav")
-            .map_err(|e| VoiceError::IoError(e))?;
+            .map_err(VoiceError::IoError)?;
         let output_path = output_file.path().to_path_buf();
 
         debug!(
@@ -234,13 +234,13 @@ impl VoiceProvider for PiperProvider {
            .stdout(Stdio::piped())
            .stderr(Stdio::piped());
 
-        let mut child = cmd.spawn().map_err(|e| VoiceError::IoError(e))?;
+        let mut child = cmd.spawn().map_err(VoiceError::IoError)?;
 
         if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(request.text.as_bytes()).await.map_err(|e| VoiceError::IoError(e))?;
+            stdin.write_all(request.text.as_bytes()).await.map_err(VoiceError::IoError)?;
         }
 
-        let output = child.wait_with_output().await.map_err(|e| VoiceError::IoError(e))?;
+        let output = child.wait_with_output().await.map_err(VoiceError::IoError)?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -255,7 +255,7 @@ impl VoiceProvider for PiperProvider {
             return Err(VoiceError::ApiError(format!("Piper failed: {}", stderr)));
         }
 
-        let wav_data = tokio::fs::read(&output_path).await.map_err(|e| VoiceError::IoError(e))?;
+        let wav_data = tokio::fs::read(&output_path).await.map_err(VoiceError::IoError)?;
 
         info!(size = wav_data.len(), "Piper synthesis complete");
 

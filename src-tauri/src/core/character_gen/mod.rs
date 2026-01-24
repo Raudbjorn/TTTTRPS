@@ -447,7 +447,7 @@ impl GeneratorRegistry {
     }
 
     pub fn get_system_info(&self, system: &GameSystem) -> Option<SystemInfo> {
-        self.get(system).map(|g| SystemInfo::from_generator(g))
+        self.get(system).map(SystemInfo::from_generator)
     }
 }
 

@@ -2,15 +2,29 @@
 //!
 //! Commands for managing the voice synthesis queue.
 
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::State;
-use tokio::sync::RwLock as AsyncRwLock;
 
 use crate::core::voice::{
-    VoiceManager, SynthesisRequest, OutputFormat,
+    SynthesisRequest, OutputFormat,
     types::{QueuedVoice, VoiceStatus},
 };
 use crate::commands::AppState;
+
+/// Global flag to prevent multiple concurrent queue processors.
+/// NOTE: Intentional singleton pattern - the app has a single voice queue shared
+/// across all sessions. If multiple independent queues are needed in the future,
+/// this should be moved into VoiceManager state with per-instance tracking.
+static IS_QUEUE_PROCESSING: AtomicBool = AtomicBool::new(false);
+
+/// RAII guard to reset IS_QUEUE_PROCESSING on drop (even if task panics)
+struct ProcessingGuard;
+
+impl Drop for ProcessingGuard {
+    fn drop(&mut self) {
+        IS_QUEUE_PROCESSING.store(false, Ordering::SeqCst);
+    }
+}
 
 // ============================================================================
 // Voice Queue Commands
@@ -31,10 +45,13 @@ pub async fn queue_voice(
         manager.add_to_queue(text, vid)
     };
 
-    // 3. Trigger Processing (Background)
-    match process_voice_queue(state).await {
-        Ok(_) => {},
-        Err(e) => eprintln!("Failed to trigger voice queue processing: {}", e),
+    // 3. Trigger Processing (Background) - Only spawn if not already processing
+    // Use atomic compare_exchange to prevent multiple concurrent processors
+    // Note: process_voice_queue spawns a detached task internally via tauri::async_runtime::spawn.
+    // The spawned task has a ProcessingGuard that resets IS_QUEUE_PROCESSING on exit.
+    if IS_QUEUE_PROCESSING.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+        // Spawn always succeeds - the guard inside the task handles cleanup
+        let _ = process_voice_queue(state).await;
     }
 
     Ok(item)
@@ -59,24 +76,27 @@ async fn process_voice_queue(state: State<'_, AppState>) -> Result<(), String> {
 
     // Spawn a detached task
     tauri::async_runtime::spawn(async move {
+        // Guard ensures IS_QUEUE_PROCESSING is reset even if task panics
+        let _guard = ProcessingGuard;
+
         // We loop until queue is empty or processing fails
         loop {
-            // 1. Get next pending (Read Lock)
+            // 1. Get next pending AND mark as Processing atomically (single write lock)
+            // This prevents TOCTOU race condition between selection and claim
             let next_item = {
-                let manager = vm_clone.read().await;
+                let mut manager = vm_clone.write().await;
                 if manager.is_playing {
                     None
+                } else if let Some(item) = manager.get_next_pending() {
+                    // Atomically claim the item by updating its status
+                    manager.update_status(&item.id, VoiceStatus::Processing);
+                    Some(item)
                 } else {
-                    manager.get_next_pending()
+                    None
                 }
             };
 
             if let Some(item) = next_item {
-                // 2. Mark Processing
-                {
-                    let mut manager = vm_clone.write().await;
-                    manager.update_status(&item.id, VoiceStatus::Processing);
-                }
 
                 // 3. Synthesize
                 let req = SynthesisRequest {
@@ -139,10 +159,11 @@ async fn process_voice_queue(state: State<'_, AppState>) -> Result<(), String> {
                     }
                 }
             } else {
-                // No more items
+                // No more items - guard will reset flag on drop
                 break;
             }
         }
+        // ProcessingGuard drops here, resetting IS_QUEUE_PROCESSING
     });
 
     Ok(())

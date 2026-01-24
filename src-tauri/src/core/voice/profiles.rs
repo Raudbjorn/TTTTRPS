@@ -15,19 +15,16 @@ use super::types::{VoiceProviderType, VoiceSettings};
 
 /// Age range categories for voice profiles
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Default)]
 pub enum AgeRange {
     Child,
     YoungAdult,
+    #[default]
     Adult,
     MiddleAged,
     Elderly,
 }
 
-impl Default for AgeRange {
-    fn default() -> Self {
-        Self::Adult
-    }
-}
 
 impl AgeRange {
     /// Get display name for UI
@@ -44,18 +41,15 @@ impl AgeRange {
 
 /// Gender categories for voice profiles
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Default)]
 pub enum Gender {
     Male,
     Female,
+    #[default]
     Neutral,
     NonBinary,
 }
 
-impl Default for Gender {
-    fn default() -> Self {
-        Self::Neutral
-    }
-}
 
 impl Gender {
     /// Get display name for UI
@@ -421,7 +415,7 @@ impl VoiceProfileManager {
                 p.name.to_lowercase().contains(&query_lower)
                     || p.metadata.personality_traits.iter().any(|t| t.to_lowercase().contains(&query_lower))
                     || p.metadata.tags.iter().any(|t| t.to_lowercase().contains(&query_lower))
-                    || p.metadata.description.as_ref().map_or(false, |d| d.to_lowercase().contains(&query_lower))
+                    || p.metadata.description.as_ref().is_some_and(|d| d.to_lowercase().contains(&query_lower))
             })
             .collect()
     }

@@ -165,7 +165,7 @@ impl DocumentExtractor {
             .arg(&chunk_file)
             .status()
             .await
-            .map_err(|e| ExtractionError::IoError(e))?;
+            .map_err(ExtractionError::IoError)?;
 
         if !status.success() {
             return Err(ExtractionError::KreuzbergError(format!(
@@ -189,7 +189,7 @@ impl DocumentExtractor {
     {
         let path_str = path.to_string_lossy().to_string();
         let chunk_size = self.settings.large_pdf_chunk_size;
-        let num_chunks = (total_pages + chunk_size - 1) / chunk_size;
+        let num_chunks = total_pages.div_ceil(chunk_size);
 
         log::info!(
             "Large PDF detected ({} pages), extracting in {} chunks of {} pages",
@@ -199,7 +199,7 @@ impl DocumentExtractor {
         let temp_dir = tempfile::Builder::new()
             .prefix("pdf_chunks_")
             .tempdir()
-            .map_err(|e| ExtractionError::IoError(e))?;
+            .map_err(ExtractionError::IoError)?;
 
         let mut all_pages: Vec<Page> = Vec::with_capacity(total_pages);
         let mut full_content = String::new();
@@ -414,7 +414,7 @@ impl DocumentExtractor {
         let temp_dir = tempfile::Builder::new()
             .prefix("ocr_")
             .tempdir()
-            .map_err(|e| ExtractionError::IoError(e))?;
+            .map_err(ExtractionError::IoError)?;
 
         let temp_path = temp_dir.path();
         let prefix = "page";
@@ -434,7 +434,7 @@ impl DocumentExtractor {
             .arg(temp_path.join(prefix))
             .status()
             .await
-            .map_err(|e| ExtractionError::IoError(e))?;
+            .map_err(ExtractionError::IoError)?;
 
         if !status.success() {
             return Err(ExtractionError::KreuzbergError("pdftoppm failed".to_string()));
@@ -496,7 +496,7 @@ impl DocumentExtractor {
                 .arg(&self.settings.ocr_language)
                 .output()
                 .await
-                .map_err(|e| ExtractionError::IoError(e))?;
+                .map_err(ExtractionError::IoError)?;
 
             if !output.status.success() {
                  log::warn!("Tesseract failed for page {}", page_num);

@@ -19,6 +19,12 @@ pub struct RulebookLinker {
     patterns: Vec<(Regex, String)>,
 }
 
+impl Default for RulebookLinker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RulebookLinker {
     pub fn new() -> Self {
         // Pre-compile common patterns

@@ -152,7 +152,7 @@ impl CoquiProvider {
             .get(format!("{}/api/tts", self.base_url()))
             .send()
             .await
-            .map_err(|e| VoiceError::NetworkError(e))?;
+            .map_err(VoiceError::NetworkError)?;
 
         if response.status().is_success() {
             Ok(ServerInfo {
@@ -255,7 +255,7 @@ impl VoiceProvider for CoquiProvider {
             .query(&params)
             .send()
             .await
-            .map_err(|e| VoiceError::NetworkError(e))?;
+            .map_err(VoiceError::NetworkError)?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -269,7 +269,7 @@ impl VoiceProvider for CoquiProvider {
         let audio_data = response
             .bytes()
             .await
-            .map_err(|e| VoiceError::NetworkError(e))?;
+            .map_err(VoiceError::NetworkError)?;
 
         Ok(audio_data.to_vec())
     }

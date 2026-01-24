@@ -99,7 +99,7 @@ pub async fn get_vocabulary_bank(
                 text: p.text.clone(),
                 category: category.clone(),
                 formality: p.formality,
-                tone: p.tone_markers.first().cloned(),
+                tones: p.tone_markers.clone(),
                 tags: p.context_tags.clone(),
             })
         })
@@ -254,8 +254,10 @@ pub async fn get_phrases(
         }
     }
 
-    // Use provided session_id or generate a temporary one
-    let session = session_id.unwrap_or_else(|| "default".to_string());
+    // Use provided session_id or a sentinel value for ephemeral/one-off requests.
+    // NOTE: "ephemeral" indicates no session tracking - phrase usage won't be tracked
+    // across requests. Use a real session_id for consistent phrase avoidance.
+    let session = session_id.unwrap_or_else(|| "ephemeral".to_string());
 
     let phrases = manager.get_phrases(&bank_id, opts, &session).await
         .map_err(|e| e.to_string())?;

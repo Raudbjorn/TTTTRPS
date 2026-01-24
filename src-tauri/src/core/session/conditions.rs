@@ -407,7 +407,7 @@ impl AdvancedCondition {
                         return true;
                     }
                     *remaining = (remaining_minutes - minutes) / 60;
-                    if *remaining == 0 && (remaining_minutes - minutes) % 60 > 0 {
+                    if *remaining == 0 && !(remaining_minutes - minutes).is_multiple_of(60) {
                         *remaining = 1; // Less than an hour left
                     }
                 }

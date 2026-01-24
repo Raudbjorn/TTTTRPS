@@ -782,13 +782,10 @@ impl SseStream {
         let mut text = String::new();
 
         while let Some(event) = self.next().await {
-            match event? {
-                StreamEvent::ContentBlockDelta { delta, .. } => {
-                    if let crate::gate::claude::models::ContentDelta::TextDelta { text: t } = delta {
-                        text.push_str(&t);
-                    }
+            if let StreamEvent::ContentBlockDelta { delta, .. } = event? {
+                if let crate::gate::claude::models::ContentDelta::TextDelta { text: t } = delta {
+                    text.push_str(&t);
                 }
-                _ => {}
             }
         }
 

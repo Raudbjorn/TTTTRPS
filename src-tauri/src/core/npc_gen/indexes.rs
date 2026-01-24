@@ -286,6 +286,7 @@ async fn apply_settings(
 
 /// Statistics about NPC generation indexes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct NpcIndexStats {
     /// Number of vocabulary phrases indexed
     pub vocabulary_phrase_count: u64,
@@ -297,16 +298,6 @@ pub struct NpcIndexStats {
     pub indexed_cultures: Vec<String>,
 }
 
-impl Default for NpcIndexStats {
-    fn default() -> Self {
-        Self {
-            vocabulary_phrase_count: 0,
-            name_component_count: 0,
-            exclamation_template_count: 0,
-            indexed_cultures: Vec::new(),
-        }
-    }
-}
 
 /// Get statistics about NPC generation indexes.
 ///

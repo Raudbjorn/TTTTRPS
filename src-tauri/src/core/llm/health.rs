@@ -15,8 +15,10 @@ use tokio::sync::RwLock;
 
 /// State of a circuit breaker for a provider
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum CircuitState {
     /// Normal operation - requests allowed
+    #[default]
     Closed,
     /// Provider failing - requests blocked
     Open,
@@ -24,11 +26,6 @@ pub enum CircuitState {
     HalfOpen,
 }
 
-impl Default for CircuitState {
-    fn default() -> Self {
-        Self::Closed
-    }
-}
 
 /// Circuit breaker configuration
 #[derive(Debug, Clone)]

@@ -71,6 +71,7 @@ const DEFAULT_MAX_TOKENS: u32 = 8192;
 /// Storage backend options for OAuth tokens
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum StorageBackend {
     /// File-based storage (~/.config/cld/auth.json)
     File,
@@ -80,14 +81,10 @@ pub enum StorageBackend {
     /// In-memory storage (tokens lost on restart)
     Memory,
     /// Automatic selection (keyring if available, else file)
+    #[default]
     Auto,
 }
 
-impl Default for StorageBackend {
-    fn default() -> Self {
-        Self::Auto
-    }
-}
 
 impl StorageBackend {
     /// Get the display name of the storage backend

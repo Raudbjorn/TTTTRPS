@@ -13,6 +13,12 @@ pub struct TranscriptionService {
     client: reqwest::Client,
 }
 
+impl Default for TranscriptionService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TranscriptionService {
     pub fn new() -> Self {
         Self {

@@ -27,20 +27,17 @@ use crate::commands::AppState;
 /// Storage backend type for Copilot Gate
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum CopilotGateStorageBackend {
     /// File-based storage (~/.config/gate/copilot/auth.json)
     File,
     /// System keyring storage (not yet implemented for Copilot)
     Keyring,
     /// Auto-select (file for now, keyring when available)
+    #[default]
     Auto,
 }
 
-impl Default for CopilotGateStorageBackend {
-    fn default() -> Self {
-        Self::Auto
-    }
-}
 
 impl std::fmt::Display for CopilotGateStorageBackend {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

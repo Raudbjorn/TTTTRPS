@@ -5,10 +5,7 @@
 use tauri::{State, Manager};
 use crate::core::voice::{
     VoiceManager, VoiceConfig, VoiceProviderType,
-    SynthesisRequest, OutputFormat, VoiceProviderDetection,
-    detect_providers, ProviderInstaller, InstallStatus,
-    AvailablePiperVoice, get_recommended_piper_voices,
-    types::{QueuedVoice, VoiceStatus}
+    SynthesisRequest, OutputFormat,
 };
 use crate::core::models::Campaign;
 use std::sync::{Arc, RwLock};
@@ -1298,13 +1295,6 @@ pub fn load_voice_config_disk(app_handle: &tauri::AppHandle) -> Option<VoiceConf
     None
 }
 
-fn save_voice_config_disk(app_handle: &tauri::AppHandle, config: &VoiceConfig) {
-    let path = get_voice_config_path(app_handle);
-    if let Ok(json) = serde_json::to_string_pretty(config) {
-        let _ = std::fs::write(path, json);
-    }
-}
-
 #[tauri::command]
 pub async fn configure_llm(
     settings: LLMSettings,
@@ -1418,7 +1408,7 @@ pub async fn chat(
         .ok_or("LLM not configured. Please configure in Settings.")?;
 
     // Determine effective system prompt
-    let _system_prompt = if let Some(pid) = &payload.personality_id {
+    let system_prompt = if let Some(pid) = &payload.personality_id {
         match state.personality_store.get(pid) {
             Ok(profile) => profile.to_system_prompt(),
             Err(_) => payload.system_prompt.clone().unwrap_or_else(|| {
@@ -1441,8 +1431,17 @@ pub async fn chat(
         manager_guard.set_chat_client(state.search_client.host(), Some(&state.sidecar_manager.config().master_key)).await;
     }
 
-    // Prepare messages
-    let mut messages = vec![];
+    // Prepare messages - start with system prompt as first message
+    let mut messages = vec![
+        ChatMessage {
+            role: MessageRole::System,
+            content: system_prompt,
+            images: None,
+            name: None,
+            tool_calls: None,
+            tool_call_id: None,
+        },
+    ];
     if let Some(context) = &payload.context {
         for ctx in context {
             messages.push(ChatMessage {
@@ -1692,7 +1691,7 @@ pub async fn list_gemini_models(api_key: Option<String>) -> Result<Vec<crate::co
 pub async fn list_openrouter_models() -> Result<Vec<crate::core::llm::ModelInfo>, String> {
     // OpenRouter has a public models endpoint
     match crate::core::llm::fetch_openrouter_models().await {
-        Ok(models) => Ok(models.into_iter().map(|m| m.into()).collect()),
+        Ok(models) => Ok(models.into_iter().collect()),
         Err(_) => Ok(crate::core::llm::get_extended_fallback_models("openrouter")),
     }
 }
@@ -2164,11 +2163,20 @@ pub async fn search(
         index: None,
     });
 
-    // Build filter if needed
+    // Helper to escape Meilisearch filter values (prevent injection)
+    fn escape_filter_value(s: &str) -> String {
+        s.replace('\\', "\\\\").replace('\'', "\\'")
+    }
+
+    // Build filter if needed (with proper escaping)
     let filter = match (&opts.source_type, &opts.campaign_id) {
-        (Some(st), Some(cid)) => Some(format!("source_type = '{}' AND campaign_id = '{}'", st, cid)),
-        (Some(st), None) => Some(format!("source_type = '{}'", st)),
-        (None, Some(cid)) => Some(format!("campaign_id = '{}'", cid)),
+        (Some(st), Some(cid)) => Some(format!(
+            "source_type = '{}' AND campaign_id = '{}'",
+            escape_filter_value(st),
+            escape_filter_value(cid)
+        )),
+        (Some(st), None) => Some(format!("source_type = '{}'", escape_filter_value(st))),
+        (None, Some(cid)) => Some(format!("campaign_id = '{}'", escape_filter_value(cid))),
         (None, None) => None,
     };
 
@@ -2401,185 +2409,12 @@ pub fn correct_query(query: String) -> crate::core::spell_correction::Correction
 }
 
 // ============================================================================
-// Voice Configuration Commands
+// Voice Configuration Commands - EXTRACTED TO commands/voice/
 // ============================================================================
-
-#[tauri::command]
-pub async fn configure_voice(
-    config: VoiceConfig,
-    state: State<'_, AppState>,
-    app_handle: tauri::AppHandle,
-) -> Result<String, String> {
-    // 1. If API keys are provided in config, save them securely and mask them in config
-    if let Some(elevenlabs) = config.elevenlabs.clone() {
-        if !elevenlabs.api_key.is_empty() && elevenlabs.api_key != "********" {
-            state.credentials.store_secret("elevenlabs_api_key", &elevenlabs.api_key)
-                .map_err(|e| e.to_string())?;
-        }
-    }
-
-    let mut effective_config = config.clone();
-
-    // Restore secrets from credential manager if masked
-    if let Some(ref mut elevenlabs) = effective_config.elevenlabs {
-        if elevenlabs.api_key.is_empty() || elevenlabs.api_key == "********" {
-             if let Ok(secret) = state.credentials.get_secret("elevenlabs_api_key") {
-                 elevenlabs.api_key = secret;
-             }
-        }
-    }
-
-    // Save config to disk (with secrets restored for persistence)
-    save_voice_config_disk(&app_handle, &effective_config);
-
-    let new_manager = VoiceManager::new(effective_config);
-
-    // Update state
-    let mut manager = state.voice_manager.write().await;
-    *manager = new_manager;
-    Ok("Voice configuration updated successfully".to_string())
-}
-
-#[tauri::command]
-pub async fn get_voice_config(state: State<'_, AppState>) -> Result<VoiceConfig, String> {
-    let manager = state.voice_manager.read().await;
-    let mut config = manager.get_config().clone();
-    // Mask secrets
-    if let Some(ref mut elevenlabs) = config.elevenlabs {
-        if !elevenlabs.api_key.is_empty() {
-            elevenlabs.api_key = "********".to_string();
-        }
-    }
-    Ok(config)
-}
-
-/// Detect available voice providers on the system
-/// Returns status for each local TTS service (running/not running)
-#[tauri::command]
-pub async fn detect_voice_providers() -> Result<VoiceProviderDetection, String> {
-    Ok(detect_providers().await)
-}
-
-// ============================================================================
-// Voice Provider Installation Commands
-// ============================================================================
-
-/// Check installation status for all local voice providers
-#[tauri::command]
-pub async fn check_voice_provider_installations() -> Result<Vec<InstallStatus>, String> {
-    let models_dir = dirs::data_local_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("ttrpg-assistant/voice/piper");
-
-    let installer = ProviderInstaller::new(models_dir);
-    Ok(installer.check_all_local().await)
-}
-
-/// Check installation status for a specific provider
-#[tauri::command]
-pub async fn check_voice_provider_status(provider: VoiceProviderType) -> Result<InstallStatus, String> {
-    let models_dir = dirs::data_local_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("ttrpg-assistant/voice/piper");
-
-    let installer = ProviderInstaller::new(models_dir);
-    Ok(installer.check_status(&provider).await)
-}
-
-/// Install a voice provider (Piper or Coqui)
-#[tauri::command]
-pub async fn install_voice_provider(provider: VoiceProviderType) -> Result<InstallStatus, String> {
-    let models_dir = dirs::data_local_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("ttrpg-assistant/voice/piper");
-
-    let installer = ProviderInstaller::new(models_dir);
-    installer.install(&provider).await.map_err(|e| e.to_string())
-}
-
-/// List available Piper voices for download from Hugging Face
-#[tauri::command]
-pub async fn list_downloadable_piper_voices() -> Result<Vec<AvailablePiperVoice>, String> {
-    let models_dir = dirs::data_local_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("ttrpg-assistant/voice/piper");
-
-    let installer = ProviderInstaller::new(models_dir);
-    installer.list_available_piper_voices().await.map_err(|e| e.to_string())
-}
-
-/// Get recommended/popular Piper voices (quick, no network call)
-#[tauri::command]
-pub fn get_popular_piper_voices() -> Vec<(String, String, String)> {
-    get_recommended_piper_voices()
-        .into_iter()
-        .map(|(k, n, d)| (k.to_string(), n.to_string(), d.to_string()))
-        .collect()
-}
-
-/// Download a Piper voice from Hugging Face
-#[tauri::command]
-pub async fn download_piper_voice(voice_key: String, quality: Option<String>) -> Result<String, String> {
-    let models_dir = dirs::data_local_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("ttrpg-assistant/voice/piper");
-
-    let installer = ProviderInstaller::new(models_dir);
-    let path = installer
-        .download_piper_voice(&voice_key, quality.as_deref())
-        .await
-        .map_err(|e| e.to_string())?;
-
-    Ok(path.to_string_lossy().to_string())
-}
-
-#[tauri::command]
-pub async fn play_tts(
-    text: String,
-    voice_id: String,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    // Synthesize audio first, keeping the lock scope minimal.
-    let audio_path = {
-        let manager = state.voice_manager.read().await;
-        let request = SynthesisRequest {
-            text,
-            voice_id,
-            settings: None,
-            output_format: OutputFormat::Wav,
-        };
-        let result = manager.synthesize(request).await.map_err(|e| e.to_string())?;
-        result.audio_path
-    }; // Read lock is released here.
-
-    // Read audio data in a blocking task to avoid blocking async runtime
-    let audio_data = tokio::task::spawn_blocking(move || std::fs::read(&audio_path))
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())?;
-
-    // Play audio in a blocking task to avoid blocking async runtime
-    tokio::task::spawn_blocking(move || {
-        use rodio::{Decoder, OutputStream, Sink};
-        use std::io::Cursor;
-
-        let (_stream, stream_handle) = OutputStream::try_default().map_err(|e| e.to_string())?;
-        let sink = Sink::try_new(&stream_handle).map_err(|e| e.to_string())?;
-        let cursor = Cursor::new(audio_data);
-        let source = Decoder::new(cursor).map_err(|e| e.to_string())?;
-
-        sink.append(source);
-        sink.sleep_until_end();
-        Ok::<(), String>(())
-    }).await.map_err(|e| e.to_string())??;
-
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn list_all_voices(state: State<'_, AppState>) -> Result<Vec<Voice>, String> {
-    state.voice_manager.read().await.list_voices().await.map_err(|e| e.to_string())
-}
+// NOTE: These commands have been moved to src-tauri/src/commands/voice/
+// - configure_voice, get_voice_config, detect_voice_providers -> config.rs
+// - check_voice_provider_*, install_voice_provider, *_piper_* -> providers.rs
+// - play_tts, list_all_voices -> synthesis.rs
 
 // ============================================================================
 // Meilisearch Commands
@@ -4460,48 +4295,8 @@ pub struct AppSystemInfo {
 // Voice Commands
 // ============================================================================
 
-use crate::core::voice::Voice;
-
-/// List available OpenAI TTS voices (static list, no API call needed)
-#[tauri::command]
-pub fn list_openai_voices() -> Vec<Voice> {
-    crate::core::voice::providers::openai::get_openai_voices()
-}
-
-/// List available OpenAI TTS models
-#[tauri::command]
-pub fn list_openai_tts_models() -> Vec<(String, String)> {
-    crate::core::voice::providers::openai::get_openai_tts_models()
-}
-
-/// List available ElevenLabs voices (requires API key)
-#[tauri::command]
-pub async fn list_elevenlabs_voices(api_key: String) -> Result<Vec<Voice>, String> {
-    use crate::core::voice::ElevenLabsConfig;
-    use crate::core::voice::providers::elevenlabs::ElevenLabsProvider;
-    use crate::core::voice::providers::VoiceProvider;
-
-    let provider = ElevenLabsProvider::new(ElevenLabsConfig {
-        api_key,
-        model_id: None,
-    });
-
-    provider.list_voices().await.map_err(|e| e.to_string())
-}
-
-/// List all voices from the currently configured voice provider
-#[tauri::command]
-pub async fn list_available_voices(state: State<'_, AppState>) -> Result<Vec<Voice>, String> {
-    // Clone the config to avoid holding the lock across await
-    let config = {
-        let manager = state.voice_manager.read().await;
-        manager.get_config().clone()
-    };
-
-    // Create a new manager with the config for the async call
-    let manager = VoiceManager::new(config);
-    manager.list_voices().await.map_err(|e| e.to_string())
-}
+// NOTE: list_openai_voices, list_openai_tts_models, list_elevenlabs_voices, list_available_voices
+// have been moved to commands/voice/synthesis.rs
 
 /// Audio data returned from speak command for frontend playback
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -4582,21 +4377,15 @@ pub async fn transcribe_audio(
         return Err("LLM not configured".to_string());
     };
 
-    if api_key.is_empty() || api_key.starts_with('*') {
+    // Determine effective API key: use credential store if config key is masked or empty
+    let effective_key = if api_key.is_empty() || api_key.starts_with('*') {
         // Try getting from credentials if masked/empty
-        // (Assuming standard key name 'openai_api_key')
         let creds = state.credentials.get_secret("openai_api_key")
             .map_err(|_| "OpenAI API Key not found/configured".to_string())?;
         if creds.is_empty() {
              return Err("OpenAI API Key is empty".to_string());
         }
-    }
-
-    // Unmasking logic is a bit duplicated here, ideally use a helper.
-    // For now, let's rely on stored secret if the config one is masked.
-    let effective_key = if api_key.starts_with('*') {
-         state.credentials.get_secret("openai_api_key")
-            .map_err(|_| "Invalid API Key state".to_string())?
+        creds
     } else {
         api_key
     };
@@ -4710,9 +4499,10 @@ pub async fn list_npc_summaries(
         let (last_message, unread_count, last_active) = if let Some(c) = conv {
              let msgs: Vec<ConversationMessage> = serde_json::from_str(&c.messages_json).unwrap_or_default();
              let last_text = msgs.last().map(|m| m.content.clone()).unwrap_or_default();
-             // Truncate
-             let truncated = if last_text.len() > 50 {
-                 format!("{}...", &last_text[0..50])
+             // Truncate safely on char boundary (single-pass for efficiency)
+             let chars: Vec<char> = last_text.chars().take(51).collect();
+             let truncated = if chars.len() > 50 {
+                 format!("{}...", chars.into_iter().take(50).collect::<String>())
              } else {
                  last_text
              };
@@ -4823,142 +4613,9 @@ pub async fn reply_as_npc(
 
 
 // ============================================================================
-// Voice Queue Commands
+// Voice Queue Commands - EXTRACTED TO commands/voice/queue.rs
 // ============================================================================
-
-
-
-#[tauri::command]
-pub async fn queue_voice(
-    text: String,
-    voice_id: Option<String>,
-    state: State<'_, AppState>,
-) -> Result<QueuedVoice, String> {
-    // 1. Determine Voice ID
-    let vid = voice_id.unwrap_or_else(|| "default".to_string());
-
-    // 2. Add to Queue
-    let item = {
-        let mut manager = state.voice_manager.write().await;
-        manager.add_to_queue(text, vid)
-    };
-
-    // 3. Trigger Processing (Background)
-    match process_voice_queue(state).await {
-        Ok(_) => {},
-        Err(e) => eprintln!("Failed to trigger voice queue processing: {}", e),
-    }
-
-    Ok(item)
-}
-
-#[tauri::command]
-pub async fn get_voice_queue(state: State<'_, AppState>) -> Result<Vec<QueuedVoice>, String> {
-    let manager = state.voice_manager.read().await;
-    Ok(manager.get_queue())
-}
-
-#[tauri::command]
-pub async fn cancel_voice(queue_id: String, state: State<'_, AppState>) -> Result<(), String> {
-    let mut manager = state.voice_manager.write().await;
-    manager.remove_from_queue(&queue_id);
-    Ok(())
-}
-
-/// Internal helper to process the queue
-async fn process_voice_queue(state: State<'_, AppState>) -> Result<(), String> {
-    let vm_clone = state.voice_manager.clone();
-
-    // Spawn a detached task
-    tauri::async_runtime::spawn(async move {
-        // We loop until queue is empty or processing fails
-        loop {
-            // 1. Get next pending (Read Lock)
-            let next_item = {
-                let manager = vm_clone.read().await;
-                if manager.is_playing {
-                    None
-                } else {
-                    manager.get_next_pending()
-                }
-            };
-
-            if let Some(item) = next_item {
-                // 2. Mark Processing
-                {
-                    let mut manager = vm_clone.write().await;
-                    manager.update_status(&item.id, VoiceStatus::Processing);
-                }
-
-                // 3. Synthesize
-                let req = SynthesisRequest {
-                    text: item.text.clone(),
-                    voice_id: item.voice_id.clone(),
-                    settings: None,
-                    output_format: OutputFormat::Mp3, // Default
-                };
-
-                // Perform synthesis without holding lock
-                let result = {
-                    let manager = vm_clone.read().await;
-                    manager.synthesize(req).await
-                };
-
-                match result {
-                    Ok(res) => {
-                        // 4. Synthesized. Now Play.
-                        // Read file
-                        if let Ok(audio_data) = tokio::fs::read(&res.audio_path).await {
-                             // Mark Playing
-                            {
-                                let mut manager = vm_clone.write().await;
-                                manager.update_status(&item.id, VoiceStatus::Playing);
-                                manager.is_playing = true;
-                            }
-
-                            // Play (Blocking for now, inside spawn)
-                            let vm_for_clos = vm_clone.clone();
-                            let play_result = tokio::task::spawn_blocking(move || {
-                                let manager = vm_for_clos.blocking_read();
-                                manager.play_audio(audio_data)
-                            }).await;
-
-                            let play_result = match play_result {
-                                Ok(inner) => inner.map_err(|e| e.to_string()),
-                                Err(e) => Err(e.to_string()),
-                            };
-
-                            // Mark Completed
-                            {
-                                let mut manager = vm_clone.write().await;
-                                manager.is_playing = false;
-                                manager.update_status(&item.id, if play_result.is_ok() {
-                                    VoiceStatus::Completed
-                                } else {
-                                    VoiceStatus::Failed("Playback failed".into())
-                                });
-                            }
-                        } else {
-                             // File read failed
-                            let mut manager = vm_clone.write().await;
-                            manager.update_status(&item.id, VoiceStatus::Failed("Could not read audio file".into()));
-                        }
-                    }
-                    Err(e) => {
-                        // Synthesis Failed
-                        let mut manager = vm_clone.write().await;
-                        manager.update_status(&item.id, VoiceStatus::Failed(e.to_string()));
-                    }
-                }
-            } else {
-                // No more items
-                break;
-            }
-        }
-    });
-
-    Ok(())
-}
+// NOTE: queue_voice, get_voice_queue, cancel_voice have been moved to commands/voice/queue.rs
 
 // ============================================================================
 // Campaign Versioning Commands (TASK-006)
@@ -5905,30 +5562,18 @@ pub fn get_security_events(state: State<'_, AuditLoggerState>) -> Vec<SecurityAu
 // ============================================================================
 
 /// State wrapper for usage tracking
+#[derive(Default)]
 pub struct UsageTrackerState {
     pub tracker: UsageTracker,
 }
 
-impl Default for UsageTrackerState {
-    fn default() -> Self {
-        Self {
-            tracker: UsageTracker::new(),
-        }
-    }
-}
 
 /// State wrapper for search analytics
+#[derive(Default)]
 pub struct SearchAnalyticsState {
     pub analytics: SearchAnalytics,
 }
 
-impl Default for SearchAnalyticsState {
-    fn default() -> Self {
-        Self {
-            analytics: SearchAnalytics::new(),
-        }
-    }
-}
 
 /// State wrapper for audit logging
 pub struct AuditLoggerState {
@@ -5959,589 +5604,19 @@ impl AuditLoggerState {
 }
 
 // ============================================================================
-// Voice Profile Commands (TASK-004)
+// Voice Profile/Preset/Cache/SynthesisQueue Commands - EXTRACTED TO commands/voice/
 // ============================================================================
+// NOTE: All voice commands in this section have been moved to:
+// - presets.rs: list_voice_presets, list_voice_presets_by_tag, get_voice_preset
+// - profiles.rs: create_voice_profile, link_voice_profile_to_npc, get_npc_voice_profile,
+//                search_voice_profiles, get_voice_profiles_by_gender, get_voice_profiles_by_age
+// - cache.rs: get_audio_cache_stats, clear_audio_cache_by_tag, clear_audio_cache,
+//             prune_audio_cache, list_audio_cache_entries, get_audio_cache_size, AudioCacheSizeInfo
+// - synthesis_queue.rs: All synthesis queue commands and types
 
-use crate::core::voice::{
-    VoiceProfile, ProfileMetadata, AgeRange, Gender,
-    CacheStats as VoiceCacheStats, get_dm_presets,
-    SynthesisJob, JobPriority, JobStatus, JobProgress,
-    QueueStats as VoiceQueueStats,
-};
+// NOTE: Voice profile, cache, and synthesis queue commands have been
+// moved to commands/voice/{presets,profiles,cache,synthesis_queue}.rs
 
-/// List all voice profile presets (built-in DM personas)
-#[tauri::command]
-pub fn list_voice_presets() -> Vec<VoiceProfile> {
-    get_dm_presets()
-}
-
-/// List voice presets filtered by tag
-#[tauri::command]
-pub fn list_voice_presets_by_tag(tag: String) -> Vec<VoiceProfile> {
-    crate::core::voice::get_presets_by_tag(&tag)
-}
-
-/// Get a specific voice preset by ID
-#[tauri::command]
-pub fn get_voice_preset(preset_id: String) -> Option<VoiceProfile> {
-    crate::core::voice::get_preset_by_id(&preset_id)
-}
-
-/// Create a new voice profile
-#[tauri::command]
-pub async fn create_voice_profile(
-    name: String,
-    provider: String,
-    voice_id: String,
-    metadata: Option<ProfileMetadata>,
-    _state: State<'_, AppState>,
-) -> Result<String, String> {
-    let provider_type = match provider.as_str() {
-        "elevenlabs" => VoiceProviderType::ElevenLabs,
-        "openai" => VoiceProviderType::OpenAI,
-        "fish_audio" => VoiceProviderType::FishAudio,
-        "piper" => VoiceProviderType::Piper,
-        "ollama" => VoiceProviderType::Ollama,
-        "chatterbox" => VoiceProviderType::Chatterbox,
-        "gpt_sovits" => VoiceProviderType::GptSoVits,
-        "xtts_v2" => VoiceProviderType::XttsV2,
-        "fish_speech" => VoiceProviderType::FishSpeech,
-        "dia" => VoiceProviderType::Dia,
-        _ => return Err(format!("Unknown provider: {}", provider)),
-    };
-
-    let mut profile = VoiceProfile::new(&name, provider_type, &voice_id);
-    if let Some(meta) = metadata {
-        profile = profile.with_metadata(meta);
-    }
-
-    Ok(profile.id)
-}
-
-/// Link a voice profile to an NPC
-#[tauri::command]
-pub async fn link_voice_profile_to_npc(
-    profile_id: String,
-    npc_id: String,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    if let Some(mut record) = state.database.get_npc(&npc_id).await.map_err(|e| e.to_string())? {
-        if let Some(json) = &record.data_json {
-            let mut npc: serde_json::Value = serde_json::from_str(json)
-                .map_err(|e| e.to_string())?;
-            npc["voice_profile_id"] = serde_json::json!(profile_id);
-            record.data_json = Some(serde_json::to_string(&npc).map_err(|e| e.to_string())?);
-            state.database.save_npc(&record).await.map_err(|e| e.to_string())?;
-        }
-    } else {
-        return Err(format!("NPC not found: {}", npc_id));
-    }
-    Ok(())
-}
-
-/// Get the voice profile linked to an NPC
-#[tauri::command]
-pub async fn get_npc_voice_profile(
-    npc_id: String,
-    state: State<'_, AppState>,
-) -> Result<Option<String>, String> {
-    if let Some(record) = state.database.get_npc(&npc_id).await.map_err(|e| e.to_string())? {
-        if let Some(json) = &record.data_json {
-            let npc: serde_json::Value = serde_json::from_str(json)
-                .map_err(|e| e.to_string())?;
-            if let Some(profile_id) = npc.get("voice_profile_id").and_then(|v| v.as_str()) {
-                return Ok(Some(profile_id.to_string()));
-            }
-        }
-    }
-    Ok(None)
-}
-
-/// Search voice profiles by query
-#[tauri::command]
-pub fn search_voice_profiles(query: String) -> Vec<VoiceProfile> {
-    let query_lower = query.to_lowercase();
-    get_dm_presets()
-        .into_iter()
-        .filter(|p| {
-            p.name.to_lowercase().contains(&query_lower)
-                || p.metadata.personality_traits.iter().any(|t| t.to_lowercase().contains(&query_lower))
-                || p.metadata.tags.iter().any(|t| t.to_lowercase().contains(&query_lower))
-                || p.metadata.description.as_ref().map_or(false, |d| d.to_lowercase().contains(&query_lower))
-        })
-        .collect()
-}
-
-/// Get voice profiles by gender
-#[tauri::command]
-pub fn get_voice_profiles_by_gender(gender: String) -> Vec<VoiceProfile> {
-    let target_gender = match gender.to_lowercase().as_str() {
-        "male" => Gender::Male,
-        "female" => Gender::Female,
-        "neutral" => Gender::Neutral,
-        "nonbinary" | "non-binary" => Gender::NonBinary,
-        _ => return Vec::new(),
-    };
-    get_dm_presets()
-        .into_iter()
-        .filter(|p| p.metadata.gender == target_gender)
-        .collect()
-}
-
-/// Get voice profiles by age range
-#[tauri::command]
-pub fn get_voice_profiles_by_age(age_range: String) -> Vec<VoiceProfile> {
-    let target_age = match age_range.to_lowercase().as_str() {
-        "child" => AgeRange::Child,
-        "young_adult" | "youngadult" => AgeRange::YoungAdult,
-        "adult" => AgeRange::Adult,
-        "middle_aged" | "middleaged" => AgeRange::MiddleAged,
-        "elderly" => AgeRange::Elderly,
-        _ => return Vec::new(),
-    };
-    get_dm_presets()
-        .into_iter()
-        .filter(|p| p.metadata.age_range == target_age)
-        .collect()
-}
-
-// ============================================================================
-// Audio Cache Commands (TASK-005)
-// ============================================================================
-
-/// Get audio cache statistics
-///
-/// Returns comprehensive cache statistics including:
-/// - Hit/miss counts and rate
-/// - Current and max cache size
-/// - Entry counts by format
-/// - Average entry size
-/// - Oldest entry age
-#[tauri::command]
-pub async fn get_audio_cache_stats(state: State<'_, AppState>) -> Result<VoiceCacheStats, String> {
-    let voice_manager = state.voice_manager.read().await;
-    voice_manager.get_cache_stats().await.map_err(|e| e.to_string())
-}
-
-/// Clear audio cache entries by tag
-///
-/// Removes all cached audio entries that have the specified tag.
-/// Tags can be used to group entries by session_id, npc_id, campaign_id, etc.
-///
-/// # Arguments
-/// * `tag` - The tag to filter by (e.g., "session:abc123", "npc:wizard_01")
-///
-/// # Returns
-/// The number of entries removed
-#[tauri::command]
-pub async fn clear_audio_cache_by_tag(
-    tag: String,
-    state: State<'_, AppState>,
-) -> Result<usize, String> {
-    let voice_manager = state.voice_manager.read().await;
-    voice_manager.clear_cache_by_tag(&tag).await.map_err(|e| e.to_string())
-}
-
-/// Clear all audio cache entries
-///
-/// Removes all cached audio files and resets cache statistics.
-/// Use with caution as this will force re-synthesis of all audio.
-#[tauri::command]
-pub async fn clear_audio_cache(state: State<'_, AppState>) -> Result<(), String> {
-    let voice_manager = state.voice_manager.read().await;
-    voice_manager.clear_cache().await.map_err(|e| e.to_string())
-}
-
-/// Prune old audio cache entries
-///
-/// Removes cache entries older than the specified age.
-/// Useful for automatic cleanup of stale audio files.
-///
-/// # Arguments
-/// * `max_age_seconds` - Maximum age in seconds; entries older than this will be removed
-///
-/// # Returns
-/// The number of entries removed
-#[tauri::command]
-pub async fn prune_audio_cache(
-    max_age_seconds: i64,
-    state: State<'_, AppState>,
-) -> Result<usize, String> {
-    let voice_manager = state.voice_manager.read().await;
-    voice_manager.prune_cache(max_age_seconds).await.map_err(|e| e.to_string())
-}
-
-/// List cached audio entries
-///
-/// Returns all cache entries with metadata including:
-/// - File path and size
-/// - Creation and last access times
-/// - Access count
-/// - Associated tags
-/// - Audio format and duration
-#[tauri::command]
-pub async fn list_audio_cache_entries(state: State<'_, AppState>) -> Result<Vec<crate::core::voice::CacheEntry>, String> {
-    let cache_dir = state.voice_manager.read().await.get_config()
-        .cache_dir.clone().unwrap_or_else(|| std::path::PathBuf::from("./voice_cache"));
-
-    // For listing entries, we still need direct cache access since VoiceManager doesn't expose list_entries
-    match crate::core::voice::AudioCache::with_defaults(cache_dir).await {
-        Ok(cache) => Ok(cache.list_entries().await),
-        Err(e) => Err(format!("Failed to access cache: {}", e)),
-    }
-}
-
-/// Get cache size information
-///
-/// Returns the current cache size and maximum allowed size in bytes.
-#[tauri::command]
-pub async fn get_audio_cache_size(state: State<'_, AppState>) -> Result<AudioCacheSizeInfo, String> {
-    let voice_manager = state.voice_manager.read().await;
-    let stats = voice_manager.get_cache_stats().await.map_err(|e| e.to_string())?;
-
-    Ok(AudioCacheSizeInfo {
-        current_size_bytes: stats.current_size_bytes,
-        max_size_bytes: stats.max_size_bytes,
-        entry_count: stats.entry_count,
-        usage_percent: if stats.max_size_bytes > 0 {
-            (stats.current_size_bytes as f64 / stats.max_size_bytes as f64) * 100.0
-        } else {
-            0.0
-        },
-    })
-}
-
-/// Audio cache size information
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct AudioCacheSizeInfo {
-    pub current_size_bytes: u64,
-    pub max_size_bytes: u64,
-    pub entry_count: usize,
-    pub usage_percent: f64,
-}
-
-// ============================================================================
-// Voice Synthesis Queue Commands (TASK-025)
-// ============================================================================
-
-use crate::core::voice::{SynthesisQueue, QueueConfig};
-
-/// State wrapper for the synthesis queue
-pub struct SynthesisQueueState {
-    pub queue: Arc<SynthesisQueue>,
-}
-
-impl Default for SynthesisQueueState {
-    fn default() -> Self {
-        Self {
-            queue: Arc::new(SynthesisQueue::with_defaults()),
-        }
-    }
-}
-
-impl SynthesisQueueState {
-    /// Create with custom configuration
-    pub fn with_config(config: QueueConfig) -> Self {
-        Self {
-            queue: Arc::new(SynthesisQueue::new(config)),
-        }
-    }
-}
-
-/// Helper to parse provider string to VoiceProviderType for queue commands
-fn parse_queue_provider(provider: &str) -> Result<VoiceProviderType, String> {
-    match provider {
-        "elevenlabs" => Ok(VoiceProviderType::ElevenLabs),
-        "openai" => Ok(VoiceProviderType::OpenAI),
-        "fish_audio" => Ok(VoiceProviderType::FishAudio),
-        "piper" => Ok(VoiceProviderType::Piper),
-        "ollama" => Ok(VoiceProviderType::Ollama),
-        "chatterbox" => Ok(VoiceProviderType::Chatterbox),
-        "gpt_sovits" => Ok(VoiceProviderType::GptSoVits),
-        "xtts_v2" => Ok(VoiceProviderType::XttsV2),
-        "fish_speech" => Ok(VoiceProviderType::FishSpeech),
-        "dia" => Ok(VoiceProviderType::Dia),
-        _ => Err(format!("Unknown provider: {}", provider)),
-    }
-}
-
-/// Helper to parse priority string to JobPriority
-fn parse_queue_priority(priority: Option<&str>) -> Result<JobPriority, String> {
-    match priority {
-        Some("immediate") => Ok(JobPriority::Immediate),
-        Some("high") => Ok(JobPriority::High),
-        Some("normal") | None => Ok(JobPriority::Normal),
-        Some("low") => Ok(JobPriority::Low),
-        Some("batch") => Ok(JobPriority::Batch),
-        Some(p) => Err(format!("Unknown priority: {}", p)),
-    }
-}
-
-/// Request type for batch job submission
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SynthesisJobRequest {
-    pub text: String,
-    pub profile_id: String,
-    pub voice_id: String,
-    pub provider: String,
-    pub priority: Option<String>,
-    pub session_id: Option<String>,
-    pub npc_id: Option<String>,
-    pub campaign_id: Option<String>,
-    pub tags: Option<Vec<String>>,
-}
-
-/// Submit a voice synthesis job to the queue
-#[tauri::command]
-pub async fn submit_synthesis_job(
-    app_handle: tauri::AppHandle,
-    text: String,
-    profile_id: String,
-    voice_id: String,
-    provider: String,
-    priority: Option<String>,
-    session_id: Option<String>,
-    npc_id: Option<String>,
-    campaign_id: Option<String>,
-    tags: Option<Vec<String>>,
-    state: State<'_, SynthesisQueueState>,
-) -> Result<SynthesisJob, String> {
-    let provider_type = parse_queue_provider(&provider)?;
-    let job_priority = parse_queue_priority(priority.as_deref())?;
-
-    let mut job = SynthesisJob::new(&text, &profile_id, provider_type, &voice_id)
-        .with_priority(job_priority);
-
-    if let Some(sid) = session_id {
-        job = job.for_session(&sid);
-    }
-    if let Some(nid) = npc_id {
-        job = job.for_npc(&nid);
-    }
-    if let Some(cid) = campaign_id {
-        job = job.for_campaign(&cid);
-    }
-    if let Some(t) = tags {
-        job = job.with_tags(t);
-    }
-
-    let job_id = state.queue.submit(job, Some(&app_handle))
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let submitted_job = state.queue.get_job(&job_id).await
-        .ok_or_else(|| "Job not found after submission".to_string())?;
-
-    Ok(submitted_job)
-}
-
-/// Get a synthesis job by ID
-#[tauri::command]
-pub async fn get_synthesis_job(
-    job_id: String,
-    state: State<'_, SynthesisQueueState>,
-) -> Result<Option<SynthesisJob>, String> {
-    Ok(state.queue.get_job(&job_id).await)
-}
-
-/// Get status of a synthesis job
-#[tauri::command]
-pub async fn get_synthesis_job_status(
-    job_id: String,
-    state: State<'_, SynthesisQueueState>,
-) -> Result<Option<JobStatus>, String> {
-    Ok(state.queue.get_status(&job_id).await)
-}
-
-/// Get progress of a synthesis job
-#[tauri::command]
-pub async fn get_synthesis_job_progress(
-    job_id: String,
-    state: State<'_, SynthesisQueueState>,
-) -> Result<Option<JobProgress>, String> {
-    Ok(state.queue.get_progress(&job_id).await)
-}
-
-/// Cancel a synthesis job
-#[tauri::command]
-pub async fn cancel_synthesis_job(
-    app_handle: tauri::AppHandle,
-    job_id: String,
-    state: State<'_, SynthesisQueueState>,
-) -> Result<(), String> {
-    state.queue.cancel(&job_id, Some(&app_handle))
-        .await
-        .map_err(|e| e.to_string())
-}
-
-/// Cancel all synthesis jobs
-#[tauri::command]
-pub async fn cancel_all_synthesis_jobs(
-    app_handle: tauri::AppHandle,
-    state: State<'_, SynthesisQueueState>,
-) -> Result<usize, String> {
-    state.queue.cancel_all(Some(&app_handle))
-        .await
-        .map_err(|e| e.to_string())
-}
-
-/// Pre-generate voice audio for a session (batch queue)
-#[tauri::command]
-pub async fn pregen_session_voices(
-    app_handle: tauri::AppHandle,
-    session_id: String,
-    texts: Vec<(String, String, String)>,
-    provider: String,
-    state: State<'_, SynthesisQueueState>,
-) -> Result<Vec<String>, String> {
-    let provider_type = parse_queue_provider(&provider)?;
-
-    state.queue.pregen_session(&session_id, texts, provider_type, Some(&app_handle))
-        .await
-        .map_err(|e| e.to_string())
-}
-
-/// Submit a batch of synthesis jobs
-#[tauri::command]
-pub async fn submit_synthesis_batch(
-    app_handle: tauri::AppHandle,
-    jobs: Vec<SynthesisJobRequest>,
-    state: State<'_, SynthesisQueueState>,
-) -> Result<Vec<String>, String> {
-    let mut synthesis_jobs = Vec::with_capacity(jobs.len());
-
-    for req in jobs {
-        let provider_type = parse_queue_provider(&req.provider)?;
-        let priority = parse_queue_priority(req.priority.as_deref())?;
-
-        let mut job = SynthesisJob::new(&req.text, &req.profile_id, provider_type, &req.voice_id)
-            .with_priority(priority);
-
-        if let Some(sid) = req.session_id {
-            job = job.for_session(&sid);
-        }
-        if let Some(nid) = req.npc_id {
-            job = job.for_npc(&nid);
-        }
-        if let Some(cid) = req.campaign_id {
-            job = job.for_campaign(&cid);
-        }
-        if let Some(t) = req.tags {
-            job = job.with_tags(t);
-        }
-
-        synthesis_jobs.push(job);
-    }
-
-    state.queue.submit_batch(synthesis_jobs, Some(&app_handle))
-        .await
-        .map_err(|e| e.to_string())
-}
-
-/// Get synthesis queue statistics
-#[tauri::command]
-pub async fn get_synthesis_queue_stats(
-    state: State<'_, SynthesisQueueState>,
-) -> Result<VoiceQueueStats, String> {
-    Ok(state.queue.stats().await)
-}
-
-/// Pause the synthesis queue
-#[tauri::command]
-pub async fn pause_synthesis_queue(
-    app_handle: tauri::AppHandle,
-    state: State<'_, SynthesisQueueState>,
-) -> Result<(), String> {
-    state.queue.pause(Some(&app_handle)).await;
-    Ok(())
-}
-
-/// Resume the synthesis queue
-#[tauri::command]
-pub async fn resume_synthesis_queue(
-    app_handle: tauri::AppHandle,
-    state: State<'_, SynthesisQueueState>,
-) -> Result<(), String> {
-    state.queue.resume(Some(&app_handle)).await;
-    Ok(())
-}
-
-/// Check if synthesis queue is paused
-#[tauri::command]
-pub async fn is_synthesis_queue_paused(
-    state: State<'_, SynthesisQueueState>,
-) -> Result<bool, String> {
-    Ok(state.queue.is_paused().await)
-}
-
-/// List pending synthesis jobs
-#[tauri::command]
-pub async fn list_pending_synthesis_jobs(
-    state: State<'_, SynthesisQueueState>,
-) -> Result<Vec<SynthesisJob>, String> {
-    Ok(state.queue.list_pending().await)
-}
-
-/// List processing synthesis jobs
-#[tauri::command]
-pub async fn list_processing_synthesis_jobs(
-    state: State<'_, SynthesisQueueState>,
-) -> Result<Vec<SynthesisJob>, String> {
-    Ok(state.queue.list_processing().await)
-}
-
-/// List synthesis job history (completed/failed/cancelled)
-#[tauri::command]
-pub async fn list_synthesis_job_history(
-    limit: Option<usize>,
-    state: State<'_, SynthesisQueueState>,
-) -> Result<Vec<SynthesisJob>, String> {
-    Ok(state.queue.list_history(limit).await)
-}
-
-/// List synthesis jobs by session
-#[tauri::command]
-pub async fn list_synthesis_jobs_by_session(
-    session_id: String,
-    state: State<'_, SynthesisQueueState>,
-) -> Result<Vec<SynthesisJob>, String> {
-    Ok(state.queue.list_by_session(&session_id).await)
-}
-
-/// List synthesis jobs by NPC
-#[tauri::command]
-pub async fn list_synthesis_jobs_by_npc(
-    npc_id: String,
-    state: State<'_, SynthesisQueueState>,
-) -> Result<Vec<SynthesisJob>, String> {
-    Ok(state.queue.list_by_npc(&npc_id).await)
-}
-
-/// List synthesis jobs by tag
-#[tauri::command]
-pub async fn list_synthesis_jobs_by_tag(
-    tag: String,
-    state: State<'_, SynthesisQueueState>,
-) -> Result<Vec<SynthesisJob>, String> {
-    Ok(state.queue.list_by_tag(&tag).await)
-}
-
-/// Clear synthesis job history
-#[tauri::command]
-pub async fn clear_synthesis_job_history(
-    state: State<'_, SynthesisQueueState>,
-) -> Result<(), String> {
-    state.queue.clear_history().await;
-    Ok(())
-}
-
-/// Get total active jobs (pending + processing)
-#[tauri::command]
-pub async fn get_synthesis_queue_length(
-    state: State<'_, SynthesisQueueState>,
-) -> Result<usize, String> {
-    Ok(state.queue.total_active().await)
-}
 
 
 // ============================================================================
@@ -7527,18 +6602,39 @@ pub fn list_location_types() -> Vec<String> {
 pub fn add_location_connection(
     source_location_id: String,
     target_location_id: String,
-    _connection_type: String,
-    _description: Option<String>,
+    connection_type: String,
+    description: Option<String>,
     travel_time: Option<String>,
     bidirectional: Option<bool>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
+    use crate::core::location_gen::ConnectionType;
+
+    // Parse connection_type string to enum with strict validation
+    let conn_type = match connection_type.to_lowercase().as_str() {
+        "door" => ConnectionType::Door,
+        "path" => ConnectionType::Path,
+        "road" => ConnectionType::Road,
+        "stairs" => ConnectionType::Stairs,
+        "ladder" => ConnectionType::Ladder,
+        "portal" => ConnectionType::Portal,
+        "secret" => ConnectionType::Secret,
+        "water" => ConnectionType::Water,
+        "climb" => ConnectionType::Climb,
+        "flight" => ConnectionType::Flight,
+        unknown => return Err(format!(
+            "Unknown connection type: '{}'. Valid types: door, path, road, stairs, ladder, portal, secret, water, climb, flight",
+            unknown
+        )),
+    };
+
     let connection = LocationConnection {
         target_id: Some(target_location_id.clone()),
         target_name: "Unknown".to_string(), // Placeholder
-        connection_type: crate::core::location_gen::ConnectionType::Path, // Placeholder/Default
+        connection_type: conn_type,
+        description,
         travel_time,
-        hazards: vec![],
+        hazards: Vec::new(),
     };
 
     state.location_manager.add_connection(&source_location_id, connection.clone())
@@ -7550,8 +6646,9 @@ pub fn add_location_connection(
             target_id: Some(source_location_id),
             target_name: "Unknown".to_string(),
             connection_type: connection.connection_type.clone(),
-            travel_time: connection.travel_time,
-            hazards: vec![],
+            description: connection.description.clone(),
+            travel_time: connection.travel_time.clone(),
+            hazards: connection.hazards.clone(),
         };
         state.location_manager.add_connection(&target_location_id, reverse)
             .map_err(|e| e.to_string())?;
@@ -8670,7 +7767,7 @@ pub async fn get_blend_rule_cache_stats(
 #[tauri::command]
 pub fn list_gameplay_contexts() -> Vec<GameplayContextInfo> {
     GameplayContext::all_defined()
-        .into_iter()
+        .iter()
         .map(|ctx| GameplayContextInfo {
             id: ctx.as_str().to_string(),
             name: ctx.display_name().to_string(),

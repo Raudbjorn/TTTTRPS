@@ -236,7 +236,7 @@ impl Pathfinder2eGenerator {
                     name: "Sneak Attack".to_string(),
                     trait_type: TraitType::Class,
                     description: "Deal extra precision damage to flat-footed enemies".to_string(),
-                    mechanical_effect: Some(format!("{}d6 precision damage", (level + 5) / 6)),
+                    mechanical_effect: Some(format!("{}d6 precision damage", level.div_ceil(6))),
                 });
                 traits.push(CharacterTrait {
                     name: "Surprise Attack".to_string(),

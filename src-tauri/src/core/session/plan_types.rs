@@ -79,6 +79,7 @@ impl std::fmt::Display for SessionPlanStatus {
 /// Type of pacing beat within a session
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum PacingType {
     /// High-action combat encounter
     CombatHeavy,
@@ -89,6 +90,7 @@ pub enum PacingType {
     /// Puzzle or mystery solving
     Investigation,
     /// Mix of different pacing types
+    #[default]
     Mixed,
     /// Calm moment, downtime
     Breather,
@@ -152,11 +154,6 @@ impl PacingType {
     }
 }
 
-impl Default for PacingType {
-    fn default() -> Self {
-        Self::Mixed
-    }
-}
 
 // ============================================================================
 // Pacing Beat

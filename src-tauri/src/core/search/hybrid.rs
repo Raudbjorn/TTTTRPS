@@ -533,7 +533,7 @@ impl HybridSearchEngine {
         let _query_embedding = provider
             .embed(query)
             .await
-            .map_err(|e| HybridSearchError::EmbeddingError(e))?;
+            .map_err(HybridSearchError::EmbeddingError)?;
 
         // For now, fall back to Meilisearch's built-in hybrid search
         // In a full implementation, this would query a vector database directly

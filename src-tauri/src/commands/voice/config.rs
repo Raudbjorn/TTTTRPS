@@ -2,13 +2,11 @@
 //!
 //! Commands for configuring voice providers and managing voice settings.
 
-use std::path::PathBuf;
 use tauri::State;
 
 use crate::core::voice::{
-    VoiceManager, VoiceConfig, VoiceProviderType, VoiceProviderDetection,
-    detect_providers, ProviderInstaller, InstallStatus,
-    AvailablePiperVoice, get_recommended_piper_voices, Voice,
+    VoiceManager, VoiceConfig, VoiceProviderDetection,
+    detect_providers, Voice,
 };
 use crate::commands::AppState;
 
@@ -52,8 +50,14 @@ pub async fn configure_voice(
         }
     }
 
-    // Save config to disk (with secrets restored for persistence)
-    save_voice_config_disk(&app_handle, &effective_config);
+    // Save config to disk with MASKED secrets (never write plaintext secrets)
+    let mut config_for_disk = effective_config.clone();
+    if let Some(ref mut elevenlabs) = config_for_disk.elevenlabs {
+        if !elevenlabs.api_key.is_empty() {
+            elevenlabs.api_key = String::new(); // Mask for disk storage
+        }
+    }
+    save_voice_config_disk(&app_handle, &config_for_disk);
 
     let new_manager = VoiceManager::new(effective_config);
 

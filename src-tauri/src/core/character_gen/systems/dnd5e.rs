@@ -289,7 +289,7 @@ impl DnD5eGenerator {
                     name: "Sneak Attack".to_string(),
                     trait_type: TraitType::Class,
                     description: "Deal extra damage when you have advantage or an ally nearby".to_string(),
-                    mechanical_effect: Some(format!("{}d6 extra damage", (level + 1) / 2)),
+                    mechanical_effect: Some(format!("{}d6 extra damage", level.div_ceil(2))),
                 });
                 traits.push(CharacterTrait {
                     name: "Thieves' Cant".to_string(),

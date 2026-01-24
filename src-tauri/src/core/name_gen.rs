@@ -51,7 +51,9 @@ pub enum NameGender {
 /// Name type
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum NameType {
+    #[default]
     FirstName,
     LastName,
     FullName,
@@ -82,11 +84,6 @@ pub struct NameOptions {
     pub syllable_count: Option<usize>,
 }
 
-impl Default for NameType {
-    fn default() -> Self {
-        Self::FirstName
-    }
-}
 
 // ============================================================================
 // Name Components

@@ -680,12 +680,10 @@ Respond with a JSON object containing:
             "Simple", "Common", "Educated", "Refined", "Street slang", "Technical",
         ];
 
-        let sample_phrases = vec![
-            "Well now, that's interesting...",
+        let sample_phrases = ["Well now, that's interesting...",
             "I've seen things, friend.",
             "Coin first, information later.",
-            "You don't want to know.",
-        ];
+            "You don't want to know."];
 
         VoiceDescription {
             pitch: pitches[rng.gen_range(0..pitches.len())].to_string(),

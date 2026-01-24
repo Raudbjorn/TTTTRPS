@@ -315,8 +315,7 @@ impl LLMProvider for OpenAIProvider {
                         let text = String::from_utf8_lossy(&bytes);
 
                         for line in text.lines() {
-                            if line.starts_with("data: ") {
-                                let data = &line[6..];
+                            if let Some(data) = line.strip_prefix("data: ") {
                                 if data == "[DONE]" {
                                     let final_chunk = ChatChunk {
                                         stream_id: stream_id.clone(),
@@ -663,8 +662,7 @@ impl LLMProvider for OpenAICompatibleProvider {
                         let text = String::from_utf8_lossy(&bytes);
 
                         for line in text.lines() {
-                            if line.starts_with("data: ") {
-                                let data = &line[6..];
+                            if let Some(data) = line.strip_prefix("data: ") {
                                 if data == "[DONE]" {
                                     let final_chunk = ChatChunk {
                                         stream_id: stream_id.clone(),

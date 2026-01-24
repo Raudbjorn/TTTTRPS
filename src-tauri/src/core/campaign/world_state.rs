@@ -150,6 +150,7 @@ impl InGameDate {
 
 /// Type of world event
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Default)]
 pub enum WorldEventType {
     /// Battle, war, conflict
     Combat,
@@ -170,23 +171,21 @@ pub enum WorldEventType {
     /// Discovery (artifact, location)
     Discovery,
     /// Session-related (players did X)
+    #[default]
     Session,
     /// Custom event type
     Custom(String),
 }
 
-impl Default for WorldEventType {
-    fn default() -> Self {
-        Self::Session
-    }
-}
 
 /// Impact level of an event
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Default)]
 pub enum EventImpact {
     /// Affects only individuals
     Personal,
     /// Affects a neighborhood/small area
+    #[default]
     Local,
     /// Affects a city or region
     Regional,
@@ -198,11 +197,6 @@ pub enum EventImpact {
     Cosmic,
 }
 
-impl Default for EventImpact {
-    fn default() -> Self {
-        Self::Local
-    }
-}
 
 /// A world event on the timeline
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -296,8 +290,10 @@ impl WorldEvent {
 
 /// Current state/condition of a location
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Default)]
 pub enum LocationCondition {
     Pristine,
+    #[default]
     Normal,
     Damaged,
     Ruined,
@@ -310,11 +306,6 @@ pub enum LocationCondition {
     Custom(String),
 }
 
-impl Default for LocationCondition {
-    fn default() -> Self {
-        Self::Normal
-    }
-}
 
 /// State of a location at a point in time
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -629,7 +620,7 @@ impl WorldStateManager {
                 let mut events: Vec<_> = s
                     .events
                     .iter()
-                    .filter(|e| event_type.as_ref().map_or(true, |t| &e.event_type == t))
+                    .filter(|e| event_type.as_ref().is_none_or(|t| &e.event_type == t))
                     .cloned()
                     .collect();
                 // Sort by in-game date (most recent first)

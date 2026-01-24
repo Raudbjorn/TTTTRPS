@@ -47,6 +47,12 @@ pub struct AdaptiveLearningSystem {
     patterns: RwLock<HashMap<String, HashMap<String, PatternTemplate>>>, // System -> Type -> Template
 }
 
+impl Default for AdaptiveLearningSystem {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AdaptiveLearningSystem {
     pub fn new() -> Self {
         Self {

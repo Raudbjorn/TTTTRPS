@@ -78,6 +78,7 @@ const DEFAULT_RETRY_AFTER_SECS: u64 = 60;
 /// Storage backend options for OAuth tokens
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum CopilotStorageBackend {
     /// File-based storage (~/.config/ttrpg-assistant/copilot-auth.json)
     File,
@@ -87,14 +88,10 @@ pub enum CopilotStorageBackend {
     /// In-memory storage (tokens lost on restart)
     Memory,
     /// Automatic selection (keyring if available, else file)
+    #[default]
     Auto,
 }
 
-impl Default for CopilotStorageBackend {
-    fn default() -> Self {
-        Self::Auto
-    }
-}
 
 impl CopilotStorageBackend {
     /// Get the display name of the storage backend

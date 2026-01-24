@@ -443,6 +443,7 @@ mod tests {
             target_id: Some(id2.clone()),
             target_name: "Test Shop".to_string(),
             connection_type: crate::core::location_gen::ConnectionType::Road,
+            description: None,
             travel_time: Some("5 minutes".to_string()),
             hazards: vec![],
         };

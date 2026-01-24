@@ -456,14 +456,14 @@ fn count_onnx_files(dir: &Path, recursive: bool) -> u32 {
         walkdir::WalkDir::new(dir)
             .into_iter()
             .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().map_or(false, |ext| ext == "onnx"))
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "onnx"))
             .count() as u32
     } else {
         std::fs::read_dir(dir)
             .map(|entries| {
                 entries
                     .filter_map(|e| e.ok())
-                    .filter(|e| e.path().extension().map_or(false, |ext| ext == "onnx"))
+                    .filter(|e| e.path().extension().is_some_and(|ext| ext == "onnx"))
                     .count() as u32
             })
             .unwrap_or(0)

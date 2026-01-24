@@ -643,8 +643,7 @@ impl TTRPGMetadata {
             // Remove common prefixes/suffixes
             .trim_start_matches(|c: char| c.is_ascii_digit() || c == '_' || c == '-' || c == '.')
             // Replace underscores and hyphens with spaces
-            .replace('_', " ")
-            .replace('-', " ")
+            .replace(['_', '-'], " ")
             // Remove multiple spaces
             .split_whitespace()
             .collect::<Vec<_>>()
@@ -1962,7 +1961,7 @@ impl MeilisearchPipeline {
 
         // Split into sentences for smarter chunking
         let sentences: Vec<&str> = text
-            .split(|c| c == '.' || c == '!' || c == '?')
+            .split(['.', '!', '?'])
             .filter(|s| !s.trim().is_empty())
             .collect();
 

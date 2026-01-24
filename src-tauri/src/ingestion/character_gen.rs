@@ -425,7 +425,7 @@ impl CharacterGenerator {
             CharacterRace::Dwarf => vec!["Thorin", "Balin", "Gimli"],
             _ => vec!["John", "Jane", "Alex"],
         };
-        let last_names = vec!["Smith", "Doe", "Lightfoot", "Stone"];
+        let last_names = ["Smith", "Doe", "Lightfoot", "Stone"];
 
         format!("{} {}",
             first_names.choose(rng).unwrap(),

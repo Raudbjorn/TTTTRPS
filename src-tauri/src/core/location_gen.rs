@@ -278,6 +278,7 @@ pub struct LocationConnection {
     pub target_id: Option<String>,
     pub target_name: String,
     pub connection_type: ConnectionType,
+    pub description: Option<String>,
     pub travel_time: Option<String>,
     pub hazards: Vec<String>,
 }

@@ -302,7 +302,7 @@ impl ContextualPersonalityManager {
 
         // Gather personality profiles
         let mut profiles: HashMap<PersonalityId, PersonalityProfile> = HashMap::new();
-        for (id, _) in &rule.blend_weights {
+        for id in rule.blend_weights.keys() {
             match self.personality_store.get(id.as_str()) {
                 Ok(profile) => {
                     profiles.insert(id.clone(), profile);

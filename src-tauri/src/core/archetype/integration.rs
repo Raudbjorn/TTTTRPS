@@ -122,6 +122,7 @@ pub struct SpeechPatterns {
 /// Source information for the personality context.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct PersonalityContextSource {
     /// Archetypes that contributed to this context.
     pub contributing_archetypes: Vec<String>,
@@ -136,16 +137,6 @@ pub struct PersonalityContextSource {
     pub used_fallback: bool,
 }
 
-impl Default for PersonalityContextSource {
-    fn default() -> Self {
-        Self {
-            contributing_archetypes: Vec::new(),
-            setting_pack: None,
-            vocabulary_bank: None,
-            used_fallback: false,
-        }
-    }
-}
 
 /// Get personality affinities for a given archetype.
 ///
@@ -348,6 +339,7 @@ pub struct NpcGenerationContext {
 /// Source information for NPC generation context.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct NpcGenerationContextSource {
     /// Primary archetype ID.
     pub primary_archetype: Option<String>,
@@ -365,17 +357,6 @@ pub struct NpcGenerationContextSource {
     pub used_fallback: bool,
 }
 
-impl Default for NpcGenerationContextSource {
-    fn default() -> Self {
-        Self {
-            primary_archetype: None,
-            race_archetype: None,
-            class_archetype: None,
-            setting_pack: None,
-            used_fallback: false,
-        }
-    }
-}
 
 /// Get NPC generation context for an archetype.
 ///
@@ -548,6 +529,7 @@ pub struct NamingContext {
 /// Source information for naming context.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct NamingContextSource {
     /// Contributing archetype IDs.
     pub contributing_archetypes: Vec<String>,
@@ -559,15 +541,6 @@ pub struct NamingContextSource {
     pub used_fallback: bool,
 }
 
-impl Default for NamingContextSource {
-    fn default() -> Self {
-        Self {
-            contributing_archetypes: Vec::new(),
-            setting_pack: None,
-            used_fallback: false,
-        }
-    }
-}
 
 /// Get naming context for an archetype.
 ///

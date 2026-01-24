@@ -196,13 +196,11 @@ impl RandomTableParser {
         for line in lines {
             let line = line.trim();
             // Look for table title patterns
-            if line.to_lowercase().starts_with("table")
-                || (line.len() < 80 && !self.range_pattern.is_match(line) && !self.single_pattern.is_match(line))
-            {
-                if !line.is_empty() && line.chars().any(|c| c.is_alphabetic()) {
+            if (line.to_lowercase().starts_with("table")
+                || (line.len() < 80 && !self.range_pattern.is_match(line) && !self.single_pattern.is_match(line)))
+                && !line.is_empty() && line.chars().any(|c| c.is_alphabetic()) {
                     return Some(line.to_string());
                 }
-            }
         }
         None
     }

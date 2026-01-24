@@ -349,7 +349,8 @@ pub struct PhraseOutput {
     pub text: String,
     pub category: String,
     pub formality: u8,
-    pub tone: Option<String>,
+    /// All tone markers for this phrase (preserves multi-tone phrases)
+    pub tones: Vec<String>,
     pub tags: Vec<String>,
 }
 

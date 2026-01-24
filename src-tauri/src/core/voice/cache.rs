@@ -250,7 +250,7 @@ fn hash_settings_sha256(settings: &VoiceSettings) -> u64 {
     hasher.update(settings.stability.to_bits().to_le_bytes());
     hasher.update(settings.similarity_boost.to_bits().to_le_bytes());
     hasher.update(settings.style.to_bits().to_le_bytes());
-    hasher.update(&[settings.use_speaker_boost as u8]);
+    hasher.update([settings.use_speaker_boost as u8]);
 
     let result = hasher.finalize();
     // Take first 8 bytes and convert to u64

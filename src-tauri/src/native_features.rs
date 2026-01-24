@@ -172,16 +172,16 @@ impl<R: Runtime> SystemTrayManager<R> {
         let menu_items = menu_items.read().await;
 
         match event.id().as_ref() {
-            id if id == &menu_items.show_hide => {
+            id if id == menu_items.show_hide => {
                 Self::toggle_window_visibility(&app).await;
             },
-            id if id == &menu_items.settings => {
+            id if id == menu_items.settings => {
                 Self::handle_settings(&app).await;
             },
-            id if id == &menu_items.about => {
+            id if id == menu_items.about => {
                 Self::handle_about(&app).await;
             },
-            id if id == &menu_items.quit => {
+            id if id == menu_items.quit => {
                 Self::handle_quit(&app).await;
             },
             _ => {
