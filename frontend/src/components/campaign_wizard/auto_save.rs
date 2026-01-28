@@ -97,22 +97,29 @@ pub fn use_auto_save() -> (AutoSaveState, Callback<Option<PartialCampaign>>) {
     let has_pending = RwSignal::new(false);
 
     // Flag to control interval execution (set to false on cleanup)
-    let interval_active = RwSignal::new(true);
+    // Note: gloo_timers::Interval is not Send+Sync in WASM, so we use .forget() to
+    // keep the interval alive and control execution via this flag. The interval
+    // callback early-returns when the flag is false.
+    let interval_active = RwSignal::new(false);
 
-    // Setup auto-save interval with flag-based cleanup
-    // Note: gloo_timers::Interval is not Send+Sync in WASM, so we use a flag
-    // to stop execution rather than dropping the handle in on_cleanup
+    // Setup auto-save interval
     Effect::new(move |_| {
         if !state.enabled.get() {
+            interval_active.set(false);
             return;
         }
 
-        // Mark interval as active
+        // Only create interval once (check prevents multiple intervals on re-runs)
+        if interval_active.get_untracked() {
+            return;
+        }
+
+        // Mark interval as active before creating
         interval_active.set(true);
 
         // Check for pending saves periodically
-        let _handle = gloo_timers::callback::Interval::new(AUTO_SAVE_INTERVAL_MS as u32, move || {
-            // Check if interval should still be active (flag-based cleanup)
+        gloo_timers::callback::Interval::new(AUTO_SAVE_INTERVAL_MS as u32, move || {
+            // Check if interval should still be active
             if !interval_active.get_untracked() {
                 return;
             }
@@ -146,10 +153,10 @@ pub fn use_auto_save() -> (AutoSaveState, Callback<Option<PartialCampaign>>) {
                     }
                 });
             }
-        });
+        })
+        .forget(); // Keep interval alive; execution controlled by interval_active flag
 
-        // Flag-based cleanup: set interval_active to false when component unmounts
-        // The interval callback checks this flag and early-returns
+        // Effect-level cleanup when effect re-runs
         on_cleanup(move || {
             interval_active.set(false);
         });
@@ -186,7 +193,7 @@ pub fn use_auto_save() -> (AutoSaveState, Callback<Option<PartialCampaign>>) {
         }
     });
 
-    // Cleanup: disable interval on unmount
+    // Cleanup: disable interval execution on component unmount
     on_cleanup(move || {
         interval_active.set(false);
     });
