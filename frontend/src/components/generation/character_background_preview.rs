@@ -23,7 +23,7 @@ pub struct CharacterBackground {
 }
 
 /// Key event in character's past
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BackgroundEvent {
     pub name: String,
     pub description: String,
@@ -326,9 +326,15 @@ pub fn CharacterBackgroundPreview(
                 </div>
                 <div class="space-y-2">
                     {move || {
-                        events.get().iter().enumerate().map(|(i, event)| {
+                        events.get().iter().map(|event| {
+                            // Capture event data for content-based removal
+                            // (avoids index shift issues between render and callback)
+                            let event_to_remove = event.clone();
                             let remove_cb = Callback::new(move |_: ()| {
-                                events.update(|e| { e.remove(i); });
+                                let target = event_to_remove.clone();
+                                events.update(|e| {
+                                    e.retain(|item| item != &target);
+                                });
                             });
                             view! {
                                 <EventEntry

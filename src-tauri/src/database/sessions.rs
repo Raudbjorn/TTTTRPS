@@ -164,7 +164,7 @@ impl SessionOps for Database {
     async fn save_session_event(&self, event: &SessionEventRecord) -> Result<(), sqlx::Error> {
         sqlx::query(
             r#"
-            INSERT INTO session_events
+            INSERT OR REPLACE INTO session_events
             (id, session_id, timestamp, event_type, description, entities, metadata, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             "#

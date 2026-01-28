@@ -426,16 +426,16 @@ impl SearchAnalyticsOps for Database {
     async fn cleanup_search_analytics(&self, days: i64) -> Result<u64, sqlx::Error> {
         let cutoff = (chrono::Utc::now() - chrono::Duration::days(days)).to_rfc3339();
 
-        let result = sqlx::query("DELETE FROM search_analytics WHERE created_at < ?")
+        let analytics_result = sqlx::query("DELETE FROM search_analytics WHERE created_at < ?")
             .bind(&cutoff)
             .execute(self.pool())
             .await?;
 
-        sqlx::query("DELETE FROM search_selections WHERE created_at < ?")
+        let selections_result = sqlx::query("DELETE FROM search_selections WHERE created_at < ?")
             .bind(&cutoff)
             .execute(self.pool())
             .await?;
 
-        Ok(result.rows_affected())
+        Ok(analytics_result.rows_affected() + selections_result.rows_affected())
     }
 }
