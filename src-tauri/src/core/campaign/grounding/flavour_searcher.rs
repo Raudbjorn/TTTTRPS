@@ -289,9 +289,15 @@ impl FlavourSearcher {
             .await
             .map_err(|e| FlavourSearchError::Search(e.to_string()))?;
 
-        // Combine and deduplicate results
-        let mut all_results: Vec<SearchResult> = fiction_results;
-        all_results.extend(rules_results);
+        // Combine and deduplicate results by document ID
+        let mut seen_ids = std::collections::HashSet::new();
+        let mut all_results: Vec<SearchResult> = Vec::with_capacity(fiction_results.len() + rules_results.len());
+
+        for result in fiction_results.into_iter().chain(rules_results.into_iter()) {
+            if seen_ids.insert(result.document.id.clone()) {
+                all_results.push(result);
+            }
+        }
 
         // Convert to LoreResults
         let lore_results: Vec<LoreResult> = all_results

@@ -391,17 +391,18 @@ mod tests {
 
     #[test]
     fn test_generate_recap_request_defaults() {
+        // Use Default impl to test actual default values
         let request = GenerateRecapRequest {
             session_id: "session-1".to_string(),
             campaign_id: "campaign-1".to_string(),
-            include_prose: true,
-            include_bullets: true,
-            extract_cliffhanger: true,
-            max_bullets: Some(10),
-            tone: Some("dramatic".to_string()),
+            ..Default::default()
         };
 
+        // Verify defaults from Default impl
         assert!(request.include_prose);
         assert!(request.include_bullets);
+        assert!(request.extract_cliffhanger);
+        assert_eq!(request.max_bullets, Some(10));
+        assert_eq!(request.tone, Some("dramatic".to_string()));
     }
 }
