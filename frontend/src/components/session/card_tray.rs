@@ -137,7 +137,7 @@ pub fn CardTrayPanel(
                 <div class="flex items-center gap-3">
                     // Expand/collapse icon
                     <svg
-                        class=format!(
+                        class=move || format!(
                             "w-4 h-4 text-zinc-400 transition-transform {}",
                             if is_collapsed.get() { "" } else { "rotate-180" }
                         )

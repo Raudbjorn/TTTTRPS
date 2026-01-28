@@ -185,7 +185,7 @@ impl SearchAnalyticsOps for Database {
         // Get top queries
         let top_queries: Vec<(String, u32)> = sqlx::query(
             r#"
-            SELECT query, COUNT(*) as count
+            SELECT LOWER(TRIM(query)) as query, COUNT(*) as count
             FROM search_analytics
             WHERE created_at > ?
             GROUP BY LOWER(TRIM(query))
