@@ -7,7 +7,7 @@
 //!
 //! - **Types**: Domain types for threads, messages, suggestions, and citations
 //! - **Manager**: ConversationManager for CRUD operations and suggestion tracking
-//! - **AI**: AI response generation utilities for the LLM router
+//! - **AI**: ConversationAI for generating responses with the LLM router
 //!
 //! # Architecture
 //!
@@ -48,12 +48,17 @@
 //!     .add_message(&thread.id, ConversationRole::User, "I want a dark fantasy campaign".to_string())
 //!     .await?;
 //!
-//! // Generate an AI response using ai module utilities
-//! let response = ai::generate_response(&router, &user_msg.content, ConversationPurpose::CampaignCreation).await?;
+//! // Generate an AI response (via LLM router in Tauri commands)
+//! // The response contains content, suggestions, and citations
 //!
-//! // Save the AI response
+//! // Save the AI response with suggestions
 //! let ai_msg = manager
-//!     .add_message(&thread.id, ConversationRole::Assistant, response.content)
+//!     .add_assistant_message_with_metadata(
+//!         &thread.id,
+//!         response.content,
+//!         response.suggestions,
+//!         response.citations,
+//!     )
 //!     .await?;
 //! ```
 

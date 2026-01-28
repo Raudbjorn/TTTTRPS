@@ -83,24 +83,20 @@ pub fn RandomTableDisplay(
     let is_rolling = RwSignal::new(false);
     let roll_animation = RwSignal::new(false);
 
-    // Calculate probability for each entry (only accurate for single-die notations)
+    // Calculate probability for each entry
+    // For compound dice (e.g., 2d6), probabilities are approximate since the distribution is not uniform
     let entries_with_probability = {
         let table = table.clone();
         let dice_notation = table.dice_notation.clone();
-        let is_compound = is_compound_dice(&dice_notation);
         let max_roll = parse_max_roll(&dice_notation);
         let min_roll = parse_min_roll(&dice_notation);
-        let range = (max_roll - min_roll + 1) as f64;
+        let is_compound = is_compound_dice(&dice_notation);
+        let range_total = (max_roll - min_roll + 1) as f64;
 
         table.entries.iter().map(|entry| {
             let range_size = (entry.range_end - entry.range_start + 1) as f64;
-            // For compound dice (e.g., 2d6), probability is not uniform - mark as approximate
-            let probability = if is_compound {
-                None // Cannot calculate accurate probability for compound dice
-            } else {
-                Some(range_size / range * 100.0)
-            };
-            (entry.clone(), probability)
+            let probability = range_size / range_total * 100.0;
+            (entry.clone(), probability, is_compound)
         }).collect::<Vec<_>>()
     };
 
@@ -184,7 +180,7 @@ pub fn RandomTableDisplay(
 
             // Table entries with probability bars
             <div class="divide-y divide-zinc-800">
-                {entries_with_probability.into_iter().map(|(entry, probability)| {
+                {entries_with_probability.into_iter().map(|(entry, probability, is_compound)| {
                     let is_rolled = Signal::derive({
                         let entry_id = entry.id.clone();
                         move || roll_result.get().map(|r| r.entry.id == entry_id).unwrap_or(false)
@@ -199,13 +195,11 @@ pub fn RandomTableDisplay(
                                 "hover:bg-zinc-800/50"
                             }
                         )>
-                            // Probability background bar (only shown for uniform distributions)
-                            {probability.map(|p| view! {
-                                <div
-                                    class="absolute inset-y-0 left-0 bg-purple-600/10"
-                                    style=format!("width: {}%", p)
-                                />
-                            })}
+                            // Probability background bar
+                            <div
+                                class="absolute inset-y-0 left-0 bg-purple-600/10"
+                                style=format!("width: {}%", probability)
+                            />
 
                             // Content
                             <div class="relative flex items-center gap-3">
@@ -223,9 +217,15 @@ pub fn RandomTableDisplay(
                                     {entry.result_text.clone()}
                                 </p>
 
-                                // Probability percentage (or "~" for compound dice)
-                                <span class="shrink-0 text-xs text-zinc-500 tabular-nums">
-                                    {probability.map(|p| format!("{:.1}%", p)).unwrap_or_else(|| "~".to_string())}
+                                // Probability percentage (show ~ for compound dice as distribution is not uniform)
+                                <span class="shrink-0 text-xs text-zinc-500 tabular-nums" title={
+                                    if is_compound { "Approximate (compound dice have non-uniform distribution)" } else { "" }
+                                }>
+                                    {if is_compound {
+                                        format!("~{:.0}%", probability)
+                                    } else {
+                                        format!("{:.1}%", probability)
+                                    }}
                                 </span>
 
                                 // Nested indicator
@@ -317,7 +317,7 @@ pub fn RollHistorySidebar(
                 </div>
             </div>
         </Show>
-    }.into_any()
+    }
 }
 
 // ============================================================================
@@ -433,18 +433,18 @@ pub fn DiceRollerWidget(
 // Helper Functions
 // ============================================================================
 
-/// Parse max roll from dice notation (handles compound dice like "2d6+3")
-/// Check if dice notation represents compound dice (multiple dice like "2d6")
-/// Compound dice have non-uniform probability distributions
+/// Check if dice notation represents compound (multiple) dice
+/// Returns true for notations like "2d6", "3d8+2", etc.
+/// Returns false for single die like "d20", "1d100", "d6"
 fn is_compound_dice(notation: &str) -> bool {
     let notation = notation.to_lowercase();
 
-    // Special notations are not compound
+    // Special cases that are single-roll despite appearance
     if notation.contains("d100") || notation.contains("d%") || notation.contains("d66") {
         return false;
     }
 
-    // Check for dice count > 1
+    // Parse dice count
     if let Some(pos) = notation.find('d') {
         let count_str: String = notation[..pos].chars().filter(|c| c.is_ascii_digit()).collect();
         let count: i32 = count_str.parse().unwrap_or(1);
@@ -454,6 +454,7 @@ fn is_compound_dice(notation: &str) -> bool {
     }
 }
 
+/// Parse max roll from dice notation (handles compound dice like "2d6+3")
 fn parse_max_roll(notation: &str) -> i32 {
     let notation = notation.to_lowercase();
 

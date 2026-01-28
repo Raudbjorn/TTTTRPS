@@ -351,129 +351,71 @@ impl RecapGenerator {
         // Commit the transaction to release the lock - generation can now proceed
         tx.commit().await?;
 
-        // Macro to handle errors with status reset
-        macro_rules! with_status_reset {
-            ($expr:expr, $session_id:expr, $pool:expr) => {
-                match $expr {
-                    Ok(v) => v,
-                    Err(e) => {
-                        // Reset status to Pending so it can be retried
-                        let now = chrono::Utc::now().to_rfc3339();
-                        let _ = sqlx::query(
-                            "UPDATE session_recaps SET generation_status = ?, updated_at = ? WHERE session_id = ?"
-                        )
-                        .bind(RecapStatus::Pending.as_str())
-                        .bind(&now)
-                        .bind($session_id)
-                        .execute($pool)
-                        .await;
-                        return Err(e);
-                    }
+        // Post-commit operations: if any fail, we must reset the status to avoid
+        // leaving the recap stuck in "Generating" state forever.
+        let generation_result = self.do_generate_recap_content(&request).await;
+
+        match generation_result {
+            Ok((prose, bullets, cliffhanger, key_npcs, key_locations, key_events)) => {
+                // Update recap record with generated content
+                let now = chrono::Utc::now().to_rfc3339();
+                let update_result = sqlx::query(
+                    r#"
+                    UPDATE session_recaps SET
+                        prose_text = ?, bullet_summary = ?, cliffhanger = ?,
+                        key_npcs = ?, key_locations = ?, key_events = ?,
+                        generation_status = ?, generated_at = ?, updated_at = ?
+                    WHERE session_id = ?
+                    "#
+                )
+                .bind(&prose)
+                .bind(serde_json::to_string(&bullets)?)
+                .bind(&cliffhanger)
+                .bind(serde_json::to_string(&key_npcs.iter().map(|n| &n.id).collect::<Vec<_>>())?)
+                .bind(serde_json::to_string(&key_locations.iter().map(|l| &l.id).collect::<Vec<_>>())?)
+                .bind(serde_json::to_string(&key_events)?)
+                .bind(RecapStatus::Complete.as_str())
+                .bind(&now)
+                .bind(&now)
+                .bind(&request.session_id)
+                .execute(self.pool.as_ref())
+                .await;
+
+                if let Err(e) = update_result {
+                    // Failed to save generated content - reset status so generation can be retried
+                    self.reset_recap_status(&request.session_id, "Failed to save generated content").await;
+                    return Err(RecapError::Database(e));
                 }
-            };
+
+                // Fetch the updated record
+                let record: SessionRecapRecord = sqlx::query_as(
+                    "SELECT * FROM session_recaps WHERE session_id = ?"
+                )
+                .bind(&request.session_id)
+                .fetch_one(self.pool.as_ref())
+                .await?;
+
+                return Ok(SessionRecap {
+                    id: record.id,
+                    session_id: record.session_id,
+                    campaign_id: record.campaign_id,
+                    prose,
+                    bullets,
+                    cliffhanger,
+                    key_npcs,
+                    key_locations,
+                    key_events,
+                    status: RecapStatus::Complete,
+                    generated_at: record.generated_at,
+                    edited_at: record.edited_at,
+                });
+            }
+            Err(e) => {
+                // Content generation failed - reset status so generation can be retried
+                self.reset_recap_status(&request.session_id, &e.to_string()).await;
+                return Err(e);
+            }
         }
-
-        // Gather session context
-        let context = with_status_reset!(
-            self.gather_session_context(&request.session_id).await,
-            &request.session_id,
-            self.pool.as_ref()
-        );
-
-        // Generate content (placeholder for LLM integration)
-        let prose = if request.include_prose {
-            Some(with_status_reset!(
-                self.generate_prose(&context, request.tone.as_deref()).await,
-                &request.session_id,
-                self.pool.as_ref()
-            ))
-        } else {
-            None
-        };
-
-        let bullets = if request.include_bullets {
-            with_status_reset!(
-                self.generate_bullets(&context, request.max_bullets.unwrap_or(10)).await,
-                &request.session_id,
-                self.pool.as_ref()
-            )
-        } else {
-            Vec::new()
-        };
-
-        let cliffhanger = if request.extract_cliffhanger {
-            with_status_reset!(
-                self.extract_cliffhanger(&context).await,
-                &request.session_id,
-                self.pool.as_ref()
-            )
-        } else {
-            None
-        };
-
-        // Extract key entities
-        let key_npcs = with_status_reset!(
-            self.extract_key_npcs(&context).await,
-            &request.session_id,
-            self.pool.as_ref()
-        );
-
-        let key_locations = with_status_reset!(
-            self.extract_key_locations(&context).await,
-            &request.session_id,
-            self.pool.as_ref()
-        );
-
-        let key_events: Vec<String> = context.events.iter()
-            .filter_map(|e| e.description.clone())
-            .collect();
-
-        // Update recap record with generated content
-        let now = chrono::Utc::now().to_rfc3339();
-        sqlx::query(
-            r#"
-            UPDATE session_recaps SET
-                prose_text = ?, bullet_summary = ?, cliffhanger = ?,
-                key_npcs = ?, key_locations = ?, key_events = ?,
-                generation_status = ?, generated_at = ?, updated_at = ?
-            WHERE session_id = ?
-            "#
-        )
-        .bind(&prose)
-        .bind(serde_json::to_string(&bullets)?)
-        .bind(&cliffhanger)
-        .bind(serde_json::to_string(&key_npcs.iter().map(|n| &n.id).collect::<Vec<_>>())?)
-        .bind(serde_json::to_string(&key_locations.iter().map(|l| &l.id).collect::<Vec<_>>())?)
-        .bind(serde_json::to_string(&key_events)?)
-        .bind(RecapStatus::Complete.as_str())
-        .bind(&now)
-        .bind(&now)
-        .bind(&request.session_id)
-        .execute(self.pool.as_ref())
-        .await?;
-
-        // Fetch the updated record
-        let record: SessionRecapRecord = sqlx::query_as(
-            "SELECT * FROM session_recaps WHERE session_id = ?"
-        )
-        .bind(&request.session_id)
-        .fetch_one(self.pool.as_ref())
-        .await?;
-
-        Ok(SessionRecap {
-            id: record.id,
-            session_id: record.session_id,
-            campaign_id: record.campaign_id,
-            prose,
-            bullets,
-            cliffhanger,
-            key_npcs,
-            key_locations,
-            key_events,
-            status: RecapStatus::Complete,
-            generated_at: record.generated_at,
-            edited_at: record.edited_at,
-        })
     }
 
     /// Get an existing session recap
@@ -1177,6 +1119,87 @@ impl RecapGenerator {
     fn bullet_known_to_pc(&self, _bullet: &str, _filter: &PCKnowledgeFilter) -> bool {
         // Placeholder - would analyze bullet for unknown entities
         true
+    }
+
+    /// Generate recap content (extracted for error recovery).
+    ///
+    /// Returns tuple of (prose, bullets, cliffhanger, key_npcs, key_locations, key_events).
+    async fn do_generate_recap_content(
+        &self,
+        request: &GenerateRecapRequest,
+    ) -> RecapResult<(
+        Option<String>,
+        Vec<String>,
+        Option<String>,
+        Vec<EntityReference>,
+        Vec<EntityReference>,
+        Vec<String>,
+    )> {
+        // Gather session context
+        let context = self.gather_session_context(&request.session_id).await?;
+
+        // Generate content (placeholder for LLM integration)
+        let prose = if request.include_prose {
+            Some(self.generate_prose(&context, request.tone.as_deref()).await?)
+        } else {
+            None
+        };
+
+        let bullets = if request.include_bullets {
+            self.generate_bullets(&context, request.max_bullets.unwrap_or(10)).await?
+        } else {
+            Vec::new()
+        };
+
+        let cliffhanger = if request.extract_cliffhanger {
+            self.extract_cliffhanger(&context).await?
+        } else {
+            None
+        };
+
+        // Extract key entities
+        let key_npcs = self.extract_key_npcs(&context).await?;
+        let key_locations = self.extract_key_locations(&context).await?;
+        let key_events: Vec<String> = context.events.iter()
+            .filter_map(|e| e.description.clone())
+            .collect();
+
+        Ok((prose, bullets, cliffhanger, key_npcs, key_locations, key_events))
+    }
+
+    /// Reset recap status after a failed generation attempt.
+    ///
+    /// This ensures the recap doesn't remain stuck in "Generating" status,
+    /// allowing subsequent generation attempts to proceed.
+    async fn reset_recap_status(&self, session_id: &str, error_msg: &str) {
+        tracing::warn!(
+            session_id = %session_id,
+            error = %error_msg,
+            "Resetting recap status after generation failure"
+        );
+
+        // Reset to Pending status so generation can be retried
+        let result = sqlx::query(
+            r#"
+            UPDATE session_recaps SET
+                generation_status = ?,
+                updated_at = ?
+            WHERE session_id = ?
+            "#
+        )
+        .bind(RecapStatus::Pending.as_str())
+        .bind(chrono::Utc::now().to_rfc3339())
+        .bind(session_id)
+        .execute(self.pool.as_ref())
+        .await;
+
+        if let Err(e) = result {
+            tracing::error!(
+                session_id = %session_id,
+                error = %e,
+                "Failed to reset recap status - recap may be stuck in Generating state"
+            );
+        }
     }
 }
 
