@@ -102,8 +102,11 @@ pub fn RichTooltip(
     view! {
         <div
             class="relative inline-flex"
+            tabindex="0"
             on:mouseenter=move |_| is_visible.set(true)
             on:mouseleave=move |_| is_visible.set(false)
+            on:focus=move |_| is_visible.set(true)
+            on:blur=move |_| is_visible.set(false)
         >
             {children()}
 
@@ -148,7 +151,7 @@ pub fn HelpIcon(
                     "inline-flex items-center justify-center text-zinc-500 hover:text-zinc-400 transition-colors cursor-help {}",
                     size
                 )
-                tabindex="-1"
+                tabindex="0"
             >
                 <svg class="w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"

@@ -32,8 +32,17 @@ pub fn BasicsStep(
 
     // Local form state
     let name = RwSignal::new(draft.name.unwrap_or_default());
-    let system = RwSignal::new(draft.system.unwrap_or_else(|| "dnd5e".to_string()));
-    let custom_system = RwSignal::new(String::new());
+
+    // Check if draft.system is a predefined system or a custom one
+    let predefined_ids: Vec<&str> = GAME_SYSTEMS.iter().map(|(id, _, _)| *id).collect();
+    let (initial_system, initial_custom) = match &draft.system {
+        Some(s) if predefined_ids.contains(&s.as_str()) => (s.clone(), String::new()),
+        Some(s) if !s.is_empty() => ("other".to_string(), s.clone()),
+        _ => ("dnd5e".to_string(), String::new()),
+    };
+
+    let system = RwSignal::new(initial_system);
+    let custom_system = RwSignal::new(initial_custom);
     let description = RwSignal::new(draft.description.unwrap_or_default());
 
     // Validation

@@ -7,7 +7,7 @@
 //!
 //! - **Types**: Domain types for threads, messages, suggestions, and citations
 //! - **Manager**: ConversationManager for CRUD operations and suggestion tracking
-//! - **AI**: ConversationAI for generating responses with the LLM router
+//! - **AI**: AI response generation utilities for the LLM router
 //!
 //! # Architecture
 //!
@@ -31,7 +31,7 @@
 //!
 //! ```rust,ignore
 //! use crate::core::campaign::conversation::{
-//!     ConversationManager, ConversationAI, ConversationThread, ConversationMessage,
+//!     ConversationManager, ConversationThread, ConversationMessage,
 //!     ConversationPurpose, MessagePagination, ThreadListOptions,
 //! };
 //!
@@ -48,18 +48,12 @@
 //!     .add_message(&thread.id, ConversationRole::User, "I want a dark fantasy campaign".to_string())
 //!     .await?;
 //!
-//! // Generate an AI response
-//! let ai = ConversationAI::new(router);
-//! let response = ai.generate_response_for_thread(&manager, &thread.id, &user_msg.content).await?;
+//! // Generate an AI response using ai module utilities
+//! let response = ai::generate_response(&router, &user_msg.content, ConversationPurpose::CampaignCreation).await?;
 //!
-//! // Save the AI response with suggestions
+//! // Save the AI response
 //! let ai_msg = manager
-//!     .add_assistant_message_with_metadata(
-//!         &thread.id,
-//!         response.content,
-//!         response.suggestions,
-//!         response.citations,
-//!     )
+//!     .add_message(&thread.id, ConversationRole::Assistant, response.content)
 //!     .await?;
 //! ```
 

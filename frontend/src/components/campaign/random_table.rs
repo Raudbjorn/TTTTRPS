@@ -83,15 +83,23 @@ pub fn RandomTableDisplay(
     let is_rolling = RwSignal::new(false);
     let roll_animation = RwSignal::new(false);
 
-    // Calculate probability for each entry
+    // Calculate probability for each entry (only accurate for single-die notations)
     let entries_with_probability = {
         let table = table.clone();
         let dice_notation = table.dice_notation.clone();
+        let is_compound = is_compound_dice(&dice_notation);
         let max_roll = parse_max_roll(&dice_notation);
+        let min_roll = parse_min_roll(&dice_notation);
+        let range = (max_roll - min_roll + 1) as f64;
 
         table.entries.iter().map(|entry| {
             let range_size = (entry.range_end - entry.range_start + 1) as f64;
-            let probability = range_size / max_roll as f64 * 100.0;
+            // For compound dice (e.g., 2d6), probability is not uniform - mark as approximate
+            let probability = if is_compound {
+                None // Cannot calculate accurate probability for compound dice
+            } else {
+                Some(range_size / range * 100.0)
+            };
             (entry.clone(), probability)
         }).collect::<Vec<_>>()
     };
@@ -191,11 +199,13 @@ pub fn RandomTableDisplay(
                                 "hover:bg-zinc-800/50"
                             }
                         )>
-                            // Probability background bar
-                            <div
-                                class="absolute inset-y-0 left-0 bg-purple-600/10"
-                                style=format!("width: {}%", probability)
-                            />
+                            // Probability background bar (only shown for uniform distributions)
+                            {probability.map(|p| view! {
+                                <div
+                                    class="absolute inset-y-0 left-0 bg-purple-600/10"
+                                    style=format!("width: {}%", p)
+                                />
+                            })}
 
                             // Content
                             <div class="relative flex items-center gap-3">
@@ -213,9 +223,9 @@ pub fn RandomTableDisplay(
                                     {entry.result_text.clone()}
                                 </p>
 
-                                // Probability percentage
+                                // Probability percentage (or "~" for compound dice)
                                 <span class="shrink-0 text-xs text-zinc-500 tabular-nums">
-                                    {format!("{:.1}%", probability)}
+                                    {probability.map(|p| format!("{:.1}%", p)).unwrap_or_else(|| "~".to_string())}
                                 </span>
 
                                 // Nested indicator
@@ -252,15 +262,6 @@ pub fn RollHistorySidebar(
     /// Whether the sidebar is visible
     visible: RwSignal<bool>,
 ) -> impl IntoView {
-    // If not visible, short-circuit rendering
-    if !visible.get_untracked() {
-        return view! {
-            <Show when=move || visible.get()>
-                <div></div>
-            </Show>
-        }.into_any();
-    }
-
     let has_history = !history.is_empty();
 
     view! {
@@ -433,6 +434,26 @@ pub fn DiceRollerWidget(
 // ============================================================================
 
 /// Parse max roll from dice notation (handles compound dice like "2d6+3")
+/// Check if dice notation represents compound dice (multiple dice like "2d6")
+/// Compound dice have non-uniform probability distributions
+fn is_compound_dice(notation: &str) -> bool {
+    let notation = notation.to_lowercase();
+
+    // Special notations are not compound
+    if notation.contains("d100") || notation.contains("d%") || notation.contains("d66") {
+        return false;
+    }
+
+    // Check for dice count > 1
+    if let Some(pos) = notation.find('d') {
+        let count_str: String = notation[..pos].chars().filter(|c| c.is_ascii_digit()).collect();
+        let count: i32 = count_str.parse().unwrap_or(1);
+        count > 1
+    } else {
+        false
+    }
+}
+
 fn parse_max_roll(notation: &str) -> i32 {
     let notation = notation.to_lowercase();
 

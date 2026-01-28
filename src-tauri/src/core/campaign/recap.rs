@@ -351,31 +351,79 @@ impl RecapGenerator {
         // Commit the transaction to release the lock - generation can now proceed
         tx.commit().await?;
 
+        // Macro to handle errors with status reset
+        macro_rules! with_status_reset {
+            ($expr:expr, $session_id:expr, $pool:expr) => {
+                match $expr {
+                    Ok(v) => v,
+                    Err(e) => {
+                        // Reset status to Pending so it can be retried
+                        let now = chrono::Utc::now().to_rfc3339();
+                        let _ = sqlx::query(
+                            "UPDATE session_recaps SET generation_status = ?, updated_at = ? WHERE session_id = ?"
+                        )
+                        .bind(RecapStatus::Pending.as_str())
+                        .bind(&now)
+                        .bind($session_id)
+                        .execute($pool)
+                        .await;
+                        return Err(e);
+                    }
+                }
+            };
+        }
+
         // Gather session context
-        let context = self.gather_session_context(&request.session_id).await?;
+        let context = with_status_reset!(
+            self.gather_session_context(&request.session_id).await,
+            &request.session_id,
+            self.pool.as_ref()
+        );
 
         // Generate content (placeholder for LLM integration)
         let prose = if request.include_prose {
-            Some(self.generate_prose(&context, request.tone.as_deref()).await?)
+            Some(with_status_reset!(
+                self.generate_prose(&context, request.tone.as_deref()).await,
+                &request.session_id,
+                self.pool.as_ref()
+            ))
         } else {
             None
         };
 
         let bullets = if request.include_bullets {
-            self.generate_bullets(&context, request.max_bullets.unwrap_or(10)).await?
+            with_status_reset!(
+                self.generate_bullets(&context, request.max_bullets.unwrap_or(10)).await,
+                &request.session_id,
+                self.pool.as_ref()
+            )
         } else {
             Vec::new()
         };
 
         let cliffhanger = if request.extract_cliffhanger {
-            self.extract_cliffhanger(&context).await?
+            with_status_reset!(
+                self.extract_cliffhanger(&context).await,
+                &request.session_id,
+                self.pool.as_ref()
+            )
         } else {
             None
         };
 
         // Extract key entities
-        let key_npcs = self.extract_key_npcs(&context).await?;
-        let key_locations = self.extract_key_locations(&context).await?;
+        let key_npcs = with_status_reset!(
+            self.extract_key_npcs(&context).await,
+            &request.session_id,
+            self.pool.as_ref()
+        );
+
+        let key_locations = with_status_reset!(
+            self.extract_key_locations(&context).await,
+            &request.session_id,
+            self.pool.as_ref()
+        );
+
         let key_events: Vec<String> = context.events.iter()
             .filter_map(|e| e.description.clone())
             .collect();
