@@ -337,15 +337,9 @@ impl RulebookLinker {
         query: &str,
         rulebook_filter: Option<Vec<String>>,
     ) -> Result<Vec<LinkedContent>, String> {
-        // Build filter string if rulebooks specified
-        // TODO: Pass filter to search once hybrid_search supports it
-        let _filter = rulebook_filter.map(|books| {
-            let book_filters: Vec<String> = books
-                .iter()
-                .map(|b| format!(r#"source = "{}""#, b))
-                .collect();
-            book_filters.join(" OR ")
-        });
+        // Note: rulebook_filter is accepted but not yet used - hybrid_search
+        // doesn't support filter parameter yet. See issue #XXX for filter support.
+        let _ = rulebook_filter;
 
         // Search using hybrid search for best results
         let results = self

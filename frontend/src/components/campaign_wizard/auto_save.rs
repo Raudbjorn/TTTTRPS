@@ -99,17 +99,20 @@ pub fn use_auto_save() -> (AutoSaveState, Callback<Option<PartialCampaign>>) {
     // Flag to control interval execution (set to false on cleanup)
     let interval_active = RwSignal::new(true);
 
-    // Setup auto-save interval
+    // Setup auto-save interval with flag-based cleanup
+    // Note: gloo_timers::Interval is not Send+Sync in WASM, so we use a flag
+    // to stop execution rather than dropping the handle in on_cleanup
     Effect::new(move |_| {
         if !state.enabled.get() {
             return;
         }
 
+        // Mark interval as active
+        interval_active.set(true);
+
         // Check for pending saves periodically
-        // Note: The interval is captured by the closure and will be dropped
-        // when the effect is cleaned up or re-run
         let _handle = gloo_timers::callback::Interval::new(AUTO_SAVE_INTERVAL_MS as u32, move || {
-            // Check if interval should still be active
+            // Check if interval should still be active (flag-based cleanup)
             if !interval_active.get_untracked() {
                 return;
             }
@@ -145,9 +148,11 @@ pub fn use_auto_save() -> (AutoSaveState, Callback<Option<PartialCampaign>>) {
             }
         });
 
-        // Keep the handle alive by moving into the effect - it will be dropped
-        // when the effect is disposed (component unmount or re-run)
-        std::mem::forget(_handle);
+        // Flag-based cleanup: set interval_active to false when component unmounts
+        // The interval callback checks this flag and early-returns
+        on_cleanup(move || {
+            interval_active.set(false);
+        });
     });
 
     // Listen for manual retry triggers
