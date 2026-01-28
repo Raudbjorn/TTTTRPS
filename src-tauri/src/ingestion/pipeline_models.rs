@@ -108,7 +108,7 @@ pub struct PageMetadata {
 impl PageMetadata {
     /// Create page metadata from raw content
     pub fn from_content(content: &str) -> Self {
-        let char_count = content.len();
+        let char_count = content.chars().count();
         let word_count = content.split_whitespace().count();
 
         // Simple heuristics for detecting tables/images

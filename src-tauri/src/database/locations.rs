@@ -82,15 +82,19 @@ impl LocationOps for Database {
     }
 
     async fn delete_location(&self, id: &str) -> Result<(), sqlx::Error> {
+        let mut tx = self.pool().begin().await?;
+
         // Update children to have no parent before deleting
         sqlx::query("UPDATE locations SET parent_id = NULL WHERE parent_id = ?")
             .bind(id)
-            .execute(self.pool())
+            .execute(&mut *tx)
             .await?;
         sqlx::query("DELETE FROM locations WHERE id = ?")
             .bind(id)
-            .execute(self.pool())
+            .execute(&mut *tx)
             .await?;
+
+        tx.commit().await?;
         Ok(())
     }
 }

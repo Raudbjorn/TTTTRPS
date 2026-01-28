@@ -356,16 +356,16 @@ pub fn get_inspiration(question_id: &str) -> InspirationPrompt {
 fn SuggestionChipButton(
     chip: SuggestionChip,
     on_select: Callback<String>,
-    is_selected: bool,
+    is_selected: Signal<bool>,
 ) -> impl IntoView {
     let value = chip.value.clone();
 
     view! {
         <button
             type="button"
-            class=format!(
+            class=move || format!(
                 "px-4 py-2 rounded-full text-sm transition-all {}",
-                if is_selected {
+                if is_selected.get() {
                     "bg-purple-600 text-white ring-2 ring-purple-400"
                 } else {
                     "bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white"
@@ -560,7 +560,7 @@ fn InterviewQuestionDisplay(
                                     <SuggestionChipButton
                                         chip=chip.clone()
                                         on_select=on_select
-                                        is_selected=is_selected.get()
+                                        is_selected=is_selected
                                     />
                                 }
                             }).collect_view()}

@@ -7,6 +7,29 @@ use super::models::{PinnedCardRecord, CheatSheetPreferenceRecord, CardCacheRecor
 use super::Database;
 use sqlx::Row;
 
+// ============================================================================
+// Error Types
+// ============================================================================
+
+/// Errors specific to quick reference operations
+#[derive(Debug, thiserror::Error)]
+pub enum QuickReferenceError {
+    #[error("Database error: {0}")]
+    Database(#[from] sqlx::Error),
+
+    #[error("Card ID mismatch: {0}")]
+    CardIdMismatch(String),
+}
+
+impl From<QuickReferenceError> for sqlx::Error {
+    fn from(e: QuickReferenceError) -> Self {
+        match e {
+            QuickReferenceError::Database(e) => e,
+            QuickReferenceError::CardIdMismatch(msg) => sqlx::Error::Protocol(msg),
+        }
+    }
+}
+
 /// Extension trait for quick reference database operations
 pub trait QuickReferenceOps {
     // Pinned Cards
@@ -120,9 +143,9 @@ impl QuickReferenceOps for Database {
 
         // Validate that provided IDs exactly match current session cards
         if current_ids != provided_ids {
-            return Err(sqlx::Error::Protocol(
+            return Err(QuickReferenceError::CardIdMismatch(
                 "Provided card IDs do not match session's current pinned cards".to_string()
-            ));
+            ).into());
         }
 
         let mut tx = self.pool().begin().await?;
