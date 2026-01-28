@@ -14,13 +14,13 @@
 //!
 //! All types are re-exported at the module root for backwards compatibility.
 
-pub mod analytics;
-pub mod cards;
-pub mod chat;
-pub mod core;
-pub mod generation;
-pub mod recap;
-pub mod ttrpg;
+mod analytics;
+mod cards;
+mod chat;
+mod core;
+mod generation;
+mod recap;
+mod ttrpg;
 
 #[cfg(test)]
 mod tests;
