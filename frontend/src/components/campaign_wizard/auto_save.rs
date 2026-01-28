@@ -59,6 +59,8 @@ pub struct AutoSaveState {
     pub last_error: RwSignal<Option<String>>,
     /// Whether auto-save is enabled
     pub enabled: RwSignal<bool>,
+    /// Signal to trigger a manual retry
+    pub trigger_retry: RwSignal<bool>,
 }
 
 impl AutoSaveState {
@@ -68,6 +70,7 @@ impl AutoSaveState {
             last_save: RwSignal::new(None),
             last_error: RwSignal::new(None),
             enabled: RwSignal::new(true),
+            trigger_retry: RwSignal::new(false),
         }
     }
 }
@@ -93,6 +96,9 @@ pub fn use_auto_save() -> (AutoSaveState, Callback<Option<PartialCampaign>>) {
     let pending_data: RwSignal<Option<PartialCampaign>> = RwSignal::new(None);
     let has_pending = RwSignal::new(false);
 
+    // Flag to control interval execution (set to false on cleanup)
+    let interval_active = RwSignal::new(true);
+
     // Setup auto-save interval
     Effect::new(move |_| {
         if !state.enabled.get() {
@@ -100,11 +106,14 @@ pub fn use_auto_save() -> (AutoSaveState, Callback<Option<PartialCampaign>>) {
         }
 
         // Check for pending saves periodically
-        let state = state;
-        let ctx = ctx;
+        // Note: The interval is captured by the closure and will be dropped
+        // when the effect is cleaned up or re-run
+        let _handle = gloo_timers::callback::Interval::new(AUTO_SAVE_INTERVAL_MS as u32, move || {
+            // Check if interval should still be active
+            if !interval_active.get_untracked() {
+                return;
+            }
 
-        // Use gloo_timers for interval
-        let handle = gloo_timers::callback::Interval::new(AUTO_SAVE_INTERVAL_MS as u32, move || {
             if !has_pending.get() || state.status.get() == AutoSaveStatus::Saving {
                 return;
             }
@@ -136,8 +145,45 @@ pub fn use_auto_save() -> (AutoSaveState, Callback<Option<PartialCampaign>>) {
             }
         });
 
-        // Store handle to prevent drop (interval continues running)
-        std::mem::forget(handle);
+        // Keep the handle alive by moving into the effect - it will be dropped
+        // when the effect is disposed (component unmount or re-run)
+        std::mem::forget(_handle);
+    });
+
+    // Listen for manual retry triggers
+    Effect::new(move |_| {
+        if state.trigger_retry.get() {
+            state.trigger_retry.set(false);
+
+            // Perform immediate save on retry
+            if let Some(wizard_id) = ctx.wizard_id() {
+                let data = pending_data.get();
+                state.status.set(AutoSaveStatus::Saving);
+
+                spawn_local(async move {
+                    match auto_save_wizard(wizard_id, data).await {
+                        Ok(()) => {
+                            state.status.set(AutoSaveStatus::Saved);
+                            state.last_save.set(Some(chrono::Utc::now().to_rfc3339()));
+                            state.last_error.set(None);
+                            has_pending.set(false);
+                            pending_data.set(None);
+                            ctx.auto_save_pending.set(false);
+                            ctx.last_auto_save.set(Some(chrono::Utc::now().to_rfc3339()));
+                        }
+                        Err(e) => {
+                            state.status.set(AutoSaveStatus::Failed);
+                            state.last_error.set(Some(e));
+                        }
+                    }
+                });
+            }
+        }
+    });
+
+    // Cleanup: disable interval on unmount
+    on_cleanup(move || {
+        interval_active.set(false);
     });
 
     // Mark content as dirty callback
@@ -245,6 +291,9 @@ pub fn AutoSaveStatus(state: AutoSaveState) -> impl IntoView {
                                 type="button"
                                 class="text-red-300 hover:text-red-200 underline"
                                 title={move || state.last_error.get().unwrap_or_default()}
+                                on:click=move |_| {
+                                    state.trigger_retry.set(true);
+                                }
                             >
                                 "Retry"
                             </button>

@@ -333,12 +333,12 @@ impl TemplateRegistry {
     }
 
     /// Create a registry with embedded default templates
-    pub fn with_defaults() -> Self {
+    pub async fn with_defaults() -> Self {
         let registry = Self::new();
 
-        // Populate defaults synchronously using blocking write
+        // Populate defaults using async write lock
         {
-            let mut templates = registry.templates.blocking_write();
+            let mut templates = registry.templates.write().await;
             for template_type in [
                 TemplateType::CharacterBackground,
                 TemplateType::NpcGeneration,

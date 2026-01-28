@@ -350,12 +350,41 @@ impl TrustAssigner {
                 let status = self.determine_claim_status(claim_type, citations);
                 let confidence = self.estimate_claim_confidence(claim_type, &status, citations);
 
+                // Filter citations to those that may support this claim
+                // (contains the field name or claim text in their content/excerpt)
+                let relevant_citations: Vec<_> = citations
+                    .iter()
+                    .filter(|c| {
+                        let excerpt = c.excerpt.as_deref().unwrap_or("");
+                        let source_name = c.source_name.as_str();
+                        excerpt.to_lowercase().contains(&field.to_lowercase())
+                            || excerpt.to_lowercase().contains(&claim_text.to_lowercase())
+                            || source_name.to_lowercase().contains(&field.to_lowercase())
+                    })
+                    .take(2)
+                    .collect();
+
+                // Fall back to first two citations if no relevant ones found,
+                // but mark confidence lower in that case
+                let (citation_ids, adjusted_confidence) = if relevant_citations.is_empty() {
+                    // No directly relevant citations - use first two but note limitation
+                    (
+                        citations.iter().take(2).map(|c| c.id.clone()).collect(),
+                        confidence * 0.8, // Reduce confidence when citation relevance is uncertain
+                    )
+                } else {
+                    (
+                        relevant_citations.iter().map(|c| c.id.clone()).collect(),
+                        confidence,
+                    )
+                };
+
                 claims.push(Claim {
                     text: format!("{}: {}", field, claim_text),
                     claim_type,
                     status,
-                    citation_ids: citations.iter().take(2).map(|c| c.id.clone()).collect(),
-                    confidence,
+                    citation_ids,
+                    confidence: adjusted_confidence,
                 });
             }
         }

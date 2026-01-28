@@ -40,7 +40,7 @@ async fn get_orchestrator(
     let database = state.database.clone();
 
     // Load template registry (use defaults if no custom templates)
-    let registry = TemplateRegistry::with_defaults();
+    let registry = TemplateRegistry::with_defaults().await;
 
     Ok(GenerationOrchestrator::new(
         Arc::new(RwLock::new(llm_router.clone())),

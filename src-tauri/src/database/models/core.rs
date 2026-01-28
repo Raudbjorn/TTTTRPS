@@ -75,7 +75,7 @@ impl SessionRecord {
             started_at: chrono::Utc::now().to_rfc3339(),
             ended_at: None,
             notes: None,
-            order_index: 0,
+            order_index: session_number, // Initialize from session_number for sensible ordering
         }
     }
 }
