@@ -219,11 +219,23 @@ pub async fn get_arc_recap(
 
     match record {
         Some(r) => {
-            let character_arcs: Vec<crate::core::campaign::CharacterArcSummary> = serde_json::from_str(&r.character_arcs)
-                .unwrap_or_default();
-            let key_moments = serde_json::from_str(&r.key_moments).unwrap_or_default();
-            let resolved_plots = serde_json::from_str(&r.resolved_plots).unwrap_or_default();
-            let open_threads = serde_json::from_str(&r.open_threads).unwrap_or_default();
+            let character_arcs: Vec<crate::core::campaign::CharacterArcSummary> =
+                serde_json::from_str(&r.character_arcs).unwrap_or_else(|e| {
+                    log::warn!("Failed to parse character_arcs for arc_recap id={}, arc_id={}: {}", r.id, r.arc_id, e);
+                    Vec::new()
+                });
+            let key_moments = serde_json::from_str(&r.key_moments).unwrap_or_else(|e| {
+                log::warn!("Failed to parse key_moments for arc_recap id={}, arc_id={}: {}", r.id, r.arc_id, e);
+                Vec::new()
+            });
+            let resolved_plots = serde_json::from_str(&r.resolved_plots).unwrap_or_else(|e| {
+                log::warn!("Failed to parse resolved_plots for arc_recap id={}, arc_id={}: {}", r.id, r.arc_id, e);
+                Vec::new()
+            });
+            let open_threads = serde_json::from_str(&r.open_threads).unwrap_or_else(|e| {
+                log::warn!("Failed to parse open_threads for arc_recap id={}, arc_id={}: {}", r.id, r.arc_id, e);
+                Vec::new()
+            });
             let session_ids = r.session_ids_vec();
             let status = r.status_enum().unwrap_or_default();
 

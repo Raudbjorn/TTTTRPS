@@ -38,7 +38,13 @@ pub struct CardTray {
     pub session_id: String,
     pub cards: Vec<PinnedCard>,
     pub max_cards: usize,
-    pub slots_remaining: usize,
+}
+
+impl CardTray {
+    /// Compute remaining slots on demand to avoid stale state
+    pub fn slots_remaining(&self) -> usize {
+        self.max_cards.saturating_sub(self.cards.len())
+    }
 }
 
 impl Default for CardTray {
@@ -47,7 +53,6 @@ impl Default for CardTray {
             session_id: String::new(),
             cards: Vec::new(),
             max_cards: MAX_PINNED_CARDS,
-            slots_remaining: MAX_PINNED_CARDS,
         }
     }
 }

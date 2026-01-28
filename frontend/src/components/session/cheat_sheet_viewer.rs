@@ -206,10 +206,8 @@ fn SectionHeader(
             </div>
 
             <svg
-                class=format!(
-                    "w-4 h-4 text-zinc-400 transition-transform {}",
-                    if is_collapsed.get() { "" } else { "rotate-180" }
-                )
+                class="w-4 h-4 text-zinc-400 transition-transform"
+                class:rotate-180=move || !is_collapsed.get()
                 fill="none" stroke="currentColor" viewBox="0 0 24 24"
             >
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"

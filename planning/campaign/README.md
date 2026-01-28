@@ -55,7 +55,7 @@ This is enforced architecturally: `Generator` traits return `ArtifactBundle` (pr
 
 ### Research Sources
 
-- **MDMAI Codebase** (`/home/svnbjrn/dev/knowledgebase/embeddings/MDMAI`) - Analyzed for campaign data models, session management, NPC generation patterns, and ChromaDB persistence
+- **MDMAI Codebase** - Analyzed for campaign data models, session management, NPC generation patterns, and ChromaDB persistence
 - **Existing TTTRPS Code** - Existing `CampaignManager`, `SessionManager`, arc/phase/milestone types, LLM router
 
 ## Methodology

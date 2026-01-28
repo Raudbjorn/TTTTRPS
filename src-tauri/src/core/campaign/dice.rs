@@ -281,7 +281,10 @@ impl DiceNotation {
     /// Get the average expected result
     pub fn average_result(&self) -> f64 {
         if matches!(self.dice_type, DiceType::D66) {
-            // D66 average is (11+66)/2 = 38.5
+            // D66 yields 36 specific outcomes: 11,12,13,14,15,16, 21,22,...,26, ..., 61,62,63,64,65,66
+            // Many intermediate values (17,18,19,20,27,28,...) are impossible.
+            // Mean = (sum of all 36 outcomes) / 36 = 1386 / 36 = 38.5
+            // Note: min_result()=11 and max_result()=66, but the distribution is not uniform over [11,66].
             38.5 + self.modifier as f64
         } else {
             let die_average = (1.0 + self.dice_type.sides() as f64) / 2.0;
