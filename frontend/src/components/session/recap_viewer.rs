@@ -623,11 +623,10 @@ fn copy_to_clipboard(text: &str) {
         let text = text.to_string();
         spawn_local(async move {
             if let Some(window) = web_sys::window() {
-                if let Ok(clipboard) = window.navigator().clipboard() {
-                    let _ = wasm_bindgen_futures::JsFuture::from(
-                        clipboard.write_text(&text)
-                    ).await;
-                }
+                let clipboard = window.navigator().clipboard();
+                let _ = wasm_bindgen_futures::JsFuture::from(
+                    clipboard.write_text(&text)
+                ).await;
             }
         });
     }
