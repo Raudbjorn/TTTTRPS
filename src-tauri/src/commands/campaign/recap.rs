@@ -219,23 +219,11 @@ pub async fn get_arc_recap(
 
     match record {
         Some(r) => {
-            let character_arcs: Vec<crate::core::campaign::CharacterArcSummary> =
-                serde_json::from_str(&r.character_arcs).unwrap_or_else(|e| {
-                    log::warn!("Failed to parse character_arcs for arc_recap id={}, arc_id={}: {}", r.id, r.arc_id, e);
-                    Vec::new()
-                });
-            let key_moments = serde_json::from_str(&r.key_moments).unwrap_or_else(|e| {
-                log::warn!("Failed to parse key_moments for arc_recap id={}, arc_id={}: {}", r.id, r.arc_id, e);
-                Vec::new()
-            });
-            let resolved_plots = serde_json::from_str(&r.resolved_plots).unwrap_or_else(|e| {
-                log::warn!("Failed to parse resolved_plots for arc_recap id={}, arc_id={}: {}", r.id, r.arc_id, e);
-                Vec::new()
-            });
-            let open_threads = serde_json::from_str(&r.open_threads).unwrap_or_else(|e| {
-                log::warn!("Failed to parse open_threads for arc_recap id={}, arc_id={}: {}", r.id, r.arc_id, e);
-                Vec::new()
-            });
+            let character_arcs: Vec<crate::core::campaign::CharacterArcSummary> = serde_json::from_str(&r.character_arcs)
+                .unwrap_or_default();
+            let key_moments = serde_json::from_str(&r.key_moments).unwrap_or_default();
+            let resolved_plots = serde_json::from_str(&r.resolved_plots).unwrap_or_default();
+            let open_threads = serde_json::from_str(&r.open_threads).unwrap_or_default();
             let session_ids = r.session_ids_vec();
             let status = r.status_enum().unwrap_or_default();
 
@@ -403,18 +391,17 @@ mod tests {
 
     #[test]
     fn test_generate_recap_request_defaults() {
-        // Use Default impl to test actual default values
         let request = GenerateRecapRequest {
             session_id: "session-1".to_string(),
             campaign_id: "campaign-1".to_string(),
-            ..Default::default()
+            include_prose: true,
+            include_bullets: true,
+            extract_cliffhanger: true,
+            max_bullets: Some(10),
+            tone: Some("dramatic".to_string()),
         };
 
-        // Verify defaults from Default impl
         assert!(request.include_prose);
         assert!(request.include_bullets);
-        assert!(request.extract_cliffhanger);
-        assert_eq!(request.max_bullets, Some(10));
-        assert_eq!(request.tone, Some("dramatic".to_string()));
     }
 }

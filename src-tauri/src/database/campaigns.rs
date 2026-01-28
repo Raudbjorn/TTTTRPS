@@ -95,28 +95,19 @@ impl CampaignOps for Database {
     }
 
     async fn delete_campaign(&self, id: &str) -> Result<(), sqlx::Error> {
-        // Use transaction to ensure atomic deletion of campaign and all related data
-        let mut tx = self.pool().begin().await?;
-
-        // Delete related data first (order matters for foreign key constraints)
+        // Delete related data first
         sqlx::query("DELETE FROM sessions WHERE campaign_id = ?")
             .bind(id)
-            .execute(&mut *tx)
+            .execute(self.pool())
             .await?;
         sqlx::query("DELETE FROM campaign_snapshots WHERE campaign_id = ?")
             .bind(id)
-            .execute(&mut *tx)
-            .await?;
-        sqlx::query("DELETE FROM campaign_versions WHERE campaign_id = ?")
-            .bind(id)
-            .execute(&mut *tx)
+            .execute(self.pool())
             .await?;
         sqlx::query("DELETE FROM campaigns WHERE id = ?")
             .bind(id)
-            .execute(&mut *tx)
+            .execute(self.pool())
             .await?;
-
-        tx.commit().await?;
         Ok(())
     }
 

@@ -44,14 +44,6 @@ pub struct LlmProviderStatus {
     pub error: Option<String>,
 }
 
-/// Health status returned from check_llm_health command
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HealthStatus {
-    pub provider: String,
-    pub healthy: bool,
-    pub message: String,
-}
-
 // ============================================================================
 // LLM Availability Hook
 // ============================================================================
@@ -100,24 +92,25 @@ pub fn use_llm_availability() -> (
     )
 }
 
-/// Check if any LLM provider is available using structured health status
+/// Check if any LLM provider is available
 async fn check_llm_availability() -> Result<bool, String> {
+    // Check if we have a configured provider with an API key
     #[derive(Serialize)]
     struct Args {}
 
-    // Use check_llm_health which returns structured HealthStatus
-    let result: Result<HealthStatus, String> = invoke("check_llm_health", &Args {}).await;
+    // Try to get the active model - this will fail if no provider is configured
+    let result: Result<Option<String>, String> = invoke("get_active_model", &Args {}).await;
 
     match result {
-        Ok(status) => {
-            // HealthStatus.healthy directly tells us if the provider is available
-            Ok(status.healthy)
-        }
+        Ok(Some(_)) => Ok(true),
+        Ok(None) => Ok(false),
         Err(e) => {
-            // If the command fails entirely (e.g., no provider configured at all),
-            // treat as unavailable rather than error
-            log::debug!("LLM health check failed: {}", e);
-            Ok(false)
+            // Check if it's a "no API key" error or a real error
+            if e.contains("API key") || e.contains("not configured") {
+                Ok(false)
+            } else {
+                Err(e)
+            }
         }
     }
 }

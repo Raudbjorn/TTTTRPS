@@ -221,10 +221,9 @@ fn parse_citation(json_str: &str) -> Option<Citation> {
 
 /// Parse clarifying questions from the response.
 pub fn parse_clarifying_questions(response: &str) -> Vec<ClarifyingQuestion> {
-    // Try to find JSON arrays in the response using non-greedy matching
-    if let Ok(json_regex) = regex::Regex::new(r"\[[\s\S]*?\]") {
-        // Iterate over all matches and try to parse each one
-        for json_match in json_regex.find_iter(response) {
+    // Try to find a JSON array in the response
+    if let Ok(json_regex) = regex::Regex::new(r"\[[\s\S]*\]") {
+        if let Some(json_match) = json_regex.find(response) {
             if let Ok(questions) =
                 serde_json::from_str::<Vec<ClarifyingQuestion>>(json_match.as_str())
             {
@@ -233,7 +232,7 @@ pub fn parse_clarifying_questions(response: &str) -> Vec<ClarifyingQuestion> {
         }
     }
 
-    // If no match parses successfully, return empty
+    // If parsing fails, return empty
     tracing::warn!("Failed to parse clarifying questions from response");
     Vec::new()
 }

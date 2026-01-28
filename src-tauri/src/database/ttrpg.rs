@@ -118,14 +118,9 @@ impl TtrpgOps for Database {
     }
 
     async fn search_ttrpg_documents_by_name(&self, name_pattern: &str) -> Result<Vec<TTRPGDocumentRecord>, sqlx::Error> {
-        // Escape LIKE wildcards to treat user input literally
-        let escaped = name_pattern
-            .replace('\\', "\\\\")
-            .replace('%', "\\%")
-            .replace('_', "\\_");
-        let pattern = format!("%{}%", escaped);
+        let pattern = format!("%{}%", name_pattern);
         sqlx::query_as::<_, TTRPGDocumentRecord>(
-            "SELECT * FROM ttrpg_documents WHERE name LIKE ? ESCAPE '\\' ORDER BY name LIMIT 100"
+            "SELECT * FROM ttrpg_documents WHERE name LIKE ? ORDER BY name LIMIT 100"
         )
         .bind(&pattern)
         .fetch_all(self.pool())

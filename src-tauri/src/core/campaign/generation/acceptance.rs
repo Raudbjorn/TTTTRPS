@@ -37,9 +37,6 @@ pub enum AcceptanceError {
     #[error("Validation error: {0}")]
     Validation(String),
 
-    #[error("Invalid data: {0}")]
-    InvalidData(String),
-
     #[error("Entity creation failed: {0}")]
     EntityCreation(String),
 
@@ -286,29 +283,9 @@ impl AcceptanceManager {
         }
 
         // Merge modifications into existing data
-        match (draft.data.as_object_mut(), modifications.as_object()) {
-            (Some(base), Some(mods)) => {
-                for (key, value) in mods {
-                    base.insert(key.clone(), value.clone());
-                }
-            }
-            (None, _) => {
-                tracing::warn!(
-                    draft_id,
-                    "Cannot merge modifications: draft.data is not a JSON object"
-                );
-                return Err(AcceptanceError::InvalidData(
-                    "Draft data must be a JSON object for merge".to_string(),
-                ));
-            }
-            (_, None) => {
-                tracing::warn!(
-                    draft_id,
-                    "Cannot merge modifications: modifications is not a JSON object"
-                );
-                return Err(AcceptanceError::InvalidData(
-                    "Modifications must be a JSON object for merge".to_string(),
-                ));
+        if let (Some(base), Some(mods)) = (draft.data.as_object_mut(), modifications.as_object()) {
+            for (key, value) in mods {
+                base.insert(key.clone(), value.clone());
             }
         }
 

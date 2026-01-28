@@ -1768,8 +1768,7 @@ pub struct PlotHook {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PlotHookType {
-    #[serde(rename = "Unfinished Business")]
-    UnfinishedBusiness,
+    Unfinished Business,
     Secret,
     Goal,
     Fear,

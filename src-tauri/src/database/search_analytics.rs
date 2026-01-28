@@ -185,7 +185,7 @@ impl SearchAnalyticsOps for Database {
         // Get top queries
         let top_queries: Vec<(String, u32)> = sqlx::query(
             r#"
-            SELECT LOWER(TRIM(query)) as query, COUNT(*) as count
+            SELECT query, COUNT(*) as count
             FROM search_analytics
             WHERE created_at > ?
             GROUP BY LOWER(TRIM(query))
@@ -273,7 +273,7 @@ impl SearchAnalyticsOps for Database {
         sqlx::query_as::<_, PopularQueryRecord>(
             r#"
             SELECT
-                LOWER(TRIM(query)) as query,
+                query,
                 COUNT(*) as count,
                 COALESCE(SUM(CASE WHEN selected_result_index IS NOT NULL THEN 1 ELSE 0 END), 0) as clicks,
                 COALESCE(AVG(results_count), 0) as avg_result_count,
@@ -314,10 +314,10 @@ impl SearchAnalyticsOps for Database {
         // Get top cached queries
         let top_cached: Vec<(String, u32)> = sqlx::query(
             r#"
-            SELECT LOWER(TRIM(query)) as query_norm, COUNT(*) as count
+            SELECT query, COUNT(*) as count
             FROM search_analytics
             WHERE cache_hit = 1
-            GROUP BY query_norm
+            GROUP BY LOWER(TRIM(query))
             ORDER BY count DESC
             LIMIT 10
             "#
@@ -325,7 +325,7 @@ impl SearchAnalyticsOps for Database {
         .fetch_all(self.pool())
         .await?
         .into_iter()
-        .map(|r| (r.get::<String, _>("query_norm"), r.get::<i64, _>("count") as u32))
+        .map(|r| (r.get::<String, _>("query"), r.get::<i64, _>("count") as u32))
         .collect();
 
         Ok(SearchCacheStats {
@@ -426,16 +426,16 @@ impl SearchAnalyticsOps for Database {
     async fn cleanup_search_analytics(&self, days: i64) -> Result<u64, sqlx::Error> {
         let cutoff = (chrono::Utc::now() - chrono::Duration::days(days)).to_rfc3339();
 
-        let analytics_result = sqlx::query("DELETE FROM search_analytics WHERE created_at < ?")
+        let result = sqlx::query("DELETE FROM search_analytics WHERE created_at < ?")
             .bind(&cutoff)
             .execute(self.pool())
             .await?;
 
-        let selections_result = sqlx::query("DELETE FROM search_selections WHERE created_at < ?")
+        sqlx::query("DELETE FROM search_selections WHERE created_at < ?")
             .bind(&cutoff)
             .execute(self.pool())
             .await?;
 
-        Ok(analytics_result.rows_affected() + selections_result.rows_affected())
+        Ok(result.rows_affected())
     }
 }

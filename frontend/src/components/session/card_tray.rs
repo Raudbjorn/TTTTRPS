@@ -38,13 +38,7 @@ pub struct CardTray {
     pub session_id: String,
     pub cards: Vec<PinnedCard>,
     pub max_cards: usize,
-}
-
-impl CardTray {
-    /// Compute remaining slots on demand to avoid stale state
-    pub fn slots_remaining(&self) -> usize {
-        self.max_cards.saturating_sub(self.cards.len())
-    }
+    pub slots_remaining: usize,
 }
 
 impl Default for CardTray {
@@ -53,6 +47,7 @@ impl Default for CardTray {
             session_id: String::new(),
             cards: Vec::new(),
             max_cards: MAX_PINNED_CARDS,
+            slots_remaining: MAX_PINNED_CARDS,
         }
     }
 }
@@ -142,7 +137,7 @@ pub fn CardTrayPanel(
                 <div class="flex items-center gap-3">
                     // Expand/collapse icon
                     <svg
-                        class=move || format!(
+                        class=format!(
                             "w-4 h-4 text-zinc-400 transition-transform {}",
                             if is_collapsed.get() { "" } else { "rotate-180" }
                         )

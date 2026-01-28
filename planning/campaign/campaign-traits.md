@@ -187,14 +187,13 @@ RulebookLinker/FlavourSearcher implement `Grounder` (or compose into it). Recurs
 ### LlmClient: the *dumb* streaming adapter
 
 ```rust
-use std::pin::Pin;
 use futures_core::Stream;
 
-pub type TokenStream = Pin<Box<dyn Stream<Item = anyhow::Result<String>> + Send>>;
+pub type TokenStream = dyn Stream<Item = anyhow::Result<String>> + Send + Unpin;
 
 #[async_trait]
 pub trait LlmClient: Send + Sync {
-    async fn stream_completion(&self, prompt: String) -> anyhow::Result<TokenStream>;
+    async fn stream_completion(&self, prompt: String) -> anyhow::Result<Box<TokenStream>>;
 }
 ```
 

@@ -16,7 +16,7 @@ async fn test_full_ingest() {
     println!("=== Full Ingestion Test (Two-Phase Pipeline) ===\n");
 
     // 1. Connect to Meilisearch
-    println!("[1/3] Connecting to Meilisearch...");
+    println!("[1/2] Connecting to Meilisearch...");
     use ttrpg_assistant::core::search::SearchClient;
 
     let meili_key = std::fs::read_to_string("/etc/meilisearch.conf")
@@ -31,7 +31,7 @@ async fn test_full_ingest() {
     let search_client = SearchClient::new("http://127.0.0.1:7700", Some(&meili_key));
 
     // 2. Ingest using two-phase pipeline (extract → raw index → chunk index)
-    println!("\n[2/3] Ingesting with two-phase pipeline...");
+    println!("\n[2/2] Ingesting with two-phase pipeline...");
     use ttrpg_assistant::core::meilisearch_pipeline::MeilisearchPipeline;
 
     let pipeline = MeilisearchPipeline::with_defaults();

@@ -356,17 +356,16 @@ pub fn get_inspiration(question_id: &str) -> InspirationPrompt {
 fn SuggestionChipButton(
     chip: SuggestionChip,
     on_select: Callback<String>,
-    /// Selection state as a signal for reactive updates
-    is_selected: Signal<bool>,
+    is_selected: bool,
 ) -> impl IntoView {
     let value = chip.value.clone();
 
     view! {
         <button
             type="button"
-            class=move || format!(
+            class=format!(
                 "px-4 py-2 rounded-full text-sm transition-all {}",
-                if is_selected.get() {
+                if is_selected {
                     "bg-purple-600 text-white ring-2 ring-purple-400"
                 } else {
                     "bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white"
@@ -480,39 +479,12 @@ fn InterviewQuestionDisplay(
 ) -> impl IntoView {
     let show_stuck_helper = RwSignal::new(false);
     let selected_suggestion = RwSignal::new(Option::<String>::None);
-    // For MultiSelect: track selected values as a Set
-    let multi_selected = RwSignal::new(std::collections::HashSet::<String>::new());
     let question_id = question.id.clone();
-    let is_multi_select = question.field_type == FieldType::MultiSelect;
 
-    // Initialize multi_selected from current_answer if it contains comma-separated values
-    if is_multi_select && !current_answer.get_untracked().is_empty() {
-        let initial: std::collections::HashSet<String> = current_answer.get_untracked()
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect();
-        multi_selected.set(initial);
-    }
-
-    // Handle suggestion selection (single select)
+    // Handle suggestion selection
     let handle_suggestion = Callback::new(move |value: String| {
         current_answer.set(value.clone());
         selected_suggestion.set(Some(value));
-    });
-
-    // Handle multi-select suggestion toggle
-    let handle_multi_suggestion = Callback::new(move |value: String| {
-        multi_selected.update(|set| {
-            if set.contains(&value) {
-                set.remove(&value);
-            } else {
-                set.insert(value);
-            }
-        });
-        // Update current_answer with comma-separated values
-        let values: Vec<String> = multi_selected.get().into_iter().collect();
-        current_answer.set(values.join(", "));
     });
 
     // Handle inspiration example use
@@ -542,26 +514,14 @@ fn InterviewQuestionDisplay(
                         <div class="flex flex-wrap gap-2">
                             {suggestions.iter().map(|chip| {
                                 let chip_value = chip.value.clone();
-                                let chip_value_for_check = chip_value.clone();
-                                // For multi-select, check if value is in the set; otherwise check selected_suggestion
                                 let is_selected = Signal::derive(move || {
-                                    if is_multi_select {
-                                        multi_selected.get().contains(&chip_value_for_check)
-                                    } else {
-                                        selected_suggestion.get().as_ref() == Some(&chip_value_for_check)
-                                    }
+                                    selected_suggestion.get().as_ref() == Some(&chip_value)
                                 });
-                                // Use appropriate handler based on field type
-                                let on_select = if is_multi_select {
-                                    handle_multi_suggestion
-                                } else {
-                                    handle_suggestion
-                                };
                                 view! {
                                     <SuggestionChipButton
                                         chip=chip.clone()
-                                        on_select=on_select
-                                        is_selected=is_selected
+                                        on_select=handle_suggestion
+                                        is_selected=is_selected.get()
                                     />
                                 }
                             }).collect_view()}
@@ -660,7 +620,7 @@ fn InterviewQuestionDisplay(
                 },
                 FieldType::MultiSelect => {
                     // For MultiSelect, suggestion chips handle selection
-                    // Text input for comma-separated values, synced with multi_selected
+                    // Text input for comma-separated values
                     view! {
                         <input
                             type="text"
@@ -669,17 +629,7 @@ fn InterviewQuestionDisplay(
                                    focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
                             placeholder="Select multiple options above or type comma-separated values..."
                             prop:value=move || current_answer.get()
-                            on:input=move |ev| {
-                                let value = event_target_value(&ev);
-                                current_answer.set(value.clone());
-                                // Sync multi_selected set with typed input
-                                let parsed: std::collections::HashSet<String> = value
-                                    .split(',')
-                                    .map(|s| s.trim().to_string())
-                                    .filter(|s| !s.is_empty())
-                                    .collect();
-                                multi_selected.set(parsed);
-                            }
+                            on:input=move |ev| current_answer.set(event_target_value(&ev))
                         />
                     }.into_any()
                 },

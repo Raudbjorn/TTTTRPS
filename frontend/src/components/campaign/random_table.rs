@@ -84,19 +84,15 @@ pub fn RandomTableDisplay(
     let roll_animation = RwSignal::new(false);
 
     // Calculate probability for each entry
-    // For compound dice (e.g., 2d6), probabilities are approximate since the distribution is not uniform
     let entries_with_probability = {
         let table = table.clone();
         let dice_notation = table.dice_notation.clone();
         let max_roll = parse_max_roll(&dice_notation);
-        let min_roll = parse_min_roll(&dice_notation);
-        let is_compound = is_compound_dice(&dice_notation);
-        let range_total = (max_roll - min_roll + 1) as f64;
 
         table.entries.iter().map(|entry| {
             let range_size = (entry.range_end - entry.range_start + 1) as f64;
-            let probability = range_size / range_total * 100.0;
-            (entry.clone(), probability, is_compound)
+            let probability = range_size / max_roll as f64 * 100.0;
+            (entry.clone(), probability)
         }).collect::<Vec<_>>()
     };
 
@@ -180,7 +176,7 @@ pub fn RandomTableDisplay(
 
             // Table entries with probability bars
             <div class="divide-y divide-zinc-800">
-                {entries_with_probability.into_iter().map(|(entry, probability, is_compound)| {
+                {entries_with_probability.into_iter().map(|(entry, probability)| {
                     let is_rolled = Signal::derive({
                         let entry_id = entry.id.clone();
                         move || roll_result.get().map(|r| r.entry.id == entry_id).unwrap_or(false)
@@ -217,15 +213,9 @@ pub fn RandomTableDisplay(
                                     {entry.result_text.clone()}
                                 </p>
 
-                                // Probability percentage (show ~ for compound dice as distribution is not uniform)
-                                <span class="shrink-0 text-xs text-zinc-500 tabular-nums" title={
-                                    if is_compound { "Approximate (compound dice have non-uniform distribution)" } else { "" }
-                                }>
-                                    {if is_compound {
-                                        format!("~{:.0}%", probability)
-                                    } else {
-                                        format!("{:.1}%", probability)
-                                    }}
+                                // Probability percentage
+                                <span class="shrink-0 text-xs text-zinc-500 tabular-nums">
+                                    {format!("{:.1}%", probability)}
                                 </span>
 
                                 // Nested indicator
@@ -262,6 +252,15 @@ pub fn RollHistorySidebar(
     /// Whether the sidebar is visible
     visible: RwSignal<bool>,
 ) -> impl IntoView {
+    // If not visible, short-circuit rendering
+    if !visible.get_untracked() {
+        return view! {
+            <Show when=move || visible.get()>
+                <div></div>
+            </Show>
+        }.into_any();
+    }
+
     let has_history = !history.is_empty();
 
     view! {
@@ -317,7 +316,7 @@ pub fn RollHistorySidebar(
                 </div>
             </div>
         </Show>
-    }
+    }.into_any()
 }
 
 // ============================================================================
@@ -432,27 +431,6 @@ pub fn DiceRollerWidget(
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-/// Check if dice notation represents compound (multiple) dice
-/// Returns true for notations like "2d6", "3d8+2", etc.
-/// Returns false for single die like "d20", "1d100", "d6"
-fn is_compound_dice(notation: &str) -> bool {
-    let notation = notation.to_lowercase();
-
-    // Special cases that are single-roll despite appearance
-    if notation.contains("d100") || notation.contains("d%") || notation.contains("d66") {
-        return false;
-    }
-
-    // Parse dice count
-    if let Some(pos) = notation.find('d') {
-        let count_str: String = notation[..pos].chars().filter(|c| c.is_ascii_digit()).collect();
-        let count: i32 = count_str.parse().unwrap_or(1);
-        count > 1
-    } else {
-        false
-    }
-}
 
 /// Parse max roll from dice notation (handles compound dice like "2d6+3")
 fn parse_max_roll(notation: &str) -> i32 {

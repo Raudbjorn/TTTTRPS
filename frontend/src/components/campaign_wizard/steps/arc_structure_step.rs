@@ -94,13 +94,12 @@ fn PhaseEditor(
         <div class="space-y-3">
             {move || {
                 phases.get().iter().enumerate().map(|(i, phase)| {
-                    // Capture only the ID for stable updates and removal
+                    // Capture the ID for stable updates and removal
                     let phase_id = phase.id.clone();
                     let phase_id_for_name = phase_id.clone();
                     let phase_id_for_desc = phase_id.clone();
                     let phase_id_for_sessions = phase_id.clone();
                     let phase_id_for_remove = phase_id.clone();
-                    // Initial values for prop:value (display only)
                     let phase_name = phase.name.clone();
                     let phase_desc = phase.description.clone().unwrap_or_default();
                     let phase_sessions = phase.estimated_sessions.map(|s| s.to_string()).unwrap_or_default();
@@ -120,15 +119,9 @@ fn PhaseEditor(
                                     prop:value=phase_name.clone()
                                     on:input={
                                         let id = phase_id_for_name.clone();
-                                        move |ev| {
-                                            // Read current values from signal to avoid stale captures
-                                            let current_phases = phases.get();
-                                            if let Some(current) = current_phases.iter().find(|p| p.id == id) {
-                                                let desc = current.description.clone().unwrap_or_default();
-                                                let sessions = current.estimated_sessions.map(|s| s.to_string()).unwrap_or_default();
-                                                update_phase(id.clone(), event_target_value(&ev), desc, sessions);
-                                            }
-                                        }
+                                        let pd = phase_desc.clone();
+                                        let ps = phase_sessions.clone();
+                                        move |ev| update_phase(id.clone(), event_target_value(&ev), pd.clone(), ps.clone())
                                     }
                                 />
                                 <input
@@ -139,15 +132,9 @@ fn PhaseEditor(
                                     prop:value=phase_desc.clone()
                                     on:input={
                                         let id = phase_id_for_desc.clone();
-                                        move |ev| {
-                                            // Read current values from signal to avoid stale captures
-                                            let current_phases = phases.get();
-                                            if let Some(current) = current_phases.iter().find(|p| p.id == id) {
-                                                let name = current.name.clone();
-                                                let sessions = current.estimated_sessions.map(|s| s.to_string()).unwrap_or_default();
-                                                update_phase(id.clone(), name, event_target_value(&ev), sessions);
-                                            }
-                                        }
+                                        let pn = phase_name.clone();
+                                        let ps = phase_sessions.clone();
+                                        move |ev| update_phase(id.clone(), pn.clone(), event_target_value(&ev), ps.clone())
                                     }
                                 />
                             </div>
@@ -163,15 +150,9 @@ fn PhaseEditor(
                                     prop:value=phase_sessions.clone()
                                     on:input={
                                         let id = phase_id_for_sessions.clone();
-                                        move |ev| {
-                                            // Read current values from signal to avoid stale captures
-                                            let current_phases = phases.get();
-                                            if let Some(current) = current_phases.iter().find(|p| p.id == id) {
-                                                let name = current.name.clone();
-                                                let desc = current.description.clone().unwrap_or_default();
-                                                update_phase(id.clone(), name, desc, event_target_value(&ev));
-                                            }
-                                        }
+                                        let pn = phase_name.clone();
+                                        let pd = phase_desc.clone();
+                                        move |ev| update_phase(id.clone(), pn.clone(), pd.clone(), event_target_value(&ev))
                                     }
                                 />
                                 <div class="text-[10px] text-zinc-500 text-center mt-1">"Sessions"</div>

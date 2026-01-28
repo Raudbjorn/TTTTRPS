@@ -560,40 +560,20 @@ impl GenerationOrchestrator {
         content: &str,
         gen_type: &GenerationType,
     ) -> Option<serde_json::Value> {
-        // First priority: Try to extract from markdown code blocks
-        if let Some(start) = content.find("```json") {
-            if let Some(end) = content[start + 7..].find("```") {
-                let json_str = content[start + 7..start + 7 + end].trim();
+        // Try to extract JSON from the response
+        if let Some(json_start) = content.find('{') {
+            if let Some(json_end) = content.rfind('}') {
+                let json_str = &content[json_start..=json_end];
                 if let Ok(value) = serde_json::from_str::<serde_json::Value>(json_str) {
                     return Some(value);
                 }
             }
         }
 
-        // Second priority: Try each '{' occurrence to find valid JSON
-        // This handles cases with multiple objects or prose before JSON
-        for (idx, _) in content.match_indices('{') {
-            // Find matching closing brace by counting brace depth
-            let substring = &content[idx..];
-            let mut depth = 0;
-            let mut end_idx = None;
-
-            for (i, ch) in substring.char_indices() {
-                match ch {
-                    '{' => depth += 1,
-                    '}' => {
-                        depth -= 1;
-                        if depth == 0 {
-                            end_idx = Some(i);
-                            break;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
-            if let Some(end) = end_idx {
-                let json_str = &substring[..=end];
+        // Try to extract from markdown code blocks
+        if let Some(start) = content.find("```json") {
+            if let Some(end) = content[start + 7..].find("```") {
+                let json_str = &content[start + 7..start + 7 + end].trim();
                 if let Ok(value) = serde_json::from_str::<serde_json::Value>(json_str) {
                     return Some(value);
                 }

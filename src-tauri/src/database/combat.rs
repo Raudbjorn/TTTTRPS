@@ -2,7 +2,6 @@
 //!
 //! This module provides CRUD operations for combat encounters and state tracking.
 
-use chrono::Utc;
 use super::models::CombatStateRecord;
 use super::Database;
 
@@ -72,7 +71,7 @@ impl CombatOps for Database {
     }
 
     async fn end_combat(&self, id: &str) -> Result<(), sqlx::Error> {
-        let now = Utc::now().to_rfc3339();
+        let now = chrono::Utc::now().to_rfc3339();
         sqlx::query(
             "UPDATE combat_states SET is_active = 0, ended_at = ?, updated_at = ? WHERE id = ?"
         )

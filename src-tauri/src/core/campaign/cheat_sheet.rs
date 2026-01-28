@@ -786,13 +786,11 @@ impl<'a> CheatSheetBuilder<'a> {
                 .sum();
 
             if section_chars > options.max_section_chars {
-                let (truncated_items, mut section_warning) =
+                let (truncated_items, section_warning) =
                     self.truncate_section_items(&mut section.items, options.max_section_chars);
                 section.items = truncated_items;
                 section.was_truncated = true;
                 section.hidden_items = section_warning.items_hidden;
-                // Update warning with the correct section type
-                section_warning.section = section.section_type;
                 warnings.push(section_warning);
             }
 

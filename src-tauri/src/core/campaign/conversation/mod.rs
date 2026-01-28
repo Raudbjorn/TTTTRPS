@@ -31,8 +31,8 @@
 //!
 //! ```rust,ignore
 //! use crate::core::campaign::conversation::{
-//!     ConversationManager, ConversationThread, ConversationMessage,
-//!     ConversationPurpose, ConversationRole, MessagePagination, ThreadListOptions,
+//!     ConversationManager, ConversationAI, ConversationThread, ConversationMessage,
+//!     ConversationPurpose, MessagePagination, ThreadListOptions,
 //! };
 //!
 //! // Create a manager
@@ -48,8 +48,9 @@
 //!     .add_message(&thread.id, ConversationRole::User, "I want a dark fantasy campaign".to_string())
 //!     .await?;
 //!
-//! // Generate an AI response (via LLM router in Tauri commands)
-//! // The response contains content, suggestions, and citations
+//! // Generate an AI response
+//! let ai = ConversationAI::new(router);
+//! let response = ai.generate_response_for_thread(&manager, &thread.id, &user_msg.content).await?;
 //!
 //! // Save the AI response with suggestions
 //! let ai_msg = manager

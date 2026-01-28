@@ -59,8 +59,6 @@ pub struct AutoSaveState {
     pub last_error: RwSignal<Option<String>>,
     /// Whether auto-save is enabled
     pub enabled: RwSignal<bool>,
-    /// Signal to trigger a manual retry
-    pub trigger_retry: RwSignal<bool>,
 }
 
 impl AutoSaveState {
@@ -70,7 +68,6 @@ impl AutoSaveState {
             last_save: RwSignal::new(None),
             last_error: RwSignal::new(None),
             enabled: RwSignal::new(true),
-            trigger_retry: RwSignal::new(false),
         }
     }
 }
@@ -96,34 +93,18 @@ pub fn use_auto_save() -> (AutoSaveState, Callback<Option<PartialCampaign>>) {
     let pending_data: RwSignal<Option<PartialCampaign>> = RwSignal::new(None);
     let has_pending = RwSignal::new(false);
 
-    // Flag to control interval execution (set to false on cleanup)
-    // Note: gloo_timers::Interval is not Send+Sync in WASM, so we use .forget() to
-    // keep the interval alive and control execution via this flag. The interval
-    // callback early-returns when the flag is false.
-    let interval_active = RwSignal::new(false);
-
     // Setup auto-save interval
     Effect::new(move |_| {
         if !state.enabled.get() {
-            interval_active.set(false);
             return;
         }
-
-        // Only create interval once (check prevents multiple intervals on re-runs)
-        if interval_active.get_untracked() {
-            return;
-        }
-
-        // Mark interval as active before creating
-        interval_active.set(true);
 
         // Check for pending saves periodically
-        gloo_timers::callback::Interval::new(AUTO_SAVE_INTERVAL_MS as u32, move || {
-            // Check if interval should still be active
-            if !interval_active.get_untracked() {
-                return;
-            }
+        let state = state;
+        let ctx = ctx;
 
+        // Use gloo_timers for interval
+        let handle = gloo_timers::callback::Interval::new(AUTO_SAVE_INTERVAL_MS as u32, move || {
             if !has_pending.get() || state.status.get() == AutoSaveStatus::Saving {
                 return;
             }
@@ -153,49 +134,10 @@ pub fn use_auto_save() -> (AutoSaveState, Callback<Option<PartialCampaign>>) {
                     }
                 });
             }
-        })
-        .forget(); // Keep interval alive; execution controlled by interval_active flag
-
-        // Effect-level cleanup when effect re-runs
-        on_cleanup(move || {
-            interval_active.set(false);
         });
-    });
 
-    // Listen for manual retry triggers
-    Effect::new(move |_| {
-        if state.trigger_retry.get() {
-            state.trigger_retry.set(false);
-
-            // Perform immediate save on retry
-            if let Some(wizard_id) = ctx.wizard_id() {
-                let data = pending_data.get();
-                state.status.set(AutoSaveStatus::Saving);
-
-                spawn_local(async move {
-                    match auto_save_wizard(wizard_id, data).await {
-                        Ok(()) => {
-                            state.status.set(AutoSaveStatus::Saved);
-                            state.last_save.set(Some(chrono::Utc::now().to_rfc3339()));
-                            state.last_error.set(None);
-                            has_pending.set(false);
-                            pending_data.set(None);
-                            ctx.auto_save_pending.set(false);
-                            ctx.last_auto_save.set(Some(chrono::Utc::now().to_rfc3339()));
-                        }
-                        Err(e) => {
-                            state.status.set(AutoSaveStatus::Failed);
-                            state.last_error.set(Some(e));
-                        }
-                    }
-                });
-            }
-        }
-    });
-
-    // Cleanup: disable interval execution on component unmount
-    on_cleanup(move || {
-        interval_active.set(false);
+        // Store handle to prevent drop (interval continues running)
+        std::mem::forget(handle);
     });
 
     // Mark content as dirty callback
@@ -303,9 +245,6 @@ pub fn AutoSaveStatus(state: AutoSaveState) -> impl IntoView {
                                 type="button"
                                 class="text-red-300 hover:text-red-200 underline"
                                 title={move || state.last_error.get().unwrap_or_default()}
-                                on:click=move |_| {
-                                    state.trigger_retry.set(true);
-                                }
                             >
                                 "Retry"
                             </button>

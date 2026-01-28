@@ -156,75 +156,54 @@ impl ConversationManager {
         &self,
         options: ThreadListOptions,
     ) -> Result<Vec<ConversationThread>, ConversationError> {
-        // Use deterministic query paths to avoid fragile dynamic binding
-        let records = match (&options.campaign_id, &options.purpose, options.include_archived) {
-            (Some(campaign_id), Some(purpose), true) => {
-                sqlx::query_as::<_, ConversationThreadRecord>(
-                    "SELECT * FROM conversation_threads WHERE campaign_id = ? AND purpose = ? ORDER BY updated_at DESC LIMIT ?"
-                )
-                .bind(campaign_id)
-                .bind(purpose.to_string())
-                .bind(options.limit)
-                .fetch_all(self.pool.as_ref())
-                .await?
+        let mut query = String::from("SELECT * FROM conversation_threads WHERE 1=1");
+        let mut params: Vec<String> = Vec::new();
+
+        // Build dynamic query based on options
+        if let Some(campaign_id) = &options.campaign_id {
+            query.push_str(" AND campaign_id = ?");
+            params.push(campaign_id.clone());
+        }
+
+        if let Some(purpose) = &options.purpose {
+            query.push_str(" AND purpose = ?");
+            params.push(purpose.to_string());
+        }
+
+        if !options.include_archived {
+            query.push_str(" AND archived_at IS NULL");
+        }
+
+        query.push_str(" ORDER BY updated_at DESC LIMIT ?");
+        params.push(options.limit.to_string());
+
+        // Execute with dynamic binding
+        let records = match params.len() {
+            1 => {
+                sqlx::query_as::<_, ConversationThreadRecord>(&query)
+                    .bind(&params[0])
+                    .fetch_all(self.pool.as_ref())
+                    .await?
             }
-            (Some(campaign_id), Some(purpose), false) => {
-                sqlx::query_as::<_, ConversationThreadRecord>(
-                    "SELECT * FROM conversation_threads WHERE campaign_id = ? AND purpose = ? AND archived_at IS NULL ORDER BY updated_at DESC LIMIT ?"
-                )
-                .bind(campaign_id)
-                .bind(purpose.to_string())
-                .bind(options.limit)
-                .fetch_all(self.pool.as_ref())
-                .await?
+            2 => {
+                sqlx::query_as::<_, ConversationThreadRecord>(&query)
+                    .bind(&params[0])
+                    .bind(&params[1])
+                    .fetch_all(self.pool.as_ref())
+                    .await?
             }
-            (Some(campaign_id), None, true) => {
-                sqlx::query_as::<_, ConversationThreadRecord>(
-                    "SELECT * FROM conversation_threads WHERE campaign_id = ? ORDER BY updated_at DESC LIMIT ?"
-                )
-                .bind(campaign_id)
-                .bind(options.limit)
-                .fetch_all(self.pool.as_ref())
-                .await?
+            3 => {
+                sqlx::query_as::<_, ConversationThreadRecord>(&query)
+                    .bind(&params[0])
+                    .bind(&params[1])
+                    .bind(&params[2])
+                    .fetch_all(self.pool.as_ref())
+                    .await?
             }
-            (Some(campaign_id), None, false) => {
+            _ => {
+                // Just limit param
                 sqlx::query_as::<_, ConversationThreadRecord>(
-                    "SELECT * FROM conversation_threads WHERE campaign_id = ? AND archived_at IS NULL ORDER BY updated_at DESC LIMIT ?"
-                )
-                .bind(campaign_id)
-                .bind(options.limit)
-                .fetch_all(self.pool.as_ref())
-                .await?
-            }
-            (None, Some(purpose), true) => {
-                sqlx::query_as::<_, ConversationThreadRecord>(
-                    "SELECT * FROM conversation_threads WHERE purpose = ? ORDER BY updated_at DESC LIMIT ?"
-                )
-                .bind(purpose.to_string())
-                .bind(options.limit)
-                .fetch_all(self.pool.as_ref())
-                .await?
-            }
-            (None, Some(purpose), false) => {
-                sqlx::query_as::<_, ConversationThreadRecord>(
-                    "SELECT * FROM conversation_threads WHERE purpose = ? AND archived_at IS NULL ORDER BY updated_at DESC LIMIT ?"
-                )
-                .bind(purpose.to_string())
-                .bind(options.limit)
-                .fetch_all(self.pool.as_ref())
-                .await?
-            }
-            (None, None, true) => {
-                sqlx::query_as::<_, ConversationThreadRecord>(
-                    "SELECT * FROM conversation_threads ORDER BY updated_at DESC LIMIT ?"
-                )
-                .bind(options.limit)
-                .fetch_all(self.pool.as_ref())
-                .await?
-            }
-            (None, None, false) => {
-                sqlx::query_as::<_, ConversationThreadRecord>(
-                    "SELECT * FROM conversation_threads WHERE archived_at IS NULL ORDER BY updated_at DESC LIMIT ?"
+                    "SELECT * FROM conversation_threads WHERE archived_at IS NULL ORDER BY updated_at DESC LIMIT ?",
                 )
                 .bind(options.limit)
                 .fetch_all(self.pool.as_ref())
@@ -625,7 +604,6 @@ impl ConversationManager {
     /// Create a new thread branched from a specific message.
     ///
     /// Copies all messages up to and including the branch point message.
-    /// The entire operation is atomic via a database transaction.
     ///
     /// # Arguments
     /// * `source_thread_id` - The thread to branch from
@@ -678,50 +656,21 @@ impl ConversationManager {
             "Creating branched conversation"
         );
 
-        // Begin transaction for atomic branch operation
-        let mut tx = self.pool.begin().await?;
+        self.save_thread(&new_thread).await?;
 
-        // Save the new thread within the transaction
-        let thread_record = new_thread.to_record();
-        sqlx::query(
-            r#"
-            INSERT INTO conversation_threads
-            (id, campaign_id, wizard_id, purpose, title, active_personality,
-             message_count, branched_from, created_at, updated_at, archived_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            "#,
-        )
-        .bind(&thread_record.id)
-        .bind(&thread_record.campaign_id)
-        .bind(&thread_record.wizard_id)
-        .bind(&thread_record.purpose)
-        .bind(&thread_record.title)
-        .bind(&thread_record.active_personality)
-        .bind(thread_record.message_count)
-        .bind(&thread_record.branched_from)
-        .bind(&thread_record.created_at)
-        .bind(&thread_record.updated_at)
-        .bind(&thread_record.archived_at)
-        .execute(&mut *tx)
-        .await?;
-
-        // Copy messages up to and including the branch point
-        // Use composite comparison (created_at, id) to avoid including extra messages
-        // that happen to have the same timestamp as the branch point
+        // Copy messages up to the branch point
         let messages_to_copy = sqlx::query_as::<_, ConversationMessageRecord>(
             r#"
             SELECT * FROM conversation_messages
-            WHERE thread_id = ? AND (
-                created_at < (SELECT created_at FROM conversation_messages WHERE id = ?)
-                OR id = ?
+            WHERE thread_id = ? AND created_at <= (
+                SELECT created_at FROM conversation_messages WHERE id = ?
             )
-            ORDER BY created_at ASC, id ASC
+            ORDER BY created_at ASC
             "#,
         )
         .bind(source_thread_id)
         .bind(branch_message_id)
-        .bind(branch_message_id)
-        .fetch_all(&mut *tx)
+        .fetch_all(self.pool.as_ref())
         .await?;
 
         let copied_count = messages_to_copy.len() as i32;
@@ -735,44 +684,13 @@ impl ConversationManager {
                     thread_id: new_thread_id.clone(),
                     ..msg
                 };
-                let msg_record = new_msg.to_record();
-
-                sqlx::query(
-                    r#"
-                    INSERT INTO conversation_messages
-                    (id, thread_id, role, content, suggestions, citations, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    "#,
-                )
-                .bind(&msg_record.id)
-                .bind(&msg_record.thread_id)
-                .bind(&msg_record.role)
-                .bind(&msg_record.content)
-                .bind(&msg_record.suggestions)
-                .bind(&msg_record.citations)
-                .bind(&msg_record.created_at)
-                .execute(&mut *tx)
-                .await?;
+                self.save_message(&new_msg).await?;
             }
         }
 
-        // Update message count on the thread
+        // Update message count
         new_thread.message_count = copied_count;
-        sqlx::query(
-            r#"
-            UPDATE conversation_threads
-            SET message_count = ?, updated_at = ?
-            WHERE id = ?
-            "#,
-        )
-        .bind(copied_count)
-        .bind(chrono::Utc::now().to_rfc3339())
-        .bind(&new_thread_id)
-        .execute(&mut *tx)
-        .await?;
-
-        // Commit the transaction
-        tx.commit().await?;
+        self.save_thread(&new_thread).await?;
 
         Ok(new_thread)
     }

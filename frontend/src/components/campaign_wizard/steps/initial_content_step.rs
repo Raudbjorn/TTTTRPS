@@ -173,7 +173,6 @@ fn NpcEntry(
                 <select
                     class="w-32 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm
                            focus:border-purple-500 focus:outline-none"
-                    prop:value=move || role.get()
                     on:change=move |ev| role.set(event_target_value(&ev))
                 >
                     <option value="">"Role..."</option>
@@ -242,16 +241,6 @@ fn PlotHookEntry(
                 <select
                     class="w-40 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm
                            focus:border-purple-500 focus:outline-none"
-                    prop:value=move || {
-                        match hook_type.get() {
-                            Some(PlotHookType::MainQuest) => "main",
-                            Some(PlotHookType::SideQuest) => "side",
-                            Some(PlotHookType::CharacterTie) => "character",
-                            Some(PlotHookType::WorldEvent) => "world",
-                            Some(PlotHookType::Mystery) => "mystery",
-                            None => "",
-                        }
-                    }
                     on:change=move |ev| {
                         let value = event_target_value(&ev);
                         hook_type.set(match value.as_str() {

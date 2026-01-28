@@ -170,7 +170,7 @@ pub fn StepProgress(
                             .unwrap_or(0);
                         view! {
                             <span class="text-sm text-zinc-400">
-                                {format!("Step {} of {}", current.index() + 1, WizardStep::all().len())}
+                                {format!("Step {} of 8", current.index() + 1)}
                             </span>
                             <span class="text-xs text-zinc-500">
                                 {format!("({} completed)", completed)}

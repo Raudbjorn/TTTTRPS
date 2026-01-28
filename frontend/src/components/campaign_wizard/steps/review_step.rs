@@ -20,19 +20,15 @@ fn ReviewSection(
         <div class="p-4 bg-zinc-800/50 border border-zinc-700 rounded-lg">
             <div class="flex items-center justify-between mb-3">
                 <h4 class="font-medium text-white">{title}</h4>
-                {move || if is_completed.get() {
-                    view! {
-                        <span class="px-2 py-0.5 bg-green-900/50 text-green-400 text-xs rounded-full">
-                            "Completed"
-                        </span>
-                    }.into_any()
-                } else {
-                    view! {
-                        <span class="px-2 py-0.5 bg-zinc-700 text-zinc-400 text-xs rounded-full">
-                            "Skipped"
-                        </span>
-                    }.into_any()
-                }}
+                {move || is_completed.get().then(|| view! {
+                    <span class="px-2 py-0.5 bg-green-900/50 text-green-400 text-xs rounded-full">
+                        "Completed"
+                    </span>
+                }).or_else(|| Some(view! {
+                    <span class="px-2 py-0.5 bg-zinc-700 text-zinc-400 text-xs rounded-full">
+                        "Skipped"
+                    </span>
+                }))}
             </div>
             <div class="text-sm text-zinc-400">
                 {children()}

@@ -301,54 +301,7 @@ impl RandomTableEngine {
         }
         table_record.description = request.description.clone();
 
-        // Build entries in memory first
-        let mut entries = Vec::new();
-        for (i, entry_input) in request.entries.iter().enumerate() {
-            let mut entry_record = RandomTableEntryRecord::new(
-                table_record.id.clone(),
-                entry_input.range_start,
-                entry_input.range_end,
-                entry_input.result_text.clone(),
-            )
-            .with_order(i as i32);
-
-            if let Some(weight) = entry_input.weight {
-                entry_record = entry_record.with_weight(weight);
-            }
-            if let Some(ref nested_id) = entry_input.nested_table_id {
-                entry_record = entry_record.with_nested_table(nested_id.clone());
-            }
-            if let Some(ref metadata) = entry_input.metadata {
-                entry_record = entry_record.with_metadata(metadata.clone());
-            }
-
-            entries.push(entry_record);
-        }
-
-        // Build table struct for validation BEFORE any DB operations
-        let table = RandomTable {
-            id: table_record.id.clone(),
-            name: table_record.name.clone(),
-            description: table_record.description.clone(),
-            dice_notation: table_record.dice_notation.clone(),
-            table_type: request.table_type,
-            category: table_record.category.clone(),
-            tags: request.tags.clone(),
-            campaign_id: table_record.campaign_id.clone(),
-            entries: entries.iter().cloned().map(TableEntry::from).collect(),
-            is_system: table_record.is_system != 0,
-            is_nested,
-            created_at: table_record.created_at.clone(),
-            updated_at: table_record.updated_at.clone(),
-        };
-
-        // Validate coverage BEFORE inserting anything
-        table.validate_coverage()?;
-
-        // Start transaction for atomic insert
-        let mut tx = self.pool.begin().await?;
-
-        // Insert table within transaction
+        // Insert table
         sqlx::query(
             r#"
             INSERT INTO random_tables (id, campaign_id, name, description, table_type,
@@ -368,11 +321,30 @@ impl RandomTableEngine {
         .bind(table_record.is_nested)
         .bind(&table_record.created_at)
         .bind(&table_record.updated_at)
-        .execute(&mut *tx)
+        .execute(self.pool.as_ref())
         .await?;
 
-        // Insert entries within transaction
-        for entry_record in &entries {
+        // Insert entries
+        let mut entries = Vec::new();
+        for (i, entry_input) in request.entries.into_iter().enumerate() {
+            let mut entry_record = RandomTableEntryRecord::new(
+                table_record.id.clone(),
+                entry_input.range_start,
+                entry_input.range_end,
+                entry_input.result_text.clone(),
+            )
+            .with_order(i as i32);
+
+            if let Some(weight) = entry_input.weight {
+                entry_record = entry_record.with_weight(weight);
+            }
+            if let Some(nested_id) = entry_input.nested_table_id {
+                entry_record = entry_record.with_nested_table(nested_id);
+            }
+            if let Some(metadata) = entry_input.metadata {
+                entry_record = entry_record.with_metadata(metadata);
+            }
+
             sqlx::query(
                 r#"
                 INSERT INTO random_table_entries (id, table_id, range_start, range_end,
@@ -390,12 +362,30 @@ impl RandomTableEngine {
             .bind(&entry_record.nested_table_id)
             .bind(&entry_record.metadata)
             .bind(entry_record.display_order)
-            .execute(&mut *tx)
+            .execute(self.pool.as_ref())
             .await?;
+
+            entries.push(TableEntry::from(entry_record));
         }
 
-        // Commit transaction
-        tx.commit().await?;
+        let table = RandomTable {
+            id: table_record.id,
+            name: table_record.name,
+            description: table_record.description,
+            dice_notation: table_record.dice_notation,
+            table_type: request.table_type,
+            category: table_record.category,
+            tags: request.tags,
+            campaign_id: table_record.campaign_id,
+            entries,
+            is_system: table_record.is_system != 0,
+            is_nested,
+            created_at: table_record.created_at,
+            updated_at: table_record.updated_at,
+        };
+
+        // Validate coverage
+        table.validate_coverage()?;
 
         info!(table_id = %table.id, name = %table.name, "Created random table");
         Ok(table)

@@ -8,11 +8,12 @@
 //! - Backup and restore cycle
 
 use crate::database::{
-    create_backup, list_backups, restore_backup, run_migrations, CampaignOps, CampaignRecord,
-    CampaignVersionRecord, CharacterOps, CharacterRecord, CombatOps, CombatStateRecord, Database,
-    EntityRelationshipRecord, EntityType, LocationOps, LocationRecord, NpcConversation, NpcOps,
-    NpcRecord, RelationshipOps, SessionEventRecord, SessionNoteRecord, SessionOps, SessionRecord,
-    UsageOps, UsageRecord,
+    create_backup, restore_backup, list_backups, run_migrations,
+    CampaignOps, CampaignRecord, CampaignVersionRecord, CharacterOps, CharacterRecord,
+    CombatOps, CombatStateRecord, Database, EntityRelationshipRecord, EntityType,
+    LocationOps, LocationRecord, NpcConversation, NpcOps, NpcRecord, RelationshipOps,
+    SearchAnalyticsOps, SessionEventRecord, SessionNoteRecord, SessionOps, SessionRecord,
+    SettingsOps, UsageOps, UsageRecord,
 };
 use std::sync::Arc;
 use tempfile::TempDir;
