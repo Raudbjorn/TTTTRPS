@@ -334,7 +334,7 @@ pub fn EntityCard(
                                     "p-1.5 rounded hover:bg-zinc-800 transition-colors {}",
                                     if is_pinned { "text-amber-400" } else { "text-zinc-500" }
                                 )
-                                title={if is_pinned { "Unpin" } else { "Pin to tray " }}
+                                title={if is_pinned { "Unpin" } else { "Pin to tray" }}
                                 on:click=move |ev| {
                                     ev.stop_propagation();
                                     cb.run((entity_type, entity_id_for_cb.clone()));
@@ -374,7 +374,7 @@ pub fn EntityCardCompact(
         <div
             class=format!(
                 "w-36 p-2 bg-zinc-900 border rounded-lg transition-all hover:border-zinc-600
-                 cursor-pointer flex flex-col {}",
+                 cursor-pointer flex flex-col relative group {}",
                 entity_type.color()
             )
             on:click=move |_| {

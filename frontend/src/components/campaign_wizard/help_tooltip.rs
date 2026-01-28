@@ -151,7 +151,6 @@ pub fn HelpIcon(
                     "inline-flex items-center justify-center text-zinc-500 hover:text-zinc-400 transition-colors cursor-help {}",
                     size
                 )
-                tabindex="0"
             >
                 <svg class="w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -332,9 +331,6 @@ pub struct StepHelpEntry {
 pub fn ContextualHelp(
     /// Current step identifier
     step: &'static str,
-    /// Whether the panel is expanded
-    #[prop(default = true)]
-    _expanded: bool,
 ) -> impl IntoView {
     let help_entries = get_step_help(step);
 

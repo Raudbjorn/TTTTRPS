@@ -273,7 +273,7 @@ impl SearchAnalyticsOps for Database {
         sqlx::query_as::<_, PopularQueryRecord>(
             r#"
             SELECT
-                query,
+                LOWER(TRIM(query)) as query,
                 COUNT(*) as count,
                 COALESCE(SUM(CASE WHEN selected_result_index IS NOT NULL THEN 1 ELSE 0 END), 0) as clicks,
                 COALESCE(AVG(results_count), 0) as avg_result_count,
@@ -314,10 +314,10 @@ impl SearchAnalyticsOps for Database {
         // Get top cached queries
         let top_cached: Vec<(String, u32)> = sqlx::query(
             r#"
-            SELECT query, COUNT(*) as count
+            SELECT LOWER(TRIM(query)) as query_norm, COUNT(*) as count
             FROM search_analytics
             WHERE cache_hit = 1
-            GROUP BY LOWER(TRIM(query))
+            GROUP BY query_norm
             ORDER BY count DESC
             LIMIT 10
             "#
@@ -325,7 +325,7 @@ impl SearchAnalyticsOps for Database {
         .fetch_all(self.pool())
         .await?
         .into_iter()
-        .map(|r| (r.get::<String, _>("query"), r.get::<i64, _>("count") as u32))
+        .map(|r| (r.get::<String, _>("query_norm"), r.get::<i64, _>("count") as u32))
         .collect();
 
         Ok(SearchCacheStats {
