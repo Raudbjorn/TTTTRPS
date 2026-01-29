@@ -14,6 +14,7 @@ use crate::gate::copilot::{
     PollResult as CopilotPollResult, QuotaInfo as CopilotQuotaInfo,
     UsageResponse as CopilotUsageResponse,
     storage::CopilotTokenStorage,
+    models::{EmbeddingResponse as CopilotEmbeddingResponse},
 };
 use crate::gate::storage::FileTokenStorage as GateFileTokenStorage;
 
@@ -76,12 +77,16 @@ trait CopilotGateClientOps: Send + Sync {
     async fn get_token_info(
         &self,
     ) -> Result<Option<crate::gate::copilot::models::TokenInfo>, String>;
+    /// Get a valid Copilot API token, refreshing if needed.
+    /// Returns the token string that can be used in Authorization headers.
+    async fn ensure_valid_token(&self) -> Result<String, String>;
     async fn start_device_flow(&self) -> Result<DeviceFlowPending, String>;
     async fn poll_for_token(&self, pending: &DeviceFlowPending) -> Result<CopilotPollResult, String>;
     async fn complete_auth(&self, github_token: String) -> Result<(), String>;
     async fn sign_out(&self) -> Result<(), String>;
     async fn get_models(&self) -> Result<CopilotModelsResponse, String>;
     async fn get_usage(&self) -> Result<CopilotUsageResponse, String>;
+    async fn get_embeddings(&self, model: &str, input: Vec<String>, dimensions: Option<u32>) -> Result<CopilotEmbeddingResponse, String>;
     fn storage_name(&self) -> &'static str;
 }
 
@@ -104,6 +109,28 @@ impl CopilotGateClientOps for CopilotFileStorageClientWrapper {
             .load()
             .await
             .map_err(|e| e.to_string())
+    }
+
+    async fn ensure_valid_token(&self) -> Result<String, String> {
+        // WARNING: This implementation relies on calling models() to trigger the client's
+        // internal token refresh logic. This is a workaround because the copilot-api-rs
+        // crate doesn't expose a direct refresh_token_if_needed() method.
+        //
+        // If the upstream library changes models() to not refresh tokens, this will break.
+        // TODO: Add an explicit refresh method to copilot-api-rs crate.
+        self.client.models().await.map_err(|e| e.to_string())?;
+
+        // Now get the refreshed token
+        let token_info = self.client
+            .storage()
+            .load()
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or("No token available after refresh")?;
+
+        token_info
+            .copilot_token
+            .ok_or_else(|| "No Copilot token available".to_string())
     }
 
     async fn start_device_flow(&self) -> Result<DeviceFlowPending, String> {
@@ -137,6 +164,14 @@ impl CopilotGateClientOps for CopilotFileStorageClientWrapper {
 
     async fn get_usage(&self) -> Result<CopilotUsageResponse, String> {
         self.client.usage().await.map_err(|e| e.to_string())
+    }
+
+    async fn get_embeddings(&self, model: &str, input: Vec<String>, dimensions: Option<u32>) -> Result<CopilotEmbeddingResponse, String> {
+        let mut builder = self.client.embeddings().model(model).inputs(input);
+        if let Some(dims) = dimensions {
+            builder = builder.dimensions(dims);
+        }
+        builder.send().await.map_err(|e| e.to_string())
     }
 
     fn storage_name(&self) -> &'static str {
@@ -310,6 +345,36 @@ impl CopilotGateState {
             .as_ref()
             .ok_or("Copilot Gate client not initialized")?;
         client.get_usage().await
+    }
+
+    /// Get embeddings for the given text(s)
+    pub async fn get_embeddings(
+        &self,
+        model: &str,
+        input: Vec<String>,
+        dimensions: Option<u32>,
+    ) -> Result<CopilotEmbeddingResponse, String> {
+        let client = self.client.read().await;
+        let client = client
+            .as_ref()
+            .ok_or("Copilot Gate client not initialized")?;
+        client.get_embeddings(model, input, dimensions).await
+    }
+
+    /// Get a valid Copilot API token, refreshing if needed.
+    ///
+    /// This method ensures the token is valid (not expired) by triggering a refresh
+    /// if necessary. The returned token can be used directly in Authorization headers
+    /// for the Copilot API at `https://api.githubcopilot.com`.
+    ///
+    /// Note: Copilot tokens are short-lived (~30 minutes). If configuring an external
+    /// service with this token, you may need to periodically refresh the configuration.
+    pub async fn get_valid_token(&self) -> Result<String, String> {
+        let client = self.client.read().await;
+        let client = client
+            .as_ref()
+            .ok_or("Copilot Gate client not initialized")?;
+        client.ensure_valid_token().await
     }
 
     /// Get current storage backend name

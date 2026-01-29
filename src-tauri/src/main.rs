@@ -443,6 +443,7 @@ fn main() {
             commands::get_vector_store_status,
             commands::configure_meilisearch_embedder,
             commands::setup_ollama_embeddings,
+            commands::setup_copilot_embeddings,
             commands::get_embedder_status,
             commands::list_ollama_embedding_models,
             commands::list_local_embedding_models,

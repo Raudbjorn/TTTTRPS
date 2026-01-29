@@ -237,6 +237,73 @@ pub struct OpenAIModelList {
 }
 
 // ============================================================================
+// OpenAI-Compatible Embedding Types
+// ============================================================================
+
+/// OpenAI-compatible embedding request
+#[derive(Debug, Clone, Deserialize)]
+pub struct OpenAIEmbeddingRequest {
+    /// Model to use for embeddings
+    pub model: String,
+    /// Input text(s) to embed
+    pub input: EmbeddingInputType,
+    /// Number of dimensions for the embedding (optional)
+    #[serde(default)]
+    pub dimensions: Option<u32>,
+    /// Encoding format (optional, default: float)
+    #[serde(default)]
+    pub encoding_format: Option<String>,
+}
+
+/// Input type for embeddings - single string or array
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum EmbeddingInputType {
+    Single(String),
+    Multiple(Vec<String>),
+}
+
+impl EmbeddingInputType {
+    pub fn into_vec(self) -> Vec<String> {
+        match self {
+            Self::Single(s) => vec![s],
+            Self::Multiple(v) => v,
+        }
+    }
+}
+
+/// OpenAI-compatible embedding response
+#[derive(Debug, Clone, Serialize)]
+pub struct OpenAIEmbeddingResponse {
+    pub object: String,
+    pub model: String,
+    pub data: Vec<OpenAIEmbeddingData>,
+    pub usage: OpenAIEmbeddingUsage,
+}
+
+/// Individual embedding data
+#[derive(Debug, Clone, Serialize)]
+pub struct OpenAIEmbeddingData {
+    pub object: String,
+    pub index: u32,
+    pub embedding: Vec<f32>,
+}
+
+/// Usage info for embeddings
+#[derive(Debug, Clone, Serialize)]
+pub struct OpenAIEmbeddingUsage {
+    pub prompt_tokens: u32,
+    pub total_tokens: u32,
+}
+
+/// Callback type for embedding requests
+pub type EmbeddingCallback = Arc<
+    dyn Fn(String, Vec<String>, Option<u32>) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<OpenAIEmbeddingResponse, String>> + Send>
+    > + Send + Sync
+>;
+
+// ============================================================================
 // Proxy Service State
 // ============================================================================
 
@@ -246,6 +313,10 @@ pub struct ProxyState {
     pub providers: RwLock<HashMap<String, Arc<dyn LLMProvider>>>,
     /// Default provider ID (used when no prefix in model name)
     pub default_provider: RwLock<Option<String>>,
+    /// Embedding callback for handling /v1/embeddings requests
+    pub embedding_callback: RwLock<Option<EmbeddingCallback>>,
+    /// Default embedding model
+    pub default_embedding_model: RwLock<Option<String>>,
 }
 
 impl ProxyState {
@@ -253,6 +324,8 @@ impl ProxyState {
         Self {
             providers: RwLock::new(HashMap::new()),
             default_provider: RwLock::new(None),
+            embedding_callback: RwLock::new(None),
+            default_embedding_model: RwLock::new(None),
         }
     }
 
@@ -340,6 +413,25 @@ impl LLMProxyService {
         providers.keys().cloned().collect()
     }
 
+    /// Set the embedding callback for handling /v1/embeddings requests
+    pub async fn set_embedding_callback(&self, callback: EmbeddingCallback) {
+        let mut cb = self.state.embedding_callback.write().await;
+        *cb = Some(callback);
+        log::info!("Registered embedding callback");
+    }
+
+    /// Set the default embedding model
+    pub async fn set_default_embedding_model(&self, model: &str) {
+        let mut default = self.state.default_embedding_model.write().await;
+        *default = Some(model.to_string());
+        log::info!("Set default embedding model: {}", model);
+    }
+
+    /// Check if embeddings are available
+    pub async fn has_embeddings(&self) -> bool {
+        self.state.embedding_callback.read().await.is_some()
+    }
+
     /// Start the proxy service
     pub async fn start(&mut self) -> Result<(), String> {
         if self.shutdown_tx.is_some() {
@@ -353,6 +445,7 @@ impl LLMProxyService {
         // Build router
         let app = Router::new()
             .route("/v1/chat/completions", post(chat_completions))
+            .route("/v1/embeddings", post(embeddings))
             .route("/v1/models", get(list_models))
             .route("/health", get(health_check))
             .layer(CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any))
@@ -407,6 +500,72 @@ impl LLMProxyService {
 /// Health check endpoint
 async fn health_check() -> impl IntoResponse {
     Json(serde_json::json!({ "status": "ok" }))
+}
+
+/// Embeddings endpoint
+async fn embeddings(
+    State(state): State<Arc<ProxyState>>,
+    Json(request): Json<OpenAIEmbeddingRequest>,
+) -> Response {
+    // Get the embedding callback
+    let callback = {
+        let guard = state.embedding_callback.read().await;
+        match guard.as_ref() {
+            Some(cb) => cb.clone(),
+            None => {
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(serde_json::json!({
+                        "error": {
+                            "message": "Embeddings not configured",
+                            "type": "service_unavailable"
+                        }
+                    })),
+                )
+                    .into_response();
+            }
+        }
+    };
+
+    // Get default model if not specified or empty
+    let model = if request.model.is_empty() {
+        let default = state.default_embedding_model.read().await;
+        match default.as_ref() {
+            Some(m) => m.clone(),
+            None => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({
+                        "error": {
+                            "message": "Model is required",
+                            "type": "invalid_request_error"
+                        }
+                    })),
+                )
+                    .into_response();
+            }
+        }
+    } else {
+        request.model
+    };
+
+    let input = request.input.into_vec();
+    let dimensions = request.dimensions;
+
+    // Call the embedding callback
+    match callback(model, input, dimensions).await {
+        Ok(response) => Json(response).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "error": {
+                    "message": e,
+                    "type": "internal_error"
+                }
+            })),
+        )
+            .into_response(),
+    }
 }
 
 /// List models endpoint

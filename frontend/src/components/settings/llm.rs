@@ -13,13 +13,16 @@ use crate::bindings::{
     save_api_key, HealthStatus, LLMSettings, ModelInfo, OllamaModel,
     // Claude Gate OAuth
     claude_gate_get_status, claude_gate_list_models, ClaudeGateStatus,
+    // Copilot OAuth
+    check_copilot_auth, get_copilot_models, CopilotAuthStatus,
     // Embedding configuration
     list_ollama_embedding_models, setup_ollama_embeddings, OllamaEmbeddingModel,
     list_local_embedding_models, setup_local_embeddings, LocalEmbeddingModel,
+    setup_copilot_embeddings,
 };
 use crate::components::design_system::{Badge, BadgeVariant, Button, ButtonVariant, Card, Input};
 use crate::services::notification_service::{show_error, show_success};
-use super::ClaudeGateAuth;
+use super::{ClaudeGateAuth, CopilotAuth};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum LLMProvider {
@@ -34,6 +37,7 @@ pub enum LLMProvider {
     Cohere,
     DeepSeek,
     Claude,
+    Copilot,
 }
 
 impl std::fmt::Display for LLMProvider {
@@ -50,6 +54,7 @@ impl std::fmt::Display for LLMProvider {
             LLMProvider::Cohere => write!(f, "Cohere"),
             LLMProvider::DeepSeek => write!(f, "DeepSeek"),
             LLMProvider::Claude => write!(f, "Claude"),
+            LLMProvider::Copilot => write!(f, "Copilot"),
         }
     }
 }
@@ -68,6 +73,7 @@ impl LLMProvider {
             LLMProvider::Cohere => "cohere".to_string(),
             LLMProvider::DeepSeek => "deepseek".to_string(),
             LLMProvider::Claude => "claude".to_string(),
+            LLMProvider::Copilot => "copilot".to_string(),
         }
     }
 
@@ -83,6 +89,7 @@ impl LLMProvider {
             "Cohere" | "cohere" => LLMProvider::Cohere,
             "DeepSeek" | "deepseek" => LLMProvider::DeepSeek,
             "Claude" | "claude" | "claude-gate" => LLMProvider::Claude,
+            "Copilot" | "copilot" => LLMProvider::Copilot,
             _ => LLMProvider::Ollama,
         }
     }
@@ -100,13 +107,14 @@ impl LLMProvider {
             LLMProvider::Cohere => "API Key",
             LLMProvider::DeepSeek => "sk-...",
             LLMProvider::Claude => "Uses OAuth authentication",
+            LLMProvider::Copilot => "Uses GitHub OAuth authentication",
         }
     }
 
     fn label_text(&self) -> &'static str {
         match self {
             LLMProvider::Ollama => "Ollama Host",
-            LLMProvider::Claude => "Status",
+            LLMProvider::Claude | LLMProvider::Copilot => "Status",
             _ => "API Key",
         }
     }
@@ -124,6 +132,7 @@ impl LLMProvider {
             LLMProvider::Cohere => "command-r-plus",
             LLMProvider::DeepSeek => "deepseek-chat",
             LLMProvider::Claude => "claude-sonnet-4-20250514",
+            LLMProvider::Copilot => "gpt-4o",
         }
     }
 
@@ -140,17 +149,19 @@ impl LLMProvider {
             LLMProvider::DeepSeek => Some("https://platform.deepseek.com/api_keys"),
             LLMProvider::Ollama => Some("https://ollama.com/download"),
             LLMProvider::Claude => None, // Uses OAuth authentication
+            LLMProvider::Copilot => None, // Uses GitHub OAuth authentication
         }
     }
 
     fn brand_color(&self) -> &'static str {
         match self {
             // Both AnthropicAPI (API key) and Claude (OAuth) are Anthropic providers, sharing brand color
-            LLMProvider::AnthropicAPI | LLMProvider::Claude => "text-orange-400", // Anthropic Sienna — both AnthropicAPI (API key) and Claude (OAuth) are Anthropic-branded providers, so they share this color even though they are separate enum variants
+            LLMProvider::AnthropicAPI | LLMProvider::Claude => "text-orange-400", // Anthropic Sienna
             LLMProvider::Gemini => "text-blue-400", // Gemini Blue
             LLMProvider::OpenAI => "text-emerald-400", // OpenAI Green
             LLMProvider::Ollama => "text-white", // Ollama White
             LLMProvider::OpenRouter => "text-violet-400",
+            LLMProvider::Copilot => "text-[#6e40c9]", // GitHub Purple
             _ => "text-[var(--accent-primary)]",
         }
     }
@@ -163,7 +174,8 @@ impl LLMProvider {
 #[derive(Clone, PartialEq, Debug)]
 pub enum EmbedderProvider {
     Ollama,
-    Local,  // HuggingFace/ONNX - runs locally via Meilisearch
+    Local,   // HuggingFace/ONNX - runs locally via Meilisearch
+    Copilot, // GitHub Copilot via local proxy
 }
 
 impl std::fmt::Display for EmbedderProvider {
@@ -171,6 +183,7 @@ impl std::fmt::Display for EmbedderProvider {
         match self {
             EmbedderProvider::Ollama => write!(f, "Ollama"),
             EmbedderProvider::Local => write!(f, "Local (ONNX)"),
+            EmbedderProvider::Copilot => write!(f, "Copilot"),
         }
     }
 }
@@ -180,6 +193,7 @@ impl EmbedderProvider {
         match self {
             EmbedderProvider::Ollama => "Uses Ollama for embeddings. Requires Ollama to be running.",
             EmbedderProvider::Local => "Uses HuggingFace models via ONNX. No external service required.",
+            EmbedderProvider::Copilot => "Uses GitHub Copilot via OAuth. Requires Copilot authentication.",
         }
     }
 }
@@ -214,6 +228,9 @@ pub fn LLMSettingsView() -> impl IntoView {
 
     // Claude Gate OAuth status (for badge display and model fetching)
     let claude_gate_status = RwSignal::new(ClaudeGateStatus::default());
+
+    // Copilot OAuth status (for badge display and model fetching)
+    let copilot_status = RwSignal::new(CopilotAuthStatus::default());
 
     // --- Helpers ---
 
@@ -276,6 +293,21 @@ pub fn LLMSettingsView() -> impl IntoView {
                         Err(_) => Vec::new(),
                     }
                 }
+                LLMProvider::Copilot => {
+                    // Fetch models from Copilot API (OAuth authenticated)
+                    match get_copilot_models().await {
+                        Ok(models) => models
+                            .into_iter()
+                            .filter(|m| m.supports_chat)
+                            .map(|m| ModelInfo {
+                                id: m.id.clone(),
+                                name: m.id.clone(),
+                                description: Some(format!("by {} ({})", m.owned_by, if m.preview { "preview" } else { "stable" })),
+                            })
+                            .collect(),
+                        Err(_) => Vec::new(),
+                    }
+                }
                 LLMProvider::Mistral
                 | LLMProvider::Groq
                 | LLMProvider::Together
@@ -323,6 +355,17 @@ pub fn LLMSettingsView() -> impl IntoView {
                 }
                 Err(_) => {
                     statuses.insert("claude".to_string(), false);
+                }
+            }
+
+            // Check Copilot OAuth status
+            match check_copilot_auth().await {
+                Ok(status) => {
+                    statuses.insert("copilot".to_string(), status.authenticated);
+                    copilot_status.set(status);
+                }
+                Err(_) => {
+                    statuses.insert("copilot".to_string(), false);
                 }
             }
 
@@ -387,10 +430,10 @@ pub fn LLMSettingsView() -> impl IntoView {
              is_saving.set(true);
              save_status.set("Saving...".to_string());
              spawn_local(async move {
-                 // Claude (OAuth) doesn't need API keys - it uses OAuth authentication
+                 // OAuth providers don't need API keys - they use OAuth authentication
                  let needs_api_key = !matches!(
                      provider,
-                     LLMProvider::Ollama | LLMProvider::Claude
+                     LLMProvider::Ollama | LLMProvider::Claude | LLMProvider::Copilot
                  );
                  let key_to_save = if needs_api_key && !key_or_host.is_empty() {
                       match save_api_key(provider.to_string_key(), key_or_host.clone()).await {
@@ -454,6 +497,13 @@ pub fn LLMSettingsView() -> impl IntoView {
                  // Fetch models from API if authenticated
                  fetch_cloud_models(LLMProvider::Claude, None);
             },
+            LLMProvider::Copilot => {
+                 // No API key needed - uses GitHub OAuth authentication
+                 api_key_or_host.set(String::new());
+                 model_name.set(p.default_model().to_string());
+                 // Fetch models from Copilot API if authenticated
+                 fetch_cloud_models(LLMProvider::Copilot, None);
+            },
             _ => {
                  api_key_or_host.set(String::new());
                  model_name.set(p.default_model().to_string());
@@ -472,6 +522,7 @@ pub fn LLMSettingsView() -> impl IntoView {
         LLMProvider::OpenAI,
         LLMProvider::AnthropicAPI,
         LLMProvider::Claude,
+        LLMProvider::Copilot,
         LLMProvider::Gemini,
         LLMProvider::OpenRouter,
         LLMProvider::Mistral,
@@ -512,6 +563,7 @@ pub fn LLMSettingsView() -> impl IntoView {
                                 {move || match selected_provider.get() {
                                     LLMProvider::Ollama => "Running locally on your machine.",
                                     LLMProvider::Claude => "Uses Anthropic OAuth authentication.",
+                                    LLMProvider::Copilot => "Uses GitHub OAuth authentication.",
                                     _ => "Cloud-based inference.",
                                 }}
                             </p>
@@ -537,7 +589,8 @@ pub fn LLMSettingsView() -> impl IntoView {
                                 })}
                             </div>
                             {move || {
-                                if selected_provider.get() == LLMProvider::Claude {
+                                let provider = selected_provider.get();
+                                if provider == LLMProvider::Claude {
                                     // Claude Gate OAuth panel - uses shared component
                                     view! {
                                         <div class="space-y-3">
@@ -557,6 +610,20 @@ pub fn LLMSettingsView() -> impl IntoView {
                                                     "."
                                                 </p>
                                             </div>
+                                        </div>
+                                    }.into_any()
+                                } else if provider == LLMProvider::Copilot {
+                                    // Copilot OAuth panel - uses shared component
+                                    view! {
+                                        <div class="space-y-3">
+                                            <CopilotAuth
+                                                show_card=false
+                                                on_status_change=Callback::new(move |status: CopilotAuthStatus| {
+                                                    let is_ready = status.authenticated;
+                                                    provider_statuses.update(|map| { map.insert("copilot".to_string(), is_ready); });
+                                                    copilot_status.set(status);
+                                                })
+                                            />
                                         </div>
                                     }.into_any()
                                 } else {
@@ -747,6 +814,29 @@ pub fn LLMSettingsView() -> impl IntoView {
                         >
                             "Local (ONNX)"
                         </button>
+                        <button
+                            class=move || format!(
+                                "flex-1 p-3 rounded-lg text-sm font-medium transition-all {}",
+                                if embedder_provider.get() == EmbedderProvider::Copilot {
+                                    "bg-[#6e40c9] text-white"
+                                } else {
+                                    "bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
+                                }
+                            )
+                            on:click=move |_| embedder_provider.set(EmbedderProvider::Copilot)
+                        >
+                            <div class="flex items-center justify-center gap-2">
+                                <span>"Copilot"</span>
+                                {move || {
+                                    let copilot_ok = copilot_status.get().authenticated;
+                                    if copilot_ok {
+                                        view! { <div class="w-2 h-2 rounded-full bg-green-400"></div> }.into_any()
+                                    } else {
+                                        view! { <div class="w-2 h-2 rounded-full bg-red-400"></div> }.into_any()
+                                    }
+                                }}
+                            </div>
+                        </button>
                     </div>
 
                     <p class="text-xs text-[var(--text-muted)]">
@@ -790,7 +880,7 @@ pub fn LLMSettingsView() -> impl IntoView {
                                         <Input value=embedding_model />
                                     }.into_any()
                                 }
-                            } else {
+                            } else if embedder_provider.get() == EmbedderProvider::Local {
                                 // Local ONNX models
                                 let models = local_embedding_models.get();
                                 let current_model = embedding_model.get();
@@ -826,6 +916,37 @@ pub fn LLMSettingsView() -> impl IntoView {
                                         </div>
                                     }.into_any()
                                 }
+                            } else {
+                                // Copilot embedding models (predefined OpenAI-compatible options)
+                                let current_model = embedding_model.get();
+                                let copilot_models = vec![
+                                    ("text-embedding-3-small", "text-embedding-3-small (1536D, recommended)"),
+                                    ("text-embedding-3-large", "text-embedding-3-large (3072D, higher quality)"),
+                                    ("text-embedding-ada-002", "text-embedding-ada-002 (1536D, legacy)"),
+                                ];
+                                view! {
+                                    <select
+                                        class="w-full p-3 rounded-lg bg-[var(--bg-deep)] border border-[#6e40c9]/30 text-[var(--text-primary)] outline-none focus:border-[#6e40c9] transition-colors"
+                                        style="color-scheme: dark;"
+                                        on:change=move |ev| {
+                                            let val = event_target_value(&ev);
+                                            embedding_model.set(val);
+                                        }
+                                    >
+                                        {copilot_models.into_iter().map(|(id, label)| {
+                                            let is_selected = id == current_model;
+                                            view! {
+                                                <option
+                                                    value=id
+                                                    selected=is_selected
+                                                    class="bg-[var(--bg-elevated)] text-[var(--text-primary)]"
+                                                >
+                                                    {label}
+                                                </option>
+                                            }
+                                        }).collect::<Vec<_>>()}
+                                    </select>
+                                }.into_any()
                             }
                         }}
                     </div>
@@ -841,28 +962,38 @@ pub fn LLMSettingsView() -> impl IntoView {
                                 embeddings_status.set("Setting up embeddings...".to_string());
 
                                 spawn_local(async move {
-                                    let result = if provider == EmbedderProvider::Ollama {
-                                        let host = api_key_or_host.get_untracked();
-                                        let host = if host.is_empty() { "http://localhost:11434".to_string() } else { host };
-                                        setup_ollama_embeddings(host, model.clone()).await
-                                    } else {
-                                        setup_local_embeddings(model.clone()).await
+                                    // Handle each provider separately due to different return types
+                                    let setup_result: Result<(usize, String, u32), String> = match provider {
+                                        EmbedderProvider::Ollama => {
+                                            let host = api_key_or_host.get_untracked();
+                                            let host = if host.is_empty() { "http://localhost:11434".to_string() } else { host };
+                                            setup_ollama_embeddings(host, model.clone()).await
+                                                .map(|r| (r.indexes_configured.len(), r.model, r.dimensions))
+                                        }
+                                        EmbedderProvider::Local => {
+                                            setup_local_embeddings(model.clone()).await
+                                                .map(|r| (r.indexes_configured.len(), r.model, r.dimensions))
+                                        }
+                                        EmbedderProvider::Copilot => {
+                                            setup_copilot_embeddings(model.clone(), None).await
+                                                .map(|r| (r.indexes_configured.len(), r.model, r.dimensions))
+                                        }
                                     };
 
-                                    match result {
-                                        Ok(result) => {
+                                    match setup_result {
+                                        Ok((count, model_name, dims)) => {
                                             embeddings_status.set(format!(
                                                 "✓ Configured {} indexes with {} ({}D)",
-                                                result.indexes_configured.len(),
-                                                result.model,
-                                                result.dimensions
+                                                count,
+                                                model_name,
+                                                dims
                                             ));
                                             show_success(
                                                 "Embeddings Configured",
                                                 Some(&format!(
                                                     "AI-powered search enabled on {} indexes using {}",
-                                                    result.indexes_configured.len(),
-                                                    result.model
+                                                    count,
+                                                    model_name
                                                 ))
                                             );
                                         }

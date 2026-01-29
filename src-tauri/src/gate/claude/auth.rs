@@ -397,7 +397,9 @@ struct TokenResponse {
     access_token: String,
     refresh_token: String,
     expires_in: i64,
-    _token_type: String,
+    #[serde(rename = "token_type")]
+    #[allow(dead_code)]
+    token_type: String,
 }
 
 #[cfg(test)]

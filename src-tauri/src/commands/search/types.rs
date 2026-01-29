@@ -197,6 +197,16 @@ pub struct SetupEmbeddingsResult {
     pub host: String,
 }
 
+/// Result returned when setting up Copilot embeddings
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SetupCopilotEmbeddingsResult {
+    pub indexes_configured: Vec<String>,
+    pub model: String,
+    pub dimensions: u32,
+    /// URL of the Copilot API endpoint being used
+    pub api_url: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OllamaEmbeddingModel {
     pub name: String,

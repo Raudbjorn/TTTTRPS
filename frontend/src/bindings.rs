@@ -2205,6 +2205,35 @@ pub async fn setup_ollama_embeddings(host: String, model: String) -> Result<Setu
     invoke("setup_ollama_embeddings", &Args { host, model }).await
 }
 
+/// Result from setting up Copilot embeddings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetupCopilotEmbeddingsResult {
+    pub indexes_configured: Vec<String>,
+    pub model: String,
+    pub dimensions: u32,
+    /// URL of the Copilot API endpoint being used
+    pub api_url: String,
+}
+
+/// Setup Copilot embeddings on all content indexes via direct Copilot API access
+///
+/// This configures Meilisearch to call the Copilot API directly at
+/// https://api.githubcopilot.com/embeddings with the OAuth token.
+///
+/// **Note:** Copilot tokens are short-lived (~30 minutes). You may need to
+/// call this again when the token expires.
+pub async fn setup_copilot_embeddings(
+    model: String,
+    dimensions: Option<u32>,
+) -> Result<SetupCopilotEmbeddingsResult, String> {
+    #[derive(Serialize)]
+    struct Args {
+        model: String,
+        dimensions: Option<u32>,
+    }
+    invoke("setup_copilot_embeddings", &Args { model, dimensions }).await
+}
+
 /// Get embedder configuration for an index
 pub async fn get_embedder_status(index_name: String) -> Result<Option<serde_json::Value>, String> {
     #[derive(Serialize)]

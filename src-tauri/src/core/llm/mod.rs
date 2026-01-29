@@ -197,6 +197,37 @@ impl LLMManager {
         Ok(())
     }
 
+    /// Set the embedding callback for the proxy
+    ///
+    /// This callback handles /v1/embeddings requests, forwarding them to the configured
+    /// embedding provider (e.g., Copilot, OpenAI).
+    pub async fn set_embedding_callback(
+        &self,
+        callback: proxy::EmbeddingCallback,
+    ) -> std::result::Result<(), String> {
+        // Ensure proxy is running
+        self.ensure_proxy().await?;
+
+        let proxy_guard = self.proxy.read().await;
+        if let Some(ref proxy) = *proxy_guard {
+            proxy.set_embedding_callback(callback).await;
+        }
+
+        Ok(())
+    }
+
+    /// Set the default embedding model for the proxy
+    pub async fn set_default_embedding_model(&self, model: &str) -> std::result::Result<(), String> {
+        self.ensure_proxy().await?;
+
+        let proxy_guard = self.proxy.read().await;
+        if let Some(ref proxy) = *proxy_guard {
+            proxy.set_default_embedding_model(model).await;
+        }
+
+        Ok(())
+    }
+
     /// Configure a chat workspace with a specific provider
     ///
     /// This method:

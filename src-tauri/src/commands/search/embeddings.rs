@@ -6,7 +6,8 @@ use tauri::State;
 
 use crate::commands::AppState;
 use super::types::{
-    EmbedderConfigRequest, SetupEmbeddingsResult, OllamaEmbeddingModel, LocalEmbeddingModel,
+    EmbedderConfigRequest, SetupEmbeddingsResult, SetupCopilotEmbeddingsResult,
+    OllamaEmbeddingModel, LocalEmbeddingModel,
 };
 
 // ============================================================================
@@ -82,6 +83,59 @@ pub async fn setup_ollama_embeddings(
         model: model.clone(),
         dimensions,
         host: host.clone(),
+    })
+}
+
+/// Setup Copilot embeddings on all content indexes via direct API access
+///
+/// This configures Meilisearch to use GitHub Copilot for AI-powered semantic search.
+/// The embedder is configured as a REST source calling the Copilot API directly at
+/// https://api.githubcopilot.com/embeddings with the OAuth token in the Authorization header.
+///
+/// **Note:** Copilot API tokens are short-lived (~30 minutes). If the token expires,
+/// you will need to call this command again to refresh the configuration.
+#[tauri::command]
+pub async fn setup_copilot_embeddings(
+    model: String,
+    dimensions: Option<u32>,
+    state: State<'_, AppState>,
+) -> Result<SetupCopilotEmbeddingsResult, String> {
+    let dims = dimensions.unwrap_or_else(|| {
+        crate::core::search_client::copilot_embedding_dimensions(&model)
+    });
+
+    // First, ensure we're authenticated with Copilot
+    let is_authenticated = state.copilot_gate.is_authenticated().await
+        .map_err(|e| format!("Failed to check Copilot auth: {}", e))?;
+
+    if !is_authenticated {
+        return Err("Copilot authentication required. Please login first.".to_string());
+    }
+
+    // Get a valid Copilot API token (refreshing if needed)
+    let api_key = state.copilot_gate.get_valid_token().await
+        .map_err(|e| format!("Failed to get Copilot API token: {}", e))?;
+
+    log::info!("Retrieved valid Copilot API token for Meilisearch embeddings");
+
+    // Configure Meilisearch to call the Copilot API directly
+    let configured = state.search_client
+        .setup_copilot_embeddings(&model, dims, &api_key)
+        .await
+        .map_err(|e| format!("Failed to setup Copilot embeddings: {}", e))?;
+
+    log::info!(
+        "Configured Copilot embeddings on {} indexes with model '{}' ({} dimensions)",
+        configured.len(),
+        model,
+        dims
+    );
+
+    Ok(SetupCopilotEmbeddingsResult {
+        indexes_configured: configured,
+        model,
+        dimensions: dims,
+        api_url: "https://api.githubcopilot.com/embeddings".to_string(),
     })
 }
 

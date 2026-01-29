@@ -290,6 +290,27 @@ pub enum EmbedderConfig {
         /// Embedding dimensions for this model
         dimensions: u32,
     },
+    /// REST-based Copilot embedder (direct API access)
+    /// Uses GitHub Copilot API at https://api.githubcopilot.com/embeddings
+    #[serde(rename = "copilotRest")]
+    CopilotRest {
+        /// Model name (e.g., "text-embedding-3-small")
+        model: String,
+        /// Embedding dimensions
+        dimensions: u32,
+        /// Copilot API token (short-lived, from OAuth flow)
+        api_key: String,
+    },
+}
+
+/// Get embedding dimensions for common Copilot/OpenAI embedding models
+pub fn copilot_embedding_dimensions(model: &str) -> u32 {
+    match model {
+        "text-embedding-3-small" => 1536,
+        "text-embedding-3-large" => 3072,
+        "text-embedding-ada-002" => 1536,
+        _ => 1536, // Default fallback for OpenAI-compatible models
+    }
 }
 
 /// Get embedding dimensions for common Ollama models
@@ -561,6 +582,40 @@ Type: {{ doc.chunk_type | default: "text" }}
                     "documentTemplateMaxBytes": 4000
                 })
             }
+            EmbedderConfig::CopilotRest { model, dimensions, api_key } => {
+                // Direct Copilot API access at https://api.githubcopilot.com/embeddings
+                // Uses OpenAI-compatible format: POST /embeddings with {"model": "...", "input": "..."}
+                // Response: {"data": [{"embedding": [...]}]}
+                //
+                // Headers based on GitHub Copilot CLI API patterns:
+                // - Authorization: Bearer token from OAuth flow
+                // - Copilot-Integration-Id: Identifies the integration type
+                //
+                // WARNING: Copilot tokens are short-lived (~30 minutes). When the token expires,
+                // Meilisearch will fail embedding requests until this config is refreshed.
+                // Users must call setup_copilot_embeddings again to update the token.
+                // TODO: Consider implementing a webhook or periodic refresh mechanism.
+                serde_json::json!({
+                    "source": "rest",
+                    "url": "https://api.githubcopilot.com/embeddings",
+                    "request": {
+                        "model": model,
+                        "input": "{{text}}"
+                    },
+                    "response": {
+                        "embeddings": "data.0.embedding"
+                    },
+                    "headers": {
+                        "Authorization": format!("Bearer {}", api_key),
+                        "Content-Type": "application/json",
+                        "Accept": "application/json",
+                        "Copilot-Integration-Id": "vscode-chat"
+                    },
+                    "dimensions": dimensions,
+                    "documentTemplate": document_template,
+                    "documentTemplateMaxBytes": 4000
+                })
+            }
         };
 
         // Use PATCH to update embedders setting
@@ -617,6 +672,56 @@ Type: {{ doc.chunk_type | default: "text" }}
 
         if configured.is_empty() {
             return Err(SearchError::ConfigError("Failed to configure any indexes".to_string()));
+        }
+
+        Ok(configured)
+    }
+
+    /// Configure Copilot REST embedder on all content indexes
+    ///
+    /// This sets up AI-powered semantic search using GitHub Copilot's embedding API
+    /// directly at https://api.githubcopilot.com/embeddings. The embedder is named
+    /// "copilot" and uses the REST source type with OpenAI-compatible format.
+    ///
+    /// **Important:** Copilot API tokens are short-lived (~30 minutes). If the token
+    /// expires, Meilisearch embedding requests will fail. You may need to call this
+    /// method again with a fresh token when the current one expires.
+    pub async fn setup_copilot_embeddings(
+        &self,
+        model: &str,
+        dimensions: u32,
+        api_key: &str,
+    ) -> Result<Vec<String>> {
+        let config = EmbedderConfig::CopilotRest {
+            model: model.to_string(),
+            dimensions,
+            api_key: api_key.to_string(),
+        };
+
+        let mut configured = Vec::new();
+        let content_indexes = Self::all_indexes();
+
+        for index_name in content_indexes {
+            match self.configure_embedder(index_name, "copilot", &config).await {
+                Ok(_) => {
+                    log::info!(
+                        "Configured Copilot embedder on index '{}' with model '{}' ({} dimensions)",
+                        index_name,
+                        model,
+                        dimensions
+                    );
+                    configured.push(index_name.to_string());
+                }
+                Err(e) => {
+                    log::warn!("Failed to configure Copilot embedder on '{}': {}", index_name, e);
+                }
+            }
+        }
+
+        if configured.is_empty() {
+            return Err(SearchError::ConfigError(
+                "Failed to configure Copilot embedder on any indexes".to_string(),
+            ));
         }
 
         Ok(configured)
