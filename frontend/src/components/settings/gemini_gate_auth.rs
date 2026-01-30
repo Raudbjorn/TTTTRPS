@@ -1,8 +1,8 @@
-//! Reusable Gemini Gate OAuth authentication component.
+//! Reusable Gemini OAuth authentication component.
 //!
-//! This component provides a complete OAuth authentication flow UI for Gemini Gate,
+//! This component provides a complete OAuth authentication flow UI for Gemini,
 //! including status display, storage backend selection, login/logout buttons, and
-//! auth code input. It can be used in any settings panel that needs Gemini Gate auth.
+//! auth code input. It can be used in any settings panel that needs Gemini auth.
 
 use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;
@@ -10,12 +10,13 @@ use wasm_bindgen_futures::spawn_local;
 use crate::bindings::{
     gemini_gate_get_status, gemini_gate_start_oauth, gemini_gate_complete_oauth,
     gemini_gate_logout, gemini_gate_set_storage_backend, open_url_in_browser,
+    gemini_gate_oauth_with_callback,
     GeminiGateStatus, GeminiGateStorageBackend,
 };
 use crate::components::design_system::{Badge, BadgeVariant, Select, SelectOption};
 use crate::services::notification_service::{show_error, show_success};
 
-/// Reusable Gemini Gate OAuth authentication component.
+/// Reusable Gemini OAuth authentication component.
 ///
 /// Provides complete OAuth flow UI including:
 /// - Authentication status display
@@ -55,7 +56,7 @@ pub fn GeminiGateAuth(
                         callback.run(new_status);
                     }
                 }
-                Err(e) => show_error("Gemini Gate Status", Some(&e), None),
+                Err(e) => show_error("Gemini Status", Some(&e), None),
             }
             is_loading.set(false);
         });
@@ -66,8 +67,39 @@ pub fn GeminiGateAuth(
         refresh_status();
     });
 
-    // Start OAuth flow
-    let start_oauth = move || {
+    // Start OAuth flow with automatic callback (preferred method)
+    let start_oauth_auto = move || {
+        spawn_local(async move {
+            is_loading.set(true);
+            show_success("Login Started", Some("Complete authentication in your browser. This window will update automatically."));
+
+            match gemini_gate_oauth_with_callback(Some(300), Some(true)).await {
+                Ok(response) => {
+                    if response.success {
+                        show_success("Login Complete", Some("Successfully authenticated with Gemini"));
+                        refresh_status();
+                    } else {
+                        // If automatic callback failed, offer manual fallback
+                        if let Some(error) = response.error {
+                            show_error("OAuth Failed", Some(&error), None);
+                        }
+                        if let Some(url) = response.auth_url {
+                            // Fall back to manual code entry
+                            oauth_url.set(Some(url));
+                            awaiting_code.set(true);
+                        }
+                    }
+                }
+                Err(e) => {
+                    show_error("OAuth Failed", Some(&e), None);
+                }
+            }
+            is_loading.set(false);
+        });
+    };
+
+    // Start OAuth flow with manual code entry (fallback method, kept for future use)
+    let _start_oauth_manual = move || {
         spawn_local(async move {
             is_loading.set(true);
             match gemini_gate_start_oauth().await {
@@ -90,6 +122,9 @@ pub fn GeminiGateAuth(
             is_loading.set(false);
         });
     };
+
+    // Primary login method - uses automatic callback
+    let start_oauth = start_oauth_auto;
 
     // Complete OAuth with auth code
     let complete_oauth = move || {
@@ -158,7 +193,7 @@ pub fn GeminiGateAuth(
         <div class=move || format!("space-y-4 {}", if compact { "text-sm" } else { "" })>
             // Header with status
             <div class="flex items-center justify-between">
-                <h4 class="font-semibold text-blue-400">"Gemini Gate Authentication"</h4>
+                <h4 class="font-semibold text-blue-400">"Gemini Authentication"</h4>
                 {move || {
                     let s = status.get();
                     if s.authenticated {
@@ -176,7 +211,7 @@ pub fn GeminiGateAuth(
             </div>
 
             <p class="text-sm text-[var(--text-muted)]">
-                "Gemini Gate requires OAuth authentication with your Google Cloud account."
+                "Gemini requires OAuth authentication with your Google Cloud account."
             </p>
 
             // Storage backend selector
@@ -356,7 +391,7 @@ pub fn GeminiGateAuth(
     }
 }
 
-/// Compact status indicator for Gemini Gate authentication.
+/// Compact status indicator for Gemini authentication.
 /// Shows just the authentication status badge.
 #[component]
 pub fn GeminiGateStatusBadge() -> impl IntoView {
