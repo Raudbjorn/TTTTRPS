@@ -133,6 +133,16 @@ pub async fn configure_llm(
             model: settings.model,
             max_tokens: 8192, // Default max tokens
         },
+        "gemini" => LLMConfig::Gemini {
+            storage_backend: "auto".to_string(), // Will use configured backend from AppState
+            model: settings.model,
+            max_tokens: 8192, // Default max tokens
+        },
+        "copilot" => LLMConfig::Copilot {
+            storage_backend: "auto".to_string(), // Will use configured backend from AppState
+            model: settings.model,
+            max_tokens: 8192, // Default max tokens
+        },
         _ => return Err(format!("Unknown provider: {}", settings.provider)),
     };
 

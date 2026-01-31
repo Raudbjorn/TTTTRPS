@@ -15,7 +15,7 @@ use super::types::{UpdateLibraryDocumentRequest, IngestResult, IngestProgress};
 #[tauri::command]
 pub async fn list_library_documents(
     state: State<'_, AppState>,
-) -> Result<Vec<crate::core::search_client::LibraryDocumentMetadata>, String> {
+) -> Result<Vec<crate::core::search::LibraryDocumentMetadata>, String> {
     state.search_client
         .list_library_documents()
         .await
@@ -39,7 +39,7 @@ pub async fn delete_library_document(
 pub async fn update_library_document(
     request: UpdateLibraryDocumentRequest,
     state: State<'_, AppState>,
-) -> Result<crate::core::search_client::LibraryDocumentMetadata, String> {
+) -> Result<crate::core::search::LibraryDocumentMetadata, String> {
     // Fetch existing document
     let mut doc = state.search_client
         .get_library_document(&request.id)
@@ -126,24 +126,30 @@ pub async fn clear_and_reingest_document(
     // Re-ingest using the existing ingest logic
     let source_type = Some(doc.source_type.clone());
 
-    // Call the internal ingestion logic
+    // Call the internal ingestion logic, preserving the original document ID
     ingest_document_with_progress_internal(
         file_path,
         source_type,
+        Some(id),  // Preserve original ID on re-ingestion
         app,
         state,
     ).await
 }
 
-/// Internal ingestion logic shared by ingest_document_with_progress and clear_and_reingest
+/// Internal ingestion logic shared by ingest_document_with_progress and clear_and_reingest.
+///
+/// Uses the two-phase pipeline (extract → raw index → chunk index) for all supported formats.
+///
+/// # Arguments
+/// * `original_id` - If provided, preserves the original document ID (useful for re-ingestion)
 pub(crate) async fn ingest_document_with_progress_internal(
     path: String,
     source_type: Option<String>,
+    original_id: Option<String>,
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<IngestResult, String> {
     use tauri::Emitter;
-    use crate::core::meilisearch_pipeline::MeilisearchPipeline;
 
     let path_buf = std::path::PathBuf::from(&path);
     if !path_buf.exists() {
@@ -158,158 +164,48 @@ pub(crate) async fn ingest_document_with_progress_internal(
 
     let source_type = source_type.unwrap_or_else(|| "document".to_string());
 
-    // Stage 1: Parsing (0-40%)
+    // Emit initial progress
     let _ = app.emit("ingest-progress", IngestProgress {
-        stage: "parsing".to_string(),
+        stage: "starting".to_string(),
         progress: 0.0,
-        message: format!("Loading {}...", source_name),
+        message: format!("Starting ingestion for {}...", source_name),
         source_name: source_name.clone(),
     });
 
-    let extension = path_buf
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-
-    let file_size = std::fs::metadata(&path_buf)
-        .map(|m| m.len())
-        .unwrap_or(0);
-    let estimated_pages = estimate_pdf_pages(&path_buf, file_size);
-
-    let format_name = match extension.as_str() {
-        "pdf" => "PDF",
-        "epub" => "EPUB",
-        "mobi" | "azw" | "azw3" => "MOBI/AZW",
-        "docx" => "DOCX",
-        "txt" => "text",
-        "md" | "markdown" => "Markdown",
-        _ => "document",
-    };
-
+    // Use two-phase pipeline for ingestion
     let _ = app.emit("ingest-progress", IngestProgress {
-        stage: "parsing".to_string(),
+        stage: "extracting".to_string(),
         progress: 0.1,
-        message: format!("Parsing {} (~{} estimated pages)...", format_name, estimated_pages),
+        message: format!("Extracting content from {}...", source_name),
         source_name: source_name.clone(),
     });
 
-    let page_count: usize;
-    let text_content: String;
+    let (extraction, chunking) = state.ingestion_pipeline
+        .ingest_two_phase(
+            &state.search_client,
+            &path_buf,
+            None, // No title override
+        )
+        .await
+        .map_err(|e| format!("Ingestion failed: {}", e))?;
 
-    // Use kreuzberg for supported document formats (PDF, EPUB, DOCX, MOBI, etc.)
-    if crate::ingestion::DocumentExtractor::is_supported(&path_buf) {
-        use crate::ingestion::DocumentExtractor;
-
-        // Use OCR-enabled extractor for scanned documents
-        let extractor = DocumentExtractor::with_ocr();
-
-        let _ = app.emit("ingest-progress", IngestProgress {
-            stage: "parsing".to_string(),
-            progress: 0.2,
-            message: format!("Extracting {} with kreuzberg...", format_name),
-            source_name: source_name.clone(),
-        });
-
-        // Clone for callback
-        let app_handle = app.clone();
-        let source_name_cb = source_name.clone();
-
-        let progress_callback = move |p: f32, msg: &str| {
-            let scaled_progress = 0.2 + (p * 0.2);
-
-            let _ = app_handle.emit("ingest-progress", IngestProgress {
-                stage: "parsing".to_string(),
-                progress: scaled_progress,
-                message: msg.to_string(),
-                source_name: source_name_cb.clone(),
-            });
-        };
-
-        let extracted = extractor.extract(&path_buf, Some(progress_callback))
-            .await
-            .map_err(|e| format!("Document extraction failed: {}", e))?;
-
-        page_count = extracted.page_count;
-        text_content = extracted.content;
-
-        let _ = app.emit("ingest-progress", IngestProgress {
-            stage: "parsing".to_string(),
-            progress: 0.4,
-            message: format!("Extracted {} pages ({} chars)", page_count, text_content.len()),
-            source_name: source_name.clone(),
-        });
-    } else if extension == "txt" || extension == "md" || extension == "markdown" {
-        // Plain text files - read directly
-        text_content = std::fs::read_to_string(&path)
-            .map_err(|e| format!("Failed to read file: {}", e))?;
-        page_count = text_content.lines().count() / 50;
-
-        let _ = app.emit("ingest-progress", IngestProgress {
-            stage: "parsing".to_string(),
-            progress: 0.4,
-            message: format!("Loaded {} characters", text_content.len()),
-            source_name: source_name.clone(),
-        });
-    } else {
-        // Try to read as text for other formats
-        text_content = std::fs::read_to_string(&path)
-            .map_err(|e| format!("Unsupported format or failed to read: {}", e))?;
-        page_count = 1;
-
-        let _ = app.emit("ingest-progress", IngestProgress {
-            stage: "parsing".to_string(),
-            progress: 0.4,
-            message: "File loaded".to_string(),
-            source_name: source_name.clone(),
-        });
-    }
-
-    // Stage 2: Chunking (40-60%)
-    let _ = app.emit("ingest-progress", IngestProgress {
-        stage: "chunking".to_string(),
-        progress: 0.5,
-        message: format!("Chunking {} characters...", text_content.len()),
-        source_name: source_name.clone(),
-    });
-
-    // Stage 3: Indexing (60-100%)
-    let _ = app.emit("ingest-progress", IngestProgress {
-        stage: "indexing".to_string(),
-        progress: 0.6,
-        message: "Indexing to Meilisearch...".to_string(),
-        source_name: source_name.clone(),
-    });
-
-    let pipeline = MeilisearchPipeline::default();
-    let result = pipeline.ingest_text(
-        &state.search_client,
-        &text_content,
-        &source_name,
-        &source_type,
-        None,
-        None,
-    )
-    .await
-    .map_err(|e| e.to_string())?;
-
-    // Save document metadata
-    let library_doc = crate::core::search_client::LibraryDocumentMetadata {
-        id: uuid::Uuid::new_v4().to_string(),
+    // Save document metadata (preserve original_id if provided for re-ingestion)
+    let library_doc = crate::core::search::LibraryDocumentMetadata {
+        id: original_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
         name: source_name.clone(),
         source_type: source_type.clone(),
         file_path: Some(path.clone()),
-        page_count: page_count as u32,
-        chunk_count: result.total_chunks as u32,
-        character_count: text_content.len() as u64,
-        content_index: result.index_used.clone(),
+        page_count: extraction.page_count as u32,
+        chunk_count: chunking.chunk_count as u32,
+        character_count: extraction.total_chars as u64,
+        content_index: chunking.chunks_index.clone(),
         status: "ready".to_string(),
         error_message: None,
         ingested_at: chrono::Utc::now().to_rfc3339(),
-        // TTRPG metadata - user-editable, not set during ingestion
-        game_system: None,
+        // TTRPG metadata from extraction (auto-detected)
+        game_system: extraction.ttrpg_metadata.game_system.clone(),
         setting: None,
-        content_type: None,
+        content_type: extraction.ttrpg_metadata.content_category.clone(),
         publisher: None,
     };
 
@@ -321,39 +217,19 @@ pub(crate) async fn ingest_document_with_progress_internal(
     let _ = app.emit("ingest-progress", IngestProgress {
         stage: "complete".to_string(),
         progress: 1.0,
-        message: format!("Indexed {} chunks", result.total_chunks),
+        message: format!(
+            "Ingested {} pages -> {} chunks (indexes: {}, {})",
+            extraction.page_count,
+            chunking.chunk_count,
+            extraction.raw_index,
+            chunking.chunks_index
+        ),
         source_name: source_name.clone(),
     });
 
     Ok(IngestResult {
-        page_count,
-        character_count: text_content.len(),
-        source_name: result.source,
+        page_count: extraction.page_count,
+        character_count: extraction.total_chars,
+        source_name: extraction.source_name,
     })
-}
-
-/// Estimate PDF page count using pdfinfo (fast) or file size heuristic
-fn estimate_pdf_pages(path: &std::path::Path, file_size: u64) -> usize {
-    // For PDFs, try to get actual page count from pdfinfo (very fast)
-    if path.extension().and_then(|e| e.to_str()) == Some("pdf") {
-        if let Ok(output) = std::process::Command::new("pdfinfo")
-            .arg(path)
-            .output()
-        {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                if line.starts_with("Pages:") {
-                    if let Some(count_str) = line.split(':').nth(1) {
-                        if let Ok(count) = count_str.trim().parse::<usize>() {
-                            return count;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Fallback: estimate based on file size
-    // Use 200KB per page as middle ground between text (50KB) and scanned (500KB+)
-    (file_size / 200_000).max(1) as usize
 }

@@ -19,7 +19,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use crate::database::{
-    Database, SearchAnalyticsRecord, SearchSelectionRecord,
+    Database, SearchAnalyticsOps, SearchAnalyticsRecord, SearchSelectionRecord,
     SearchAnalyticsSummary as DbSearchAnalyticsSummary,
     SearchCacheStats as DbSearchCacheStats,
     PopularQueryRecord,

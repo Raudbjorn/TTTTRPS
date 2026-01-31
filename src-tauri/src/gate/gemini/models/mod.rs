@@ -83,6 +83,6 @@ pub use request::{
     CacheControl, Message, MessageContent, MessagesRequest, MessagesRequestBuilder, Role,
     SystemBlock, SystemPrompt, ThinkingConfig,
 };
-pub use response::{MessagesResponse, StopReason, Usage};
+pub use response::{GeminiApiModel, MessagesResponse, ModelsResponse, StopReason, Usage};
 pub use stream::{ContentDelta, MessageDelta, PartialMessage, StreamError, StreamEvent};
 pub use tools::{Tool, ToolChoice};

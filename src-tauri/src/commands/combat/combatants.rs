@@ -5,7 +5,6 @@
 use tauri::State;
 use crate::commands::AppState;
 use crate::core::session_manager::{Combatant, CombatantType};
-use crate::core::session::ConditionTracker;
 
 /// Add a combatant to the current combat
 #[tauri::command]
@@ -31,22 +30,10 @@ pub fn add_combatant(
     };
 
     // Create full combatant with optional HP/AC
-    let combatant = Combatant {
-        id: uuid::Uuid::new_v4().to_string(),
-        name: name.clone(),
-        initiative,
-        initiative_modifier: 0,
-        combatant_type: ctype,
-        current_hp: hp_current.or(hp_max),
-        max_hp: hp_max,
-        temp_hp: None,
-        armor_class,
-        conditions: vec![],
-        condition_tracker: ConditionTracker::new(),
-        condition_immunities: vec![],
-        is_active: true,
-        notes: String::new(),
-    };
+    let mut combatant = Combatant::new(name.clone(), initiative, ctype);
+    combatant.current_hp = hp_current.or(hp_max);
+    combatant.max_hp = hp_max;
+    combatant.armor_class = armor_class;
 
     state.session_manager.add_combatant(&session_id, combatant.clone())
         .map_err(|e| e.to_string())?;

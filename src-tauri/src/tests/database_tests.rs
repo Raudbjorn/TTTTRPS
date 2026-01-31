@@ -4,10 +4,12 @@
 //! Uses an in-memory database for fast, isolated testing.
 
 use crate::database::{
-    run_migrations, CampaignRecord, CampaignVersionRecord, CharacterRecord, CombatStateRecord,
-    Database, DocumentRecord, EntityRelationshipRecord, EntityType, LocationRecord, NpcConversation,
-    NpcRecord, PersonalityRecord, SearchAnalyticsRecord, SessionEventRecord, SessionNoteRecord,
-    SessionRecord, UsageRecord, VoiceProfileRecord,
+    run_migrations, CampaignOps, CampaignRecord, CampaignVersionRecord, CharacterOps,
+    CharacterRecord, CombatOps, CombatStateRecord, Database, DocumentOps, DocumentRecord,
+    EntityRelationshipRecord, EntityType, LocationOps, LocationRecord, NpcConversation,
+    NpcOps, NpcRecord, PersonalityRecord, RelationshipOps, SearchAnalyticsOps,
+    SearchAnalyticsRecord, SessionEventRecord, SessionNoteRecord, SessionOps, SessionRecord,
+    SettingsOps, UsageOps, UsageRecord, VoiceProfileOps, VoiceProfileRecord,
 };
 use tempfile::TempDir;
 

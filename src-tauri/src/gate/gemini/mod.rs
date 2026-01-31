@@ -75,10 +75,10 @@ pub use error::{AuthError, Error, Result};
 
 // Re-export key model types at module root for convenience
 pub use models::{
-    ContentBlock, ContentDelta, DocumentSource, ImageSource, Message, MessageContent, MessageDelta,
-    MessagesRequest, MessagesRequestBuilder, MessagesResponse, PartialMessage, Role, StopReason,
-    StreamError, StreamEvent, SystemPrompt, ThinkingConfig, Tool, ToolChoice, ToolResultContent,
-    Usage,
+    ContentBlock, ContentDelta, DocumentSource, GeminiApiModel, ImageSource, Message,
+    MessageContent, MessageDelta, MessagesRequest, MessagesRequestBuilder, MessagesResponse,
+    ModelsResponse, PartialMessage, Role, StopReason, StreamError, StreamEvent, SystemPrompt,
+    ThinkingConfig, Tool, ToolChoice, ToolResultContent, Usage,
 };
 
 // Re-export auth types at module root

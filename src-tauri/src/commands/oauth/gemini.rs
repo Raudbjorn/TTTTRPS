@@ -1,6 +1,6 @@
 //! Gemini OAuth State and Commands
 //!
-//! Handles OAuth for the Gemini Gate provider (Google Cloud Code).
+//! Handles OAuth for the Gemini provider (Google Cloud Code).
 //! Provides type-erased storage backend support and runtime backend switching.
 
 use serde::{Deserialize, Serialize};
@@ -10,7 +10,7 @@ use tokio::sync::RwLock as AsyncRwLock;
 // Unified Gate OAuth types
 use crate::gate::{OAuthFlowState as GateOAuthFlowState, TokenInfo as GateTokenInfo};
 
-// Gemini Gate OAuth client
+// Gemini OAuth client
 #[allow(deprecated)]
 use crate::gate::gemini::{
     CloudCodeClient as GeminiCloudCodeClient, FileTokenStorage as GeminiFileTokenStorage,
@@ -26,7 +26,7 @@ use crate::commands::AppState;
 // Storage Backend Enum
 // ============================================================================
 
-/// Storage backend type for Gemini Gate
+/// Storage backend type for Gemini
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 #[derive(Default)]
@@ -68,10 +68,10 @@ impl std::str::FromStr for GeminiGateStorageBackend {
 }
 
 // ============================================================================
-// Gemini Gate Client Trait (for type-erased storage backend support)
+// Gemini Client Trait (for type-erased storage backend support)
 // ============================================================================
 
-/// Trait for Gemini Gate client operations, allowing type-erased storage backends.
+/// Trait for Gemini client operations, allowing type-erased storage backends.
 ///
 /// This trait uses unified gate types for OAuth flow state while internally
 /// using gemini_gate types for API operations.
@@ -87,10 +87,11 @@ trait GeminiGateClientOps: Send + Sync {
         state: Option<&str>,
     ) -> Result<GateTokenInfo, String>;
     async fn logout(&self) -> Result<(), String>;
+    async fn list_models(&self) -> Result<Vec<crate::gate::gemini::GeminiApiModel>, String>;
     fn storage_name(&self) -> &'static str;
 }
 
-/// File storage client wrapper for Gemini Gate
+/// File storage client wrapper for Gemini
 #[allow(deprecated)]
 struct GeminiFileStorageClientWrapper {
     client: std::sync::Arc<GeminiCloudCodeClient<GeminiFileTokenStorage>>,
@@ -130,12 +131,15 @@ impl GeminiGateClientOps for GeminiFileStorageClientWrapper {
     async fn logout(&self) -> Result<(), String> {
         self.client.logout().await.map_err(|e| e.to_string())
     }
+    async fn list_models(&self) -> Result<Vec<crate::gate::gemini::GeminiApiModel>, String> {
+        self.client.list_models().await.map_err(|e| e.to_string())
+    }
     fn storage_name(&self) -> &'static str {
         "file"
     }
 }
 
-/// Keyring storage client wrapper for Gemini Gate
+/// Keyring storage client wrapper for Gemini
 #[cfg(feature = "keyring")]
 #[allow(deprecated)]
 struct GeminiKeyringStorageClientWrapper {
@@ -177,16 +181,19 @@ impl GeminiGateClientOps for GeminiKeyringStorageClientWrapper {
     async fn logout(&self) -> Result<(), String> {
         self.client.logout().await.map_err(|e| e.to_string())
     }
+    async fn list_models(&self) -> Result<Vec<crate::gate::gemini::GeminiApiModel>, String> {
+        self.client.list_models().await.map_err(|e| e.to_string())
+    }
     fn storage_name(&self) -> &'static str {
         "keyring"
     }
 }
 
 // ============================================================================
-// Gemini Gate State
+// Gemini State
 // ============================================================================
 
-/// Type-erased Gemini Gate client wrapper.
+/// Type-erased Gemini client wrapper.
 /// This allows storing the client in AppState regardless of storage backend
 /// and supports runtime backend switching.
 #[allow(deprecated)]
@@ -236,18 +243,18 @@ impl GeminiGateState {
                 {
                     match Self::create_client(GeminiGateStorageBackend::Keyring) {
                         Ok(client) => {
-                            log::info!("Gemini Gate: Auto-selected keyring storage backend");
+                            log::info!("Gemini: Auto-selected keyring storage backend");
                             return Ok(client);
                         }
                         Err(e) => {
                             log::warn!(
-                                "Gemini Gate: Keyring storage failed, falling back to file: {}",
+                                "Gemini: Keyring storage failed, falling back to file: {}",
                                 e
                             );
                         }
                     }
                 }
-                log::info!("Gemini Gate: Using file storage backend");
+                log::info!("Gemini: Using file storage backend");
                 Self::create_client(GeminiGateStorageBackend::File)
             }
         }
@@ -296,7 +303,7 @@ impl GeminiGateState {
             *state_lock = None;
         }
 
-        log::info!("Gemini Gate storage backend switched to: {}", backend_name);
+        log::info!("Gemini storage backend switched to: {}", backend_name);
         Ok(backend_name.to_string())
     }
 
@@ -305,7 +312,7 @@ impl GeminiGateState {
         let client = self.client.read().await;
         let client = client
             .as_ref()
-            .ok_or("Gemini Gate client not initialized")?;
+            .ok_or("Gemini client not initialized")?;
         client.is_authenticated().await
     }
 
@@ -314,7 +321,7 @@ impl GeminiGateState {
         let client = self.client.read().await;
         let client = client
             .as_ref()
-            .ok_or("Gemini Gate client not initialized")?;
+            .ok_or("Gemini client not initialized")?;
         client.get_token_info().await
     }
 
@@ -323,7 +330,7 @@ impl GeminiGateState {
         let client = self.client.read().await;
         let client = client
             .as_ref()
-            .ok_or("Gemini Gate client not initialized")?;
+            .ok_or("Gemini client not initialized")?;
         let (url, state) = client.start_oauth_flow_with_state().await?;
 
         // Store the state for verification
@@ -370,7 +377,7 @@ impl GeminiGateState {
         let client = self.client.read().await;
         let client = client
             .as_ref()
-            .ok_or("Gemini Gate client not initialized")?;
+            .ok_or("Gemini client not initialized")?;
         let token = client.complete_oauth_flow(code, state).await?;
 
         Ok(token)
@@ -381,7 +388,7 @@ impl GeminiGateState {
         let client = self.client.read().await;
         let client = client
             .as_ref()
-            .ok_or("Gemini Gate client not initialized")?;
+            .ok_or("Gemini client not initialized")?;
         client.logout().await
     }
 
@@ -393,6 +400,15 @@ impl GeminiGateState {
         } else {
             self.storage_backend.read().await.to_string()
         }
+    }
+
+    /// List available models from the Cloud Code API.
+    pub async fn list_models(&self) -> Result<Vec<crate::gate::gemini::GeminiApiModel>, String> {
+        let client = self.client.read().await;
+        let client = client
+            .as_ref()
+            .ok_or("Gemini client not initialized")?;
+        client.list_models().await
     }
 }
 
@@ -451,7 +467,7 @@ pub struct GeminiGateSetStorageResponse {
 // Tauri Commands
 // ============================================================================
 
-/// Get Gemini Gate OAuth status
+/// Get Gemini OAuth status
 ///
 /// Returns authentication status, storage backend, token expiration, and keyring availability.
 #[tauri::command]
@@ -485,7 +501,7 @@ pub async fn gemini_gate_get_status(
     })
 }
 
-/// Start Gemini Gate OAuth flow
+/// Start Gemini OAuth flow
 ///
 /// Returns the authorization URL that the user should open in their browser,
 /// along with a state parameter for CSRF verification.
@@ -495,7 +511,7 @@ pub async fn gemini_gate_start_oauth(
 ) -> Result<GeminiGateOAuthStartResponse, String> {
     let (auth_url, oauth_state) = state.gemini_gate.start_oauth_flow().await?;
 
-    log::info!("Gemini Gate OAuth flow started");
+    log::info!("Gemini OAuth flow started");
 
     Ok(GeminiGateOAuthStartResponse {
         auth_url,
@@ -503,7 +519,7 @@ pub async fn gemini_gate_start_oauth(
     })
 }
 
-/// Complete Gemini Gate OAuth flow
+/// Complete Gemini OAuth flow
 ///
 /// Exchange the authorization code for tokens and store them.
 ///
@@ -535,7 +551,7 @@ pub async fn gemini_gate_complete_oauth(
     let final_state = embedded_state.or(oauth_state);
 
     log::debug!(
-        "Gemini Gate OAuth complete: code_len={}, state_provided={}",
+        "Gemini OAuth complete: code_len={}, state_provided={}",
         actual_code.len(),
         final_state.is_some()
     );
@@ -546,14 +562,14 @@ pub async fn gemini_gate_complete_oauth(
         .await
     {
         Ok(_token) => {
-            log::info!("Gemini Gate OAuth flow completed successfully");
+            log::info!("Gemini OAuth flow completed successfully");
             Ok(GeminiGateOAuthCompleteResponse {
                 success: true,
                 error: None,
             })
         }
         Err(e) => {
-            log::error!("Gemini Gate OAuth flow failed: {}", e);
+            log::error!("Gemini OAuth flow failed: {}", e);
             Ok(GeminiGateOAuthCompleteResponse {
                 success: false,
                 error: Some(e),
@@ -562,18 +578,18 @@ pub async fn gemini_gate_complete_oauth(
     }
 }
 
-/// Logout from Gemini Gate and remove stored tokens
+/// Logout from Gemini and remove stored tokens
 #[tauri::command]
 pub async fn gemini_gate_logout(
     state: State<'_, AppState>,
 ) -> Result<GeminiGateLogoutResponse, String> {
     state.gemini_gate.logout().await?;
-    log::info!("Gemini Gate logout completed");
+    log::info!("Gemini logout completed");
 
     Ok(GeminiGateLogoutResponse { success: true })
 }
 
-/// Change Gemini Gate storage backend
+/// Change Gemini storage backend
 ///
 /// Note: Changing the storage backend requires re-authentication as tokens
 /// are not automatically migrated between backends.
@@ -590,10 +606,176 @@ pub async fn gemini_gate_set_storage_backend(
 
     // Switch to the new backend - this recreates the client
     let active = state.gemini_gate.switch_backend(new_backend).await?;
-    log::info!("Gemini Gate storage backend switched to: {}", active);
+    log::info!("Gemini storage backend switched to: {}", active);
 
     Ok(GeminiGateSetStorageResponse {
         success: true,
         active_backend: active,
     })
+}
+
+// ============================================================================
+// Callback Server Integration
+// ============================================================================
+
+use crate::gate::callback_server::{CallbackConfig, CallbackServer};
+use std::time::Duration;
+
+/// Response for gemini_gate_oauth_with_callback command
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeminiGateOAuthCallbackResponse {
+    /// Whether the OAuth flow completed successfully
+    pub success: bool,
+    /// Error message if the flow failed
+    pub error: Option<String>,
+    /// The authorization URL (for display/manual fallback)
+    pub auth_url: Option<String>,
+}
+
+/// Start Gemini OAuth flow with automatic callback server
+///
+/// This command:
+/// 1. Starts a local HTTP server to receive the OAuth callback
+/// 2. Generates the OAuth authorization URL
+/// 3. Opens the URL in the user's default browser
+/// 4. Waits for the OAuth callback (with timeout)
+/// 5. Completes the OAuth flow automatically
+///
+/// This provides a seamless "one-click" authentication experience.
+///
+/// # Arguments
+/// * `timeout_secs` - Optional timeout in seconds (default: 300 = 5 minutes)
+/// * `open_browser` - Whether to automatically open the browser (default: true)
+#[tauri::command]
+pub async fn gemini_gate_oauth_with_callback(
+    timeout_secs: Option<u64>,
+    open_browser: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<GeminiGateOAuthCallbackResponse, String> {
+    let timeout = Duration::from_secs(timeout_secs.unwrap_or(300));
+    let should_open_browser = open_browser.unwrap_or(true);
+
+    // Start the OAuth flow to get the auth URL and state
+    let (auth_url, oauth_state) = state.gemini_gate.start_oauth_flow().await?;
+
+    log::info!("Gemini OAuth: Starting callback server on port 51121");
+
+    // Create and start the callback server
+    let server = CallbackServer::new(CallbackConfig::gemini());
+    let handle = match server.start().await {
+        Ok(h) => h,
+        Err(e) => {
+            log::error!("Failed to start callback server: {}", e);
+            return Ok(GeminiGateOAuthCallbackResponse {
+                success: false,
+                error: Some(format!("Failed to start callback server: {}", e)),
+                auth_url: Some(auth_url),
+            });
+        }
+    };
+
+    // Open the browser if requested
+    if should_open_browser {
+        log::info!("Opening browser for Gemini OAuth");
+        if let Err(e) = open::that(&auth_url) {
+            log::warn!("Failed to open browser: {}. User can manually visit: {}", e, auth_url);
+        }
+    }
+
+    // Wait for the callback
+    log::info!("Waiting for OAuth callback (timeout: {}s)", timeout.as_secs());
+    let callback_result = match handle.wait(timeout).await {
+        Ok(result) => result,
+        Err(e) => {
+            log::error!("OAuth callback failed: {}", e);
+            return Ok(GeminiGateOAuthCallbackResponse {
+                success: false,
+                error: Some(format!("OAuth callback failed: {}", e)),
+                auth_url: Some(auth_url),
+            });
+        }
+    };
+
+    log::info!("OAuth callback received, completing flow");
+
+    // Verify the state matches
+    let callback_state = callback_result.state.as_deref();
+    if callback_state != Some(oauth_state.as_str()) {
+        log::error!(
+            "OAuth state mismatch: expected '{}', got '{:?}'",
+            oauth_state,
+            callback_state
+        );
+        return Ok(GeminiGateOAuthCallbackResponse {
+            success: false,
+            error: Some("OAuth state mismatch - possible CSRF attack".to_string()),
+            auth_url: None,
+        });
+    }
+
+    // Complete the OAuth flow
+    match state
+        .gemini_gate
+        .complete_oauth_flow(&callback_result.code, callback_state)
+        .await
+    {
+        Ok(_token) => {
+            log::info!("Gemini OAuth completed successfully");
+            Ok(GeminiGateOAuthCallbackResponse {
+                success: true,
+                error: None,
+                auth_url: None,
+            })
+        }
+        Err(e) => {
+            log::error!("Gemini OAuth completion failed: {}", e);
+            Ok(GeminiGateOAuthCallbackResponse {
+                success: false,
+                error: Some(e),
+                auth_url: None,
+            })
+        }
+    }
+}
+
+// ============================================================================
+// Model Listing
+// ============================================================================
+
+/// A model available via the Gemini Cloud Code API.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeminiGateModel {
+    /// Unique identifier for the model.
+    pub id: String,
+    /// Display name for the model.
+    pub name: String,
+    /// Description of the model (optional).
+    pub description: Option<String>,
+}
+
+impl From<crate::gate::gemini::GeminiApiModel> for GeminiGateModel {
+    fn from(m: crate::gate::gemini::GeminiApiModel) -> Self {
+        Self {
+            id: m.id.clone(),
+            name: m.display_name,
+            description: m.description,
+        }
+    }
+}
+
+/// List available models from the Gemini Cloud Code API.
+///
+/// Returns models available for use with the authenticated account.
+/// Requires successful OAuth authentication first.
+#[tauri::command]
+pub async fn gemini_gate_list_models(
+    state: State<'_, AppState>,
+) -> Result<Vec<GeminiGateModel>, String> {
+    // Check if authenticated
+    if !state.gemini_gate.is_authenticated().await? {
+        return Err("Not authenticated. Please complete OAuth login first.".to_string());
+    }
+
+    let models = state.gemini_gate.list_models().await?;
+    Ok(models.into_iter().map(GeminiGateModel::from).collect())
 }

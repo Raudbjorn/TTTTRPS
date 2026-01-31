@@ -190,6 +190,59 @@ impl std::fmt::Display for StopReason {
     }
 }
 
+// ============================================================================
+// API Model Types (for list_models)
+// ============================================================================
+
+/// A model available via the Cloud Code API.
+///
+/// Returned by the `list_models` endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct GeminiApiModel {
+    /// Unique identifier for the model (e.g., "gemini-3-flash").
+    pub id: String,
+
+    /// Display name for the model.
+    #[serde(default)]
+    pub display_name: String,
+
+    /// Description of the model's capabilities.
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+impl GeminiApiModel {
+    /// Create a new API model.
+    pub fn new(id: impl Into<String>, display_name: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            display_name: display_name.into(),
+            description: None,
+        }
+    }
+
+    /// Create a model with description.
+    pub fn with_description(
+        id: impl Into<String>,
+        display_name: impl Into<String>,
+        description: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            display_name: display_name.into(),
+            description: Some(description.into()),
+        }
+    }
+}
+
+/// Response from the fetch_available_models API.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelsResponse {
+    /// List of available models.
+    #[serde(default)]
+    pub models: Vec<GeminiApiModel>,
+}
+
 /// Token usage information.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct Usage {

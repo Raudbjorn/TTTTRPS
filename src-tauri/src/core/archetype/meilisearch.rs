@@ -14,7 +14,7 @@
 //!
 //! ```rust,ignore
 //! use crate::core::archetype::meilisearch::ArchetypeIndexManager;
-//! use crate::core::search_client::SearchClient;
+//! use crate::core::search::SearchClient;
 //!
 //! let search_client = SearchClient::new("http://localhost:7700", None);
 //! let index_manager = ArchetypeIndexManager::new(search_client);

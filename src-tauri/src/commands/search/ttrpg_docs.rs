@@ -3,6 +3,7 @@
 //! Commands for querying TTRPG documents (monsters, spells, items, etc.)
 //! from the database.
 
+use crate::database::TtrpgOps;
 use crate::with_db;
 
 // ============================================================================

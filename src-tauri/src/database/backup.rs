@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use tracing::{info, warn, error};
+use tracing::{info, warn};
 
 /// Information about a backup file
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -5,7 +5,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::core::search_client::{SearchClient, SearchDocument, INDEX_RULES, INDEX_DOCUMENTS};
+    use crate::core::search::{SearchClient, SearchDocument, INDEX_RULES, INDEX_DOCUMENTS};
     use crate::core::meilisearch_pipeline::MeilisearchPipeline;
     use std::collections::HashMap;
 
@@ -175,7 +175,7 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "Requires running Meilisearch instance"]
-    async fn test_pipeline_text_ingestion() {
+    async fn test_pipeline_two_phase_ingestion() {
         let client = test_client();
         client.initialize_indexes().await.unwrap();
 
@@ -184,22 +184,27 @@ mod tests {
         // Create a temporary test file
         let temp_dir = std::env::temp_dir();
         let test_file = temp_dir.join("test_document.txt");
-        std::fs::write(&test_file, "This is a test document about dragons and treasure.").unwrap();
+        std::fs::write(&test_file, "This is a test document about dragons and treasure. Dragons love gold.").unwrap();
 
-        // Process the file
-        let result = pipeline.process_file(&client, &test_file, "document", None).await;
-        assert!(result.is_ok(), "Should process text file: {:?}", result.err());
+        // Use two-phase pipeline for ingestion
+        let result = pipeline.ingest_two_phase(&client, &test_file, None).await;
+        assert!(result.is_ok(), "Should process text file with two-phase pipeline: {:?}", result.err());
 
-        let result = result.unwrap();
-        assert!(result.stored_chunks > 0, "Should store at least one chunk");
+        let (extraction, chunking) = result.unwrap();
+        assert!(extraction.page_count > 0, "Should extract at least one page");
+        assert!(chunking.chunk_count > 0, "Should create at least one chunk");
 
-        // Clean up
-        std::fs::remove_file(test_file).ok();
+        // Clean up test file
+        std::fs::remove_file(&test_file).ok();
 
-        // Verify it's searchable
+        // Verify it's searchable in the chunks index
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-        let search_results = client.search(INDEX_DOCUMENTS, "dragons treasure", 10, None).await.unwrap();
-        assert!(!search_results.is_empty(), "Should find ingested document");
+        let search_results = client.search(&chunking.chunks_index, "dragons treasure", 10, None).await.unwrap();
+        assert!(!search_results.is_empty(), "Should find ingested document in chunks index");
+
+        // Clean up indexes
+        let _ = client.delete_index(&extraction.raw_index).await;
+        let _ = client.delete_index(&chunking.chunks_index).await;
     }
 
     // ========================================================================

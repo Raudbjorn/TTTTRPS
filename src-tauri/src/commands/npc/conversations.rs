@@ -6,7 +6,7 @@ use tauri::State;
 use serde::{Deserialize, Serialize};
 
 use crate::commands::AppState;
-use crate::database::{NpcConversation, ConversationMessage};
+use crate::database::{NpcConversation, ConversationMessage, NpcOps};
 
 // ============================================================================
 // Types

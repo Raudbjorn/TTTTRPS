@@ -1,11 +1,12 @@
 //! Session Module
 //!
 //! Submodules for session management including timeline tracking,
-//! advanced conditions, session notes with AI categorization,
+//! advanced conditions, combat state, session notes with AI categorization,
 //! and session planning with pacing templates.
 
 pub mod timeline;
 pub mod conditions;
+pub mod combat;
 pub mod notes;
 pub mod plan_types;
 
@@ -32,4 +33,9 @@ pub use plan_types::{
     EncounterDifficulty, PlannedEncounter, EnemyGroup,
     NarrativeBeat, SessionPlan,
     pacing_templates,
+};
+
+pub use combat::{
+    CombatState, CombatStatus, Combatant, CombatantType,
+    CombatEvent, CombatEventType, TurnResult,
 };

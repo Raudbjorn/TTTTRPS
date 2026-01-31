@@ -16,3 +16,5 @@ pub mod graph;
 pub mod analytics;
 pub mod campaign;
 pub mod voice;
+pub mod campaign_wizard;
+pub mod generation;

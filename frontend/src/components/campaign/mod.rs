@@ -14,6 +14,7 @@ pub mod version_history;
 pub mod world_state_editor;
 pub mod relationship_graph;
 pub mod relationship_editor;
+pub mod random_table;
 
 // Re-exports
 pub use campaign_dashboard::CampaignDashboard;
@@ -24,3 +25,4 @@ pub use version_history::VersionHistory;
 pub use world_state_editor::WorldStateEditor;
 pub use relationship_graph::RelationshipGraph;
 pub use relationship_editor::RelationshipEditor;
+pub use random_table::{RandomTableDisplay, RollHistorySidebar, DiceRollerWidget};

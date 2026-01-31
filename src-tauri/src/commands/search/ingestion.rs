@@ -12,6 +12,10 @@ use super::types::{IngestOptions, TwoPhaseIngestResult, IngestResult, IngestProg
 // Document Ingestion Commands
 // ============================================================================
 
+/// Ingest a document using two-phase pipeline (simplified interface).
+///
+/// This is a convenience wrapper around `ingest_document_two_phase` that
+/// uses the two-phase workflow (extract → raw index → chunk index).
 #[tauri::command]
 pub async fn ingest_document(
     path: String,
@@ -25,20 +29,23 @@ pub async fn ingest_document(
 
     let opts = options.unwrap_or_default();
 
-    // Use Meilisearch pipeline for ingestion
-    let result = state.ingestion_pipeline
-        .process_file(
+    // Use two-phase pipeline for ingestion
+    let (extraction, chunking) = state.ingestion_pipeline
+        .ingest_two_phase(
             &state.search_client,
             path_obj,
-            &opts.source_type,
-            opts.campaign_id.as_deref(),
+            opts.title_override.as_deref(),
         )
         .await
         .map_err(|e| format!("Ingestion failed: {}", e))?;
 
     Ok(format!(
-        "Ingested '{}': {} chunks into '{}' index",
-        result.source, result.stored_chunks, result.index_used
+        "Ingested '{}': {} pages → {} chunks (indexes: {}, {})",
+        extraction.source_name,
+        extraction.page_count,
+        chunking.chunk_count,
+        extraction.raw_index,
+        chunking.chunks_index
     ))
 }
 
@@ -258,6 +265,7 @@ pub async fn import_layout_json(
     })
 }
 
+/// Ingest a PDF document using two-phase pipeline.
 #[tauri::command]
 pub async fn ingest_pdf(
     path: String,
@@ -265,20 +273,19 @@ pub async fn ingest_pdf(
 ) -> Result<IngestResult, String> {
     let path_buf = std::path::Path::new(&path);
 
-    // Process using MeilisearchPipeline
-    let result = state.ingestion_pipeline
-        .process_file(
+    // Use two-phase pipeline for ingestion
+    let (extraction, _chunking) = state.ingestion_pipeline
+        .ingest_two_phase(
             &state.search_client,
             path_buf,
-            "document",
-            None // No campaign ID for generic library ingestion
+            None, // No title override
         )
         .await
         .map_err(|e| e.to_string())?;
 
     Ok(IngestResult {
-        page_count: 0, // Simplified pipeline result doesn't return page count yet
-        character_count: result.total_chunks * 500, // Approximation if needed, or update IngestResult
-        source_name: result.source,
+        page_count: extraction.page_count,
+        character_count: extraction.total_chars,
+        source_name: extraction.source_name,
     })
 }

@@ -1,0 +1,114 @@
+# Random Table Generation Template
+# Phase 8 - Campaign Generation Overhaul
+#
+# This template is used to generate setting-appropriate random tables
+# with balanced probability distributions.
+
+name: random_table_generation
+version: "1.0.0"
+description: Generate TTRPG random tables with setting-appropriate content
+
+# Variables that will be substituted
+variables:
+  - name: table_name
+    description: Name of the table to generate
+    required: true
+  - name: table_category
+    description: Category (encounters, treasure, weather, npc, location, event)
+    required: true
+  - name: dice_notation
+    description: Dice notation (d6, d20, d100, etc.)
+    required: true
+  - name: setting_context
+    description: Campaign setting details
+    required: false
+  - name: tone
+    description: Tone keywords (gritty, whimsical, horror, etc.)
+    required: false
+  - name: constraints
+    description: Any content constraints to follow
+    required: false
+  - name: example_entries
+    description: Example entries to match style
+    required: false
+
+# System prompt establishing context
+system_prompt: |
+  You are an expert TTRPG game designer specializing in random tables.
+  You create balanced, evocative random tables that enhance gameplay.
+
+  Your tables should:
+  - Have balanced probability distributions (more common results on mid-ranges)
+  - Include specific, actionable content rather than vague entries
+  - Match the tone and setting of the campaign
+  - Avoid repetitive or filler entries
+  - Include occasional surprising or memorable results
+
+# User prompt template
+user_prompt: |
+  Create a random table for "{{table_name}}" using {{dice_notation}}.
+
+  Category: {{table_category}}
+
+  {% if setting_context %}
+  Setting Context:
+  {{setting_context}}
+  {% endif %}
+
+  {% if tone %}
+  Tone: {{tone}}
+  {% endif %}
+
+  {% if constraints %}
+  Constraints to follow:
+  {{constraints}}
+  {% endif %}
+
+  {% if example_entries %}
+  Match the style of these example entries:
+  {{example_entries}}
+  {% endif %}
+
+  Generate the complete table with:
+  1. Appropriate range assignments (e.g., for d20: rare results 1-2 and 19-20, common results 8-13)
+  2. Concise but evocative result text
+  3. Variety across entries - no two entries should feel too similar
+
+  Format each entry as:
+  [range_start]-[range_end]: [result text]
+
+  For single values use:
+  [value]: [result text]
+
+# Response parsing guidance
+response_format: |
+  Parse the response into entries with:
+  - range_start: integer
+  - range_end: integer
+  - result_text: string
+
+  Handle both "X-Y: text" and "X: text" formats.
+
+# Example output for validation
+example_output: |
+  1-2: A patrol of the local lord's guards investigating reports of bandits
+  3-4: A traveling merchant with a cart of exotic spices seeking protection
+  5-6: A wounded adventurer fleeing from something in the forest
+  7-9: A group of pilgrims heading to a distant shrine
+  10-12: Nothing of note - peaceful travel
+  13-15: Wild animals foraging - deer, rabbits, or other game
+  16-17: An abandoned campsite with signs of a hasty departure
+  18-19: A mysterious stranger walking in the opposite direction
+  20: A fey creature observing from the treeline, curious about the party
+
+# Validation rules
+validation:
+  - rule: ranges_continuous
+    description: All ranges must connect without gaps
+  - rule: ranges_cover_dice
+    description: Ranges must cover full dice range (1 to max)
+  - rule: no_duplicate_ranges
+    description: No overlapping ranges allowed
+  - rule: min_entries
+    value: 6
+    description: Table must have at least 6 entries

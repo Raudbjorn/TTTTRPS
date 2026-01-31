@@ -225,6 +225,85 @@ impl HttpClient {
     pub fn inner(&self) -> &Client {
         &self.inner
     }
+
+    /// Make a GET request to an API path.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - API path (e.g., `/v1internal/fetch_available_models`)
+    /// * `token` - OAuth access token
+    ///
+    /// # Returns
+    ///
+    /// The HTTP response on success.
+    #[instrument(skip(self, token), fields(path = %path))]
+    pub async fn get(&self, path: &str, token: &str) -> Result<Response> {
+        let endpoints = self
+            .base_url
+            .as_ref()
+            .map(|url| vec![url.as_str()])
+            .unwrap_or_else(|| CLOUDCODE_ENDPOINT_FALLBACKS.to_vec());
+
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::AUTHORIZATION,
+            format!("Bearer {}", token).parse().unwrap(),
+        );
+        headers.insert(reqwest::header::USER_AGENT, USER_AGENT.parse().unwrap());
+        headers.insert(
+            reqwest::header::HeaderName::from_static("x-goog-api-client"),
+            GOOG_API_CLIENT.parse().unwrap(),
+        );
+
+        let mut last_error: Option<Error> = None;
+
+        for (idx, endpoint) in endpoints.iter().enumerate() {
+            let url = format!("{}{}", endpoint, path);
+            debug!(endpoint = %endpoint, attempt = idx + 1, "GET request");
+
+            match self.inner.get(&url).headers(headers.clone()).send().await {
+                Ok(response) => {
+                    let status = response.status();
+
+                    // Check for retryable errors (403, 404) for fallback
+                    if (status == StatusCode::FORBIDDEN || status == StatusCode::NOT_FOUND)
+                        && idx < endpoints.len() - 1
+                    {
+                        debug!(
+                            status = %status,
+                            endpoint = %endpoint,
+                            "Endpoint returned {} error, trying fallback",
+                            status.as_u16()
+                        );
+                        last_error = Some(Error::api(
+                            status.as_u16(),
+                            format!("Endpoint returned {}", status),
+                            None,
+                        ));
+                        continue;
+                    }
+
+                    return Ok(response);
+                }
+                Err(e) => {
+                    warn!(
+                        endpoint = %endpoint,
+                        error = %e,
+                        "GET request failed"
+                    );
+
+                    if idx < endpoints.len() - 1 {
+                        last_error = Some(Error::Network(e));
+                        continue;
+                    }
+
+                    return Err(Error::Network(e));
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| Error::config("No endpoints available")))
+    }
 }
 
 impl Default for HttpClient {

@@ -7,7 +7,7 @@ use sqlx::Row;
 use tracing::{info, warn};
 
 /// Current database schema version
-const SCHEMA_VERSION: i32 = 20;
+const SCHEMA_VERSION: i32 = 27;
 
 /// Run all pending migrations
 pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
@@ -77,6 +77,13 @@ async fn run_migration(pool: &SqlitePool, version: i32) -> Result<(), sqlx::Erro
         18 => ("global_chat_sessions", MIGRATION_V18),
         19 => ("chat_session_unique_active", MIGRATION_V19),
         20 => ("ttrpg_documents", MIGRATION_V20),
+        21 => ("wizard_states", MIGRATION_V21),
+        22 => ("conversation_tables", MIGRATION_V22),
+        23 => ("citations_and_party", MIGRATION_V23),
+        24 => ("pipeline_core", MIGRATION_V24),
+        25 => ("quick_reference_cards", MIGRATION_V25),
+        26 => ("random_tables", MIGRATION_V26),
+        27 => ("session_recaps", MIGRATION_V27),
         _ => {
             warn!("Unknown migration version: {}", version);
             return Ok(());
@@ -821,4 +828,403 @@ CREATE TABLE IF NOT EXISTS ttrpg_ingestion_jobs (
 
 CREATE INDEX IF NOT EXISTS idx_ttrpg_jobs_document ON ttrpg_ingestion_jobs(document_id);
 CREATE INDEX IF NOT EXISTS idx_ttrpg_jobs_status ON ttrpg_ingestion_jobs(status);
+"#;
+
+/// Migration v21: Wizard states for campaign creation wizard (Phase 1 - Campaign Generation Overhaul)
+/// Stores wizard step progression, partial campaign drafts, and conversation thread references.
+const MIGRATION_V21: &str = r#"
+-- Wizard states table for campaign creation wizard persistence
+CREATE TABLE IF NOT EXISTS wizard_states (
+    id TEXT PRIMARY KEY,
+    current_step TEXT NOT NULL DEFAULT 'basics',
+    completed_steps TEXT NOT NULL DEFAULT '[]',
+    campaign_draft TEXT NOT NULL DEFAULT '{}',
+    conversation_thread_id TEXT,
+    ai_assisted INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    auto_saved_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_wizard_states_created ON wizard_states(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_wizard_states_updated ON wizard_states(updated_at DESC);
+"#;
+
+/// Migration v22: Conversation tables for AI-assisted campaign creation (Phase 1 - Campaign Generation Overhaul)
+/// Stores conversation threads and messages with suggestions and citations.
+const MIGRATION_V22: &str = r#"
+-- Conversation threads for AI-assisted campaign creation
+CREATE TABLE IF NOT EXISTS conversation_threads (
+    id TEXT PRIMARY KEY,
+    campaign_id TEXT,
+    wizard_id TEXT,
+    purpose TEXT NOT NULL DEFAULT 'campaign_creation',
+    title TEXT,
+    active_personality TEXT,
+    message_count INTEGER NOT NULL DEFAULT 0,
+    branched_from TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    archived_at TEXT,
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE SET NULL,
+    FOREIGN KEY (wizard_id) REFERENCES wizard_states(id) ON DELETE SET NULL,
+    FOREIGN KEY (branched_from) REFERENCES conversation_threads(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_threads_campaign ON conversation_threads(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_conversation_threads_wizard ON conversation_threads(wizard_id);
+CREATE INDEX IF NOT EXISTS idx_conversation_threads_created ON conversation_threads(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_conversation_threads_archived ON conversation_threads(archived_at);
+
+-- Conversation messages with embedded suggestions and citations
+CREATE TABLE IF NOT EXISTS conversation_messages (
+    id TEXT PRIMARY KEY,
+    thread_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    suggestions TEXT,
+    citations TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (thread_id) REFERENCES conversation_threads(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_messages_thread ON conversation_messages(thread_id);
+CREATE INDEX IF NOT EXISTS idx_conversation_messages_created ON conversation_messages(created_at);
+CREATE INDEX IF NOT EXISTS idx_conversation_messages_role ON conversation_messages(role);
+
+-- Add FK constraint on wizard_states now that conversation_threads exists
+-- Note: SQLite doesn't support adding FK to existing tables, so we track the relationship via application logic
+"#;
+
+/// Migration v23: Citation and party composition tracking (Phase 1 - Campaign Generation Overhaul)
+/// Stores source citations for traceability and party composition suggestions.
+const MIGRATION_V23: &str = r#"
+-- Source citations for content traceability
+CREATE TABLE IF NOT EXISTS source_citations (
+    id TEXT PRIMARY KEY,
+    campaign_id TEXT,
+    source_type TEXT NOT NULL,
+    source_id TEXT,
+    source_name TEXT NOT NULL,
+    location TEXT,
+    excerpt TEXT,
+    confidence REAL NOT NULL DEFAULT 0.0,
+    used_in TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_source_citations_campaign ON source_citations(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_source_citations_type ON source_citations(source_type);
+CREATE INDEX IF NOT EXISTS idx_source_citations_source ON source_citations(source_id);
+CREATE INDEX IF NOT EXISTS idx_source_citations_confidence ON source_citations(confidence DESC);
+
+-- Party composition suggestions and analysis
+CREATE TABLE IF NOT EXISTS party_compositions (
+    id TEXT PRIMARY KEY,
+    campaign_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    composition TEXT NOT NULL,
+    analysis TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_party_compositions_campaign ON party_compositions(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_party_compositions_created ON party_compositions(created_at DESC);
+"#;
+
+/// Migration v24: Pipeline core tables for generation and acceptance (Phase 1 - Campaign Generation Overhaul)
+/// Implements the Campaign Intelligence Pipeline foundation: intents, drafts, status tracking, and acceptance events.
+const MIGRATION_V24: &str = r#"
+-- Campaign intents: stable anchor for tone and creative vision
+CREATE TABLE IF NOT EXISTS campaign_intents (
+    id TEXT PRIMARY KEY,
+    campaign_id TEXT UNIQUE,
+    fantasy TEXT NOT NULL,
+    player_experiences TEXT NOT NULL DEFAULT '[]',
+    constraints TEXT NOT NULL DEFAULT '[]',
+    themes TEXT NOT NULL DEFAULT '[]',
+    tone_keywords TEXT NOT NULL DEFAULT '[]',
+    avoid TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    migrated_from TEXT,
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_campaign_intents_campaign ON campaign_intents(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_campaign_intents_created ON campaign_intents(created_at DESC);
+
+-- Generation drafts: content awaiting GM review
+CREATE TABLE IF NOT EXISTS generation_drafts (
+    id TEXT PRIMARY KEY,
+    campaign_id TEXT,
+    wizard_id TEXT,
+    entity_type TEXT NOT NULL,
+    data TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft',
+    trust_level TEXT NOT NULL DEFAULT 'creative',
+    trust_confidence REAL NOT NULL DEFAULT 0.0,
+    citations TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    applied_entity_id TEXT,
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE SET NULL,
+    FOREIGN KEY (wizard_id) REFERENCES wizard_states(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_generation_drafts_campaign ON generation_drafts(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_generation_drafts_wizard ON generation_drafts(wizard_id);
+CREATE INDEX IF NOT EXISTS idx_generation_drafts_status ON generation_drafts(status);
+CREATE INDEX IF NOT EXISTS idx_generation_drafts_type ON generation_drafts(entity_type);
+CREATE INDEX IF NOT EXISTS idx_generation_drafts_trust ON generation_drafts(trust_level);
+CREATE INDEX IF NOT EXISTS idx_generation_drafts_created ON generation_drafts(created_at DESC);
+
+-- Canon status transition log for audit trail
+CREATE TABLE IF NOT EXISTS canon_status_log (
+    id TEXT PRIMARY KEY,
+    draft_id TEXT NOT NULL,
+    previous_status TEXT NOT NULL,
+    new_status TEXT NOT NULL,
+    reason TEXT,
+    triggered_by TEXT,
+    timestamp TEXT NOT NULL,
+    FOREIGN KEY (draft_id) REFERENCES generation_drafts(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_canon_status_log_draft ON canon_status_log(draft_id);
+CREATE INDEX IF NOT EXISTS idx_canon_status_log_timestamp ON canon_status_log(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_canon_status_log_status ON canon_status_log(new_status);
+
+-- Acceptance events for tracking GM decisions on drafts
+CREATE TABLE IF NOT EXISTS acceptance_events (
+    id TEXT PRIMARY KEY,
+    draft_id TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    decision TEXT NOT NULL,
+    modifications TEXT,
+    reason TEXT,
+    timestamp TEXT NOT NULL,
+    FOREIGN KEY (draft_id) REFERENCES generation_drafts(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_acceptance_events_draft ON acceptance_events(draft_id);
+CREATE INDEX IF NOT EXISTS idx_acceptance_events_decision ON acceptance_events(decision);
+CREATE INDEX IF NOT EXISTS idx_acceptance_events_type ON acceptance_events(entity_type);
+CREATE INDEX IF NOT EXISTS idx_acceptance_events_timestamp ON acceptance_events(timestamp DESC);
+"#;
+
+/// Migration v25: Quick Reference Cards and Cheat Sheets (Phase 9 - Campaign Generation Overhaul)
+/// Implements pinned cards, disclosure preferences, and cheat sheet configurations.
+const MIGRATION_V25: &str = r#"
+-- Pinned quick reference cards (max 6 per session)
+CREATE TABLE IF NOT EXISTS pinned_cards (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    display_order INTEGER NOT NULL,
+    disclosure_level TEXT NOT NULL DEFAULT 'summary',
+    pinned_at TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    UNIQUE(session_id, entity_type, entity_id),
+    CHECK(display_order >= 0 AND display_order < 6)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pinned_cards_session ON pinned_cards(session_id);
+CREATE INDEX IF NOT EXISTS idx_pinned_cards_order ON pinned_cards(session_id, display_order);
+CREATE INDEX IF NOT EXISTS idx_pinned_cards_entity ON pinned_cards(entity_type, entity_id);
+
+-- Note: Max 6 cards per session enforced in application code (QuickReferenceCardManager)
+-- SQLite triggers with semicolons break statement-splitting migration runner
+
+-- Cheat sheet preferences per campaign/session
+CREATE TABLE IF NOT EXISTS cheat_sheet_preferences (
+    id TEXT PRIMARY KEY,
+    campaign_id TEXT NOT NULL,
+    session_id TEXT,
+    preference_type TEXT NOT NULL,
+    entity_type TEXT,
+    entity_id TEXT,
+    include_status TEXT NOT NULL DEFAULT 'auto',
+    default_disclosure_level TEXT NOT NULL DEFAULT 'summary',
+    priority INTEGER NOT NULL DEFAULT 50,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    UNIQUE(campaign_id, session_id, preference_type, entity_type, entity_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cheat_sheet_prefs_campaign ON cheat_sheet_preferences(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_cheat_sheet_prefs_session ON cheat_sheet_preferences(session_id);
+CREATE INDEX IF NOT EXISTS idx_cheat_sheet_prefs_type ON cheat_sheet_preferences(preference_type);
+CREATE INDEX IF NOT EXISTS idx_cheat_sheet_prefs_priority ON cheat_sheet_preferences(priority DESC);
+
+-- Quick reference card cache for generated HTML previews
+CREATE TABLE IF NOT EXISTS card_cache (
+    id TEXT PRIMARY KEY,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    disclosure_level TEXT NOT NULL,
+    html_content TEXT NOT NULL,
+    generated_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    UNIQUE(entity_type, entity_id, disclosure_level)
+);
+
+CREATE INDEX IF NOT EXISTS idx_card_cache_entity ON card_cache(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_card_cache_expires ON card_cache(expires_at);
+"#;
+
+/// Migration v26: Random Tables (Phase 8 - Campaign Generation Overhaul)
+/// Implements random tables, entries, and roll history for TTRPG-native tools.
+const MIGRATION_V26: &str = r#"
+-- Random tables for TTRPG content generation
+CREATE TABLE IF NOT EXISTS random_tables (
+    id TEXT PRIMARY KEY,
+    campaign_id TEXT,
+    name TEXT NOT NULL,
+    description TEXT,
+    table_type TEXT NOT NULL DEFAULT 'standard',
+    dice_notation TEXT NOT NULL DEFAULT 'd20',
+    category TEXT,
+    tags TEXT NOT NULL DEFAULT '[]',
+    is_system INTEGER NOT NULL DEFAULT 0,
+    is_nested INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_random_tables_campaign ON random_tables(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_random_tables_type ON random_tables(table_type);
+CREATE INDEX IF NOT EXISTS idx_random_tables_category ON random_tables(category);
+CREATE INDEX IF NOT EXISTS idx_random_tables_system ON random_tables(is_system);
+
+-- Random table entries (the actual content rows)
+CREATE TABLE IF NOT EXISTS random_table_entries (
+    id TEXT PRIMARY KEY,
+    table_id TEXT NOT NULL,
+    range_start INTEGER NOT NULL,
+    range_end INTEGER NOT NULL,
+    weight REAL NOT NULL DEFAULT 1.0,
+    result_text TEXT NOT NULL,
+    result_type TEXT NOT NULL DEFAULT 'text',
+    nested_table_id TEXT,
+    metadata TEXT,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (table_id) REFERENCES random_tables(id) ON DELETE CASCADE,
+    FOREIGN KEY (nested_table_id) REFERENCES random_tables(id) ON DELETE SET NULL,
+    CHECK(range_start <= range_end),
+    CHECK(weight > 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_random_table_entries_table ON random_table_entries(table_id);
+CREATE INDEX IF NOT EXISTS idx_random_table_entries_range ON random_table_entries(table_id, range_start, range_end);
+CREATE INDEX IF NOT EXISTS idx_random_table_entries_nested ON random_table_entries(nested_table_id);
+CREATE INDEX IF NOT EXISTS idx_random_table_entries_order ON random_table_entries(table_id, display_order);
+
+-- Roll history for tracking dice results
+CREATE TABLE IF NOT EXISTS roll_history (
+    id TEXT PRIMARY KEY,
+    session_id TEXT,
+    campaign_id TEXT,
+    table_id TEXT,
+    dice_notation TEXT NOT NULL,
+    raw_roll INTEGER NOT NULL,
+    modifier INTEGER NOT NULL DEFAULT 0,
+    final_result INTEGER NOT NULL,
+    entry_id TEXT,
+    result_text TEXT,
+    context TEXT,
+    rolled_at TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE SET NULL,
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE SET NULL,
+    FOREIGN KEY (table_id) REFERENCES random_tables(id) ON DELETE SET NULL,
+    FOREIGN KEY (entry_id) REFERENCES random_table_entries(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_roll_history_session ON roll_history(session_id);
+CREATE INDEX IF NOT EXISTS idx_roll_history_campaign ON roll_history(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_roll_history_table ON roll_history(table_id);
+CREATE INDEX IF NOT EXISTS idx_roll_history_time ON roll_history(rolled_at DESC);
+"#;
+
+/// Migration v27: Session Recaps (Phase 8 - Campaign Generation Overhaul)
+/// Implements session recaps with read-aloud prose, bullet summaries, and per-PC filtering.
+const MIGRATION_V27: &str = r#"
+-- Session recaps for narrative summaries
+CREATE TABLE IF NOT EXISTS session_recaps (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL UNIQUE,
+    campaign_id TEXT NOT NULL,
+    prose_text TEXT,
+    bullet_summary TEXT,
+    cliffhanger TEXT,
+    key_npcs TEXT NOT NULL DEFAULT '[]',
+    key_locations TEXT NOT NULL DEFAULT '[]',
+    key_events TEXT NOT NULL DEFAULT '[]',
+    player_knowledge TEXT,
+    arc_id TEXT,
+    recap_type TEXT NOT NULL DEFAULT 'session',
+    generation_status TEXT NOT NULL DEFAULT 'pending',
+    generated_at TEXT,
+    edited_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
+    FOREIGN KEY (arc_id) REFERENCES plot_arcs(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_recaps_session ON session_recaps(session_id);
+CREATE INDEX IF NOT EXISTS idx_session_recaps_campaign ON session_recaps(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_session_recaps_arc ON session_recaps(arc_id);
+CREATE INDEX IF NOT EXISTS idx_session_recaps_type ON session_recaps(recap_type);
+CREATE INDEX IF NOT EXISTS idx_session_recaps_status ON session_recaps(generation_status);
+
+-- Arc recaps aggregate multiple sessions
+CREATE TABLE IF NOT EXISTS arc_recaps (
+    id TEXT PRIMARY KEY,
+    arc_id TEXT NOT NULL UNIQUE,
+    campaign_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    summary TEXT,
+    key_moments TEXT NOT NULL DEFAULT '[]',
+    character_arcs TEXT NOT NULL DEFAULT '[]',
+    resolved_plots TEXT NOT NULL DEFAULT '[]',
+    open_threads TEXT NOT NULL DEFAULT '[]',
+    session_ids TEXT NOT NULL DEFAULT '[]',
+    generation_status TEXT NOT NULL DEFAULT 'pending',
+    generated_at TEXT,
+    edited_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (arc_id) REFERENCES plot_arcs(id) ON DELETE CASCADE,
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_arc_recaps_arc ON arc_recaps(arc_id);
+CREATE INDEX IF NOT EXISTS idx_arc_recaps_campaign ON arc_recaps(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_arc_recaps_status ON arc_recaps(generation_status);
+
+-- Per-PC knowledge filtering for recaps
+CREATE TABLE IF NOT EXISTS pc_knowledge_filters (
+    id TEXT PRIMARY KEY,
+    recap_id TEXT NOT NULL,
+    character_id TEXT NOT NULL,
+    knows_npc_ids TEXT NOT NULL DEFAULT '[]',
+    knows_location_ids TEXT NOT NULL DEFAULT '[]',
+    knows_event_ids TEXT NOT NULL DEFAULT '[]',
+    private_notes TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (recap_id) REFERENCES session_recaps(id) ON DELETE CASCADE,
+    FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE,
+    UNIQUE(recap_id, character_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pc_knowledge_recap ON pc_knowledge_filters(recap_id);
+CREATE INDEX IF NOT EXISTS idx_pc_knowledge_character ON pc_knowledge_filters(character_id);
 "#;

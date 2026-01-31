@@ -18,6 +18,17 @@ pub mod timeline_view;
 // TASK-017: Notes Panel
 pub mod notes_panel;
 
+// Phase 6: Session Control Panel
+pub mod control_panel;
+
+// Phase 8: Session Recaps
+pub mod recap_viewer;
+
+// Phase 9: Quick Reference Cards & Cheat Sheets
+pub mod entity_card;
+pub mod card_tray;
+pub mod cheat_sheet_viewer;
+
 use leptos::prelude::*;
 use leptos::ev;
 use leptos_router::hooks::use_params;
@@ -54,6 +65,24 @@ pub use timeline_view::{
 
 // TASK-017: Notes exports
 pub use notes_panel::{NotesPanel, SessionNote, NoteCategory};
+
+// Phase 6: Control Panel exports
+pub use control_panel::{ControlPanel, ReadAloudBox, StoryBeat, BeatType, QuickRule, PinnedTable};
+
+// Phase 8: Recap exports
+pub use recap_viewer::{RecapViewer, SessionRecap, RecapStatus, PCFilter};
+
+// Phase 9: Quick Reference Cards & Cheat Sheets exports
+pub use entity_card::{
+    EntityCard, EntityCardCompact, EntityHoverPreview,
+    NpcCard, LocationCard, ItemCard, PlotCard,
+    CardEntityType, DisclosureLevel, RenderedCard, HoverPreview, PinnedCard, QuickStat,
+};
+pub use card_tray::{CardTrayPanel, FloatingCardTray, MiniCardTray, CardTray, MAX_PINNED_CARDS};
+pub use cheat_sheet_viewer::{
+    CheatSheetViewer, FloatingCheatSheet,
+    CheatSheet, CheatSheetSection, CheatSheetItem, SectionType, TruncationWarning,
+};
 
 /// Route params for session page
 #[derive(Params, PartialEq, Clone, Default)]

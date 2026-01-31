@@ -1,4 +1,4 @@
-//! Full ingestion test - extract PDF and index to Meilisearch
+//! Full ingestion test - extract PDF and index to Meilisearch using two-phase pipeline
 
 use std::path::Path;
 
@@ -13,24 +13,11 @@ async fn test_full_ingest() {
         return;
     }
 
-    println!("=== Full Ingestion Test ===\n");
+    println!("=== Full Ingestion Test (Two-Phase Pipeline) ===\n");
 
-    // 1. Extract (run in blocking task to avoid runtime conflicts)
-    println!("[1/3] Extracting PDF (async/parallel page extraction)...");
-    let path = pdf_path.to_path_buf();
-
-    use ttrpg_assistant::ingestion::DocumentExtractor;
-    let extractor = DocumentExtractor::with_ocr();
-    let cb: Option<fn(f32, &str)> = None;
-    let extracted = extractor.extract(&path, cb)
-        .await
-        .expect("Extraction failed");
-
-    println!("Extracted {} chars from {} pages", extracted.char_count, extracted.page_count);
-
-    // 2. Connect to Meilisearch
-    println!("\n[2/3] Connecting to Meilisearch...");
-    use ttrpg_assistant::core::search_client::SearchClient;
+    // 1. Connect to Meilisearch
+    println!("[1/3] Connecting to Meilisearch...");
+    use ttrpg_assistant::core::search::SearchClient;
 
     let meili_key = std::fs::read_to_string("/etc/meilisearch.conf")
         .ok()
@@ -43,31 +30,35 @@ async fn test_full_ingest() {
 
     let search_client = SearchClient::new("http://127.0.0.1:7700", Some(&meili_key));
 
-    // 3. Ingest
-    println!("\n[3/3] Ingesting to Meilisearch...");
+    // 2. Ingest using two-phase pipeline (extract → raw index → chunk index)
+    println!("\n[2/3] Ingesting with two-phase pipeline...");
     use ttrpg_assistant::core::meilisearch_pipeline::MeilisearchPipeline;
 
     let pipeline = MeilisearchPipeline::with_defaults();
-    let result = pipeline.ingest_text(
+    let (extraction, chunking) = pipeline.ingest_two_phase(
         &search_client,
-        &extracted.content,
-        "Delta Green Agent's Handbook",
-        "rulebook",
-        None,
-        None,
-    ).await.expect("Ingestion failed");
+        pdf_path,
+        Some("Delta Green Agent's Handbook"),
+    ).await.expect("Two-phase ingestion failed");
 
     println!("Ingestion complete!");
-    println!("  Source: {}", result.source);
-    println!("  Total chunks: {}", result.total_chunks);
-    println!("  Stored: {}", result.stored_chunks);
-    println!("  Index: {}", result.index_used);
+    println!("  Slug: {}", extraction.slug);
+    println!("  Source: {}", extraction.source_name);
+    println!("  Pages: {}", extraction.page_count);
+    println!("  Characters: {}", extraction.total_chars);
+    println!("  Chunks: {}", chunking.chunk_count);
+    println!("  Raw index: {}", extraction.raw_index);
+    println!("  Chunks index: {}", chunking.chunks_index);
+    if let Some(system) = &extraction.ttrpg_metadata.game_system {
+        println!("  Game system: {}", system);
+    }
 
-    // 4. Verify with search
-    println!("\n[4/4] Verifying with search...");
+    // 3. Verify with search
+    println!("\n[3/3] Verifying with search...");
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await; // Let Meilisearch index
 
-    let results = search_client.search("documents", "sanity points willpower", 5, None)
+    // Search the chunks index
+    let results = search_client.search(&chunking.chunks_index, "sanity points willpower", 5, None)
         .await
         .expect("Search failed");
 

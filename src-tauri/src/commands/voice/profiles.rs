@@ -9,6 +9,7 @@ use crate::core::voice::{
     Gender, AgeRange, get_dm_presets,
 };
 use crate::commands::AppState;
+use crate::database::NpcOps;
 
 // ============================================================================
 // Voice Profile Commands

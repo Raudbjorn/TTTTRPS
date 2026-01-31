@@ -48,7 +48,7 @@ pub async fn reindex_library(
         Ok(format!("Cleared index '{}'", name))
     } else {
         // Clear all indexes
-        for idx in crate::core::search_client::SearchClient::all_indexes() {
+        for idx in crate::core::search::SearchClient::all_indexes() {
             let _ = state.search_client.clear_index(idx).await;
         }
         Ok("Cleared all indexes".to_string())

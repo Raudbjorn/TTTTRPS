@@ -63,6 +63,7 @@ pub use copilot::{
     CopilotUsageInfo,
     CopilotQuotaDetail,
     CopilotGateModelInfo,
+    CopilotGateSetStorageResponse,
     // Commands
     start_copilot_auth,
     poll_copilot_auth,
@@ -70,4 +71,5 @@ pub use copilot::{
     logout_copilot,
     get_copilot_usage,
     get_copilot_models,
+    copilot_gate_set_storage_backend,
 };

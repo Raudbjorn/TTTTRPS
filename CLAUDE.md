@@ -32,6 +32,9 @@ cargo test -- --nocapture
 
 # Single test
 cargo test test_name -- --exact
+
+# Test summary (errors, warnings, failures in one pass)
+cargo test --lib 2>&1 | grep -E "^error\[|warning.*generated|Finished|FAILED|^test result:"
 ```
 
 ### Frontend Development

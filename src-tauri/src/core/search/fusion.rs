@@ -28,7 +28,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use crate::core::search_client::SearchDocument;
+use crate::core::search::SearchDocument;
 use crate::ingestion::ttrpg::vocabulary::fusion_config;
 
 // ============================================================================

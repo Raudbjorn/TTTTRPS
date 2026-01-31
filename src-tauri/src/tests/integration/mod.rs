@@ -35,6 +35,13 @@
 //! - Grok (xAI) provider configuration
 //! - All provider chat completions
 //!
+//! ## Wizard Integration (`wizard_integration`)
+//! - Complete wizard flow (manual mode)
+//! - AI-assisted wizard flow
+//! - Draft recovery scenarios
+//! - Auto-save functionality
+//! - Step validation and transitions
+//!
 //! # Running Tests
 //!
 //! ```bash
@@ -49,9 +56,11 @@
 //! cargo test integration::meilisearch_integration
 //! cargo test integration::llm_integration
 //! cargo test integration::chat_provider_integration
+//! cargo test integration::wizard_integration
 //! ```
 
 pub mod chat_provider_integration;
 pub mod database_integration;
 pub mod llm_integration;
 pub mod meilisearch_integration;
+pub mod wizard_integration;

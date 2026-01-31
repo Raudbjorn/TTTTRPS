@@ -7,9 +7,11 @@ pub mod extraction;
 pub mod embedding;
 pub mod claude_gate_auth;
 pub mod copilot_auth;
+pub mod gemini_gate_auth;
 
 pub use claude_gate_auth::{ClaudeGateAuth, ClaudeGateStatusBadge};
 pub use copilot_auth::{CopilotAuth, CopilotStatusBadge};
+pub use gemini_gate_auth::{GeminiGateAuth, GeminiGateStatusBadge};
 
 use leptos::prelude::*;
 pub use llm::LLMProvider;

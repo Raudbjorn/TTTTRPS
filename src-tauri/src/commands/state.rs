@@ -16,7 +16,7 @@ use crate::core::session_manager::SessionManager;
 use crate::core::npc_gen::NPCStore;
 use crate::core::credentials::CredentialManager;
 use crate::core::sidecar_manager::{SidecarManager, MeilisearchConfig};
-use crate::core::search_client::SearchClient;
+use crate::core::search::SearchClient;
 use crate::core::meilisearch_pipeline::MeilisearchPipeline;
 use crate::core::campaign::versioning::VersionManager;
 use crate::core::campaign::world_state::WorldStateManager;
@@ -126,13 +126,13 @@ impl AppState {
             }
         };
 
-        // Initialize Gemini Gate client
+        // Initialize Gemini client
         let gemini_gate = match GeminiGateState::with_defaults() {
             Ok(state) => Arc::new(state),
             Err(e) => {
-                log::warn!("Failed to initialize Gemini Gate with default storage: {}. Using file storage.", e);
+                log::warn!("Failed to initialize Gemini with default storage: {}. Using file storage.", e);
                 Arc::new(GeminiGateState::new(GeminiGateStorageBackend::File)
-                    .expect("Failed to initialize Gemini Gate with file storage"))
+                    .expect("Failed to initialize Gemini with file storage"))
             }
         };
 

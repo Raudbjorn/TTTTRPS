@@ -13,6 +13,10 @@ pub mod hash;
 pub mod layout;
 pub mod ttrpg;
 
+// Pipeline-specific models and utilities (extracted from core/meilisearch_pipeline.rs)
+pub mod pipeline_models;
+pub mod slugs;
+
 // Document extraction via kreuzberg_extractor (local) or claude_extractor (API)
 
 pub use adaptive_learning::AdaptiveLearningSystem;
@@ -51,4 +55,18 @@ pub use ttrpg::{
     AttributeExtractor, TTRPGAttributes, AttributeMatch, AttributeSource, FilterableFields,
     GameVocabulary, DnD5eVocabulary, Pf2eVocabulary,
     detect_game_system, detect_game_system_with_confidence, GameSystem, DetectionResult,
+};
+
+// Pipeline models and utilities (extracted from core/meilisearch_pipeline.rs)
+pub use pipeline_models::{
+    ClassificationContext, ClassificationResult,
+    PageMetadata, RawDocument, ChunkedDocument,
+    TTRPGMetadata,
+    PipelineChunkConfig, PipelineConfig,
+    ExtractionResult, ChunkingResult,
+};
+pub use slugs::{
+    generate_source_slug, slugify,
+    raw_index_name, chunks_index_name,
+    MAX_SLUG_LENGTH,
 };

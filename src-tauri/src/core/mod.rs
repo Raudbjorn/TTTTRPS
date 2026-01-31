@@ -17,12 +17,12 @@ pub mod theme;
 pub mod location_gen;
 
 // Meilisearch-based search (replaces vector_store, keyword_search, hybrid_search, embedding_pipeline)
+// search_client.rs refactored into search/ module
 pub mod sidecar_manager;
-pub mod search_client;
 pub mod meilisearch_pipeline;
 pub mod meilisearch_chat;
 
-// Enhanced search with hybrid search, embeddings, and TTRPG synonyms
+// Unified search module: Meilisearch client + hybrid search + embeddings + TTRPG synonyms
 pub mod search;
 
 // TTRPG-specific search enhancement (query parsing, ranking, filtering)

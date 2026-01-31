@@ -475,6 +475,18 @@ pub struct CopilotAuthStatus {
     pub copilot_token_expires_at: Option<i64>,
     /// Whether the user has a valid GitHub token (long-lived)
     pub has_github_token: bool,
+    /// Whether keyring (secret service) is available on this system
+    #[serde(default)]
+    pub keyring_available: bool,
+}
+
+/// Response for copilot_gate_set_storage_backend command
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CopilotGateSetStorageResponse {
+    /// Whether the storage backend was changed successfully
+    pub success: bool,
+    /// The currently active storage backend after the change
+    pub active_backend: String,
 }
 
 /// Usage information for Copilot quotas
@@ -663,11 +675,18 @@ pub async fn check_copilot_auth(state: State<'_, AppState>) -> Result<CopilotAut
         (None, false)
     };
 
+    // Check if keyring is available on this system
+    #[cfg(feature = "keyring")]
+    let keyring_available = crate::gate::KeyringTokenStorage::is_available();
+    #[cfg(not(feature = "keyring"))]
+    let keyring_available = false;
+
     Ok(CopilotAuthStatus {
         authenticated,
         storage_backend,
         copilot_token_expires_at,
         has_github_token,
+        keyring_available,
     })
 }
 
@@ -727,6 +746,28 @@ pub async fn get_copilot_models(
         .map(CopilotGateModelInfo::from)
         .collect();
 
-    log::info!("Copilot Gate: Listed {} models", model_infos.len());
+    log::info!("Copilot: Listed {} models", model_infos.len());
     Ok(model_infos)
+}
+
+/// Change Copilot storage backend
+///
+/// Allows switching between file-based and keyring storage.
+/// Note: Switching backends will require re-authentication.
+#[tauri::command]
+pub async fn copilot_gate_set_storage_backend(
+    backend: String,
+    state: State<'_, AppState>,
+) -> Result<CopilotGateSetStorageResponse, String> {
+    // Parse the backend string into the enum
+    let new_backend: CopilotGateStorageBackend = backend.parse()?;
+
+    // Switch the backend
+    let active = state.copilot_gate.switch_backend(new_backend).await?;
+    log::info!("Copilot storage backend switched to: {}", active);
+
+    Ok(CopilotGateSetStorageResponse {
+        success: true,
+        active_backend: active,
+    })
 }

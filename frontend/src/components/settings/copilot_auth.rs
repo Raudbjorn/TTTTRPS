@@ -9,9 +9,10 @@ use gloo_timers::future::TimeoutFuture;
 
 use crate::bindings::{
     check_copilot_auth, start_copilot_auth, poll_copilot_auth, logout_copilot,
-    get_copilot_usage, open_url_in_browser,
-    CopilotAuthStatus, CopilotUsageInfo,
+    get_copilot_usage, open_url_in_browser, copilot_gate_set_storage_backend,
+    CopilotAuthStatus, CopilotUsageInfo, CopilotGateStorageBackend,
 };
+use crate::components::design_system::{Select, SelectOption};
 use crate::components::design_system::{Badge, BadgeVariant};
 use crate::services::notification_service::{show_error, show_success};
 
@@ -254,6 +255,61 @@ pub fn CopilotAuth(
             <p class="text-sm text-[var(--text-muted)]">
                 "GitHub Copilot uses Device Code authentication with your GitHub account."
             </p>
+
+            // Storage backend selector
+            <div class="space-y-2">
+                <label class="text-xs text-[var(--text-muted)]">"Token Storage Backend"</label>
+                <div class="flex flex-col gap-2">
+                    <Select
+                        value=Signal::derive(move || status.get().storage_backend)
+                        on_change=Callback::new(move |value: String| {
+                            let backend = match value.as_str() {
+                                "keyring" => CopilotGateStorageBackend::Keyring,
+                                "file" => CopilotGateStorageBackend::File,
+                                _ => CopilotGateStorageBackend::Auto,
+                            };
+                            spawn_local(async move {
+                                is_loading.set(true);
+                                match copilot_gate_set_storage_backend(backend).await {
+                                    Ok(_) => {
+                                        show_success("Storage Changed", Some("You may need to re-authenticate"));
+                                        refresh_status();
+                                    }
+                                    Err(e) => {
+                                        show_error("Storage Change Failed", Some(&e), None);
+                                        is_loading.set(false);
+                                    }
+                                }
+                            });
+                        })
+                        class="w-auto"
+                    >
+                        {move || {
+                            let keyring_available = status.get().keyring_available;
+                            view! {
+                                <SelectOption
+                                    value="auto"
+                                    label=if keyring_available { "Auto (prefer keyring)" } else { "Auto (file only)" }
+                                />
+                                <SelectOption
+                                    value="keyring"
+                                    label=if keyring_available { "Keyring (secure)" } else { "Keyring (unavailable)" }
+                                />
+                                <SelectOption value="file" label="File" />
+                            }
+                        }}
+                    </Select>
+                    {move || if !status.get().keyring_available {
+                        view! {
+                            <p class="text-xs text-yellow-400/80">
+                                "Secret service not available. Install gnome-keyring or similar."
+                            </p>
+                        }.into_any()
+                    } else {
+                        view! { <span /> }.into_any()
+                    }}
+                </div>
+            </div>
 
             // Usage info when authenticated
             {move || {

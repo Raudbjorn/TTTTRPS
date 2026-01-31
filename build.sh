@@ -531,6 +531,12 @@ build_desktop() {
     print_section "Building Desktop App (Tauri Bundle)"
     cd "$BACKEND_DIR"
 
+    # Check for broken gstreamer dependencies (common on Arch/rolling release)
+    check_gstreamer_deps
+
+    # Patch linuxdeploy for Arch Linux compatibility (fixes .relr.dyn strip errors)
+    patch_linuxdeploy_strip
+
     print_info "Creating application bundle..."
 
     local build_args=()
@@ -548,12 +554,240 @@ build_desktop() {
     cd "$PROJECT_ROOT"
 }
 
+check_gstreamer_deps() {
+    # Check for broken gstreamer library dependencies (common on rolling release distros)
+    # linuxdeploy's gstreamer plugin will fail if dependencies are missing
+
+    if [ "$OSTYPE" != "linux-gnu" ] && [[ "$OSTYPE" != linux* ]]; then
+        return 0
+    fi
+
+    local missing_deps=()
+
+    # Check for common broken deps in gstreamer plugins
+    if [ -f /usr/lib/gstreamer-1.0/libgstlibav.so ]; then
+        local broken
+        broken=$(ldd /usr/lib/gstreamer-1.0/libgstlibav.so 2>&1 | grep "not found" | head -5)
+        if [ -n "$broken" ]; then
+            missing_deps+=("$broken")
+        fi
+    fi
+
+    if [ ${#missing_deps[@]} -gt 0 ]; then
+        print_warning "Broken gstreamer dependencies detected (common on rolling release distros):"
+        for dep in "${missing_deps[@]}"; do
+            echo -e "  ${YELLOW}$dep${NC}"
+        done
+
+        # Try to fix common version mismatches with symlinks
+        # Example: libvvenc.so.1.13 missing but libvvenc.so.1.14 exists
+        for dep in "${missing_deps[@]}"; do
+            local libname
+            libname=$(echo "$dep" | awk '{print $1}')
+            if [[ "$libname" =~ \.so\.[0-9]+$ ]]; then
+                local base_name="${libname%.*}"  # Remove version suffix
+                local newer_lib
+                newer_lib=$(ldconfig -p 2>/dev/null | grep "$base_name" | head -1 | awk '{print $NF}')
+                if [ -n "$newer_lib" ] && [ -f "$newer_lib" ]; then
+                    print_info "Found potential fix: symlink $libname -> $newer_lib"
+                    if [ "$AUTO_INSTALL_DEPS" = true ]; then
+                        sudo ln -sf "$newer_lib" "/usr/lib/$libname" && \
+                            print_success "Created compatibility symlink"
+                    else
+                        echo -e "${YELLOW}Run: sudo ln -sf $newer_lib /usr/lib/$libname${NC}"
+                    fi
+                fi
+            fi
+        done
+
+        print_info "AppImage bundling may fail. Options:"
+        print_info "  1. Create symlinks as shown above"
+        print_info "  2. Rebuild gstreamer packages: paru -S gst-libav gst-plugins-bad"
+        print_info "  3. Skip AppImage: cargo tauri build --bundles deb,rpm"
+        echo ""
+    fi
+}
+
+patch_linuxdeploy_strip() {
+    # Fix for modern Linux: linuxdeploy's bundled strip may not recognize .relr.dyn sections
+    # This newer ELF relocation format is used by modern distros (Arch, Fedora 38+, etc.)
+    # Solution: Extract the linuxdeploy AppImage and replace bundled strip with system's
+    #
+    # This fix is needed when:
+    # - System linuxdeploy is not installed (Tauri downloads AppImage)
+    # - The AppImage's bundled binutils are outdated
+    #
+    # Not needed when:
+    # - System linuxdeploy is installed (uses system strip via PATH)
+
+    if [ "$OSTYPE" != "linux-gnu" ] && [[ "$OSTYPE" != linux* ]]; then
+        return 0  # Only needed on Linux
+    fi
+
+    # If system linuxdeploy is installed, it will use system strip - no patching needed
+    if command_exists linuxdeploy; then
+        local ld_version=""
+        ld_version=$(linuxdeploy --version 2>&1 | head -1) || ld_version="unknown"
+        print_info "Using system linuxdeploy ($ld_version)"
+        return 0
+    fi
+
+    # No system linuxdeploy - Tauri will download an AppImage
+    # We need to download and patch it before Tauri runs
+    local tauri_cache="${XDG_CACHE_HOME:-$HOME/.cache}/tauri"
+    local appimage_url="https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
+    local appimage_path="$tauri_cache/linuxdeploy-x86_64.AppImage"
+    local patch_dir="/tmp/linuxdeploy-patched"
+    local patched_strip="$patch_dir/squashfs-root/usr/bin/strip"
+
+    # Check if already patched in this session
+    if [ -L "$patched_strip" ] && [ "$(readlink -f "$patched_strip" 2>/dev/null)" = "/usr/bin/strip" ]; then
+        print_info "Using patched linuxdeploy (system strip for .relr.dyn compatibility)"
+        export LINUXDEPLOY="$patch_dir/squashfs-root/AppRun"
+        return 0
+    fi
+
+    # Download AppImage if not present
+    mkdir -p "$tauri_cache"
+    if [ ! -f "$appimage_path" ]; then
+        print_info "Downloading linuxdeploy AppImage..."
+        if ! curl -fsSL "$appimage_url" -o "$appimage_path"; then
+            print_warning "Failed to download linuxdeploy - Tauri will try during build"
+            return 0
+        fi
+        chmod +x "$appimage_path"
+    fi
+
+    # Verify it's an actual AppImage (not a wrapper)
+    local file_size
+    file_size=$(stat -c%s "$appimage_path" 2>/dev/null) || file_size=0
+    if [ "$file_size" -lt 1000000 ]; then
+        # Less than 1MB - likely a wrapper, not full AppImage
+        print_info "linuxdeploy appears to be a wrapper binary, skipping patch"
+        return 0
+    fi
+
+    print_info "Patching linuxdeploy to use system strip (fixes .relr.dyn section handling)..."
+
+    # Extract the AppImage
+    rm -rf "$patch_dir"
+    mkdir -p "$patch_dir"
+    cd "$patch_dir" || return 1
+
+    # Try extraction with APPIMAGE_EXTRACT_AND_RUN to avoid FUSE issues
+    if ! env APPIMAGE_EXTRACT_AND_RUN=1 "$appimage_path" --appimage-extract >/dev/null 2>&1; then
+        # Fallback: try extracting with unsquashfs if available
+        if command_exists unsquashfs; then
+            local offset
+            offset=$(grep -aob 'hsqs' "$appimage_path" 2>/dev/null | head -1 | cut -d: -f1)
+            if [ -n "$offset" ]; then
+                dd if="$appimage_path" bs=1 skip="$offset" 2>/dev/null | unsquashfs -d squashfs-root -f /dev/stdin >/dev/null 2>&1
+            fi
+        fi
+    fi
+
+    # Check if extraction succeeded
+    if [ ! -d "$patch_dir/squashfs-root" ]; then
+        print_warning "Could not extract linuxdeploy AppImage - build may fail on AppImage step"
+        print_info "Install linuxdeploy via package manager to avoid this: paru -S linuxdeploy"
+        cd "$PROJECT_ROOT"
+        return 1
+    fi
+
+    # Replace bundled strip with system strip (if bundled strip exists)
+    if [ -f "$patched_strip" ] || [ -L "$patched_strip" ]; then
+        rm -f "$patched_strip"
+        ln -s /usr/bin/strip "$patched_strip"
+        print_success "Patched linuxdeploy: replaced bundled strip with /usr/bin/strip"
+    else
+        # Some versions might not bundle strip - create the symlink anyway
+        mkdir -p "$(dirname "$patched_strip")"
+        ln -s /usr/bin/strip "$patched_strip"
+        print_success "Added system strip symlink to linuxdeploy"
+    fi
+
+    # Export the patched linuxdeploy path for Tauri to use
+    if [ -f "$patch_dir/squashfs-root/AppRun" ]; then
+        chmod +x "$patch_dir/squashfs-root/AppRun"
+        export LINUXDEPLOY="$patch_dir/squashfs-root/AppRun"
+        print_success "Set LINUXDEPLOY=$LINUXDEPLOY"
+    fi
+
+    cd "$PROJECT_ROOT" || return 1
+    return 0
+}
+
+setup_enchant_backend() {
+    # Detect available enchant spell-checking backends to avoid libenchant warnings
+    # WebKitGTK uses libenchant for spell checking, which may warn about missing backends
+
+    if [ -n "$ENCHANT_BACKEND" ]; then
+        return 0  # User already set a preference
+    fi
+
+    # Check for available backends in order of preference
+    local backends=("hunspell" "aspell" "nuspell" "ispell")
+    local enchant_lib_dirs=("/usr/lib/enchant-2" "/usr/lib64/enchant-2" "/usr/local/lib/enchant-2")
+
+    for backend in "${backends[@]}"; do
+        for lib_dir in "${enchant_lib_dirs[@]}"; do
+            if [ -f "${lib_dir}/lib${backend}.so" ] || [ -f "${lib_dir}/${backend}.so" ]; then
+                export ENCHANT_BACKEND="$backend"
+                print_info "Set ENCHANT_BACKEND=$backend (spell-check)"
+                return 0
+            fi
+        done
+        # Also check if the backend command exists
+        if command_exists "$backend"; then
+            export ENCHANT_BACKEND="$backend"
+            print_info "Set ENCHANT_BACKEND=$backend (spell-check)"
+            return 0
+        fi
+    done
+
+    # No backend found, but that's okay - just means no spell checking
+    return 0
+}
+
+setup_display_environment() {
+    # Detect Wayland and configure display environment for WebKitGTK compatibility
+    local is_wayland=false
+
+    if [ "$XDG_SESSION_TYPE" = "wayland" ] || [ -n "$WAYLAND_DISPLAY" ]; then
+        is_wayland=true
+    fi
+
+    if [ "$is_wayland" = true ]; then
+        print_warning "Wayland session detected - configuring display environment for WebKitGTK"
+
+        # Force X11 backend via XWayland to avoid Wayland protocol errors
+        if [ -z "$GDK_BACKEND" ]; then
+            export GDK_BACKEND=x11
+            print_info "Set GDK_BACKEND=x11 (XWayland mode)"
+        fi
+
+        # Disable GPU compositing to avoid GBM buffer creation failures
+        if [ -z "$WEBKIT_DISABLE_COMPOSITING_MODE" ]; then
+            export WEBKIT_DISABLE_COMPOSITING_MODE=1
+            print_info "Set WEBKIT_DISABLE_COMPOSITING_MODE=1 (software rendering)"
+        fi
+
+        echo -e "${CYAN}  Tip: These workarounds are needed due to WebKitGTK/Wayland compatibility issues${NC}"
+    fi
+
+    # Setup spell-checking backend
+    setup_enchant_backend
+}
+
 run_dev() {
     print_section "Starting Development Server"
     cd "$BACKEND_DIR"
 
     # Ensure node_modules exists (trunk fails on missing watch ignore paths)
     mkdir -p "$FRONTEND_DIR/node_modules"
+
+    # Setup display environment (Wayland workarounds)
+    setup_display_environment
 
     # Check for port conflicts (3030 is trunk dev server, 1420 is Tauri)
     for port in 3030 1420; do
@@ -608,15 +842,70 @@ run_check() {
 clean_artifacts() {
     print_section "Cleaning Build Artifacts"
 
-    cd "$FRONTEND_DIR"
+    local remaining_artifacts=()
+
+    # Clean frontend
+    cd "$FRONTEND_DIR" || { print_error "Failed to cd to frontend directory"; return 1; }
+
+    print_info "Cleaning frontend dist..."
     rm -rf dist
-    cargo clean
 
-    cd "$BACKEND_DIR"
-    cargo clean
+    print_info "Running cargo clean in frontend..."
+    cargo clean 2>/dev/null || true
 
-    cd "$PROJECT_ROOT"
-    print_success "Cleaned all build artifacts"
+    # Clean backend
+    cd "$BACKEND_DIR" || { print_error "Failed to cd to backend directory"; return 1; }
+
+    print_info "Running cargo clean in backend..."
+    cargo clean 2>/dev/null || true
+
+    cd "$PROJECT_ROOT" || { print_error "Failed to cd to project root"; return 1; }
+
+    # Trust but verify - check for remaining artifacts
+    print_info "Verifying cleanup..."
+
+    if [ -d "$FRONTEND_DIR/target" ]; then
+        remaining_artifacts+=("$FRONTEND_DIR/target")
+    fi
+    if [ -d "$FRONTEND_DIR/dist" ]; then
+        remaining_artifacts+=("$FRONTEND_DIR/dist")
+    fi
+    if [ -d "$BACKEND_DIR/target" ]; then
+        remaining_artifacts+=("$BACKEND_DIR/target")
+    fi
+
+    if [ ${#remaining_artifacts[@]} -gt 0 ]; then
+        print_warning "Found ${#remaining_artifacts[@]} remaining artifact(s) after cargo clean:"
+        for artifact in "${remaining_artifacts[@]}"; do
+            local size
+            size=$(du -sh "$artifact" 2>/dev/null | cut -f1) || size="unknown"
+            echo -e "  ${YELLOW}→${NC} $artifact ($size)"
+        done
+
+        if [ "$FORCE_CLEAN" = true ]; then
+            print_info "Force clean enabled, removing all remaining artifacts..."
+            for artifact in "${remaining_artifacts[@]}"; do
+                rm -rf "$artifact"
+                print_success "Removed: $artifact"
+            done
+        else
+            echo ""
+            read -rp "Remove these remaining artifacts? [y/N] " response
+            case "$response" in
+                [yY][eE][sS]|[yY])
+                    for artifact in "${remaining_artifacts[@]}"; do
+                        rm -rf "$artifact"
+                        print_success "Removed: $artifact"
+                    done
+                    ;;
+                *)
+                    print_info "Keeping remaining artifacts. Use './build.sh clean --all' to force removal."
+                    ;;
+            esac
+        fi
+    fi
+
+    print_success "Clean completed"
 }
 
 run_lint() {
@@ -740,7 +1029,8 @@ show_help() {
     echo ""
     echo -e "${YELLOW}Utility Commands:${NC}"
     echo "  status        Show git and GitHub repository status"
-    echo "  clean         Remove all build artifacts"
+    echo "  clean         Remove build artifacts (prompts for remaining)"
+    echo "  clean --all   Force remove all artifacts without prompting"
     echo "  setup         Install all required dependencies"
     echo "  help          Show this help message"
     echo ""
@@ -749,6 +1039,7 @@ show_help() {
     echo "  --integration  Run integration tests (requires Meilisearch)"
     echo "  --auto-deps    Automatically install dependencies without prompting"
     echo "  --seize-port   Automatically kill processes using required ports (3030, 1420)"
+    echo "  --all, --force Remove all remaining artifacts without prompting (clean only)"
     echo ""
     echo -e "${YELLOW}Detected Tools:${NC}"
     echo -e "  Rust/Cargo: ${CYAN}$(command_exists cargo && cargo --version 2>/dev/null || echo "not found")${NC}"
@@ -760,6 +1051,7 @@ show_help() {
     echo -e "  ${CYAN}$0 dev${NC}                    # Start development server"
     echo -e "  ${CYAN}$0 build --release${NC}        # Production build"
     echo -e "  ${CYAN}$0 lint && $0 test${NC}        # Lint then test"
+    echo -e "  ${CYAN}$0 clean --all${NC}            # Force clean all artifacts"
     echo -e "  ${CYAN}$0 status${NC}                 # Check repo status"
 }
 
@@ -832,6 +1124,7 @@ RELEASE=false
 RUN_INTEGRATION=false
 AUTO_INSTALL_DEPS=false
 SEIZE_PORT=false
+FORCE_CLEAN=false
 COMMAND="build"
 
 while [[ $# -gt 0 ]]; do
@@ -850,6 +1143,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --seize-port)
             SEIZE_PORT=true
+            shift
+            ;;
+        --all|--force)
+            FORCE_CLEAN=true
             shift
             ;;
         dev|build|frontend|backend|test|check|clean|setup|help|lint|format|format-check|status)

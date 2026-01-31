@@ -5,7 +5,6 @@
 use serde::{Deserialize, Serialize};
 use tauri::State;
 use crate::commands::AppState;
-use crate::core::session_manager::create_common_condition;
 use crate::core::session::conditions::{
     AdvancedCondition, ConditionDuration, ConditionTemplates, SaveTiming,
 };
@@ -71,10 +70,8 @@ pub fn add_condition(
     condition_name: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let condition = create_common_condition(&condition_name)
-        .ok_or_else(|| format!("Unknown condition: {}", condition_name))?;
-
-    state.session_manager.add_condition(&session_id, &combatant_id, condition)
+    state.session_manager
+        .add_condition_by_name(&session_id, &combatant_id, &condition_name, None, None, None)
         .map_err(|e| e.to_string())
 }
 
@@ -86,7 +83,9 @@ pub fn remove_condition(
     condition_name: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    state.session_manager.remove_condition(&session_id, &combatant_id, &condition_name)
+    state.session_manager
+        .remove_advanced_condition_by_name(&session_id, &combatant_id, &condition_name)
+        .map(|_| ())
         .map_err(|e| e.to_string())
 }
 
@@ -135,7 +134,7 @@ pub fn add_condition_advanced(
         condition.source_name = Some(src_name);
     }
 
-    state.session_manager.apply_advanced_condition(
+    state.session_manager.add_advanced_condition(
         &request.session_id,
         &request.combatant_id,
         condition,
@@ -189,7 +188,7 @@ pub fn apply_advanced_condition(
     }
 
     // Apply to combatant
-    state.session_manager.apply_advanced_condition(&session_id, &combatant_id, condition.clone())
+    state.session_manager.add_advanced_condition(&session_id, &combatant_id, condition.clone())
         .map_err(|e| e.to_string())?;
 
     Ok(condition)

@@ -6,6 +6,7 @@ use tauri::State;
 
 use crate::commands::AppState;
 use crate::core::npc_gen::{NPCGenerator, NPCGenerationOptions, NPC};
+use crate::database::NpcOps;
 
 // Helper function for enum serialization
 fn serialize_enum_to_string<T: serde::Serialize>(value: &T) -> String {

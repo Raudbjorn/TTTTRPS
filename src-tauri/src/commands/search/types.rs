@@ -114,6 +114,8 @@ pub struct IngestOptions {
     pub source_type: String,
     /// Campaign ID to associate with
     pub campaign_id: Option<String>,
+    /// Override the document title (affects index naming)
+    pub title_override: Option<String>,
 }
 
 fn default_source_type() -> String {
@@ -125,6 +127,7 @@ impl Default for IngestOptions {
         Self {
             source_type: default_source_type(),
             campaign_id: None,
+            title_override: None,
         }
     }
 }

@@ -2,11 +2,49 @@
 //!
 //! Commands for managing document extraction settings and checking OCR availability.
 
-use tauri::State;
+use std::path::PathBuf;
+use tauri::{Manager, State};
 
 use crate::commands::AppState;
 use crate::ingestion::{ExtractionSettings, SupportedFormats};
 use super::types::{ExtractionPreset, OcrAvailability};
+
+// ============================================================================
+// Persistence Helpers
+// ============================================================================
+
+fn get_extraction_config_path(app_handle: &tauri::AppHandle) -> PathBuf {
+    let dir = app_handle.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("."));
+    if !dir.exists() {
+        let _ = std::fs::create_dir_all(&dir);
+    }
+    dir.join("extraction_config.json")
+}
+
+/// Load extraction settings from disk
+pub fn load_extraction_config_disk(app_handle: &tauri::AppHandle) -> Option<ExtractionSettings> {
+    let path = get_extraction_config_path(app_handle);
+    if path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            match serde_json::from_str(&content) {
+                Ok(settings) => return Some(settings),
+                Err(e) => log::warn!("Failed to parse extraction config: {}", e),
+            }
+        }
+    }
+    None
+}
+
+/// Save extraction settings to disk
+fn save_extraction_config_disk(app_handle: &tauri::AppHandle, settings: &ExtractionSettings) -> Result<(), String> {
+    let path = get_extraction_config_path(app_handle);
+    let json = serde_json::to_string_pretty(settings)
+        .map_err(|e| format!("Failed to serialize settings: {}", e))?;
+    std::fs::write(&path, json)
+        .map_err(|e| format!("Failed to write settings to {}: {}", path.display(), e))?;
+    log::info!("Extraction settings saved to disk");
+    Ok(())
+}
 
 // ============================================================================
 // Extraction Settings Commands
@@ -27,15 +65,20 @@ pub async fn get_extraction_settings(
 pub async fn save_extraction_settings(
     settings: ExtractionSettings,
     state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
     // Validate settings
     settings.validate()?;
 
     // Save to state
     let mut settings_guard = state.extraction_settings.write().await;
-    *settings_guard = settings;
+    *settings_guard = settings.clone();
+    drop(settings_guard);
 
-    log::info!("Extraction settings saved");
+    // Persist to disk
+    save_extraction_config_disk(&app_handle, &settings)?;
+
+    log::info!("Extraction settings saved to memory and disk");
     Ok(())
 }
 

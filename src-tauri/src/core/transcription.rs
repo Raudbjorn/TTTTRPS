@@ -470,6 +470,7 @@ impl TranscriptionManagerBuilder {
 #[deprecated(note = "Use TranscriptionManager instead")]
 pub struct TranscriptionService;
 
+#[allow(deprecated)]
 impl Default for TranscriptionService {
     fn default() -> Self {
         Self::new()

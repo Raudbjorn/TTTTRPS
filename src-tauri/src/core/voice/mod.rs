@@ -32,7 +32,7 @@ pub use queue::{
     SynthesisQueue, SynthesisJob, JobPriority, JobStatus, JobProgress,
     QueueConfig, QueueStats, QueueError, QueueResult,
     QueueWorker, VoiceSynthesizer, JobSubmittedEvent, JobStatusEvent, QueueStatsEvent,
-    events as queue_events,
+    channels as queue_events,
 };
 
 // Re-export download system

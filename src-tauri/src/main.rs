@@ -115,7 +115,10 @@ fn main() {
                 relationship_manager,
                 location_manager,
                 llm_manager: llm_manager.clone(), // Clone for auto-configure block
-                extraction_settings: tokio::sync::RwLock::new(ingestion::ExtractionSettings::default()),
+                extraction_settings: tokio::sync::RwLock::new(
+                    commands::load_extraction_config_disk(app.handle())
+                        .unwrap_or_else(ingestion::ExtractionSettings::default)
+                ),
                 claude_gate,
                 gemini_gate,
                 copilot_gate,
@@ -322,6 +325,35 @@ fn main() {
             commands::get_campaign_notes,
             commands::search_campaign_notes,
             commands::delete_campaign_note,
+
+            // Campaign Wizard Commands (Phase 2 - Campaign Generation Overhaul)
+            commands::start_campaign_wizard,
+            commands::get_wizard_state,
+            commands::list_incomplete_wizards,
+            commands::delete_wizard,
+            commands::advance_wizard_step,
+            commands::wizard_go_back,
+            commands::wizard_skip_step,
+            commands::update_wizard_draft,
+            commands::complete_wizard,
+            commands::cancel_wizard,
+            commands::auto_save_wizard,
+            commands::link_wizard_conversation,
+
+            // Conversation Commands (Phase 5 - Campaign Generation Overhaul)
+            commands::create_conversation_thread,
+            commands::get_conversation_thread,
+            commands::list_conversation_threads,
+            commands::archive_conversation_thread,
+            commands::update_conversation_thread_title,
+            commands::send_conversation_message,
+            commands::get_conversation_messages,
+            commands::add_conversation_message,
+            commands::accept_suggestion,
+            commands::reject_suggestion,
+            commands::get_pending_suggestions,
+            commands::branch_conversation,
+            commands::generate_clarifying_questions,
 
             // Session Commands
             commands::start_session,
@@ -605,20 +637,23 @@ fn main() {
             commands::oauth::claude::claude_gate_set_storage_backend,
             commands::oauth::claude::claude_gate_list_models,
 
-            // Gemini Gate OAuth Commands
+            // Gemini OAuth Commands
             commands::oauth::gemini::gemini_gate_get_status,
             commands::oauth::gemini::gemini_gate_start_oauth,
             commands::oauth::gemini::gemini_gate_complete_oauth,
             commands::oauth::gemini::gemini_gate_logout,
             commands::oauth::gemini::gemini_gate_set_storage_backend,
+            commands::oauth::gemini::gemini_gate_oauth_with_callback,
+            commands::oauth::gemini::gemini_gate_list_models,
 
-            // Copilot Gate OAuth Commands (Device Code Flow)
+            // Copilot OAuth Commands (Device Code Flow)
             commands::oauth::copilot::start_copilot_auth,
             commands::oauth::copilot::poll_copilot_auth,
             commands::oauth::copilot::check_copilot_auth,
             commands::oauth::copilot::logout_copilot,
             commands::oauth::copilot::get_copilot_usage,
             commands::oauth::copilot::get_copilot_models,
+            commands::oauth::copilot::copilot_gate_set_storage_backend,
 
             // Phase 4: Personality Extension Commands (TASK-PERS-014, TASK-PERS-015, TASK-PERS-016, TASK-PERS-017)
             // Template Commands
@@ -683,6 +718,27 @@ fn main() {
             commands::archetype::resolution::get_archetype_cache_stats,
             commands::archetype::resolution::clear_archetype_cache,
             commands::archetype::resolution::is_archetype_registry_ready,
+
+            // Quick Reference Card Commands (Phase 9 - Campaign Generation Overhaul)
+            commands::get_entity_card,
+            commands::get_hover_preview,
+            commands::get_pinned_cards,
+            commands::pin_card,
+            commands::unpin_card,
+            commands::reorder_pinned_cards,
+            commands::update_card_disclosure,
+            commands::get_max_pinned_cards,
+            commands::build_cheat_sheet,
+            commands::build_custom_cheat_sheet,
+            commands::export_cheat_sheet_html,
+            commands::save_cheat_sheet_preference,
+            commands::get_cheat_sheet_preferences,
+            commands::delete_cheat_sheet_preference,
+            commands::invalidate_card_cache,
+            commands::cleanup_card_cache,
+            commands::list_card_entity_types,
+            commands::list_disclosure_levels,
+            commands::list_cheat_sheet_sections,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

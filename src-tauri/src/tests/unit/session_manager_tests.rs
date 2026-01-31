@@ -21,7 +21,7 @@
 use crate::core::session_manager::{
     CombatEventType, CombatState, CombatStatus, Combatant, CombatantType,
     GameSession, LogEntryType, SessionError, SessionManager,
-    SessionStatus, create_common_condition,
+    SessionStatus,
 };
 
 use crate::core::session::conditions::{
@@ -46,62 +46,32 @@ fn create_test_manager() -> SessionManager {
 
 /// Create a basic test combatant
 fn create_test_combatant(name: &str, initiative: i32, hp: Option<i32>) -> Combatant {
-    Combatant {
-        id: uuid::Uuid::new_v4().to_string(),
-        name: name.to_string(),
-        initiative,
-        initiative_modifier: initiative % 5, // Simple modifier based on initiative
-        combatant_type: CombatantType::Player,
-        current_hp: hp,
-        max_hp: hp,
-        temp_hp: None,
-        armor_class: Some(15),
-        conditions: vec![],
-        condition_tracker: ConditionTracker::new(),
-        condition_immunities: vec![],
-        is_active: true,
-        notes: String::new(),
-    }
+    let mut combatant = Combatant::new(name, initiative, CombatantType::Player);
+    combatant.initiative_modifier = initiative % 5; // Simple modifier based on initiative
+    combatant.current_hp = hp;
+    combatant.max_hp = hp;
+    combatant.armor_class = Some(15);
+    combatant
 }
 
 /// Create a combatant with full HP configuration
 fn create_combatant_with_hp(name: &str, initiative: i32, current_hp: i32, max_hp: i32, temp_hp: Option<i32>) -> Combatant {
-    Combatant {
-        id: uuid::Uuid::new_v4().to_string(),
-        name: name.to_string(),
-        initiative,
-        initiative_modifier: 0,
-        combatant_type: CombatantType::Player,
-        current_hp: Some(current_hp),
-        max_hp: Some(max_hp),
-        temp_hp,
-        armor_class: Some(15),
-        conditions: vec![],
-        condition_tracker: ConditionTracker::new(),
-        condition_immunities: vec![],
-        is_active: true,
-        notes: String::new(),
-    }
+    let mut combatant = Combatant::new(name, initiative, CombatantType::Player);
+    combatant.current_hp = Some(current_hp);
+    combatant.max_hp = Some(max_hp);
+    combatant.temp_hp = temp_hp;
+    combatant.armor_class = Some(15);
+    combatant
 }
 
 /// Create a monster combatant
 fn create_monster(name: &str, initiative: i32, hp: i32) -> Combatant {
-    Combatant {
-        id: uuid::Uuid::new_v4().to_string(),
-        name: name.to_string(),
-        initiative,
-        initiative_modifier: 2,
-        combatant_type: CombatantType::Monster,
-        current_hp: Some(hp),
-        max_hp: Some(hp),
-        temp_hp: None,
-        armor_class: Some(13),
-        conditions: vec![],
-        condition_tracker: ConditionTracker::new(),
-        condition_immunities: vec![],
-        is_active: true,
-        notes: String::new(),
-    }
+    let mut combatant = Combatant::new(name, initiative, CombatantType::Monster);
+    combatant.initiative_modifier = 2;
+    combatant.current_hp = Some(hp);
+    combatant.max_hp = Some(hp);
+    combatant.armor_class = Some(13);
+    combatant
 }
 
 // ============================================================================
@@ -1012,13 +982,11 @@ mod condition_tests {
 
         let combatant = manager.add_combatant_quick(&session.id, "Fighter", 15, CombatantType::Player).unwrap();
 
-        let stunned = create_common_condition("stunned").unwrap();
-        manager.add_condition(&session.id, &combatant.id, stunned).unwrap();
+        manager.add_condition_by_name(&session.id, &combatant.id, "Stunned", None, None, None).unwrap();
 
-        let combat = manager.get_combat(&session.id).unwrap();
-        let fighter = &combat.combatants[0];
-        assert_eq!(fighter.conditions.len(), 1);
-        assert_eq!(fighter.conditions[0].name, "Stunned");
+        let conditions = manager.get_combatant_conditions(&session.id, &combatant.id).unwrap();
+        assert_eq!(conditions.len(), 1);
+        assert_eq!(conditions[0].name, "Stunned");
     }
 
     #[test]
@@ -1029,15 +997,11 @@ mod condition_tests {
 
         let combatant = manager.add_combatant_quick(&session.id, "Fighter", 15, CombatantType::Player).unwrap();
 
-        let stunned = create_common_condition("stunned").unwrap();
-        let poisoned = create_common_condition("poisoned").unwrap();
+        manager.add_condition_by_name(&session.id, &combatant.id, "Stunned", None, None, None).unwrap();
+        manager.add_condition_by_name(&session.id, &combatant.id, "Poisoned", None, None, None).unwrap();
 
-        manager.add_condition(&session.id, &combatant.id, stunned).unwrap();
-        manager.add_condition(&session.id, &combatant.id, poisoned).unwrap();
-
-        let combat = manager.get_combat(&session.id).unwrap();
-        let fighter = &combat.combatants[0];
-        assert_eq!(fighter.conditions.len(), 2);
+        let conditions = manager.get_combatant_conditions(&session.id, &combatant.id).unwrap();
+        assert_eq!(conditions.len(), 2);
     }
 
     #[test]
@@ -1048,14 +1012,11 @@ mod condition_tests {
 
         let combatant = manager.add_combatant_quick(&session.id, "Fighter", 15, CombatantType::Player).unwrap();
 
-        let stunned = create_common_condition("stunned").unwrap();
-        manager.add_condition(&session.id, &combatant.id, stunned).unwrap();
+        manager.add_condition_by_name(&session.id, &combatant.id, "Stunned", None, None, None).unwrap();
+        manager.remove_advanced_condition_by_name(&session.id, &combatant.id, "Stunned").unwrap();
 
-        manager.remove_condition(&session.id, &combatant.id, "Stunned").unwrap();
-
-        let combat = manager.get_combat(&session.id).unwrap();
-        let fighter = &combat.combatants[0];
-        assert!(fighter.conditions.is_empty());
+        let conditions = manager.get_combatant_conditions(&session.id, &combatant.id).unwrap();
+        assert!(conditions.is_empty());
     }
 
     #[test]
@@ -1066,8 +1027,7 @@ mod condition_tests {
 
         let combatant = manager.add_combatant_quick(&session.id, "Fighter", 15, CombatantType::Player).unwrap();
 
-        let stunned = create_common_condition("stunned").unwrap();
-        manager.add_condition(&session.id, &combatant.id, stunned).unwrap();
+        manager.add_condition_by_name(&session.id, &combatant.id, "Stunned", None, None, None).unwrap();
 
         let events = manager.get_combat_log(&session.id);
         let condition_event = events.iter().find(|e| matches!(e.event_type, CombatEventType::ConditionApplied));
@@ -1077,20 +1037,20 @@ mod condition_tests {
     #[test]
     fn test_common_conditions_exist() {
         let conditions = vec![
-            "blinded", "charmed", "frightened", "grappled", "incapacitated",
-            "invisible", "paralyzed", "poisoned", "prone", "restrained",
-            "stunned", "unconscious", "concentrating",
+            "Blinded", "Charmed", "Frightened", "Grappled", "Incapacitated",
+            "Invisible", "Paralyzed", "Poisoned", "Prone", "Restrained",
+            "Stunned", "Unconscious", "Concentrating",
         ];
 
         for name in conditions {
-            let condition = create_common_condition(name);
+            let condition = ConditionTemplates::by_name(name);
             assert!(condition.is_some(), "Condition '{}' should exist", name);
         }
     }
 
     #[test]
     fn test_unknown_condition_returns_none() {
-        let condition = create_common_condition("made-up-condition");
+        let condition = ConditionTemplates::by_name("made-up-condition");
         assert!(condition.is_none());
     }
 }

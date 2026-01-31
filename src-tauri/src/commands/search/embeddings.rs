@@ -30,7 +30,7 @@ pub async fn configure_meilisearch_embedder(
     config: EmbedderConfigRequest,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    use crate::core::search_client::EmbedderConfig;
+    use crate::core::search::EmbedderConfig;
 
     let embedder_config = match config.provider.as_str() {
         "openAi" | "openai" => {
@@ -76,7 +76,7 @@ pub async fn setup_ollama_embeddings(
         .await
         .map_err(|e| format!("Failed to setup embeddings: {}", e))?;
 
-    let dimensions = crate::core::search_client::ollama_embedding_dimensions(&model);
+    let dimensions = crate::core::search::ollama_embedding_dimensions(&model);
 
     Ok(SetupEmbeddingsResult {
         indexes_configured: configured,
@@ -101,7 +101,7 @@ pub async fn setup_copilot_embeddings(
     state: State<'_, AppState>,
 ) -> Result<SetupCopilotEmbeddingsResult, String> {
     let dims = dimensions.unwrap_or_else(|| {
-        crate::core::search_client::copilot_embedding_dimensions(&model)
+        crate::core::search::copilot_embedding_dimensions(&model)
     });
 
     // First, ensure we're authenticated with Copilot
@@ -178,7 +178,7 @@ pub async fn list_ollama_embedding_models(host: String) -> Result<Vec<OllamaEmbe
             embedding_patterns.iter().any(|p| name_lower.contains(p))
         })
         .map(|m| {
-            let dimensions = crate::core::search_client::ollama_embedding_dimensions(&m.name);
+            let dimensions = crate::core::search::ollama_embedding_dimensions(&m.name);
             OllamaEmbeddingModel {
                 name: m.name,
                 size: m.size,
@@ -275,7 +275,7 @@ pub async fn setup_local_embeddings(
     model: String,
     state: State<'_, AppState>,
 ) -> Result<SetupEmbeddingsResult, String> {
-    use crate::core::search_client::EmbedderConfig;
+    use crate::core::search::EmbedderConfig;
 
     // Get dimensions for the model
     let dimensions = huggingface_embedding_dimensions(&model);

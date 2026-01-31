@@ -95,7 +95,7 @@ pub fn ModelSelectionDashboard() -> impl IntoView {
             }>
                 {move || {
                     let data = selection.get();
-                    let sel_opt = data.as_deref().and_then(|o| o.as_ref());
+                    let sel_opt = data.flatten();
 
                     match sel_opt {
                         Some(sel) => {

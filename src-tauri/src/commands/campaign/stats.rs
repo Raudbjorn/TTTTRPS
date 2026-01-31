@@ -7,6 +7,7 @@ use tauri::State;
 use crate::commands::AppState;
 use crate::core::campaign_manager::CampaignStats;
 use crate::core::session_manager::SessionStatus;
+use crate::database::NpcOps;
 
 // ============================================================================
 // Campaign Stats Commands

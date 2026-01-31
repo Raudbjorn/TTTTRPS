@@ -13,6 +13,7 @@ use crate::services::notification_service::{show_error, show_success, ToastActio
 use crate::bindings::{list_campaigns, create_campaign, delete_campaign, archive_campaign, restore_campaign, list_archived_campaigns, Campaign};
 use crate::components::design_system::{Button, ButtonVariant, LoadingSpinner};
 use crate::components::campaign::CampaignCreateModal;
+use crate::components::campaign_wizard::WizardShell;
 
 /// Helper function to get system-based styling
 fn get_system_style(system: &str) -> (&'static str, &'static str) {
@@ -361,6 +362,7 @@ pub fn Campaigns() -> impl IntoView {
     let archived_campaigns = RwSignal::new(Vec::<Campaign>::new());
     let status_message = RwSignal::new(String::new());
     let show_create_modal = RwSignal::new(false);
+    let show_ai_wizard = RwSignal::new(false);
     let is_loading = RwSignal::new(true);
     let delete_confirm = RwSignal::new(Option::<(String, String)>::None);
     let view_mode = RwSignal::new(CampaignViewMode::Grid);
@@ -457,15 +459,38 @@ pub fn Campaigns() -> impl IntoView {
         });
     });
 
-    // Open create modal
+    // Dropdown state for create menu
+    let show_create_menu = RwSignal::new(false);
+
+    // Open create modal (quick mode)
     let open_create_modal = move |_: ev::MouseEvent| {
+        show_create_menu.set(false);
         show_create_modal.set(true);
+    };
+
+    // Open AI wizard
+    let open_ai_wizard = move |_: ev::MouseEvent| {
+        show_create_menu.set(false);
+        show_ai_wizard.set(true);
+    };
+
+    // Toggle create menu
+    let toggle_create_menu = move |_: ev::MouseEvent| {
+        show_create_menu.update(|v| *v = !*v);
     };
 
     // Handle campaign creation (from wizard modal)
     let handle_create_wizard = Callback::new(move |campaign: Campaign| {
-        campaigns.update(|c| c.push(campaign));
+        campaigns.update(|c| c.push(campaign.clone()));
+        show_create_modal.set(false);
         show_success("Campaign created!", Some("Ready for adventure."));
+    });
+
+    // Handle campaign creation (from AI wizard)
+    let handle_ai_wizard_create = Callback::new(move |campaign: Campaign| {
+        campaigns.update(|c| c.push(campaign));
+        show_ai_wizard.set(false);
+        show_success("Campaign created with AI assistance!", Some("Your adventure awaits."));
     });
 
     // Handle legacy campaign creation (from simple modal)
@@ -597,8 +622,18 @@ pub fn Campaigns() -> impl IntoView {
         nav_hub_fn("/", Default::default());
     };
 
+    // Close create menu when clicking outside
+    let close_create_menu = move |_: ev::MouseEvent| {
+        if show_create_menu.get() {
+            show_create_menu.set(false);
+        }
+    };
+
     view! {
-        <div class="p-8 bg-zinc-950 text-zinc-100 min-h-screen font-sans selection:bg-purple-500/30">
+        <div
+            class="p-8 bg-zinc-950 text-zinc-100 min-h-screen font-sans selection:bg-purple-500/30"
+            on:click=close_create_menu
+        >
             <div class="max-w-7xl mx-auto space-y-8">
                 // Header & Quick Actions
                 <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-6 border-b border-zinc-900">
@@ -681,12 +716,47 @@ pub fn Campaigns() -> impl IntoView {
                         >
                             "Refresh"
                         </Button>
-                        <Button
-                            variant=ButtonVariant::Primary
-                            on_click=open_create_modal
+
+                        // Create Campaign Dropdown
+                        <div
+                            class="relative"
+                            on:click=move |ev: ev::MouseEvent| ev.stop_propagation()
                         >
-                            "+ New Adventure"
-                        </Button>
+                            <Button
+                                variant=ButtonVariant::Primary
+                                on_click=toggle_create_menu
+                            >
+                                "+ New Adventure"
+                                <svg class="w-4 h-4 ml-1 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </Button>
+
+                            // Dropdown menu
+                            <Show when=move || show_create_menu.get()>
+                                <div class="absolute right-0 mt-2 w-64 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50 overflow-hidden">
+                                    <button
+                                        class="w-full px-4 py-3 text-left hover:bg-zinc-800 transition-colors border-b border-zinc-800"
+                                        on:click=open_create_modal
+                                    >
+                                        <div class="font-medium text-white">"Quick Create"</div>
+                                        <div class="text-xs text-zinc-400 mt-0.5">"Simple wizard with basic options"</div>
+                                    </button>
+                                    <button
+                                        class="w-full px-4 py-3 text-left hover:bg-zinc-800 transition-colors group"
+                                        on:click=open_ai_wizard
+                                    >
+                                        <div class="flex items-center gap-2">
+                                            <span class="font-medium text-white">"AI-Assisted"</span>
+                                            <span class="px-1.5 py-0.5 bg-purple-900/50 text-purple-300 text-xs rounded">
+                                                "Recommended"
+                                            </span>
+                                        </div>
+                                        <div class="text-xs text-zinc-400 mt-0.5">"Comprehensive wizard with AI guidance"</div>
+                                    </button>
+                                </div>
+                            </Show>
+                        </div>
                     </div>
                 </div>
 
@@ -828,10 +898,17 @@ pub fn Campaigns() -> impl IntoView {
                 }}
             </div>
 
-            // Create Campaign Wizard Modal
+            // Quick Create Campaign Modal
             <CampaignCreateModal
                 is_open=show_create_modal
                 on_create=handle_create_wizard
+            />
+
+            // AI-Assisted Campaign Wizard
+            <WizardShell
+                is_open=show_ai_wizard
+                on_create=handle_ai_wizard_create
+                ai_assisted=true
             />
 
             // Delete Confirmation Modal

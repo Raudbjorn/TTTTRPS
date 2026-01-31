@@ -40,7 +40,7 @@ pub fn InfoPanel(
     let filtered_npcs = move || {
         let query = search_query.get().to_lowercase();
         npcs_resource.get().map(|list| {
-            let all: Vec<_> = (*list).clone();
+            let all: Vec<_> = list.to_vec();
             if query.is_empty() {
                 all
             } else {
@@ -98,7 +98,7 @@ pub fn InfoPanel(
                     </div>
                 }>
                     {move || {
-                        filtered_npcs().map(|list| {
+                        filtered_npcs().map(|list: Vec<NpcSummary>| {
                             if list.is_empty() {
                                 view! {
                                     <div class="p-8 text-center">

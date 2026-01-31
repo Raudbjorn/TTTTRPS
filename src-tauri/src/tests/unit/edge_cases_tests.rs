@@ -14,7 +14,8 @@ mod tests {
         SearchClient, SearchError, VoiceError, VoiceProvider,
     };
     use crate::database::{
-        CampaignRecord, CombatStateRecord, Database, NpcConversation, NpcRecord, SessionRecord,
+        CampaignOps, CampaignRecord, CombatOps, CombatStateRecord, Database, NpcConversation,
+        NpcOps, NpcRecord, SessionOps, SessionRecord,
     };
     use tempfile::TempDir;
     use std::sync::Arc;

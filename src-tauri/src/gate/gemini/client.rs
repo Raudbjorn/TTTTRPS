@@ -553,6 +553,102 @@ impl<S: TokenStorage + 'static> CloudCodeClient<S> {
         self.oauth.logout().await
     }
 
+    /// List available models from the Cloud Code API.
+    ///
+    /// Returns a list of models available for use with the API.
+    /// Falls back to known model constants if the API call fails.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let models = client.list_models().await?;
+    /// for model in &models {
+    ///     println!("{}: {}", model.id, model.display_name);
+    /// }
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn list_models(&self) -> Result<Vec<super::models::GeminiApiModel>> {
+        use super::constants::{API_PATH_FETCH_MODELS, CLAUDE_MODELS, GEMINI_MODELS};
+
+        let token = self.get_access_token().await?;
+
+        debug!("Fetching available models from Cloud Code API");
+
+        // Try to fetch from the API
+        match self
+            .http
+            .get(API_PATH_FETCH_MODELS, &token)
+            .await
+        {
+            Ok(response) => {
+                if response.status().is_success() {
+                    // Try to parse the response
+                    match response.json::<serde_json::Value>().await {
+                        Ok(json) => {
+                            // The response may have various formats, try to extract models
+                            let mut models = Vec::new();
+
+                            // Try to extract models array from response
+                            if let Some(models_array) = json.get("models").and_then(|m| m.as_array()) {
+                                for model in models_array {
+                                    if let Some(id) = model.get("name").or(model.get("id")).and_then(|v| v.as_str()) {
+                                        let display_name = model
+                                            .get("displayName")
+                                            .or(model.get("display_name"))
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or(id);
+                                        let description = model
+                                            .get("description")
+                                            .and_then(|v| v.as_str())
+                                            .map(String::from);
+                                        models.push(super::models::GeminiApiModel {
+                                            id: id.to_string(),
+                                            display_name: display_name.to_string(),
+                                            description,
+                                        });
+                                    }
+                                }
+                            }
+
+                            if !models.is_empty() {
+                                info!("Fetched {} models from API", models.len());
+                                return Ok(models);
+                            }
+                        }
+                        Err(e) => {
+                            debug!("Failed to parse models response: {}", e);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                debug!("Failed to fetch models from API: {}", e);
+            }
+        }
+
+        // Fall back to known models
+        info!("Using fallback model list");
+        let mut models = Vec::new();
+
+        // Add Gemini models
+        for model_id in GEMINI_MODELS {
+            models.push(super::models::GeminiApiModel::new(
+                *model_id,
+                format_model_name(model_id),
+            ));
+        }
+
+        // Add Claude models
+        for model_id in CLAUDE_MODELS {
+            models.push(super::models::GeminiApiModel::new(
+                *model_id,
+                format_model_name(model_id),
+            ));
+        }
+
+        Ok(models)
+    }
+
     /// Get the current token info.
     ///
     /// Returns the complete token info including refresh token and expiry.
@@ -567,6 +663,27 @@ impl<S: TokenStorage + 'static> CloudCodeClient<S> {
         }
         self.oauth.get_token().await.map(Some)
     }
+}
+
+/// Format a model ID into a human-readable display name.
+///
+/// Converts model IDs like "gemini-3-flash" to "Gemini 3 Flash".
+fn format_model_name(model_id: &str) -> String {
+    model_id
+        .split('-')
+        .map(|part| {
+            if part.chars().all(|c| c.is_ascii_digit() || c == '.') {
+                part.to_string()
+            } else {
+                let mut chars = part.chars();
+                match chars.next() {
+                    None => String::new(),
+                    Some(first) => first.to_uppercase().chain(chars).collect(),
+                }
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Derive a stable session ID from the request.

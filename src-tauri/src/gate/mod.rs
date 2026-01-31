@@ -83,6 +83,7 @@
 //! ```
 
 pub mod auth;
+pub mod callback_server;
 pub mod claude;
 pub mod client;
 pub mod copilot;
@@ -111,6 +112,9 @@ pub use auth::{generate_state, OAuthConfig, OAuthConfigBuilder, OAuthFlow, OAuth
 
 // Re-export provider trait and implementations
 pub use providers::{ClaudeProvider, GeminiProvider, OAuthProvider};
+
+// Re-export callback server types
+pub use callback_server::{CallbackConfig, CallbackHandle, CallbackResult, CallbackServer};
 
 // Re-export keyring storage when feature is enabled
 #[cfg(feature = "keyring")]
@@ -151,7 +155,7 @@ pub type ClaudeFileGate = OAuthFlow<FileTokenStorage, ClaudeProvider>;
 /// ```
 pub type ClaudeMemoryGate = OAuthFlow<MemoryTokenStorage, ClaudeProvider>;
 
-/// Gemini Gate client using file-based token storage.
+/// Gemini client using file-based token storage.
 ///
 /// This type alias provides a convenient way to create a Gemini OAuth flow
 /// with the commonly used file storage backend.
@@ -167,7 +171,7 @@ pub type ClaudeMemoryGate = OAuthFlow<MemoryTokenStorage, ClaudeProvider>;
 /// ```
 pub type GeminiFileGate = OAuthFlow<FileTokenStorage, GeminiProvider>;
 
-/// Gemini Gate client using memory-based token storage.
+/// Gemini client using memory-based token storage.
 ///
 /// Useful for testing and ephemeral sessions.
 ///
@@ -189,7 +193,7 @@ pub type GeminiMemoryGate = OAuthFlow<MemoryTokenStorage, GeminiProvider>;
 #[cfg(feature = "keyring")]
 pub type ClaudeKeyringGate = OAuthFlow<KeyringTokenStorage, ClaudeProvider>;
 
-/// Keyring-backed Gemini Gate client.
+/// Keyring-backed Gemini client.
 ///
 /// Uses the system keyring for secure token storage.
 /// Only available when the `keyring` feature is enabled.

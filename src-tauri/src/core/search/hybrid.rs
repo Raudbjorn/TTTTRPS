@@ -32,7 +32,7 @@ use super::embeddings::{EmbeddingError, EmbeddingProvider};
 use super::fusion::{FusedSearchResult, FusionStrategy, RRFConfig, RRFEngine};
 use super::synonyms::TTRPGSynonyms;
 use crate::core::query_expansion::QueryExpander;
-use crate::core::search_client::{SearchClient, SearchDocument};
+use crate::core::search::{SearchClient, SearchDocument};
 use crate::core::spell_correction::SpellCorrector;
 use crate::ingestion::ttrpg::vocabulary::fusion_config;
 

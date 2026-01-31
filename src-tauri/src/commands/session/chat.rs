@@ -6,7 +6,7 @@
 use tauri::State;
 
 use crate::commands::AppState;
-use crate::database::{GlobalChatSessionRecord, ChatMessageRecord};
+use crate::database::{ChatOps, GlobalChatSessionRecord, ChatMessageRecord};
 
 // ============================================================================
 // Global Chat Session Commands (Persistent LLM Chat History)
