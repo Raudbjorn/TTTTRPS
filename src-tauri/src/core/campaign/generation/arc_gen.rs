@@ -39,6 +39,19 @@ impl Default for ArcTemplateType {
 }
 
 impl ArcTemplateType {
+    /// Get the snake_case string representation for templates
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ArcTemplateType::HerosJourney => "heros_journey",
+            ArcTemplateType::ThreeAct => "three_act",
+            ArcTemplateType::FiveAct => "five_act",
+            ArcTemplateType::Mystery => "mystery",
+            ArcTemplateType::PoliticalIntrigue => "political_intrigue",
+            ArcTemplateType::DungeonDelve => "dungeon_delve",
+            ArcTemplateType::Custom => "custom",
+        }
+    }
+
     /// Get the default phase names for this template
     pub fn default_phases(&self) -> Vec<&'static str> {
         match self {
@@ -165,7 +178,7 @@ impl ArcGenerationRequest {
     pub fn to_generation_request(self) -> GenerationRequest {
         let mut vars = HashMap::new();
         vars.insert("arc_concept".to_string(), self.arc_concept);
-        vars.insert("arc_type".to_string(), format!("{:?}", self.arc_type).to_lowercase());
+        vars.insert("arc_type".to_string(), self.arc_type.as_str().to_string());
 
         if let Some(sessions) = self.estimated_sessions {
             vars.insert("estimated_sessions".to_string(), sessions);
@@ -487,7 +500,7 @@ impl ArcGenerator {
                 let supreme = ((total_sessions * 3) / 4).max(ordeal + 1);
                 vec![
                     TensionPoint { session: 1, tension: 2, event: "Ordinary World".to_string() },
-                    TensionPoint { session: 2.min(total_sessions.saturating_sub(1)), tension: 4, event: "Call to Adventure".to_string() },
+                    TensionPoint { session: 2.min(total_sessions).max(1), tension: 4, event: "Call to Adventure".to_string() },
                     TensionPoint { session: ordeal, tension: 7, event: "Ordeal".to_string() },
                     TensionPoint { session: supreme, tension: 9, event: "Supreme Ordeal".to_string() },
                     TensionPoint { session: total_sessions, tension: 5, event: "Return".to_string() },

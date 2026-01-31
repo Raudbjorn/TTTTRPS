@@ -150,12 +150,10 @@ fn NpcEntry(
     // Use the existing ID from the npc signal
     let npc_id = npc.get_untracked().id.clone();
     Effect::new(move |_| {
-        npc.set(NpcDraft {
-            id: npc_id.clone(),
-            name: name.get(),
-            role: if role.get().is_empty() { None } else { Some(role.get()) },
-            description: if description.get().is_empty() { None } else { Some(description.get()) },
-            location: None,
+        npc.update(|n| {
+            n.name = name.get();
+            n.role = if role.get().is_empty() { None } else { Some(role.get()) };
+            n.description = if description.get().is_empty() { None } else { Some(description.get()) };
         });
     });
 

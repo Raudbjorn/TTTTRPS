@@ -336,15 +336,7 @@ impl UsageTracker {
 
     /// Delete a citation from usage tracking.
     pub async fn remove_citation(&self, campaign_id: &str, citation_id: &str) -> UsageResult<()> {
-        // Remove from cache
-        {
-            let mut cache = self.usage_cache.write().unwrap();
-            if let Some(set) = cache.get_mut(campaign_id) {
-                set.remove(citation_id);
-            }
-        }
-
-        // Remove from database
+        // Remove from database first
         sqlx::query(
             r#"
             DELETE FROM source_citations
@@ -355,6 +347,14 @@ impl UsageTracker {
         .bind(campaign_id)
         .execute(self.db.as_ref())
         .await?;
+
+        // Remove from cache only on success
+        {
+            let mut cache = self.usage_cache.write().unwrap();
+            if let Some(set) = cache.get_mut(campaign_id) {
+                set.remove(citation_id);
+            }
+        }
 
         Ok(())
     }

@@ -70,6 +70,10 @@ pub enum TemplateType {
     QuestHook,
     /// Encounter generation
     Encounter,
+    /// Campaign summary generation
+    CampaignSummary,
+    /// Campaign pitch/preview generation
+    CampaignPitch,
     /// Custom template
     Custom,
 }
@@ -86,6 +90,8 @@ impl TemplateType {
             TemplateType::LocationGeneration => "location_generation.yaml",
             TemplateType::QuestHook => "quest_hook.yaml",
             TemplateType::Encounter => "encounter.yaml",
+            TemplateType::CampaignSummary => "campaign_summary.yaml",
+            TemplateType::CampaignPitch => "campaign_pitch.yaml",
             TemplateType::Custom => "custom.yaml",
         }
     }
@@ -102,6 +108,8 @@ impl std::fmt::Display for TemplateType {
             TemplateType::LocationGeneration => "location_generation",
             TemplateType::QuestHook => "quest_hook",
             TemplateType::Encounter => "encounter",
+            TemplateType::CampaignSummary => "campaign_summary",
+            TemplateType::CampaignPitch => "campaign_pitch",
             TemplateType::Custom => "custom",
         };
         write!(f, "{}", s)
@@ -345,6 +353,8 @@ impl TemplateRegistry {
                 TemplateType::SessionPlan,
                 TemplateType::PartyComposition,
                 TemplateType::ArcOutline,
+                TemplateType::CampaignSummary,
+                TemplateType::CampaignPitch,
             ] {
                 templates.insert(template_type, Self::default_template(template_type));
             }
@@ -415,6 +425,8 @@ impl TemplateRegistry {
                 TemplateType::SessionPlan,
                 TemplateType::PartyComposition,
                 TemplateType::ArcOutline,
+                TemplateType::CampaignSummary,
+                TemplateType::CampaignPitch,
             ] {
                 let path = dir.join(template_type.default_filename());
                 if path.exists() {
@@ -434,6 +446,8 @@ impl TemplateRegistry {
             TemplateType::SessionPlan => Self::default_session_plan(),
             TemplateType::PartyComposition => Self::default_party_composition(),
             TemplateType::ArcOutline => Self::default_arc_outline(),
+            TemplateType::CampaignSummary => Self::default_campaign_summary(),
+            TemplateType::CampaignPitch => Self::default_campaign_pitch(),
             _ => GenerationTemplate::new(
                 template_type,
                 "You are a helpful TTRPG assistant.",
@@ -1159,7 +1173,155 @@ Locations:
             max_tokens: Some(2200),
         }
     }
+
+    fn default_campaign_pitch() -> GenerationTemplate {
+        GenerationTemplate {
+            metadata: TemplateMetadata {
+                name: "Campaign Pitch Generator".to_string(),
+                version: "1.0.0".to_string(),
+                description: "Generate a compelling pitch or preview for a campaign".to_string(),
+                author: Some("TTRPG Assistant".to_string()),
+                tags: vec!["campaign".to_string(), "pitch".to_string(), "introduction".to_string()],
+                recommended_model: Some("claude-3-5-sonnet".to_string()),
+                estimated_output_tokens: Some(1000),
+            },
+            template_type: TemplateType::CampaignPitch,
+            system_prompt: r#"You are a master storyteller and TTRPG campaign designer.
+Your goal is to create a compelling "pitch" or "back-of-the-book" blurb for a campaign.
+
+The pitch should:
+1. Highlight the central conflict and stakes
+2. Evoke the campaign's unique tone and atmosphere
+3. Hint at the mysteries or challenges ahead
+4. Speak directly to the players' potential role in the world
+
+Campaign Context:
+{{campaign_context}}"#.to_string(),
+            user_prompt: r#"Create a campaign pitch based on:
+Fantasy: {{fantasy}}
+Themes: {{themes}}
+Tone: {{tone}}
+Key Elements: {{key_elements}}"#.to_string(),
+            variables: vec![
+                TemplateVariable {
+                    name: "campaign_context".to_string(),
+                    description: "High-level summary of the setting".to_string(),
+                    required: true,
+                    default: None,
+                    example: None,
+                },
+                TemplateVariable {
+                    name: "fantasy".to_string(),
+                    description: "Core fantasy premise".to_string(),
+                    required: true,
+                    default: None,
+                    example: None,
+                },
+                TemplateVariable {
+                    name: "themes".to_string(),
+                    description: "Major campaign themes".to_string(),
+                    required: false,
+                    default: Some("adventure".to_string()),
+                    example: None,
+                },
+                TemplateVariable {
+                    name: "tone".to_string(),
+                    description: "Desired tone".to_string(),
+                    required: false,
+                    default: Some("heroic".to_string()),
+                    example: None,
+                },
+                TemplateVariable {
+                    name: "key_elements".to_string(),
+                    description: "Specific elements to include".to_string(),
+                    required: false,
+                    default: Some("".to_string()),
+                    example: None,
+                },
+            ],
+            output_format: Some(r#"Output Format (JSON):
+{
+  "title": "Evocative campaign title",
+  "tagline": "Short, punchy hook",
+  "pitch": "The 2-3 paragraph main pitch",
+  "key_hooks": ["Hook 1", "Hook 2"],
+  "estimated_levels": "e.g., 1-10",
+  "tone_keywords": ["keyword1", "keyword2"]
+}"#.to_string()),
+            example_output: None,
+            temperature: Some(0.85),
+            max_tokens: Some(1000),
+        }
+    }
+
+    fn default_campaign_summary() -> GenerationTemplate {
+        GenerationTemplate {
+            metadata: TemplateMetadata {
+                name: "Campaign Summary Generator".to_string(),
+                version: "1.0.0".to_string(),
+                description: "Summarize campaign progress and current state".to_string(),
+                author: Some("TTRPG Assistant".to_string()),
+                tags: vec!["campaign".to_string(), "summary".to_string()],
+                recommended_model: Some("claude-3-5-sonnet".to_string()),
+                estimated_output_tokens: Some(1500),
+            },
+            template_type: TemplateType::CampaignSummary,
+            system_prompt: r#"You are a chronicler of epic adventures.
+Your task is to provide a concise yet comprehensive summary of a campaign's current state.
+
+Focus on:
+1. Major completed milestones
+2. Active plot threads and mysteries
+3. Current party status and notable allies/enemies
+4. Significant changes to the world state
+
+Campaign Context:
+{{campaign_context}}"#.to_string(),
+            user_prompt: r#"Summarize the campaign based on the following session history:
+{{session_summaries}}
+
+Active Plots:
+{{active_plots}}"#.to_string(),
+            variables: vec![
+                TemplateVariable {
+                    name: "campaign_context".to_string(),
+                    description: "Original campaign premise".to_string(),
+                    required: true,
+                    default: None,
+                    example: None,
+                },
+                TemplateVariable {
+                    name: "session_summaries".to_string(),
+                    description: "Bullet points of previous sessions".to_string(),
+                    required: true,
+                    default: None,
+                    example: None,
+                },
+                TemplateVariable {
+                    name: "active_plots".to_string(),
+                    description: "Currently unresolved plot threads".to_string(),
+                    required: false,
+                    default: Some("".to_string()),
+                    example: None,
+                },
+            ],
+            output_format: Some(r#"Output Format (JSON):
+{
+  "summary": "Main narrative summary",
+  "milestones": ["Completed milestone 1", "Completed milestone 2"],
+  "active_threads": [
+    {"title": "Thread name", "status": "Current status/clues"}
+  ],
+  "world_changes": ["Change 1", "Change 2"],
+  "dramatic_question": "The main question currently facing the party"
+}"#.to_string()),
+            example_output: None,
+            temperature: Some(0.7),
+            max_tokens: Some(1500),
+        }
+    }
 }
+
 
 impl Default for TemplateRegistry {
     fn default() -> Self {

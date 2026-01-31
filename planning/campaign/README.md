@@ -9,7 +9,7 @@ This directory contains the spec-driven development artifacts for the Campaign G
 ## Documents
 
 | Document | Phase | Purpose |
-|----------|-------|---------|
+| :------- | :---- | :------ |
 | [Requirements.md](./Requirements.md) | 1 | User stories, acceptance criteria (EARS format), constraints |
 | [Design.md](./Design.md) | 2 | Technical architecture, components, data models, APIs |
 | [Tasks.md](./Tasks.md) | 3 | Sequenced implementation tasks with requirements traceability |
@@ -56,7 +56,7 @@ This is enforced architecturally: `Generator` traits return `ArtifactBundle` (pr
 ### Research Sources
 
 - **MDMAI Codebase** - Analyzed for campaign data models, session management, NPC generation patterns, and ChromaDB persistence
-- **Existing TTTRPS Code** - Existing `CampaignManager`, `SessionManager`, arc/phase/milestone types, LLM router
+- **Existing TTRPS Code** - Existing `CampaignManager`, `SessionManager`, arc/phase/milestone types, LLM router
 
 ## Methodology
 
@@ -85,7 +85,7 @@ Following [Spec-Driven Development](../../knowledgebase/spec-driven-development/
 ## Implementation Roadmap (Simplified View)
 
 | Phase | Goal | Key Deliverables |
-|-------|------|------------------|
+| :---- | :--- | :--------------- |
 | **A - Core Loop** | Prove the campaign creation loop | Draft persistence, WizardManager, ConversationManager, basic generation, Creation Workspace UI |
 | **B - Core Artifacts** | Artifact generation pipeline | NPC generation, party balancing, arc outlines, session plans |
 | **C - Grounding** | Trust and citations | Improved rulebook linking, trust levels, basic contradiction detection |
@@ -99,6 +99,7 @@ See [Tasks.md](./Tasks.md) for detailed 9-phase breakdown with ~80 sub-tasks.
 Beyond the core requirements, the research and design process identified these potential future enhancements:
 
 ### Near-Term (Post-MVP)
+
 1. **Campaign Template Library** - Save and share campaign frameworks as reusable blueprints
 2. **Adventure Module Import** - Parse published adventures (PDF/text) into campaign structure
 3. **Player Handout Generation** - Create in-world documents, maps, letters, wanted posters
@@ -106,19 +107,22 @@ Beyond the core requirements, the research and design process identified these p
 5. **Rulebook Conflict Resolution** - When sources disagree, prompt GM for preference and remember
 
 ### Medium-Term
-6. **Relationship Web Visualization** - Interactive NPC/faction relationship graph with zoom/filter
-7. **Timeline View** - Visual campaign arc progression with session markers and branching paths
-8. **Voice Profile Integration** - TTS with NPC-specific voice parameters for immersion
-9. **Cross-Campaign Entity Library** - Reuse NPCs, locations, items across campaigns
-10. **In-Session Music/Ambiance Cues** - Tie scenes to audio atmosphere profiles
+
+1. **Relationship Web Visualization** - Interactive NPC/faction relationship graph with zoom/filter
+2. **Timeline View** - Visual campaign arc progression with session markers and branching paths
+3. **Voice Profile Integration** - TTS with NPC-specific voice parameters for immersion
+4. **Cross-Campaign Entity Library** - Reuse NPCs, locations, items across campaigns
+5. **In-Session Music/Ambiance Cues** - Tie scenes to audio atmosphere profiles
 
 ### Long-Term / Experimental
-11. **AI Dungeon Master Mode** - Fully AI-driven one-shot adventures for solo play
-12. **Published Adventure Awareness** - Index official adventures and suggest tie-ins
+
+1. **AI Dungeon Master Mode** - Fully AI-driven one-shot adventures for solo play
+2. **Published Adventure Awareness** - Index official adventures and suggest tie-ins
 
 ### Deferred: Collaborative Features
 
 Multi-user and collaborative features have been intentionally deferred to focus on single-GM excellence first. See [../collaborative-features/](../collaborative-features/) for:
+
 - Collaborative Campaign Creation (multi-GM editing)
 - Player-Facing Companion App
 - Live Session Logging (voice transcription)

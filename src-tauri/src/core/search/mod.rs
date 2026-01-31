@@ -29,7 +29,7 @@
 //! use crate::core::search::{SearchClient, HybridSearchEngine, HybridConfig};
 //!
 //! // Basic Meilisearch search
-//! let client = SearchClient::new("http://localhost:7700", Some("key"));
+//! let client = SearchClient::new("http://localhost:7700", Some("key")).unwrap();
 //! let results = client.search("fireball", 10, None).await?;
 //!
 //! // Hybrid search with embeddings

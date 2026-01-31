@@ -441,22 +441,43 @@ impl ContextAssembler {
         Ok(Vec::new())
     }
 
-    /// Truncate a section to fit within token budget
+    /// Truncate a section to fit within token budget using an iterative refinement loop
     fn truncate_section(&self, section: &ContextSection, max_tokens: u32) -> ContextSection {
-        let target_chars = (max_tokens as usize) * 4; // Rough estimate: 4 chars per token
-        let truncated_content = if section.content.chars().count() > target_chars {
-            // Find safe byte boundary using char_indices
-            let safe_idx = section.content
+        let mut truncated_content = section.content.clone();
+        let mut current_tokens = estimate_tokens(&truncated_content);
+
+        if current_tokens <= max_tokens {
+            return section.clone();
+        }
+
+        // Iterative refinement loop to hit the token budget target precisely
+        let mut attempts = 0;
+        let max_attempts = 3;
+        let mut current_chars = truncated_content.chars().count();
+
+        while current_tokens > max_tokens && attempts < max_attempts && current_chars > 10 {
+            attempts += 1;
+
+            // Refine the character limit based on current token ratio
+            let ratio = (max_tokens as f32) / (current_tokens as f32);
+            let target_chars = ((current_chars as f32) * ratio).floor() as usize;
+
+            // Find safe boundary
+            let safe_idx = truncated_content
                 .char_indices()
                 .nth(target_chars)
                 .map(|(i, _)| i)
-                .unwrap_or(section.content.len());
-            let mut content = section.content[..safe_idx].to_string();
-            content.push_str("...[truncated]");
-            content
-        } else {
-            section.content.clone()
-        };
+                .unwrap_or(truncated_content.len());
+
+            truncated_content = truncated_content[..safe_idx].to_string();
+            current_tokens = estimate_tokens(&truncated_content);
+            current_chars = truncated_content.chars().count();
+        }
+
+        // Add truncation indicator
+        if !truncated_content.ends_with("...[truncated]") {
+            truncated_content.push_str("...[truncated]");
+        }
 
         ContextSection {
             id: section.id.clone(),

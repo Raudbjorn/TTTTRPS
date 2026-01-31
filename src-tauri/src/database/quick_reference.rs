@@ -19,6 +19,9 @@ pub enum QuickReferenceError {
 
     #[error("Card ID mismatch: {0}")]
     CardIdMismatch(String),
+
+    #[error("Maximum pinned cards ({0}) reached")]
+    MaxPinsReached(i32),
 }
 
 impl From<QuickReferenceError> for sqlx::Error {
@@ -26,33 +29,33 @@ impl From<QuickReferenceError> for sqlx::Error {
         match e {
             QuickReferenceError::Database(e) => e,
             QuickReferenceError::CardIdMismatch(msg) => sqlx::Error::Protocol(msg),
+            QuickReferenceError::MaxPinsReached(limit) => sqlx::Error::Protocol(format!("Maximum pinned cards ({}) reached", limit)),
         }
     }
 }
 
 /// Extension trait for quick reference database operations
 pub trait QuickReferenceOps {
-    // Pinned Cards
-    fn pin_card(&self, card: &PinnedCardRecord) -> impl std::future::Future<Output = Result<(), sqlx::Error>> + Send;
-    fn unpin_card(&self, card_id: &str) -> impl std::future::Future<Output = Result<(), sqlx::Error>> + Send;
-    fn unpin_card_by_entity(&self, session_id: &str, entity_type: &str, entity_id: &str) -> impl std::future::Future<Output = Result<(), sqlx::Error>> + Send;
-    fn get_pinned_cards(&self, session_id: &str) -> impl std::future::Future<Output = Result<Vec<PinnedCardRecord>, sqlx::Error>> + Send;
-    fn count_pinned_cards(&self, session_id: &str) -> impl std::future::Future<Output = Result<i32, sqlx::Error>> + Send;
-    fn reorder_pinned_cards(&self, session_id: &str, card_ids_in_order: &[String]) -> impl std::future::Future<Output = Result<(), sqlx::Error>> + Send;
-    fn update_pinned_card_disclosure(&self, card_id: &str, disclosure_level: &str) -> impl std::future::Future<Output = Result<(), sqlx::Error>> + Send;
-    fn is_entity_pinned(&self, session_id: &str, entity_type: &str, entity_id: &str) -> impl std::future::Future<Output = Result<bool, sqlx::Error>> + Send;
+    fn pin_card_with_limit(&self, card: &PinnedCardRecord, max_pins: i32) -> impl std::future::Future<Output = Result<(), QuickReferenceError>> + Send;
+    fn unpin_card(&self, card_id: &str) -> impl std::future::Future<Output = Result<(), QuickReferenceError>> + Send;
+    fn unpin_and_reorder(&self, session_id: &str, entity_type: &str, entity_id: &str) -> impl std::future::Future<Output = Result<(), QuickReferenceError>> + Send;
+    fn get_pinned_cards(&self, session_id: &str) -> impl std::future::Future<Output = Result<Vec<PinnedCardRecord>, QuickReferenceError>> + Send;
+    fn count_pinned_cards(&self, session_id: &str) -> impl std::future::Future<Output = Result<i32, QuickReferenceError>> + Send;
+    fn reorder_pinned_cards(&self, session_id: &str, card_ids_in_order: &[String]) -> impl std::future::Future<Output = Result<(), QuickReferenceError>> + Send;
+    fn update_pinned_card_disclosure(&self, card_id: &str, disclosure_level: &str) -> impl std::future::Future<Output = Result<(), QuickReferenceError>> + Send;
+    fn is_entity_pinned(&self, session_id: &str, entity_type: &str, entity_id: &str) -> impl std::future::Future<Output = Result<bool, QuickReferenceError>> + Send;
 
     // Cheat Sheet Preferences
-    fn save_cheat_sheet_preference(&self, pref: &CheatSheetPreferenceRecord) -> impl std::future::Future<Output = Result<(), sqlx::Error>> + Send;
-    fn get_cheat_sheet_preferences(&self, campaign_id: &str) -> impl std::future::Future<Output = Result<Vec<CheatSheetPreferenceRecord>, sqlx::Error>> + Send;
-    fn get_session_cheat_sheet_preferences(&self, campaign_id: &str, session_id: &str) -> impl std::future::Future<Output = Result<Vec<CheatSheetPreferenceRecord>, sqlx::Error>> + Send;
-    fn delete_cheat_sheet_preference(&self, id: &str) -> impl std::future::Future<Output = Result<(), sqlx::Error>> + Send;
+    fn save_cheat_sheet_preference(&self, pref: &CheatSheetPreferenceRecord) -> impl std::future::Future<Output = Result<(), QuickReferenceError>> + Send;
+    fn get_cheat_sheet_preferences(&self, campaign_id: &str) -> impl std::future::Future<Output = Result<Vec<CheatSheetPreferenceRecord>, QuickReferenceError>> + Send;
+    fn get_session_cheat_sheet_preferences(&self, campaign_id: &str, session_id: &str) -> impl std::future::Future<Output = Result<Vec<CheatSheetPreferenceRecord>, QuickReferenceError>> + Send;
+    fn delete_cheat_sheet_preference(&self, id: &str) -> impl std::future::Future<Output = Result<(), QuickReferenceError>> + Send;
 
     // Card Cache
-    fn get_card_cache(&self, entity_type: &str, entity_id: &str, disclosure_level: &str) -> impl std::future::Future<Output = Result<Option<CardCacheRecord>, sqlx::Error>> + Send;
-    fn save_card_cache(&self, cache: &CardCacheRecord) -> impl std::future::Future<Output = Result<(), sqlx::Error>> + Send;
-    fn invalidate_card_cache(&self, entity_type: &str, entity_id: &str) -> impl std::future::Future<Output = Result<u64, sqlx::Error>> + Send;
-    fn cleanup_expired_card_cache(&self) -> impl std::future::Future<Output = Result<u64, sqlx::Error>> + Send;
+    fn get_card_cache(&self, entity_type: &str, entity_id: &str, disclosure_level: &str) -> impl std::future::Future<Output = Result<Option<CardCacheRecord>, QuickReferenceError>> + Send;
+    fn save_card_cache(&self, cache: &CardCacheRecord) -> impl std::future::Future<Output = Result<(), QuickReferenceError>> + Send;
+    fn invalidate_card_cache(&self, entity_type: &str, entity_id: &str) -> impl std::future::Future<Output = Result<u64, QuickReferenceError>> + Send;
+    fn cleanup_expired_card_cache(&self) -> impl std::future::Future<Output = Result<u64, QuickReferenceError>> + Send;
 }
 
 impl QuickReferenceOps for Database {
@@ -60,7 +63,20 @@ impl QuickReferenceOps for Database {
     // Pinned Card Operations
     // =========================================================================
 
-    async fn pin_card(&self, card: &PinnedCardRecord) -> Result<(), sqlx::Error> {
+    async fn pin_card_with_limit(&self, card: &PinnedCardRecord, max_pins: i32) -> Result<(), QuickReferenceError> {
+        let mut tx = self.pool().begin().await?;
+
+        // Check count inside transaction
+        let count: i32 = sqlx::query("SELECT COUNT(*) as count FROM pinned_cards WHERE session_id = ?")
+            .bind(&card.session_id)
+            .fetch_one(&mut *tx)
+            .await?
+            .get::<i64, _>("count") as i32;
+
+        if count >= max_pins {
+            return Err(QuickReferenceError::MaxPinsReached(max_pins));
+        }
+
         sqlx::query(
             r#"
             INSERT INTO pinned_cards
@@ -75,12 +91,14 @@ impl QuickReferenceOps for Database {
         .bind(card.display_order)
         .bind(&card.disclosure_level)
         .bind(&card.pinned_at)
-        .execute(self.pool())
+        .execute(&mut *tx)
         .await?;
+
+        tx.commit().await?;
         Ok(())
     }
 
-    async fn unpin_card(&self, card_id: &str) -> Result<(), sqlx::Error> {
+    async fn unpin_card(&self, card_id: &str) -> Result<(), QuickReferenceError> {
         sqlx::query("DELETE FROM pinned_cards WHERE id = ?")
             .bind(card_id)
             .execute(self.pool())
@@ -88,33 +106,60 @@ impl QuickReferenceOps for Database {
         Ok(())
     }
 
-    async fn unpin_card_by_entity(
+    async fn unpin_and_reorder(
         &self,
         session_id: &str,
         entity_type: &str,
         entity_id: &str,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
+    ) -> Result<(), QuickReferenceError> {
+        let mut tx = self.pool().begin().await?;
+
+        // Delete the card
+        let result = sqlx::query(
             "DELETE FROM pinned_cards WHERE session_id = ? AND entity_type = ? AND entity_id = ?"
         )
         .bind(session_id)
         .bind(entity_type)
         .bind(entity_id)
-        .execute(self.pool())
+        .execute(&mut *tx)
         .await?;
+
+        if result.rows_affected() == 0 {
+            return Ok(()); // Nothing to do
+        }
+
+        // Fetch remaining cards to reorder
+        let remaining = sqlx::query_as::<_, PinnedCardRecord>(
+            "SELECT * FROM pinned_cards WHERE session_id = ? ORDER BY display_order"
+        )
+        .bind(session_id)
+        .fetch_all(&mut *tx)
+        .await?;
+
+        // Update display orders
+        for (index, card) in remaining.iter().enumerate() {
+            sqlx::query("UPDATE pinned_cards SET display_order = ? WHERE id = ?")
+                .bind(index as i32)
+                .bind(&card.id)
+                .execute(&mut *tx)
+                .await?;
+        }
+
+        tx.commit().await?;
         Ok(())
     }
 
-    async fn get_pinned_cards(&self, session_id: &str) -> Result<Vec<PinnedCardRecord>, sqlx::Error> {
+    async fn get_pinned_cards(&self, session_id: &str) -> Result<Vec<PinnedCardRecord>, QuickReferenceError> {
         sqlx::query_as::<_, PinnedCardRecord>(
             "SELECT * FROM pinned_cards WHERE session_id = ? ORDER BY display_order"
         )
         .bind(session_id)
         .fetch_all(self.pool())
         .await
+        .map_err(QuickReferenceError::from)
     }
 
-    async fn count_pinned_cards(&self, session_id: &str) -> Result<i32, sqlx::Error> {
+    async fn count_pinned_cards(&self, session_id: &str) -> Result<i32, QuickReferenceError> {
         let row = sqlx::query("SELECT COUNT(*) as count FROM pinned_cards WHERE session_id = ?")
             .bind(session_id)
             .fetch_one(self.pool())
@@ -133,7 +178,7 @@ impl QuickReferenceOps for Database {
         &self,
         session_id: &str,
         card_ids_in_order: &[String],
-    ) -> Result<(), sqlx::Error> {
+    ) -> Result<(), QuickReferenceError> {
         // First, fetch the current pinned cards for this session
         let current_cards = self.get_pinned_cards(session_id).await?;
         let current_ids: std::collections::HashSet<&str> =
@@ -167,7 +212,7 @@ impl QuickReferenceOps for Database {
         &self,
         card_id: &str,
         disclosure_level: &str,
-    ) -> Result<(), sqlx::Error> {
+    ) -> Result<(), QuickReferenceError> {
         sqlx::query("UPDATE pinned_cards SET disclosure_level = ? WHERE id = ?")
             .bind(disclosure_level)
             .bind(card_id)
@@ -181,7 +226,7 @@ impl QuickReferenceOps for Database {
         session_id: &str,
         entity_type: &str,
         entity_id: &str,
-    ) -> Result<bool, sqlx::Error> {
+    ) -> Result<bool, QuickReferenceError> {
         let row = sqlx::query(
             "SELECT COUNT(*) as count FROM pinned_cards WHERE session_id = ? AND entity_type = ? AND entity_id = ?"
         )
@@ -200,7 +245,7 @@ impl QuickReferenceOps for Database {
     async fn save_cheat_sheet_preference(
         &self,
         pref: &CheatSheetPreferenceRecord,
-    ) -> Result<(), sqlx::Error> {
+    ) -> Result<(), QuickReferenceError> {
         sqlx::query(
             r#"
             INSERT OR REPLACE INTO cheat_sheet_preferences
@@ -228,20 +273,21 @@ impl QuickReferenceOps for Database {
     async fn get_cheat_sheet_preferences(
         &self,
         campaign_id: &str,
-    ) -> Result<Vec<CheatSheetPreferenceRecord>, sqlx::Error> {
+    ) -> Result<Vec<CheatSheetPreferenceRecord>, QuickReferenceError> {
         sqlx::query_as::<_, CheatSheetPreferenceRecord>(
             "SELECT * FROM cheat_sheet_preferences WHERE campaign_id = ? ORDER BY priority DESC"
         )
         .bind(campaign_id)
         .fetch_all(self.pool())
         .await
+        .map_err(QuickReferenceError::from)
     }
 
     async fn get_session_cheat_sheet_preferences(
         &self,
         campaign_id: &str,
         session_id: &str,
-    ) -> Result<Vec<CheatSheetPreferenceRecord>, sqlx::Error> {
+    ) -> Result<Vec<CheatSheetPreferenceRecord>, QuickReferenceError> {
         sqlx::query_as::<_, CheatSheetPreferenceRecord>(
             r#"
             SELECT * FROM cheat_sheet_preferences
@@ -253,9 +299,10 @@ impl QuickReferenceOps for Database {
         .bind(session_id)
         .fetch_all(self.pool())
         .await
+        .map_err(QuickReferenceError::from)
     }
 
-    async fn delete_cheat_sheet_preference(&self, id: &str) -> Result<(), sqlx::Error> {
+    async fn delete_cheat_sheet_preference(&self, id: &str) -> Result<(), QuickReferenceError> {
         sqlx::query("DELETE FROM cheat_sheet_preferences WHERE id = ?")
             .bind(id)
             .execute(self.pool())
@@ -272,7 +319,7 @@ impl QuickReferenceOps for Database {
         entity_type: &str,
         entity_id: &str,
         disclosure_level: &str,
-    ) -> Result<Option<CardCacheRecord>, sqlx::Error> {
+    ) -> Result<Option<CardCacheRecord>, QuickReferenceError> {
         sqlx::query_as::<_, CardCacheRecord>(
             r#"
             SELECT * FROM card_cache
@@ -284,9 +331,10 @@ impl QuickReferenceOps for Database {
         .bind(disclosure_level)
         .fetch_optional(self.pool())
         .await
+        .map_err(QuickReferenceError::from)
     }
 
-    async fn save_card_cache(&self, cache: &CardCacheRecord) -> Result<(), sqlx::Error> {
+    async fn save_card_cache(&self, cache: &CardCacheRecord) -> Result<(), QuickReferenceError> {
         sqlx::query(
             r#"
             INSERT OR REPLACE INTO card_cache
@@ -310,7 +358,7 @@ impl QuickReferenceOps for Database {
         &self,
         entity_type: &str,
         entity_id: &str,
-    ) -> Result<u64, sqlx::Error> {
+    ) -> Result<u64, QuickReferenceError> {
         let result = sqlx::query(
             "DELETE FROM card_cache WHERE entity_type = ? AND entity_id = ?"
         )
@@ -321,7 +369,7 @@ impl QuickReferenceOps for Database {
         Ok(result.rows_affected())
     }
 
-    async fn cleanup_expired_card_cache(&self) -> Result<u64, sqlx::Error> {
+    async fn cleanup_expired_card_cache(&self) -> Result<u64, QuickReferenceError> {
         let now = chrono::Utc::now().to_rfc3339();
         let result = sqlx::query("DELETE FROM card_cache WHERE expires_at < ?")
             .bind(&now)

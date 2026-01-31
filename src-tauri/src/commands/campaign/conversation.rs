@@ -10,6 +10,8 @@
 //! - Branching conversations
 
 use std::sync::Arc;
+use once_cell::sync::Lazy;
+use regex::Regex;
 use tauri::State;
 use tracing::{debug, error, info};
 
@@ -105,10 +107,17 @@ fn get_system_prompt_for_purpose(purpose: ConversationPurpose) -> &'static str {
         ConversationPurpose::SessionPlanning => SESSION_PLANNING_SYSTEM_PROMPT,
         ConversationPurpose::NpcGeneration => NPC_GENERATION_SYSTEM_PROMPT,
         ConversationPurpose::WorldBuilding => WORLD_BUILDING_SYSTEM_PROMPT,
-        ConversationPurpose::CharacterBackground => NPC_GENERATION_SYSTEM_PROMPT,
+        ConversationPurpose::CharacterBackground => CHARACTER_BACKGROUND_SYSTEM_PROMPT,
         ConversationPurpose::General => CAMPAIGN_CREATION_SYSTEM_PROMPT,
     }
 }
+
+// Static regex patterns for parsing
+static SUGGESTION_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?s)```suggestion\s*\n(.*?)\n```").unwrap());
+static CITATION_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?s)```citation\s*\n(.*?)\n```").unwrap());
+static QUESTIONS_JSON_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?s)\[.*\]").unwrap());
 
 /// Parse the LLM response for suggestions and citations.
 fn parse_response(
@@ -119,56 +128,52 @@ fn parse_response(
 
     let mut suggestions = Vec::new();
     let mut citations = Vec::new();
-    let mut content = response.to_string();
+    let content = response.to_string();
 
     // Parse suggestion blocks
-    if let Ok(suggestion_regex) = regex::Regex::new(r"```suggestion\s*\n([\s\S]*?)\n```") {
-        for cap in suggestion_regex.captures_iter(response) {
-            if let Some(json_str) = cap.get(1) {
-                if let Ok(raw) = serde_json::from_str::<serde_json::Value>(json_str.as_str()) {
-                    if let (Some(field), Some(value), Some(rationale)) = (
-                        raw.get("field").and_then(|v| v.as_str()),
-                        raw.get("value"),
-                        raw.get("rationale").and_then(|v| v.as_str()),
-                    ) {
-                        suggestions.push(Suggestion {
-                            id: uuid::Uuid::new_v4().to_string(),
-                            field: field.to_string(),
-                            value: value.clone(),
-                            rationale: rationale.to_string(),
-                            status: SuggestionStatus::Pending,
-                        });
-                    }
+    for cap in SUGGESTION_REGEX.captures_iter(response) {
+        if let Some(json_str) = cap.get(1) {
+            if let Ok(raw) = serde_json::from_str::<serde_json::Value>(json_str.as_str()) {
+                if let (Some(field), Some(value), Some(rationale)) = (
+                    raw.get("field").and_then(|v| v.as_str()),
+                    raw.get("value"),
+                    raw.get("rationale").and_then(|v| v.as_str()),
+                ) {
+                    suggestions.push(Suggestion {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        field: field.to_string(),
+                        value: value.clone(),
+                        rationale: rationale.to_string(),
+                        status: SuggestionStatus::Pending,
+                    });
                 }
             }
         }
-        content = suggestion_regex.replace_all(&content, "").to_string();
     }
 
     // Parse citation blocks
-    if let Ok(citation_regex) = regex::Regex::new(r"```citation\s*\n([\s\S]*?)\n```") {
-        for cap in citation_regex.captures_iter(response) {
-            if let Some(json_str) = cap.get(1) {
-                if let Ok(raw) = serde_json::from_str::<serde_json::Value>(json_str.as_str()) {
-                    if let Some(source_name) = raw.get("source_name").and_then(|v| v.as_str()) {
-                        let mut citation =
-                            Citation::new(uuid::Uuid::new_v4().to_string(), source_name.to_string(), 0.8);
-                        if let Some(loc) = raw.get("location").and_then(|v| v.as_str()) {
-                            citation = citation.with_location(loc.to_string());
-                        }
-                        if let Some(exc) = raw.get("excerpt").and_then(|v| v.as_str()) {
-                            citation = citation.with_excerpt(exc.to_string());
-                        }
-                        citations.push(citation);
+    for cap in CITATION_REGEX.captures_iter(response) {
+        if let Some(json_str) = cap.get(1) {
+            if let Ok(raw) = serde_json::from_str::<serde_json::Value>(json_str.as_str()) {
+                if let Some(source_name) = raw.get("source_name").and_then(|v| v.as_str()) {
+                    let mut citation =
+                        Citation::new(uuid::Uuid::new_v4().to_string(), source_name.to_string(), 0.8);
+                    if let Some(loc) = raw.get("location").and_then(|v| v.as_str()) {
+                        citation = citation.with_location(loc.to_string());
                     }
+                    if let Some(exc) = raw.get("excerpt").and_then(|v| v.as_str()) {
+                        citation = citation.with_excerpt(exc.to_string());
+                    }
+                    citations.push(citation);
                 }
             }
         }
-        content = citation_regex.replace_all(&content, "").to_string();
     }
 
-    // Clean up extra whitespace
-    content = content.trim().to_string();
+    // Strip markers and clean up content
+    let content = SUGGESTION_REGEX.replace_all(&content, "");
+    let content = CITATION_REGEX.replace_all(&content, "");
+    let content = content.trim().to_string();
 
     (content, suggestions, citations)
 }
@@ -220,6 +225,10 @@ Consider:
 - Voice and speech patterns
 
 Format suggestions for NPC attributes using the standard suggestion blocks."#;
+
+const CHARACTER_BACKGROUND_SYSTEM_PROMPT: &str = r#"You are a helpful TTRPG assistant specializing in character backgrounds and history.
+
+Flesh out an NPC's past, motivations, and relationships based on the campaign context. Focus on narrative hooks that the GM can use."#;
 
 const WORLD_BUILDING_SYSTEM_PROMPT: &str = r#"You are a helpful TTRPG assistant specializing in world building.
 You help create rich, consistent settings with interesting history and cultures.
@@ -776,12 +785,9 @@ Only include questions for information not already provided in the conversation.
 /// Parse clarifying questions from the response.
 fn parse_clarifying_questions(response: &str) -> Vec<ClarifyingQuestion> {
     // Try to find a JSON array in the response
-    if let Ok(json_regex) = regex::Regex::new(r"\[[\s\S]*\]") {
-        if let Some(json_match) = json_regex.find(response) {
-            if let Ok(questions) = serde_json::from_str::<Vec<ClarifyingQuestion>>(json_match.as_str())
-            {
-                return questions;
-            }
+    if let Some(json_match) = QUESTIONS_JSON_REGEX.find(response) {
+        if let Ok(questions) = serde_json::from_str::<Vec<ClarifyingQuestion>>(json_match.as_str()) {
+            return questions;
         }
     }
 

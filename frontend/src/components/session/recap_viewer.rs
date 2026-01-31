@@ -184,33 +184,32 @@ pub fn RecapViewer(
                     })}
 
                     // Edit/Save buttons
-                    {editable.then(|| {
-                        if is_editing.get() {
-                            view! {
-                                <button
-                                    class="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg text-sm transition-colors"
-                                    on:click=move |_| is_editing.set(false)
-                                >
-                                    "Cancel"
-                                </button>
-                                <button
-                                    class="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded-lg text-sm transition-colors"
-                                    on:click=handle_save.clone()
-                                >
-                                    "Save"
-                                </button>
-                            }.into_any()
-                        } else {
-                            view! {
+                    <Show when=move || editable>
+                        <Show
+                            when=move || is_editing.get()
+                            fallback=move || view! {
                                 <button
                                     class="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg text-sm transition-colors"
                                     on:click=move |_| is_editing.set(true)
                                 >
                                     "Edit"
                                 </button>
-                            }.into_any()
-                        }
-                    })}
+                            }
+                        >
+                            <button
+                                class="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg text-sm transition-colors"
+                                on:click=move |_| is_editing.set(false)
+                            >
+                                "Cancel"
+                            </button>
+                            <button
+                                class="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded-lg text-sm transition-colors"
+                                on:click=handle_save.clone()
+                            >
+                                "Save"
+                            </button>
+                        </Show>
+                    </Show>
                 </div>
             </div>
 
@@ -461,8 +460,10 @@ fn BulletsView(
                                             prop:value=bullet
                                             on:input=move |ev| {
                                                 let mut updated_bullets = bullets.get();
-                                                updated_bullets[i] = event_target_value(&ev);
-                                                on_change.run(updated_bullets);
+                                                if i < updated_bullets.len() {
+                                                    updated_bullets[i] = event_target_value(&ev);
+                                                    on_change.run(updated_bullets);
+                                                }
                                             }
                                         />
                                         <button

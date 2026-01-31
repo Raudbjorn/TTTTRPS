@@ -28,7 +28,8 @@ async fn test_full_ingest() {
         })
         .unwrap_or_else(|| "ttrpg-assistant-dev-key".to_string());
 
-    let search_client = SearchClient::new("http://127.0.0.1:7700", Some(&meili_key));
+    let search_client = SearchClient::new("http://127.0.0.1:7700", Some(&meili_key))
+        .expect("Failed to create search client");
 
     // 2. Ingest using two-phase pipeline (extract → raw index → chunk index)
     println!("\n[2/2] Ingesting with two-phase pipeline...");

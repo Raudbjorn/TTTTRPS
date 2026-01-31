@@ -570,7 +570,6 @@ pub async fn get_campaign_draft_stats(
     let mut draft_count = 0;
     let mut approved_count = 0;
     let mut canonical_count = 0;
-    let rejected_count = 0;
     let mut deprecated_count = 0;
 
     // Count by entity type
@@ -592,7 +591,6 @@ pub async fn get_campaign_draft_stats(
         draft: draft_count,
         approved: approved_count,
         canonical: canonical_count,
-        rejected: rejected_count,
         deprecated: deprecated_count,
         by_entity_type,
     })
@@ -626,7 +624,6 @@ pub struct DraftStats {
     pub draft: u32,
     pub approved: u32,
     pub canonical: u32,
-    pub rejected: u32,
     pub deprecated: u32,
     pub by_entity_type: std::collections::HashMap<String, u32>,
 }
@@ -682,7 +679,6 @@ mod tests {
             draft: 4,
             approved: 2,
             canonical: 2,
-            rejected: 1,
             deprecated: 1,
             by_entity_type: by_type,
         };

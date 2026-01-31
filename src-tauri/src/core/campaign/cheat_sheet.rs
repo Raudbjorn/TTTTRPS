@@ -82,6 +82,12 @@ impl From<super::quick_reference::QuickReferenceError> for CheatSheetError {
     }
 }
 
+impl From<crate::database::quick_reference::QuickReferenceError> for CheatSheetError {
+    fn from(err: crate::database::quick_reference::QuickReferenceError) -> Self {
+        CheatSheetError::Database(err.to_string())
+    }
+}
+
 // ============================================================================
 // Cheat Sheet Types
 // ============================================================================
