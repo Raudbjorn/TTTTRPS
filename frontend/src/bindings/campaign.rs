@@ -62,7 +62,11 @@ pub async fn create_campaign(name: String, system: String) -> Result<Campaign, S
 }
 
 pub async fn get_campaign(id: String) -> Result<Option<Campaign>, String> {
-    invoke("get_campaign", &json!({ "id": id })).await
+    #[derive(Serialize)]
+    struct Args {
+        id: String,
+    }
+    invoke("get_campaign", &Args { id }).await
 }
 
 pub async fn delete_campaign(id: String) -> Result<(), String> {

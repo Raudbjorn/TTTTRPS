@@ -217,3 +217,12 @@ pub async fn open_url_in_browser(url: String) -> Result<(), String> {
     }
     invoke_void("open_url_in_browser", &Args { url }).await
 }
+
+/// Copy text to system clipboard
+pub async fn copy_to_clipboard(text: String) -> Result<(), String> {
+    #[derive(Serialize)]
+    struct Args {
+        text: String,
+    }
+    invoke_void("copy_to_clipboard", &Args { text }).await
+}

@@ -718,9 +718,11 @@ pub struct PersonalitySettingsRequest {
 }
 
 pub async fn set_active_personality(request: SetActivePersonalityRequest) -> Result<(), String> {
-    invoke_void("set_active_personality", &json!({
-        "request": request
-    })).await
+    #[derive(Serialize)]
+    struct Args {
+        request: SetActivePersonalityRequest,
+    }
+    invoke_void("set_active_personality", &Args { request }).await
 }
 
 pub async fn get_active_personality(session_id: String, campaign_id: String) -> Result<Option<String>, String> {

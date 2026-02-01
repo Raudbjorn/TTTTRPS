@@ -292,14 +292,7 @@ pub async fn correct_query(query: String) -> Result<CorrectionResult, String> {
     invoke("correct_query", &Args { query }).await
 }
 
-/// Copy text to system clipboard
-pub async fn copy_to_clipboard(text: String) -> Result<(), String> {
-    #[derive(Serialize)]
-    struct Args {
-        text: String,
-    }
-    invoke("copy_to_clipboard", &Args { text }).await
-}
+// copy_to_clipboard moved to core.rs
 
 // ============================================================================
 // Search Analytics

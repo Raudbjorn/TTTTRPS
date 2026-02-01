@@ -11,7 +11,7 @@
    Theme definitions are consolidated into /public/themes.css which is the
    single source of truth for CSS custom properties.
 
-   Visual effects are defined in /src/styles/effects.css for modularity.
+   Visual effects are defined in /public/effects.css for modularity.
 
    This file provides:
    - Tailwind-specific utilities that reference theme variables

@@ -116,7 +116,7 @@ pub fn RecapViewer(
         let key_events = recap.key_events.clone();
         let on_save = on_save.clone();
 
-        move |_| {
+        Callback::new(move |_| {
             let updated = SessionRecap {
                 id: recap_id.clone(),
                 session_id: session_id.clone(),
@@ -137,7 +137,7 @@ pub fn RecapViewer(
             }
 
             is_editing.set(false);
-        }
+        })
     };
 
     view! {
@@ -204,7 +204,7 @@ pub fn RecapViewer(
                             </button>
                             <button
                                 class="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded-lg text-sm transition-colors"
-                                on:click=handle_save.clone()
+                                on:click=move |ev| handle_save.run(ev)
                             >
                                 "Save"
                             </button>

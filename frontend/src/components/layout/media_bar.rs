@@ -12,6 +12,7 @@ use leptos::prelude::*;
 use wasm_bindgen::JsCast; // Import JsCast for dyn_ref
 // use std::ops::Deref; // Import Deref for deref
 use wasm_bindgen_futures::spawn_local;
+use phosphor_leptos::{Icon, IconWeight, PLAY, PAUSE, SKIP_BACK, SKIP_FORWARD, SPEAKER_X, SPEAKER_LOW, SPEAKER_HIGH};
 use crate::bindings::{get_voice_queue, QueuedVoice, VoiceStatus};
 
 /// Volume level for the media bar
@@ -137,7 +138,7 @@ pub fn MediaBar() -> impl IntoView {
                     aria-label="Previous track"
                     title="Previous"
                 >
-                    <SkipBackIcon />
+                    <Icon icon=SKIP_BACK size="16px" />
                 </button>
 
                 // Play/Pause Button
@@ -153,9 +154,9 @@ pub fn MediaBar() -> impl IntoView {
                     aria-label=move || if is_playing.get() { "Pause" } else { "Play" }
                 >
                     {move || if is_playing.get() {
-                        view! { <PauseIcon /> }.into_any()
+                        view! { <Icon icon=PAUSE size="16px" weight=IconWeight::Fill /> }.into_any()
                     } else {
-                        view! { <PlayIcon /> }.into_any()
+                        view! { <Icon icon=PLAY size="16px" weight=IconWeight::Fill /> }.into_any()
                     }}
                 </button>
 
@@ -165,7 +166,7 @@ pub fn MediaBar() -> impl IntoView {
                     aria-label="Next track"
                     title="Next"
                 >
-                    <SkipForwardIcon />
+                    <Icon icon=SKIP_FORWARD size="16px" />
                 </button>
 
                 // Current Track Info
@@ -292,10 +293,10 @@ pub fn MediaBar() -> impl IntoView {
                         on:click=toggle_mute
                     >
                         {move || match volume_level.get() {
-                            VolumeLevel::Muted => view! { <VolumeMutedIcon /> }.into_any(),
-                            VolumeLevel::Low => view! { <VolumeLowIcon /> }.into_any(),
-                            VolumeLevel::Medium => view! { <VolumeMediumIcon /> }.into_any(),
-                            VolumeLevel::High => view! { <VolumeHighIcon /> }.into_any(),
+                            VolumeLevel::Muted => view! { <Icon icon=SPEAKER_X size="18px" /> }.into_any(),
+                            VolumeLevel::Low => view! { <Icon icon=SPEAKER_LOW size="18px" /> }.into_any(),
+                            VolumeLevel::Medium => view! { <Icon icon=SPEAKER_HIGH size="18px" /> }.into_any(),
+                            VolumeLevel::High => view! { <Icon icon=SPEAKER_HIGH size="18px" weight=IconWeight::Fill /> }.into_any(),
                         }}
                     </button>
 
@@ -349,85 +350,4 @@ fn format_time(seconds: f32) -> String {
     format!("{}:{:02}", mins, secs)
 }
 
-// SVG Icon Components
-
-#[component]
-fn PlayIcon() -> impl IntoView {
-    view! {
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <polygon points="5 3 19 12 5 21 5 3"></polygon>
-        </svg>
-    }
-}
-
-#[component]
-fn PauseIcon() -> impl IntoView {
-    view! {
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <rect x="6" y="4" width="4" height="16"></rect>
-            <rect x="14" y="4" width="4" height="16"></rect>
-        </svg>
-    }
-}
-
-#[component]
-fn SkipBackIcon() -> impl IntoView {
-    view! {
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="19 20 9 12 19 4 19 20"></polygon>
-            <line x1="5" y1="19" x2="5" y2="5"></line>
-        </svg>
-    }
-}
-
-#[component]
-fn SkipForwardIcon() -> impl IntoView {
-    view! {
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="5 4 15 12 5 20 5 4"></polygon>
-            <line x1="19" y1="5" x2="19" y2="19"></line>
-        </svg>
-    }
-}
-
-#[component]
-fn VolumeMutedIcon() -> impl IntoView {
-    view! {
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-            <line x1="23" y1="9" x2="17" y2="15"></line>
-            <line x1="17" y1="9" x2="23" y2="15"></line>
-        </svg>
-    }
-}
-
-#[component]
-fn VolumeLowIcon() -> impl IntoView {
-    view! {
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-        </svg>
-    }
-}
-
-#[component]
-fn VolumeMediumIcon() -> impl IntoView {
-    view! {
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
-        </svg>
-    }
-}
-
-#[component]
-fn VolumeHighIcon() -> impl IntoView {
-    view! {
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-        </svg>
-    }
-}
+// SVG Icon Components removed (replaced by phosphor-leptos)

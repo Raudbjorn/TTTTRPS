@@ -521,7 +521,12 @@ where
                 callback(wrapper.payload);
             }
             Err(e) => {
-                web_sys::console::error_1(&format!("Failed to parse chat-chunk event: {:?}", e).into());
+                let json_str = js_sys::JSON::stringify(&event).unwrap_or_else(|_| "?".into());
+                web_sys::console::error_2(
+                    &"Failed to deserialize chat-chunk event:".into(),
+                    &e.into(),
+                );
+                web_sys::console::log_2(&"Event data:".into(), &json_str);
             }
         }
     });
