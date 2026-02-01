@@ -8,9 +8,10 @@ use leptos::ev;
 use leptos::prelude::*;
 use crate::bindings::Campaign;
 use phosphor_leptos::{Icon, TRASH, DISC, USERS, USER, PLAY_CIRCLE};
+use crate::utils::formatting::format_last_played;
 
 /// Genre/system category for styling
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CampaignGenre {
     Fantasy,
     Horror,
@@ -100,22 +101,7 @@ impl CampaignGenre {
 
 // get_system_style removed (unused)
 
-/// Format a timestamp to a human-readable "last played" string
-fn format_last_played(timestamp: &str) -> String {
-    // Parse ISO timestamp and calculate relative time
-    // For now, return a simplified format
-    if timestamp.is_empty() {
-        return "Never played".to_string();
-    }
-
-    // Extract date part from ISO timestamp
-    if let Some(date_part) = timestamp.split('T').next() {
-        // Simple date display
-        return format!("Last: {}", date_part);
-    }
-
-    "Recently".to_string()
-}
+// format_last_played removed (moved to utils)
 
 // SystemBadge removed (unused)
 

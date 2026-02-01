@@ -14,6 +14,7 @@ use wasm_bindgen::JsCast; // Import JsCast for dyn_ref
 use wasm_bindgen_futures::spawn_local;
 use phosphor_leptos::{Icon, IconWeight, PLAY, PAUSE, SKIP_BACK, SKIP_FORWARD, SPEAKER_X, SPEAKER_LOW, SPEAKER_HIGH};
 use crate::bindings::{get_voice_queue, QueuedVoice, VoiceStatus};
+use crate::utils::formatting::format_time_mm_ss;
 
 /// Volume level for the media bar
 #[derive(Clone, Copy, PartialEq)]
@@ -199,7 +200,7 @@ pub fn MediaBar() -> impl IntoView {
             <div class="flex-1 mx-8 flex items-center gap-3">
                 // Current time
                 <span class="text-[10px] font-mono text-[var(--text-muted)] w-10 text-right">
-                    {move || format_time(progress.get() * 60.0)} // Assuming 60s max for demo
+                    {move || format_time_mm_ss(progress.get() * 60.0)} // Assuming 60s max for demo
                 </span>
 
                 // Scrubber
@@ -343,11 +344,6 @@ pub fn MediaBar() -> impl IntoView {
     }
 }
 
-/// Format seconds to MM:SS
-fn format_time(seconds: f32) -> String {
-    let mins = (seconds / 60.0).floor() as u32;
-    let secs = (seconds % 60.0).floor() as u32;
-    format!("{}:{:02}", mins, secs)
-}
+// format_time removed (moved to utils as format_time_mm_ss)
 
 // SVG Icon Components removed (replaced by phosphor-leptos)

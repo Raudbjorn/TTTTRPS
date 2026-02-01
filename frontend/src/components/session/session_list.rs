@@ -12,23 +12,11 @@
 use leptos::prelude::*;
 
 use crate::bindings::SessionSummary;
+use crate::utils::formatting::format_duration;
 
 // SessionStatus removed (unused)
 
-/// Format duration in minutes to human-readable string
-fn format_duration(minutes: i64) -> String {
-    if minutes < 60 {
-        format!("{}m", minutes)
-    } else {
-        let hours = minutes / 60;
-        let mins = minutes % 60;
-        if mins == 0 {
-            format!("{}h", hours)
-        } else {
-            format!("{}h {}m", hours, mins)
-        }
-    }
-}
+// format_duration removed (moved to utils)
 
 /// Format date from ISO timestamp
 fn format_session_date(iso: &str) -> String {
