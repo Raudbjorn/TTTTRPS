@@ -22,3 +22,5 @@ inspection-results/
 # Backups and temporary directories
 original-project/
 dev-resources/
+# Generated shell completions
+.completions/

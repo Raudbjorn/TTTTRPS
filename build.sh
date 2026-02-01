@@ -5,6 +5,9 @@
 
 set -e  # Exit on error
 
+# Script version
+SCRIPT_VERSION="2.0.0"
+
 # Color codes for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -20,6 +23,7 @@ CHECK="✅"
 CROSS="❌"
 WARNING="⚠️"
 GEAR="⚙️"
+CLOCK="⏱️"
 
 # Project paths
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -29,6 +33,44 @@ BACKEND_DIR="$PROJECT_ROOT/src-tauri"
 # Default configuration
 : "${LLM_PROXY_PORT:=18787}"
 export LLM_PROXY_PORT
+
+# CI/CD detection - auto-configure for non-interactive environments
+if [ -n "$CI" ] || [ -n "$GITHUB_ACTIONS" ] || [ -n "$GITLAB_CI" ] || [ -n "$JENKINS_URL" ]; then
+    CI_MODE=true
+    AUTO_INSTALL_DEPS=true
+    SEIZE_PORT=true
+    FORCE_CLEAN=true
+    # Disable colors in CI (unless FORCE_COLOR is set)
+    if [ -z "$FORCE_COLOR" ]; then
+        RED=''; GREEN=''; YELLOW=''; BLUE=''; PURPLE=''; CYAN=''; NC=''
+        ROCKET='>>'; CHECK='OK'; CROSS='FAIL'; WARNING='WARN'; GEAR='::'; CLOCK='::'
+    fi
+else
+    CI_MODE=false
+fi
+
+# Timing support
+BUILD_START_TIME=$SECONDS
+STEP_TIMES=()
+
+# Signal handling for clean exit
+cleanup() {
+    local exit_code=$?
+    if [ $exit_code -ne 0 ] && [ $exit_code -ne 130 ]; then
+        print_error "Build failed with exit code $exit_code"
+    fi
+    # Kill any background processes started by this script
+    jobs -p 2>/dev/null | xargs -r kill 2>/dev/null || true
+    exit $exit_code
+}
+trap cleanup EXIT
+
+interrupt_handler() {
+    echo ""
+    print_warning "Interrupted by user (Ctrl+C)"
+    exit 130
+}
+trap interrupt_handler INT TERM
 
 print_header() {
     echo -e "\n${PURPLE}╔═══════════════════════════════════════════════════════════════════════════════╗${NC}"
@@ -173,6 +215,57 @@ print_warning() {
 
 print_info() {
     echo -e "${BLUE}${GEAR} $1${NC}"
+}
+
+print_verbose() {
+    if [ "$VERBOSE" = true ]; then
+        echo -e "${CYAN}  [verbose] $1${NC}"
+    fi
+}
+
+print_debug() {
+    if [ "$DEBUG_MODE" = true ]; then
+        echo -e "${PURPLE}  [debug] $1${NC}" >&2
+    fi
+}
+
+# Timing functions
+start_timer() {
+    STEP_START_TIME=$SECONDS
+}
+
+end_timer() {
+    local step_name="$1"
+    local elapsed=$((SECONDS - STEP_START_TIME))
+    STEP_TIMES+=("$step_name:$elapsed")
+    if [ "$VERBOSE" = true ] || [ $elapsed -gt 10 ]; then
+        print_info "${CLOCK} $step_name completed in ${elapsed}s"
+    fi
+}
+
+print_timing_summary() {
+    if [ ${#STEP_TIMES[@]} -eq 0 ]; then
+        return
+    fi
+
+    local total=$((SECONDS - BUILD_START_TIME))
+    echo -e "\n${CYAN}${CLOCK} Build Timing Summary:${NC}"
+    for entry in "${STEP_TIMES[@]}"; do
+        local name="${entry%%:*}"
+        local time="${entry##*:}"
+        printf "  %-30s %3ds\n" "$name" "$time"
+    done
+    echo -e "  ${CYAN}$(printf '%.0s─' {1..40})${NC}"
+    printf "  ${GREEN}%-30s %3ds${NC}\n" "Total" "$total"
+}
+
+# Run command with timing
+timed_run() {
+    local step_name="$1"
+    shift
+    start_timer
+    "$@"
+    end_timer "$step_name"
 }
 
 command_exists() {
@@ -498,12 +591,19 @@ build_frontend() {
     mkdir -p node_modules
 
     print_info "Compiling Leptos frontend with Trunk..."
+    print_verbose "Release mode: $RELEASE"
+    [ -n "$FEATURES" ] && print_verbose "Features: $FEATURES"
 
+    local trunk_args=()
     if [ "$RELEASE" = true ]; then
-        trunk build --release
-    else
-        trunk build
+        trunk_args+=(--release)
     fi
+    # Pass features to cargo via trunk's cargo args
+    if [ -n "$FEATURES" ]; then
+        trunk_args+=(-- --features "$FEATURES")
+    fi
+
+    trunk build "${trunk_args[@]}"
 
     if [ -d "dist" ]; then
         print_success "Frontend built successfully in frontend/dist"
@@ -520,12 +620,21 @@ build_backend() {
     cd "$BACKEND_DIR"
 
     print_info "Compiling Tauri backend..."
+    print_verbose "Release mode: $RELEASE"
+    [ -n "$FEATURES" ] && print_verbose "Features: $FEATURES"
 
+    local cargo_args=()
     if [ "$RELEASE" = true ]; then
-        cargo build --release
-    else
-        cargo build
+        cargo_args+=(--release)
     fi
+    if [ -n "$FEATURES" ]; then
+        cargo_args+=(--features "$FEATURES")
+    fi
+    if [ "$VERBOSE" = true ]; then
+        cargo_args+=(--verbose)
+    fi
+
+    cargo build "${cargo_args[@]}"
 
     print_success "Backend built successfully"
     cd "$PROJECT_ROOT"
@@ -542,14 +651,29 @@ build_desktop() {
     patch_linuxdeploy_strip
 
     print_info "Creating application bundle..."
+    print_verbose "Release mode: $RELEASE"
+    [ -n "$FEATURES" ] && print_verbose "Features: $FEATURES"
 
     local build_args=()
     if [ "$RELEASE" != true ]; then
         build_args+=(--debug)
     fi
+    if [ -n "$FEATURES" ]; then
+        build_args+=(--features "$FEATURES")
+    fi
+    if [ "$VERBOSE" = true ]; then
+        build_args+=(--verbose)
+    fi
 
     if cargo tauri build "${build_args[@]}"; then
         print_success "Desktop app built successfully"
+
+        # Show output location
+        if [ "$RELEASE" = true ]; then
+            print_info "Output: $BACKEND_DIR/target/release/bundle/"
+        else
+            print_info "Output: $BACKEND_DIR/target/debug/bundle/"
+        fi
     else
         print_error "Desktop build failed"
         exit 1
@@ -807,7 +931,16 @@ run_dev() {
     done
 
     print_info "Running cargo tauri dev..."
-    cargo tauri dev
+    print_verbose "Trunk port: 3030"
+    print_verbose "Tauri port: 1420"
+    print_verbose "LLM proxy port: $LLM_PROXY_PORT"
+
+    local dev_args=()
+    if [ -n "$FEATURES" ]; then
+        dev_args+=(--features "$FEATURES")
+    fi
+
+    cargo tauri dev "${dev_args[@]}"
 
     cd "$PROJECT_ROOT"
 }
@@ -815,20 +948,64 @@ run_dev() {
 run_tests() {
     print_section "Running Tests"
 
-    print_info "Testing backend (lib)..."
-    cd "$BACKEND_DIR"
-    cargo test --lib
-
-    print_info "Testing backend (integration, requires services)..."
-    if [ "$RUN_INTEGRATION" = true ]; then
-        cargo test -- --ignored
-    else
-        print_warning "Skipping integration tests (use --integration to run)"
+    local test_args=()
+    if [ "$VERBOSE" = true ]; then
+        test_args+=(--verbose)
     fi
 
-    print_info "Testing frontend..."
-    cd "$FRONTEND_DIR"
-    cargo test
+    if [ "$PARALLEL" = true ] && [ "$RUN_INTEGRATION" != true ]; then
+        print_info "Running tests in parallel..."
+
+        local backend_log=$(mktemp)
+        local frontend_log=$(mktemp)
+
+        (cd "$BACKEND_DIR" && cargo test --lib "${test_args[@]}" 2>&1) > "$backend_log" 2>&1 &
+        local backend_pid=$!
+
+        (cd "$FRONTEND_DIR" && cargo test "${test_args[@]}" 2>&1) > "$frontend_log" 2>&1 &
+        local frontend_pid=$!
+
+        local failed=false
+
+        if wait $backend_pid; then
+            print_success "Backend tests passed"
+            [ "$VERBOSE" = true ] && cat "$backend_log"
+        else
+            print_error "Backend tests failed"
+            cat "$backend_log"
+            failed=true
+        fi
+
+        if wait $frontend_pid; then
+            print_success "Frontend tests passed"
+            [ "$VERBOSE" = true ] && cat "$frontend_log"
+        else
+            print_error "Frontend tests failed"
+            cat "$frontend_log"
+            failed=true
+        fi
+
+        rm -f "$backend_log" "$frontend_log"
+
+        if [ "$failed" = true ]; then
+            exit 1
+        fi
+    else
+        print_info "Testing backend (lib)..."
+        cd "$BACKEND_DIR"
+        cargo test --lib "${test_args[@]}"
+
+        print_info "Testing backend (integration, requires services)..."
+        if [ "$RUN_INTEGRATION" = true ]; then
+            cargo test "${test_args[@]}" -- --ignored
+        else
+            print_warning "Skipping integration tests (use --integration to run)"
+        fi
+
+        print_info "Testing frontend..."
+        cd "$FRONTEND_DIR"
+        cargo test "${test_args[@]}"
+    fi
 
     cd "$PROJECT_ROOT"
     print_success "All tests passed"
@@ -837,13 +1014,53 @@ run_tests() {
 run_check() {
     print_section "Running Checks"
 
-    print_info "Checking backend..."
-    cd "$BACKEND_DIR"
-    cargo check
+    if [ "$PARALLEL" = true ]; then
+        print_info "Running parallel checks..."
 
-    print_info "Checking frontend..."
-    cd "$FRONTEND_DIR"
-    cargo check
+        local backend_log=$(mktemp)
+        local frontend_log=$(mktemp)
+
+        # Run checks in parallel
+        (cd "$BACKEND_DIR" && cargo check ${VERBOSE:+--verbose} 2>&1) > "$backend_log" 2>&1 &
+        local backend_pid=$!
+
+        (cd "$FRONTEND_DIR" && cargo check ${VERBOSE:+--verbose} 2>&1) > "$frontend_log" 2>&1 &
+        local frontend_pid=$!
+
+        local failed=false
+
+        # Wait for backend
+        if wait $backend_pid; then
+            print_success "Backend check passed"
+        else
+            print_error "Backend check failed"
+            cat "$backend_log"
+            failed=true
+        fi
+
+        # Wait for frontend
+        if wait $frontend_pid; then
+            print_success "Frontend check passed"
+        else
+            print_error "Frontend check failed"
+            cat "$frontend_log"
+            failed=true
+        fi
+
+        rm -f "$backend_log" "$frontend_log"
+
+        if [ "$failed" = true ]; then
+            exit 1
+        fi
+    else
+        print_info "Checking backend..."
+        cd "$BACKEND_DIR"
+        cargo check ${VERBOSE:+--verbose}
+
+        print_info "Checking frontend..."
+        cd "$FRONTEND_DIR"
+        cargo check ${VERBOSE:+--verbose}
+    fi
 
     cd "$PROJECT_ROOT"
     print_success "Checks completed"
@@ -921,13 +1138,55 @@ clean_artifacts() {
 run_lint() {
     print_section "Running Clippy Lints"
 
-    print_info "Linting backend..."
-    cd "$BACKEND_DIR"
-    cargo clippy -- -D warnings
+    local clippy_args=(-- -D warnings)
+    if [ "$VERBOSE" = true ]; then
+        clippy_args=(--verbose -- -D warnings)
+    fi
 
-    print_info "Linting frontend..."
-    cd "$FRONTEND_DIR"
-    cargo clippy -- -D warnings
+    if [ "$PARALLEL" = true ]; then
+        print_info "Running parallel lint checks..."
+
+        local backend_log=$(mktemp)
+        local frontend_log=$(mktemp)
+
+        (cd "$BACKEND_DIR" && cargo clippy "${clippy_args[@]}" 2>&1) > "$backend_log" 2>&1 &
+        local backend_pid=$!
+
+        (cd "$FRONTEND_DIR" && cargo clippy "${clippy_args[@]}" 2>&1) > "$frontend_log" 2>&1 &
+        local frontend_pid=$!
+
+        local failed=false
+
+        if wait $backend_pid; then
+            print_success "Backend lint passed"
+        else
+            print_error "Backend lint failed"
+            cat "$backend_log"
+            failed=true
+        fi
+
+        if wait $frontend_pid; then
+            print_success "Frontend lint passed"
+        else
+            print_error "Frontend lint failed"
+            cat "$frontend_log"
+            failed=true
+        fi
+
+        rm -f "$backend_log" "$frontend_log"
+
+        if [ "$failed" = true ]; then
+            exit 1
+        fi
+    else
+        print_info "Linting backend..."
+        cd "$BACKEND_DIR"
+        cargo clippy "${clippy_args[@]}"
+
+        print_info "Linting frontend..."
+        cd "$FRONTEND_DIR"
+        cargo clippy "${clippy_args[@]}"
+    fi
 
     cd "$PROJECT_ROOT"
     print_success "Linting passed"
@@ -961,6 +1220,370 @@ run_format_check() {
 
     cd "$PROJECT_ROOT"
     print_success "Formatting check passed"
+}
+
+run_audit() {
+    print_section "Security Audit"
+
+    if ! command_exists cargo-audit; then
+        print_warning "cargo-audit not found. Installing..."
+        cargo install cargo-audit --locked || { print_error "Failed to install cargo-audit"; return 1; }
+    fi
+    print_verbose "Using cargo-audit: $(cargo audit --version 2>/dev/null || echo 'unknown')"
+
+    local audit_failed=false
+
+    print_info "Auditing backend dependencies..."
+    cd "$BACKEND_DIR"
+    if ! cargo audit ${VERBOSE:+--deny warnings}; then
+        audit_failed=true
+        print_warning "Backend audit found issues"
+    fi
+
+    print_info "Auditing frontend dependencies..."
+    cd "$FRONTEND_DIR"
+    if ! cargo audit ${VERBOSE:+--deny warnings}; then
+        audit_failed=true
+        print_warning "Frontend audit found issues"
+    fi
+
+    cd "$PROJECT_ROOT"
+
+    if [ "$audit_failed" = true ]; then
+        print_warning "Security audit completed with warnings"
+        return 1
+    fi
+    print_success "Security audit passed - no known vulnerabilities"
+}
+
+run_doc() {
+    print_section "Generating Documentation"
+
+    local open_browser=true
+    if [ "$CI_MODE" = true ]; then
+        open_browser=false
+    fi
+
+    print_info "Generating backend documentation..."
+    cd "$BACKEND_DIR"
+    cargo doc --no-deps --document-private-items ${VERBOSE:+--verbose}
+
+    print_info "Generating frontend documentation..."
+    cd "$FRONTEND_DIR"
+    cargo doc --no-deps --document-private-items ${VERBOSE:+--verbose}
+
+    cd "$PROJECT_ROOT"
+
+    if [ "$open_browser" = true ]; then
+        local doc_path="$BACKEND_DIR/target/doc/ttrpg_assistant/index.html"
+        if [ -f "$doc_path" ]; then
+            print_info "Opening documentation in browser..."
+            if command_exists xdg-open; then
+                xdg-open "$doc_path" 2>/dev/null &
+            elif command_exists open; then
+                open "$doc_path" 2>/dev/null &
+            fi
+        fi
+    fi
+
+    print_success "Documentation generated"
+    print_info "Backend docs: $BACKEND_DIR/target/doc/ttrpg_assistant/index.html"
+    print_info "Frontend docs: $FRONTEND_DIR/target/doc/frontend/index.html"
+}
+
+run_coverage() {
+    print_section "Code Coverage"
+
+    if ! command_exists cargo-tarpaulin; then
+        print_warning "cargo-tarpaulin not found. Installing..."
+        cargo install cargo-tarpaulin --locked || { print_error "Failed to install cargo-tarpaulin"; return 1; }
+    fi
+    print_verbose "Using cargo-tarpaulin: $(cargo tarpaulin --version 2>/dev/null || echo 'unknown')"
+
+    print_info "Running coverage for backend..."
+    cd "$BACKEND_DIR"
+
+    local coverage_args=(--out Html --output-dir target/coverage)
+    if [ "$VERBOSE" = true ]; then
+        coverage_args+=(--verbose)
+    fi
+
+    cargo tarpaulin "${coverage_args[@]}"
+
+    cd "$PROJECT_ROOT"
+
+    local report_path="$BACKEND_DIR/target/coverage/tarpaulin-report.html"
+    if [ -f "$report_path" ]; then
+        print_success "Coverage report generated: $report_path"
+        if [ "$CI_MODE" != true ]; then
+            if command_exists xdg-open; then
+                xdg-open "$report_path" 2>/dev/null &
+            elif command_exists open; then
+                open "$report_path" 2>/dev/null &
+            fi
+        fi
+    fi
+}
+
+run_machete() {
+    print_section "Unused Dependency Check"
+
+    if ! command_exists cargo-machete; then
+        print_warning "cargo-machete not found. Installing..."
+        cargo install cargo-machete --locked || { print_error "Failed to install cargo-machete"; return 1; }
+    fi
+    print_verbose "Using cargo-machete: $(cargo machete --version 2>/dev/null || echo 'unknown')"
+
+    local machete_failed=false
+
+    print_info "Checking backend for unused dependencies..."
+    cd "$BACKEND_DIR"
+    if ! cargo machete; then
+        machete_failed=true
+    fi
+
+    print_info "Checking frontend for unused dependencies..."
+    cd "$FRONTEND_DIR"
+    if ! cargo machete; then
+        machete_failed=true
+    fi
+
+    cd "$PROJECT_ROOT"
+
+    if [ "$machete_failed" = true ]; then
+        print_warning "Found potentially unused dependencies (review manually)"
+        return 0  # Don't fail - machete can have false positives
+    fi
+    print_success "No unused dependencies detected"
+}
+
+check_msrv() {
+    print_section "Minimum Supported Rust Version Check"
+
+    # Try to get MSRV from Cargo.toml
+    local backend_msrv=""
+    local frontend_msrv=""
+
+    if [ -f "$BACKEND_DIR/Cargo.toml" ]; then
+        backend_msrv=$(grep -E '^rust-version\s*=' "$BACKEND_DIR/Cargo.toml" 2>/dev/null | sed 's/.*=\s*"\([^"]*\)".*/\1/' | head -1) || backend_msrv=""
+    fi
+    if [ -f "$FRONTEND_DIR/Cargo.toml" ]; then
+        frontend_msrv=$(grep -E '^rust-version\s*=' "$FRONTEND_DIR/Cargo.toml" 2>/dev/null | sed 's/.*=\s*"\([^"]*\)".*/\1/' | head -1) || frontend_msrv=""
+    fi
+
+    local current_version=""
+    current_version=$(rustc --version | sed 's/rustc \([0-9.]*\).*/\1/') || current_version="unknown"
+
+    print_info "Current Rust version: $current_version"
+
+    if [ -n "$backend_msrv" ]; then
+        print_info "Backend MSRV: $backend_msrv"
+        if ! version_gte "$current_version" "$backend_msrv"; then
+            print_error "Rust version $current_version is below backend MSRV $backend_msrv"
+            return 1
+        fi
+    else
+        print_verbose "No rust-version specified in backend Cargo.toml"
+    fi
+
+    if [ -n "$frontend_msrv" ]; then
+        print_info "Frontend MSRV: $frontend_msrv"
+        if ! version_gte "$current_version" "$frontend_msrv"; then
+            print_error "Rust version $current_version is below frontend MSRV $frontend_msrv"
+            return 1
+        fi
+    else
+        print_verbose "No rust-version specified in frontend Cargo.toml"
+    fi
+
+    # Optional: use cargo-msrv if available for deeper check
+    if command_exists cargo-msrv && [ "$VERBOSE" = true ]; then
+        print_info "Running cargo-msrv verify..."
+        cd "$BACKEND_DIR"
+        cargo msrv verify 2>/dev/null || print_warning "cargo-msrv verify reported issues"
+        cd "$PROJECT_ROOT"
+    fi
+
+    print_success "MSRV check passed"
+}
+
+# Compare semantic versions: returns 0 if $1 >= $2
+version_gte() {
+    local v1="$1"
+    local v2="$2"
+
+    # Split versions into arrays
+    IFS='.' read -ra V1 <<< "$v1"
+    IFS='.' read -ra V2 <<< "$v2"
+
+    # Compare each component
+    for i in 0 1 2; do
+        local n1="${V1[$i]:-0}"
+        local n2="${V2[$i]:-0}"
+        if [ "$n1" -gt "$n2" ]; then
+            return 0
+        elif [ "$n1" -lt "$n2" ]; then
+            return 1
+        fi
+    done
+    return 0  # Equal
+}
+
+show_version() {
+    echo "TTRPG Assistant Build Script v$SCRIPT_VERSION"
+    echo ""
+    echo "Components:"
+    echo "  Rust:      $(rustc --version 2>/dev/null || echo 'not found')"
+    echo "  Cargo:     $(cargo --version 2>/dev/null || echo 'not found')"
+    echo "  Trunk:     $(trunk --version 2>/dev/null || echo 'not found')"
+    echo "  Tauri CLI: $(cargo tauri --version 2>/dev/null || echo 'not found')"
+    echo ""
+    echo "Environment:"
+    echo "  CI Mode:   $CI_MODE"
+    echo "  Platform:  $OSTYPE"
+    echo "  Project:   $PROJECT_ROOT"
+}
+
+generate_completions() {
+    print_section "Generating Shell Completions"
+
+    local completion_dir="$PROJECT_ROOT/.completions"
+    mkdir -p "$completion_dir"
+
+    # Bash completion
+    cat > "$completion_dir/build.bash" << 'BASH_COMPLETION'
+# Bash completion for build.sh
+_build_sh() {
+    local cur prev commands options
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    commands="dev build frontend backend test check clean setup help lint format format-check status audit doc coverage machete msrv completions"
+    options="--release --integration --auto-deps --seize-port --all --force --quick --verbose --debug --parallel --features --version --help"
+
+    case "$prev" in
+        --features)
+            # Could list features from Cargo.toml here
+            return 0
+            ;;
+    esac
+
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=( $(compgen -W "$options" -- "$cur") )
+    else
+        COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
+    fi
+    return 0
+}
+complete -F _build_sh build.sh
+complete -F _build_sh ./build.sh
+BASH_COMPLETION
+
+    # Zsh completion
+    cat > "$completion_dir/build.zsh" << 'ZSH_COMPLETION'
+#compdef build.sh
+
+_build_sh() {
+    local -a commands options
+
+    commands=(
+        'dev:Start development server with hot-reload'
+        'build:Build everything (frontend + desktop bundle)'
+        'frontend:Build only the frontend'
+        'backend:Build only the backend'
+        'test:Run all tests'
+        'check:Run cargo check'
+        'clean:Remove build artifacts'
+        'setup:Install all required dependencies'
+        'help:Show help message'
+        'lint:Run clippy lints'
+        'format:Format all code'
+        'format-check:Check formatting'
+        'status:Show repository status'
+        'audit:Run security audit'
+        'doc:Generate documentation'
+        'coverage:Generate code coverage report'
+        'machete:Check for unused dependencies'
+        'msrv:Check minimum supported Rust version'
+        'completions:Generate shell completions'
+    )
+
+    options=(
+        '--release[Build in release mode]'
+        '--integration[Run integration tests]'
+        '--auto-deps[Auto-install dependencies]'
+        '--seize-port[Kill processes using required ports]'
+        '--all[Force remove all artifacts]'
+        '--force[Alias for --all]'
+        '--quick[Skip dependency checks]'
+        '--verbose[Show detailed output]'
+        '--debug[Show debug output]'
+        '--parallel[Run operations in parallel]'
+        '--features[Cargo features to enable]:features:'
+        '--version[Show version]'
+        '--help[Show help]'
+    )
+
+    _arguments -s \
+        '1:command:->commands' \
+        '*:option:->options'
+
+    case "$state" in
+        commands)
+            _describe -t commands 'build.sh commands' commands
+            ;;
+        options)
+            _describe -t options 'options' options
+            ;;
+    esac
+}
+
+_build_sh "$@"
+ZSH_COMPLETION
+
+    # Fish completion
+    cat > "$completion_dir/build.fish" << 'FISH_COMPLETION'
+# Fish completion for build.sh
+
+set -l commands dev build frontend backend test check clean setup help lint format format-check status audit doc coverage machete msrv completions
+
+complete -c build.sh -f
+complete -c build.sh -n "not __fish_seen_subcommand_from $commands" -a dev -d "Start development server"
+complete -c build.sh -n "not __fish_seen_subcommand_from $commands" -a build -d "Build everything"
+complete -c build.sh -n "not __fish_seen_subcommand_from $commands" -a frontend -d "Build frontend only"
+complete -c build.sh -n "not __fish_seen_subcommand_from $commands" -a backend -d "Build backend only"
+complete -c build.sh -n "not __fish_seen_subcommand_from $commands" -a test -d "Run tests"
+complete -c build.sh -n "not __fish_seen_subcommand_from $commands" -a check -d "Run cargo check"
+complete -c build.sh -n "not __fish_seen_subcommand_from $commands" -a clean -d "Clean build artifacts"
+complete -c build.sh -n "not __fish_seen_subcommand_from $commands" -a setup -d "Install dependencies"
+complete -c build.sh -n "not __fish_seen_subcommand_from $commands" -a lint -d "Run clippy"
+complete -c build.sh -n "not __fish_seen_subcommand_from $commands" -a format -d "Format code"
+complete -c build.sh -n "not __fish_seen_subcommand_from $commands" -a status -d "Show repo status"
+complete -c build.sh -n "not __fish_seen_subcommand_from $commands" -a audit -d "Security audit"
+complete -c build.sh -n "not __fish_seen_subcommand_from $commands" -a doc -d "Generate docs"
+complete -c build.sh -n "not __fish_seen_subcommand_from $commands" -a coverage -d "Code coverage"
+complete -c build.sh -n "not __fish_seen_subcommand_from $commands" -a machete -d "Find unused deps"
+complete -c build.sh -n "not __fish_seen_subcommand_from $commands" -a msrv -d "Check Rust version"
+
+complete -c build.sh -l release -d "Build in release mode"
+complete -c build.sh -l integration -d "Run integration tests"
+complete -c build.sh -l auto-deps -d "Auto-install dependencies"
+complete -c build.sh -l seize-port -d "Kill port conflicts"
+complete -c build.sh -l quick -d "Skip dependency checks"
+complete -c build.sh -l verbose -d "Verbose output"
+complete -c build.sh -l parallel -d "Parallel operations"
+complete -c build.sh -l features -d "Cargo features" -r
+complete -c build.sh -l version -d "Show version"
+FISH_COMPLETION
+
+    print_success "Shell completions generated in $completion_dir/"
+    echo ""
+    echo "To enable completions:"
+    echo ""
+    echo -e "  ${CYAN}Bash:${NC} echo 'source $completion_dir/build.bash' >> ~/.bashrc"
+    echo -e "  ${CYAN}Zsh:${NC}  echo 'source $completion_dir/build.zsh' >> ~/.zshrc"
+    echo -e "  ${CYAN}Fish:${NC} cp $completion_dir/build.fish ~/.config/fish/completions/"
 }
 
 show_status() {
@@ -1032,37 +1655,61 @@ show_help() {
     echo ""
     echo -e "${YELLOW}Quality Commands:${NC}"
     echo "  test          Run all tests"
-    echo "  check         Run cargo check"
+    echo "  check         Run cargo check (use --parallel for speed)"
     echo "  lint          Run clippy lints on all code"
     echo "  format        Format all code with rustfmt"
     echo "  format-check  Check formatting without modifying"
+    echo "  audit         Run security audit (cargo-audit)"
+    echo "  machete       Check for unused dependencies"
+    echo "  coverage      Generate code coverage report (cargo-tarpaulin)"
+    echo "  msrv          Check minimum supported Rust version"
+    echo ""
+    echo -e "${YELLOW}Documentation:${NC}"
+    echo "  doc           Generate and open API documentation"
     echo ""
     echo -e "${YELLOW}Utility Commands:${NC}"
     echo "  status        Show git and GitHub repository status"
     echo "  clean         Remove build artifacts (prompts for remaining)"
-    echo "  clean --all   Force remove all artifacts without prompting"
     echo "  setup         Install all required dependencies"
+    echo "  completions   Generate shell completions (bash/zsh/fish)"
     echo "  help          Show this help message"
     echo ""
     echo -e "${YELLOW}Options:${NC}"
     echo "  --release      Build in release mode (optimized)"
     echo "  --integration  Run integration tests (requires Meilisearch)"
     echo "  --auto-deps    Automatically install dependencies without prompting"
-    echo "  --seize-port   Automatically kill processes using required ports (3030, 1420)"
-    echo "  --all, --force Remove all remaining artifacts without prompting (clean only)"
+    echo "  --seize-port   Automatically kill processes using required ports"
+    echo "  --all, --force Remove all artifacts without prompting (clean)"
+    echo "  --quick        Skip dependency checks for faster iteration"
+    echo "  --verbose      Show detailed output during operations"
+    echo "  --debug        Show debug information"
+    echo "  --parallel     Run operations in parallel where possible"
+    echo "  --features X   Enable specific Cargo features"
+    echo "  --version      Show script version and tool info"
+    echo "  --help         Show this help message"
+    echo ""
+    echo -e "${YELLOW}Environment Variables:${NC}"
+    echo "  CI             Auto-detected; enables non-interactive mode"
+    echo "  FORCE_COLOR    Keep colors even in CI mode"
+    echo "  LLM_PROXY_PORT Proxy port (default: 18787)"
     echo ""
     echo -e "${YELLOW}Detected Tools:${NC}"
-    echo -e "  Rust/Cargo: ${CYAN}$(command_exists cargo && cargo --version 2>/dev/null || echo "not found")${NC}"
-    echo -e "  Trunk: ${CYAN}$(command_exists trunk && trunk --version 2>/dev/null || echo "not found")${NC}"
-    echo -e "  Tauri CLI: ${CYAN}$(command_exists cargo-tauri && cargo tauri --version 2>/dev/null || echo "not found")${NC}"
-    echo -e "  GitHub CLI: ${CYAN}$(command_exists gh && echo "available" || echo "not found")${NC}"
+    echo -e "  Rust/Cargo:   ${CYAN}$(command_exists cargo && cargo --version 2>/dev/null || echo "not found")${NC}"
+    echo -e "  Trunk:        ${CYAN}$(command_exists trunk && trunk --version 2>/dev/null || echo "not found")${NC}"
+    echo -e "  Tauri CLI:    ${CYAN}$(command_exists cargo-tauri && cargo tauri --version 2>/dev/null || echo "not found")${NC}"
+    echo -e "  GitHub CLI:   ${CYAN}$(command_exists gh && echo "available" || echo "not found")${NC}"
+    echo -e "  cargo-audit:  ${CYAN}$(command_exists cargo-audit && echo "available" || echo "not installed")${NC}"
+    echo -e "  cargo-machete:${CYAN}$(command_exists cargo-machete && echo "available" || echo "not installed")${NC}"
     echo ""
     echo -e "${YELLOW}Examples:${NC}"
-    echo -e "  ${CYAN}$0 dev${NC}                    # Start development server"
-    echo -e "  ${CYAN}$0 build --release${NC}        # Production build"
-    echo -e "  ${CYAN}$0 lint && $0 test${NC}        # Lint then test"
-    echo -e "  ${CYAN}$0 clean --all${NC}            # Force clean all artifacts"
-    echo -e "  ${CYAN}$0 status${NC}                 # Check repo status"
+    echo -e "  ${CYAN}$0 dev${NC}                        # Start development server"
+    echo -e "  ${CYAN}$0 dev --quick${NC}                # Fast dev start (skip checks)"
+    echo -e "  ${CYAN}$0 build --release${NC}            # Production build"
+    echo -e "  ${CYAN}$0 check --parallel --verbose${NC} # Fast parallel check"
+    echo -e "  ${CYAN}$0 lint && $0 test${NC}            # Lint then test"
+    echo -e "  ${CYAN}$0 audit${NC}                      # Security vulnerability check"
+    echo -e "  ${CYAN}$0 clean --all${NC}                # Force clean all artifacts"
+    echo -e "  ${CYAN}$0 --version${NC}                  # Show version info"
 }
 
 # Check if port is in use and get process info
@@ -1132,9 +1779,14 @@ check_port_usage() {
 # Parse arguments
 RELEASE=false
 RUN_INTEGRATION=false
-AUTO_INSTALL_DEPS=false
-SEIZE_PORT=false
-FORCE_CLEAN=false
+AUTO_INSTALL_DEPS=${AUTO_INSTALL_DEPS:-false}
+SEIZE_PORT=${SEIZE_PORT:-false}
+FORCE_CLEAN=${FORCE_CLEAN:-false}
+SKIP_DEPS_CHECK=false
+VERBOSE=false
+DEBUG_MODE=false
+PARALLEL=false
+FEATURES=""
 COMMAND="build"
 
 while [[ $# -gt 0 ]]; do
@@ -1159,7 +1811,41 @@ while [[ $# -gt 0 ]]; do
             FORCE_CLEAN=true
             shift
             ;;
-        dev|build|frontend|backend|test|check|clean|setup|help|lint|format|format-check|status)
+        --quick)
+            SKIP_DEPS_CHECK=true
+            shift
+            ;;
+        --verbose|-v)
+            VERBOSE=true
+            shift
+            ;;
+        --debug)
+            DEBUG_MODE=true
+            VERBOSE=true
+            shift
+            ;;
+        --parallel|-j)
+            PARALLEL=true
+            shift
+            ;;
+        --features)
+            if [ -n "$2" ] && [ "${2:0:1}" != "-" ]; then
+                FEATURES="$2"
+                shift 2
+            else
+                print_error "--features requires a value"
+                exit 1
+            fi
+            ;;
+        --version|-V)
+            show_version
+            exit 0
+            ;;
+        --help|-h)
+            show_help
+            exit 0
+            ;;
+        dev|build|frontend|backend|test|check|clean|setup|help|lint|format|format-check|status|audit|doc|coverage|machete|msrv|completions)
             COMMAND=$1
             shift
             ;;
@@ -1171,84 +1857,114 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Debug output
+print_debug "Command: $COMMAND"
+print_debug "Release: $RELEASE"
+print_debug "Verbose: $VERBOSE"
+print_debug "Parallel: $PARALLEL"
+print_debug "Quick: $SKIP_DEPS_CHECK"
+print_debug "Features: $FEATURES"
+print_debug "CI Mode: $CI_MODE"
+
 # Main execution
 print_header
 
+# Helper to run platform-specific dep checks
+run_platform_deps() {
+    case "$OSTYPE" in
+        linux*)
+            check_linux_deps
+            ;;
+        darwin*)
+            install_macos_deps
+            ;;
+        msys*|cygwin*|win32)
+            check_windows_deps
+            ;;
+    esac
+}
+
 case $COMMAND in
     setup)
-        check_rust_env
-        case "$OSTYPE" in
-            linux*)
-                check_linux_deps
-                ;;
-            darwin*)
-                install_macos_deps
-                ;;
-            msys*|cygwin*|win32)
-                check_windows_deps
-                ;;
-        esac
-        install_frontend_tools
+        timed_run "Rust environment" check_rust_env
+        timed_run "Platform dependencies" run_platform_deps
+        timed_run "Frontend tools" install_frontend_tools
         print_success "Setup complete! You can now run './build.sh dev' or './build.sh build'"
         ;;
     dev)
-        if command_exists cargo; then
-             :
+        if [ "$SKIP_DEPS_CHECK" != true ]; then
+            if ! command_exists cargo; then
+                timed_run "Rust environment" check_rust_env
+            fi
+            case "$OSTYPE" in
+                linux*)
+                    timed_run "Linux dependencies" check_linux_deps
+                    ;;
+                darwin*)
+                    # macOS doesn't need special system deps for Tauri
+                    :
+                    ;;
+                msys*|cygwin*|win32)
+                    timed_run "Windows dependencies" check_windows_deps
+                    ;;
+            esac
+            timed_run "Frontend tools" install_frontend_tools
         else
-             check_rust_env
+            print_info "Skipping dependency checks (--quick)"
         fi
-        case "$OSTYPE" in
-            linux*)
-                check_linux_deps
-                ;;
-            darwin*)
-                # macOS doesn't need special system deps for Tauri
-                :
-                ;;
-            msys*|cygwin*|win32)
-                check_windows_deps
-                ;;
-        esac
-        install_frontend_tools
         run_dev
         ;;
     build)
-        check_rust_env
-        case "$OSTYPE" in
-            linux*)
-                check_linux_deps
-                ;;
-            darwin*)
-                :
-                ;;
-            msys*|cygwin*|win32)
-                check_windows_deps
-                ;;
-        esac
-        install_frontend_tools
-        build_frontend
-        build_desktop
+        if [ "$SKIP_DEPS_CHECK" != true ]; then
+            timed_run "Rust environment" check_rust_env
+            case "$OSTYPE" in
+                linux*)
+                    timed_run "Linux dependencies" check_linux_deps
+                    ;;
+                darwin*)
+                    :
+                    ;;
+                msys*|cygwin*|win32)
+                    timed_run "Windows dependencies" check_windows_deps
+                    ;;
+            esac
+            timed_run "Frontend tools" install_frontend_tools
+        else
+            print_info "Skipping dependency checks (--quick)"
+        fi
+        timed_run "Frontend build" build_frontend
+        timed_run "Desktop build" build_desktop
+        print_timing_summary
         ;;
     frontend)
-        check_rust_env
-        install_frontend_tools
-        build_frontend
+        if [ "$SKIP_DEPS_CHECK" != true ]; then
+            timed_run "Rust environment" check_rust_env
+            timed_run "Frontend tools" install_frontend_tools
+        fi
+        timed_run "Frontend build" build_frontend
+        print_timing_summary
         ;;
     backend)
-        check_rust_env
-        build_backend
+        if [ "$SKIP_DEPS_CHECK" != true ]; then
+            timed_run "Rust environment" check_rust_env
+        fi
+        timed_run "Backend build" build_backend
+        print_timing_summary
         ;;
     test)
-        run_tests
+        timed_run "Tests" run_tests
+        print_timing_summary
         ;;
     check)
-        run_check
+        timed_run "Check" run_check
+        print_timing_summary
         ;;
     clean)
         clean_artifacts
         ;;
     lint)
-        run_lint
+        timed_run "Lint" run_lint
+        print_timing_summary
         ;;
     format)
         run_format
@@ -1258,6 +1974,24 @@ case $COMMAND in
         ;;
     status)
         show_status
+        ;;
+    audit)
+        timed_run "Security audit" run_audit
+        ;;
+    doc)
+        timed_run "Documentation" run_doc
+        ;;
+    coverage)
+        timed_run "Coverage" run_coverage
+        ;;
+    machete)
+        timed_run "Unused deps" run_machete
+        ;;
+    msrv)
+        check_msrv
+        ;;
+    completions)
+        generate_completions
         ;;
     help|*)
         show_help
