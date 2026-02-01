@@ -1,5 +1,11 @@
 use leptos::prelude::*;
 
+const CARD_BASE_CLASS: &str = "rounded-xl border border-zinc-200 bg-white text-zinc-950 shadow dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50";
+const CARD_HEADER_BASE_CLASS: &str = "flex flex-col space-y-1.5 p-6";
+const CARD_BODY_BASE_CLASS: &str = "p-6 pt-0";
+const CARD_TITLE_BASE_CLASS: &str = "font-semibold leading-none tracking-tight";
+const CARD_DESC_BASE_CLASS: &str = "text-sm text-zinc-500 dark:text-zinc-400";
+
 /// A styled card container component inspired by Shadcn-UI
 #[component]
 pub fn Card(
@@ -9,9 +15,7 @@ pub fn Card(
     /// Card content
     children: Children,
 ) -> impl IntoView {
-    // Shadcn Card: rounded-xl border bg-card text-card-foreground shadow
-    let base_class = "rounded-xl border border-zinc-200 bg-white text-zinc-950 shadow dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50";
-    let full_class = format!("{base_class} {class}");
+    let full_class = format!("{CARD_BASE_CLASS} {class}");
 
     view! {
         <div class=full_class>
@@ -32,8 +36,7 @@ pub fn CardHeader(
     // Shadcn Header: flex flex-col space-y-1.5 p-6
     // Note: The original had border-b and bg color. Shadcn is usually clean.
     // We will keep flex-col but allow overrides via class for existing usages that expect flex-row.
-    let base_class = "flex flex-col space-y-1.5 p-6"; 
-    let full_class = format!("{base_class} {class}");
+    let full_class = format!("{CARD_HEADER_BASE_CLASS} {class}");
 
     view! {
         <div class=full_class>
@@ -51,9 +54,7 @@ pub fn CardBody(
     /// Body content
     children: Children,
 ) -> impl IntoView {
-    // Shadcn Content: p-6 pt-0
-    let base_class = "p-6 pt-0";
-    let full_class = format!("{base_class} {class}");
+    let full_class = format!("{CARD_BODY_BASE_CLASS} {class}");
 
     view! {
         <div class=full_class>
@@ -71,8 +72,7 @@ pub fn CardTitle(
     /// Content
     children: Children,
 ) -> impl IntoView {
-    let base_class = "font-semibold leading-none tracking-tight";
-    let full_class = format!("{base_class} {class}");
+    let full_class = format!("{CARD_TITLE_BASE_CLASS} {class}");
 
     view! {
         <h3 class=full_class>
@@ -90,8 +90,7 @@ pub fn CardDescription(
     /// Content
     children: Children,
 ) -> impl IntoView {
-    let base_class = "text-sm text-zinc-500 dark:text-zinc-400";
-    let full_class = format!("{base_class} {class}");
+    let full_class = format!("{CARD_DESC_BASE_CLASS} {class}");
 
     view! {
         <p class=full_class>

@@ -9,6 +9,9 @@ pub mod library;
 pub mod search;
 pub mod system;
 
+#[cfg(test)]
+mod tests;
+
 // Re-export everything to maintain backward compatibility
 pub use core::*;
 pub use ai::*;

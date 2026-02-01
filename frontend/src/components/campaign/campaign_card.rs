@@ -121,25 +121,7 @@ fn format_last_played(timestamp: &str) -> String {
     "Recently".to_string()
 }
 
-/// System badge component with genre styling
-#[allow(dead_code)]
-#[component]
-fn SystemBadge(
-    #[prop(into)]
-    system: String,
-    #[prop(optional)]
-    genre: Option<CampaignGenre>,
-) -> impl IntoView {
-    let genre = genre.unwrap_or_else(|| CampaignGenre::from_system(&system));
-    let genre_label = genre.label();
-
-    view! {
-        <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-zinc-800/80 text-zinc-300 border border-zinc-700 backdrop-blur-sm">
-            <span class="w-1.5 h-1.5 rounded-full bg-current opacity-60"></span>
-            {genre_label}
-        </span>
-    }
-}
+// SystemBadge removed (unused)
 
 /// Genre badge for the card corner
 #[component]
@@ -434,51 +416,7 @@ pub fn CampaignCard(
     }
 }
 
-// Icon Components
-
-#[component]
-fn DeleteIcon() -> impl IntoView {
-    view! {
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-        </svg>
-    }
-}
-
-#[component]
-fn TrackIcon() -> impl IntoView {
-    view! {
-        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"></circle>
-            <polygon points="10,8 16,12 10,16 10,8"></polygon>
-        </svg>
-    }
-}
-
-#[component]
-fn PlayerIcon() -> impl IntoView {
-    view! {
-        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-            <circle cx="9" cy="7" r="4"></circle>
-            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-        </svg>
-    }
-}
-
-#[component]
-fn EntityIcon() -> impl IntoView {
-    view! {
-        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="7" height="7"></rect>
-            <rect x="14" y="3" width="7" height="7"></rect>
-            <rect x="14" y="14" width="7" height="7"></rect>
-            <rect x="3" y="14" width="7" height="7"></rect>
-        </svg>
-    }
-}
+// Icon components removed (unused)
 
 /// Compact campaign card for lists (Spotify-style list item)
 #[component]
@@ -592,14 +530,7 @@ pub fn CampaignCardCompact(
     }
 }
 
-#[component]
-fn PlayIcon() -> impl IntoView {
-    view! {
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <polygon points="5,3 19,12 5,21 5,3"></polygon>
-        </svg>
-    }
-}
+// PlayIcon removed (unused)
 
 /// Campaign card for grid view with minimal details
 #[component]

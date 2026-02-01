@@ -25,7 +25,7 @@ pub enum ButtonSize {
 }
 
 impl ButtonVariant {
-    fn class(&self) -> &'static str {
+    pub(crate) fn class(&self) -> &'static str {
         match self {
             // Shadcn Primary: bg-primary text-primary-foreground shadow hover:bg-primary/90
             ButtonVariant::Primary => {
@@ -56,7 +56,7 @@ impl ButtonVariant {
 }
 
 impl ButtonSize {
-    fn class(&self) -> &'static str {
+    pub(crate) fn class(&self) -> &'static str {
         match self {
             ButtonSize::Default => "h-9 px-4 py-2",
             ButtonSize::Sm => "h-8 rounded-md px-3 text-xs",
@@ -65,6 +65,8 @@ impl ButtonSize {
         }
     }
 }
+
+const BUTTON_BASE_CLASS: &str = "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-950 disabled:pointer-events-none disabled:opacity-50 dark:focus-visible:ring-zinc-300";
 
 /// A styled button component inspired by Shadcn-UI
 #[component]
@@ -96,9 +98,6 @@ pub fn Button<F>(
 where
     F: Fn(ev::MouseEvent) + 'static,
 {
-    // Shadcn Base Styles
-    let base_class = "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-950 disabled:pointer-events-none disabled:opacity-50 dark:focus-visible:ring-zinc-300";
-    
     let variant_class = variant.class();
     let size_class = size.class();
 
@@ -106,7 +105,7 @@ where
 
     let full_class = move || format!(
         "{} {} {} {}", 
-        base_class, 
+        BUTTON_BASE_CLASS, 
         variant_class, 
         size_class,
         class

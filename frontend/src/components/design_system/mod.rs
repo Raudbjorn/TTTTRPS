@@ -14,6 +14,9 @@ mod slider;
 mod effects;
 mod toast;
 
+#[cfg(test)]
+mod tests;
+
 pub use button::{Button, ButtonVariant, ButtonSize};
 pub use input::Input;
 pub use card::{Card, CardHeader, CardBody, CardTitle, CardDescription};
