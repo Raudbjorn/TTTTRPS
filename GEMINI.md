@@ -17,6 +17,7 @@ TTRPG Assistant is a local-first, AI-powered desktop application for Game Master
 *   **Search:** Meilisearch (embedded)
 *   **Document Processing:** `kreuzberg` (PDF/EPUB extraction)
 *   **Authentication:** `gate` module (Unified OAuth for Claude/Gemini/Copilot)
+*   **Design System:** Shadcn-UI inspired components (Tailwind CSS) & Phosphor Icons (`phosphor-leptos`)
 
 ## Architecture
 
@@ -33,8 +34,11 @@ TTRPG Assistant is a local-first, AI-powered desktop application for Game Master
     *   `src/database/` - SQLx database models and queries.
 *   `frontend/` - Leptos Frontend
     *   `src/app.rs` - Main application entry point and routing.
-    *   `src/components/` - UI components (Leptos).
-    *   `src/services/` - Frontend state management.
+    *   `src/bindings/` - Modular Tauri IPC bindings (`ai`, `campaign`, `world`, etc.).
+    *   `src/components/` - UI components.
+        *   `design_system/` - Reusable primitives (Button, Card) following Shadcn patterns.
+    *   `src/services/` - Frontend state management and business logic.
+    *   `src/utils/` - Shared utilities (formatting, helpers).
 *   `assets/` - Static assets and default configuration.
 *   `planning/` - Design documents and task tracking.
 
@@ -47,6 +51,10 @@ TTRPG Assistant is a local-first, AI-powered desktop application for Game Master
 *   **Core (`src-tauri/src/core/`)**:
     *   `llm_router.rs`: Routes requests to the appropriate model/provider.
     *   `meilisearch_pipeline.rs`: Manages the indexing of ingested content.
+*   **Frontend Bindings (`frontend/src/bindings/`)**:
+    *   `mod.rs`: Re-exports all sub-modules for backward compatibility.
+    *   `core.rs`: Low-level IPC and FFI.
+    *   `ai.rs`, `campaign.rs`, `world.rs`, etc.: Domain-specific command wrappers.
 
 ## Building and Running
 
@@ -88,6 +96,7 @@ The project uses a unified build script: `build.sh`.
 *   **Signals:** State is managed via Leptos signals (`ReadSignal`, `WriteSignal`, `RwSignal`).
 *   **Components:** Functional components using the `#[component]` macro.
 *   **Styling:** Tailwind CSS (v4) via `input.css`. Classes are applied directly in `view!` macros.
+*   **Icons:** Use `phosphor-leptos` components (e.g., `<Icon icon=TRASH />`). Avoid raw SVGs.
 
 ### Commit Strategy
 *   Prefer small, atomic commits.

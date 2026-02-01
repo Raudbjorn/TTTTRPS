@@ -1,4 +1,4 @@
-use super::CampaignGenre;
+use super::*;
 
 #[test]
 fn test_campaign_genre_from_system() {

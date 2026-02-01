@@ -236,6 +236,7 @@ pub fn CampaignCard(
             role="button"
             tabindex="0"
             aria-label=format!("Campaign: {}", campaign_name.clone())
+            data-testid="campaign-card"
         >
             // Cover Art Background
             {match cover_image.clone() {
@@ -299,7 +300,10 @@ pub fn CampaignCard(
                 // Bottom Info
                 <div class="space-y-3 mt-auto">
                     // Title
-                    <h3 class="text-xl font-bold text-white leading-tight group-hover:text-purple-300 transition-colors line-clamp-2">
+                    <h3
+                        class="text-xl font-bold text-white leading-tight group-hover:text-purple-300 transition-colors line-clamp-2"
+                        data-testid="campaign-title"
+                    >
                         {campaign_name.clone()}
                     </h3>
 
@@ -312,7 +316,10 @@ pub fn CampaignCard(
                     {move || {
                         if !campaign_desc.is_empty() {
                             Some(view! {
-                                <p class="text-xs text-zinc-500 line-clamp-2 italic">
+                                <p
+                                    class="text-xs text-zinc-500 line-clamp-2 italic"
+                                    data-testid="campaign-description"
+                                >
                                     {campaign_desc.clone()}
                                 </p>
                             })
@@ -325,7 +332,10 @@ pub fn CampaignCard(
                     <div class="pt-3 flex items-center justify-between text-xs font-medium text-zinc-500 border-t border-white/5">
                         <div class="flex items-center gap-4">
                             // Sessions as "tracks"
-                            <div class="flex items-center gap-1.5">
+                            <div
+                                class="flex items-center gap-1.5"
+                                data-testid="campaign-session-count"
+                            >
                                 <Icon icon=DISC size="12px" />
                                 <span>{session_count}</span>
                                 <span class="text-zinc-600">"tracks"</span>

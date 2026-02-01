@@ -3,7 +3,7 @@ use leptos::ev;
 use super::loading::LoadingSpinner;
 
 /// Button variant styles
-#[derive(Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ButtonVariant {
     #[default]
     Primary,
@@ -15,7 +15,7 @@ pub enum ButtonVariant {
 }
 
 /// Button size variants
-#[derive(Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ButtonSize {
     #[default]
     Default,

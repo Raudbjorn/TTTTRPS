@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 
 /// Badge variant styles
-#[derive(Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BadgeVariant {
     #[default]
     Default,
