@@ -7,9 +7,11 @@
 use leptos::ev;
 use leptos::prelude::*;
 use crate::bindings::Campaign;
+use phosphor_leptos::{Icon, TRASH, DISC, USERS, USER, PLAY_CIRCLE};
+use crate::utils::formatting::format_last_played;
 
 /// Genre/system category for styling
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CampaignGenre {
     Fantasy,
     Horror,
@@ -97,48 +99,11 @@ impl CampaignGenre {
     }
 }
 
-/// Helper function to get system-based styling
-#[allow(dead_code)]
-fn get_system_style(system: &str) -> (&'static str, &'static str) {
-    CampaignGenre::from_system(system).style()
-}
+// get_system_style removed (unused)
 
-/// Format a timestamp to a human-readable "last played" string
-fn format_last_played(timestamp: &str) -> String {
-    // Parse ISO timestamp and calculate relative time
-    // For now, return a simplified format
-    if timestamp.is_empty() {
-        return "Never played".to_string();
-    }
+// format_last_played removed (moved to utils)
 
-    // Extract date part from ISO timestamp
-    if let Some(date_part) = timestamp.split('T').next() {
-        // Simple date display
-        return format!("Last: {}", date_part);
-    }
-
-    "Recently".to_string()
-}
-
-/// System badge component with genre styling
-#[allow(dead_code)]
-#[component]
-fn SystemBadge(
-    #[prop(into)]
-    system: String,
-    #[prop(optional)]
-    genre: Option<CampaignGenre>,
-) -> impl IntoView {
-    let genre = genre.unwrap_or_else(|| CampaignGenre::from_system(&system));
-    let genre_label = genre.label();
-
-    view! {
-        <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-zinc-800/80 text-zinc-300 border border-zinc-700 backdrop-blur-sm">
-            <span class="w-1.5 h-1.5 rounded-full bg-current opacity-60"></span>
-            {genre_label}
-        </span>
-    }
-}
+// SystemBadge removed (unused)
 
 /// Genre badge for the card corner
 #[component]
@@ -303,7 +268,7 @@ pub fn CampaignCard(
                             on:click=handle_delete.clone()
                             aria-label="Delete campaign"
                         >
-                            <DeleteIcon />
+                            <Icon icon=TRASH size="14px" />
                         </button>
                     })}
                 </div>
@@ -361,7 +326,7 @@ pub fn CampaignCard(
                         <div class="flex items-center gap-4">
                             // Sessions as "tracks"
                             <div class="flex items-center gap-1.5">
-                                <TrackIcon />
+                                <Icon icon=DISC size="12px" />
                                 <span>{session_count}</span>
                                 <span class="text-zinc-600">"tracks"</span>
                             </div>
@@ -370,14 +335,14 @@ pub fn CampaignCard(
                             {if player_count > 0 {
                                 Some(view! {
                                     <div class="flex items-center gap-1.5">
-                                        <PlayerIcon />
+                                        <Icon icon=USERS size="12px" />
                                         <span>{player_count}</span>
                                     </div>
                                 }.into_any())
                             } else if entity_count > 0 {
                                 Some(view! {
                                     <div class="flex items-center gap-1.5">
-                                        <EntityIcon />
+                                        <Icon icon=USER size="12px" />
                                         <span>{entity_count}</span>
                                     </div>
                                 }.into_any())
@@ -433,51 +398,7 @@ pub fn CampaignCard(
     }
 }
 
-// Icon Components
-
-#[component]
-fn DeleteIcon() -> impl IntoView {
-    view! {
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-        </svg>
-    }
-}
-
-#[component]
-fn TrackIcon() -> impl IntoView {
-    view! {
-        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"></circle>
-            <polygon points="10,8 16,12 10,16 10,8"></polygon>
-        </svg>
-    }
-}
-
-#[component]
-fn PlayerIcon() -> impl IntoView {
-    view! {
-        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-            <circle cx="9" cy="7" r="4"></circle>
-            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-        </svg>
-    }
-}
-
-#[component]
-fn EntityIcon() -> impl IntoView {
-    view! {
-        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="7" height="7"></rect>
-            <rect x="14" y="3" width="7" height="7"></rect>
-            <rect x="14" y="14" width="7" height="7"></rect>
-            <rect x="3" y="14" width="7" height="7"></rect>
-        </svg>
-    }
-}
+// Icon components removed (unused)
 
 /// Compact campaign card for lists (Spotify-style list item)
 #[component]
@@ -531,6 +452,7 @@ pub fn CampaignCardCompact(
         <button
             class=format!("w-full flex items-center gap-3 p-3 rounded-r-lg transition-colors text-left group {}", selected_class)
             on:click=handle_click
+            aria-label=format!("Select campaign: {}", campaign_name.clone())
         >
             // Avatar with genre color
             <div class=format!("relative w-10 h-10 rounded-lg {} flex items-center justify-center text-sm font-bold {} shadow-md", bg_class, text_class)>
@@ -554,7 +476,7 @@ pub fn CampaignCardCompact(
                         "text-sm font-medium text-white group-hover:text-purple-300 truncate transition-colors"
                     }
                 }>
-                    {campaign_name}
+                    {campaign_name.clone()}
                 </div>
                 <div class="flex items-center gap-2 text-xs text-zinc-500">
                     <span>{campaign_system}</span>
@@ -583,7 +505,7 @@ pub fn CampaignCardCompact(
             } else {
                 view! {
                     <div class="opacity-0 group-hover:opacity-100 transition-opacity text-zinc-500">
-                        <PlayIcon />
+                        <Icon icon=PLAY_CIRCLE size="16px" />
                     </div>
                 }.into_any()
             }}
@@ -591,14 +513,7 @@ pub fn CampaignCardCompact(
     }
 }
 
-#[component]
-fn PlayIcon() -> impl IntoView {
-    view! {
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <polygon points="5,3 19,12 5,21 5,3"></polygon>
-        </svg>
-    }
-}
+// PlayIcon removed (unused)
 
 /// Campaign card for grid view with minimal details
 #[component]
@@ -636,6 +551,7 @@ pub fn CampaignCardMini(
         <button
             class="group relative w-full aspect-square rounded-lg overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-xl"
             on:click=handle_click
+            aria-label=format!("Select campaign: {}", campaign_name.clone())
         >
             // Background
             <div class=format!("absolute inset-0 {} transition-opacity", bg_class)></div>
@@ -658,8 +574,12 @@ pub fn CampaignCardMini(
 
             // Title tooltip on hover
             <div class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-                <p class="text-xs font-medium text-white truncate">{campaign_name}</p>
+                <p class="text-xs font-medium text-white truncate">{campaign_name.clone()}</p>
             </div>
         </button>
     }
 }
+
+#[cfg(test)]
+#[path = "campaign_card_tests.rs"]
+mod tests;

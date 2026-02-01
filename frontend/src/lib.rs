@@ -3,6 +3,7 @@
 pub mod bindings;
 pub mod components;
 pub mod services;
+pub mod utils;
 
 mod app;
 

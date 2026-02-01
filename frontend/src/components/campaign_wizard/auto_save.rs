@@ -15,9 +15,7 @@ use crate::services::wizard_state::{auto_save_wizard, use_wizard_context, Partia
 /// Auto-save interval in milliseconds
 const AUTO_SAVE_INTERVAL_MS: u64 = 30_000;
 
-/// Debounce delay for detecting changes (ms)
-#[allow(dead_code)]
-const DEBOUNCE_DELAY_MS: u64 = 2_000;
+// DEBOUNCE_DELAY_MS removed (unused)
 
 // ============================================================================
 // Auto-save State

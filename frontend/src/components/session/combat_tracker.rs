@@ -102,7 +102,7 @@ pub fn CombatTracker(
 
     view! {
         <Card class="combat-tracker">
-            <CardHeader class="flex justify-between items-center">
+            <CardHeader class="flex flex-row justify-between items-center space-y-0">
                 <div class="flex items-center gap-3">
                     <div class="w-3 h-3 rounded-full animate-pulse"
                         class:bg-red-500=move || combat.get().is_some()

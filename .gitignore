@@ -1,4 +1,3 @@
-
 # Generated output files
 check_output.txt
 check_output_*.txt
@@ -19,3 +18,9 @@ planning/spec-driven-development/
 
 # Inspection results
 inspection-results/
+
+# Backups and temporary directories
+original-project/
+dev-resources/
+# Generated shell completions
+.completions/

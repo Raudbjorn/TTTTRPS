@@ -8,40 +8,75 @@ pub enum ButtonVariant {
     #[default]
     Primary,
     Secondary,
-    Danger,
+    Destructive,
     Ghost,
     Outline,
+    Link,
+}
+
+/// Button size variants
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
+pub enum ButtonSize {
+    #[default]
+    Default,
+    Sm,
+    Lg,
+    Icon,
 }
 
 impl ButtonVariant {
-    fn class(&self) -> &'static str {
+    pub(crate) fn class(&self) -> &'static str {
         match self {
+            // Shadcn Primary: bg-primary text-primary-foreground shadow hover:bg-primary/90
             ButtonVariant::Primary => {
-                "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/50 border border-transparent"
+                "bg-zinc-900 text-zinc-50 shadow hover:bg-zinc-900/90 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-50/90"
             }
+            // Shadcn Secondary: bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80
             ButtonVariant::Secondary => {
-                "bg-gray-700 hover:bg-gray-600 text-gray-200 border border-gray-600"
+                "bg-zinc-100 text-zinc-900 shadow-sm hover:bg-zinc-100/80 dark:bg-zinc-800 dark:text-zinc-50 dark:hover:bg-zinc-800/80"
             }
-            ButtonVariant::Danger => {
-                "bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-900/50 border border-transparent"
+            // Shadcn Destructive: bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90
+            ButtonVariant::Destructive => {
+                "bg-red-500 text-zinc-50 shadow-sm hover:bg-red-500/90 dark:bg-red-900 dark:text-zinc-50 dark:hover:bg-red-900/90"
             }
+            // Shadcn Ghost: hover:bg-accent hover:text-accent-foreground
             ButtonVariant::Ghost => {
-                "bg-transparent hover:bg-white/10 text-gray-400 hover:text-white border border-transparent"
+                "hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
             }
+            // Shadcn Outline: border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground
             ButtonVariant::Outline => {
-                "bg-transparent border border-gray-500 text-gray-300 hover:border-gray-300 hover:text-white"
+                "border border-zinc-200 bg-white shadow-sm hover:bg-zinc-100 hover:text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
+            }
+            // Shadcn Link: text-primary underline-offset-4 hover:underline
+            ButtonVariant::Link => {
+                "text-zinc-900 underline-offset-4 hover:underline dark:text-zinc-50"
             }
         }
     }
 }
 
-/// A styled button component with multiple variants
-#[component]
+impl ButtonSize {
+    pub(crate) fn class(&self) -> &'static str {
+        match self {
+            ButtonSize::Default => "h-9 px-4 py-2",
+            ButtonSize::Sm => "h-8 rounded-md px-3 text-xs",
+            ButtonSize::Lg => "h-10 rounded-md px-8",
+            ButtonSize::Icon => "h-9 w-9",
+        }
+    }
+}
 
+const BUTTON_BASE_CLASS: &str = "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-950 disabled:pointer-events-none disabled:opacity-50 dark:focus-visible:ring-zinc-300";
+
+/// A styled button component inspired by Shadcn-UI
+#[component]
 pub fn Button<F>(
     /// The visual variant of the button
     #[prop(default = ButtonVariant::Primary)]
     variant: ButtonVariant,
+    /// The size of the button
+    #[prop(default = ButtonSize::Default)]
+    size: ButtonSize,
     /// Click handler - accepts any closure taking MouseEvent
     #[prop(optional)]
     on_click: Option<F>,
@@ -63,20 +98,18 @@ pub fn Button<F>(
 where
     F: Fn(ev::MouseEvent) + 'static,
 {
-    let base_class = "px-4 py-2 rounded transition-all duration-200 flex items-center justify-center gap-2 font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-blue-500";
     let variant_class = variant.class();
+    let size_class = size.class();
 
     let is_disabled = move || disabled.get() || loading.get();
 
-    let state_class = move || {
-        if is_disabled() {
-            "opacity-50 cursor-not-allowed transform-none"
-        } else {
-            "cursor-pointer active:scale-95"
-        }
-    };
-
-    let full_class = move || format!("{base_class} {variant_class} {} {class}", state_class());
+    let full_class = move || format!(
+        "{} {} {} {}", 
+        BUTTON_BASE_CLASS, 
+        variant_class, 
+        size_class,
+        class
+    );
 
     let handle_click = move |evt: ev::MouseEvent| {
         if !is_disabled() {

@@ -12,42 +12,11 @@
 use leptos::prelude::*;
 
 use crate::bindings::SessionSummary;
+use crate::utils::formatting::format_duration;
 
-/// Session status for display styling
-#[allow(dead_code)]
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum SessionStatus {
-    Active,
-    Planned,
-    Completed,
-}
+// SessionStatus removed (unused)
 
-#[allow(dead_code)]
-impl SessionStatus {
-    #[allow(dead_code)]
-    pub fn from_str(status: &str) -> Self {
-        match status.to_lowercase().as_str() {
-            "active" | "in_progress" => SessionStatus::Active,
-            "planned" | "scheduled" => SessionStatus::Planned,
-            _ => SessionStatus::Completed,
-        }
-    }
-}
-
-/// Format duration in minutes to human-readable string
-fn format_duration(minutes: i64) -> String {
-    if minutes < 60 {
-        format!("{}m", minutes)
-    } else {
-        let hours = minutes / 60;
-        let mins = minutes % 60;
-        if mins == 0 {
-            format!("{}h", hours)
-        } else {
-            format!("{}h {}m", hours, mins)
-        }
-    }
-}
+// format_duration removed (moved to utils)
 
 /// Format date from ISO timestamp
 fn format_session_date(iso: &str) -> String {
@@ -507,6 +476,4 @@ fn MoreIcon() -> impl IntoView {
     }
 }
 
-/// Also export as ContextSidebar for the new naming convention
-#[allow(unused_imports)]
-pub use SessionList as ContextSidebar;
+// ContextSidebar alias removed (unused)
