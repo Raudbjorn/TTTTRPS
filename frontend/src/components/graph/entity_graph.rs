@@ -50,7 +50,6 @@ fn GraphFilterToggle(
 }
 
 /// Entity types for the graph
-#[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EntityType {
     Npc,
@@ -59,7 +58,6 @@ pub enum EntityType {
     Item,
     Event,
     Quest,
-    Player,
 }
 
 impl EntityType {
@@ -72,7 +70,6 @@ impl EntityType {
             EntityType::Item => "fill-amber-500",
             EntityType::Event => "fill-rose-500",
             EntityType::Quest => "fill-cyan-500",
-            EntityType::Player => "fill-green-400",
         }
     }
 
@@ -85,7 +82,6 @@ impl EntityType {
             EntityType::Item => "bg-amber-500",
             EntityType::Event => "bg-rose-500",
             EntityType::Quest => "bg-cyan-500",
-            EntityType::Player => "bg-green-400",
         }
     }
 
@@ -98,7 +94,6 @@ impl EntityType {
             EntityType::Item => "fill-amber-400/30",
             EntityType::Event => "fill-rose-400/30",
             EntityType::Quest => "fill-cyan-400/30",
-            EntityType::Player => "fill-green-300/30",
         }
     }
 
@@ -111,64 +106,21 @@ impl EntityType {
             EntityType::Item => "Item",
             EntityType::Event => "Event",
             EntityType::Quest => "Quest",
-            EntityType::Player => "Player",
-        }
-    }
-
-    /// Get icon character
-    #[allow(dead_code)]
-    pub fn icon(&self) -> &'static str {
-        match self {
-            EntityType::Npc => "N",
-            EntityType::Location => "L",
-            EntityType::Faction => "F",
-            EntityType::Item => "I",
-            EntityType::Event => "E",
-            EntityType::Quest => "Q",
-            EntityType::Player => "P",
-        }
-    }
-
-    /// Parse from string
-    #[allow(dead_code)]
-    pub fn from_str(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
-            "npc" | "character" => EntityType::Npc,
-            "location" | "place" => EntityType::Location,
-            "faction" | "organization" | "group" => EntityType::Faction,
-            "item" | "object" | "artifact" => EntityType::Item,
-            "event" => EntityType::Event,
-            "quest" | "mission" => EntityType::Quest,
-            "player" | "pc" => EntityType::Player,
-            _ => EntityType::Npc,
         }
     }
 }
 
 /// Relationship strength for edge styling
-#[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum RelationshipStrength {
-    Weak,
     Normal,
     Strong,
     Critical,
 }
 
 impl RelationshipStrength {
-    #[allow(dead_code)]
-    pub fn from_u8(v: u8) -> Self {
-        match v {
-            0..=2 => RelationshipStrength::Weak,
-            3..=5 => RelationshipStrength::Normal,
-            6..=8 => RelationshipStrength::Strong,
-            _ => RelationshipStrength::Critical,
-        }
-    }
-
     pub fn stroke_width(&self) -> f64 {
         match self {
-            RelationshipStrength::Weak => 1.0,
             RelationshipStrength::Normal => 2.0,
             RelationshipStrength::Strong => 3.0,
             RelationshipStrength::Critical => 4.0,
@@ -177,7 +129,6 @@ impl RelationshipStrength {
 
     pub fn opacity(&self) -> f64 {
         match self {
-            RelationshipStrength::Weak => 0.3,
             RelationshipStrength::Normal => 0.5,
             RelationshipStrength::Strong => 0.7,
             RelationshipStrength::Critical => 0.9,
@@ -221,7 +172,6 @@ pub struct GraphEdge {
 }
 
 /// Filter options for the graph
-#[allow(dead_code)]
 #[derive(Clone)]
 pub struct GraphFilter {
     pub show_npcs: bool,
@@ -230,8 +180,6 @@ pub struct GraphFilter {
     pub show_items: bool,
     pub show_events: bool,
     pub show_quests: bool,
-    pub show_players: bool,
-    pub search_query: String,
 }
 
 impl Default for GraphFilter {
@@ -243,8 +191,6 @@ impl Default for GraphFilter {
             show_items: true,
             show_events: true,
             show_quests: true,
-            show_players: true,
-            search_query: String::new(),
         }
     }
 }
@@ -422,7 +368,6 @@ pub fn EntityGraph(
             EntityType::Item => f.show_items = !f.show_items,
             EntityType::Event => f.show_events = !f.show_events,
             EntityType::Quest => f.show_quests = !f.show_quests,
-            EntityType::Player => f.show_players = !f.show_players,
         });
     };
 
@@ -453,7 +398,6 @@ pub fn EntityGraph(
             EntityType::Item => f.show_items,
             EntityType::Event => f.show_events,
             EntityType::Quest => f.show_quests,
-            EntityType::Player => f.show_players,
         }
     };
 
@@ -636,7 +580,6 @@ pub fn EntityGraph(
                                 EntityType::Item => "bg-amber-900/20",
                                 EntityType::Event => "bg-rose-900/20",
                                 EntityType::Quest => "bg-cyan-900/20",
-                                EntityType::Player => "bg-green-900/20",
                             })>
                                 <div class="flex items-center justify-between">
                                     <div class="flex items-center gap-2">
