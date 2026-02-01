@@ -7,6 +7,7 @@
 use leptos::ev;
 use leptos::prelude::*;
 use crate::bindings::Campaign;
+use phosphor_leptos::{Icon, TRASH, DISC, USERS, USER, PLAY_CIRCLE};
 
 /// Genre/system category for styling
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -303,7 +304,7 @@ pub fn CampaignCard(
                             on:click=handle_delete.clone()
                             aria-label="Delete campaign"
                         >
-                            <DeleteIcon />
+                            <Icon icon=TRASH size="14px" />
                         </button>
                     })}
                 </div>
@@ -361,7 +362,7 @@ pub fn CampaignCard(
                         <div class="flex items-center gap-4">
                             // Sessions as "tracks"
                             <div class="flex items-center gap-1.5">
-                                <TrackIcon />
+                                <Icon icon=DISC size="12px" />
                                 <span>{session_count}</span>
                                 <span class="text-zinc-600">"tracks"</span>
                             </div>
@@ -370,14 +371,14 @@ pub fn CampaignCard(
                             {if player_count > 0 {
                                 Some(view! {
                                     <div class="flex items-center gap-1.5">
-                                        <PlayerIcon />
+                                        <Icon icon=USERS size="12px" />
                                         <span>{player_count}</span>
                                     </div>
                                 }.into_any())
                             } else if entity_count > 0 {
                                 Some(view! {
                                     <div class="flex items-center gap-1.5">
-                                        <EntityIcon />
+                                        <Icon icon=USER size="12px" />
                                         <span>{entity_count}</span>
                                     </div>
                                 }.into_any())
@@ -583,7 +584,7 @@ pub fn CampaignCardCompact(
             } else {
                 view! {
                     <div class="opacity-0 group-hover:opacity-100 transition-opacity text-zinc-500">
-                        <PlayIcon />
+                        <Icon icon=PLAY_CIRCLE size="16px" />
                     </div>
                 }.into_any()
             }}

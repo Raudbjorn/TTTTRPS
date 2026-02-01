@@ -771,7 +771,7 @@ pub fn SourceManager() -> impl IntoView {
                             "Cancel"
                         </Button>
                         <Button
-                            variant=ButtonVariant::Danger
+                            variant=ButtonVariant::Destructive
                             on_click=execute_delete
                         >
                             "Delete"

@@ -65,7 +65,7 @@ pub fn ActiveSessionWorkspace(
                         <div class="text-2xl font-bold text-white">{format!("Session #{}", session_number)}</div>
                     </div>
                     <Button
-                        variant=ButtonVariant::Danger
+                        variant=ButtonVariant::Destructive
                         class="px-4 py-2 bg-red-600/20 text-red-400 border border-red-600/50"
                         on_click=move |_: ev::MouseEvent| {
                             let sid = session_id.get_value();

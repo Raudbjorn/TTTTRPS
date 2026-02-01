@@ -931,7 +931,7 @@ pub fn Campaigns() -> impl IntoView {
                                 "Cancel"
                             </Button>
                             <Button
-                                variant=ButtonVariant::Danger
+                                variant=ButtonVariant::Destructive
                                 on_click=handle_confirm_delete
                             >
                                 "Delete"

@@ -14,9 +14,9 @@ mod slider;
 mod effects;
 mod toast;
 
-pub use button::{Button, ButtonVariant};
+pub use button::{Button, ButtonVariant, ButtonSize};
 pub use input::Input;
-pub use card::{Card, CardHeader, CardBody};
+pub use card::{Card, CardHeader, CardBody, CardTitle, CardDescription};
 pub use badge::{Badge, BadgeVariant};
 pub use select::{Select, SelectRw, SelectOption, SELECT_CLASS, OPTION_CLASS};
 pub use modal::Modal;

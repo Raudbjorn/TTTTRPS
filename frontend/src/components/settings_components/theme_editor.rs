@@ -440,7 +440,7 @@ fn LivePreview() -> impl IntoView {
                         <Button variant=ButtonVariant::Primary on_click=move |_| {}>"Primary"</Button>
                         <Button variant=ButtonVariant::Secondary on_click=move |_| {}>"Secondary"</Button>
                         <Button variant=ButtonVariant::Ghost on_click=move |_| {}>"Ghost"</Button>
-                        <Button variant=ButtonVariant::Danger on_click=move |_| {}>"Danger"</Button>
+                        <Button variant=ButtonVariant::Destructive on_click=move |_| {}>"Danger"</Button>
                     </div>
                 </div>
 

@@ -393,7 +393,7 @@ pub fn AuditLogViewer() -> impl IntoView {
                         <option value="90">"90 days"</option>
                     </select>
                     <Button
-                        variant=ButtonVariant::Danger
+                        variant=ButtonVariant::Destructive
                         loading=is_cleaning
                         on_click=handle_cleanup
                     >
