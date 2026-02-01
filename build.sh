@@ -59,8 +59,10 @@ cleanup() {
     if [ $exit_code -ne 0 ] && [ $exit_code -ne 130 ]; then
         print_error "Build failed with exit code $exit_code"
     fi
-    # Kill any background processes started by this script
-    jobs -p 2>/dev/null | xargs -r kill 2>/dev/null || true
+    # Kill any background processes started by this script (portable, no GNU xargs -r)
+    local pids
+    pids=$(jobs -p 2>/dev/null)
+    [ -n "$pids" ] && echo "$pids" | xargs kill 2>/dev/null || true
     exit $exit_code
 }
 trap cleanup EXIT
@@ -270,6 +272,56 @@ timed_run() {
 
 command_exists() {
     command -v "$1" >/dev/null 2>&1
+}
+
+# Run two tasks in parallel with consistent logging and error aggregation
+# Usage: run_parallel_tasks "task_name" "backend_cmd" "frontend_cmd"
+# Returns 0 if both succeed, 1 if either fails
+run_parallel_tasks() {
+    local task_name="$1"
+    local backend_cmd="$2"
+    local frontend_cmd="$3"
+
+    print_info "Running parallel ${task_name}..."
+
+    local backend_log
+    local frontend_log
+    backend_log=$(mktemp)
+    frontend_log=$(mktemp)
+
+    # Run tasks in parallel
+    (cd "$BACKEND_DIR" && eval "$backend_cmd" 2>&1) > "$backend_log" 2>&1 &
+    local backend_pid=$!
+
+    (cd "$FRONTEND_DIR" && eval "$frontend_cmd" 2>&1) > "$frontend_log" 2>&1 &
+    local frontend_pid=$!
+
+    local failed=false
+
+    # Wait for backend
+    if wait $backend_pid; then
+        print_success "Backend ${task_name} passed"
+        [ "$VERBOSE" = true ] && cat "$backend_log"
+    else
+        print_error "Backend ${task_name} failed"
+        cat "$backend_log"
+        failed=true
+    fi
+
+    # Wait for frontend
+    if wait $frontend_pid; then
+        print_success "Frontend ${task_name} passed"
+        [ "$VERBOSE" = true ] && cat "$frontend_log"
+    else
+        print_error "Frontend ${task_name} failed"
+        cat "$frontend_log"
+        failed=true
+    fi
+
+    rm -f "$backend_log" "$frontend_log"
+
+    [ "$failed" = true ] && return 1
+    return 0
 }
 
 check_rust_env() {
@@ -948,63 +1000,30 @@ run_dev() {
 run_tests() {
     print_section "Running Tests"
 
-    local test_args=()
-    if [ "$VERBOSE" = true ]; then
-        test_args+=(--verbose)
-    fi
+    local verbose_flag=""
+    [ "$VERBOSE" = true ] && verbose_flag="--verbose"
 
     if [ "$PARALLEL" = true ] && [ "$RUN_INTEGRATION" != true ]; then
-        print_info "Running tests in parallel..."
-
-        local backend_log=$(mktemp)
-        local frontend_log=$(mktemp)
-
-        (cd "$BACKEND_DIR" && cargo test --lib "${test_args[@]}" 2>&1) > "$backend_log" 2>&1 &
-        local backend_pid=$!
-
-        (cd "$FRONTEND_DIR" && cargo test "${test_args[@]}" 2>&1) > "$frontend_log" 2>&1 &
-        local frontend_pid=$!
-
-        local failed=false
-
-        if wait $backend_pid; then
-            print_success "Backend tests passed"
-            [ "$VERBOSE" = true ] && cat "$backend_log"
-        else
-            print_error "Backend tests failed"
-            cat "$backend_log"
-            failed=true
-        fi
-
-        if wait $frontend_pid; then
-            print_success "Frontend tests passed"
-            [ "$VERBOSE" = true ] && cat "$frontend_log"
-        else
-            print_error "Frontend tests failed"
-            cat "$frontend_log"
-            failed=true
-        fi
-
-        rm -f "$backend_log" "$frontend_log"
-
-        if [ "$failed" = true ]; then
+        if ! run_parallel_tasks "tests" \
+            "cargo test --lib $verbose_flag" \
+            "cargo test $verbose_flag"; then
             exit 1
         fi
     else
         print_info "Testing backend (lib)..."
         cd "$BACKEND_DIR"
-        cargo test --lib "${test_args[@]}"
+        cargo test --lib ${verbose_flag}
 
         print_info "Testing backend (integration, requires services)..."
         if [ "$RUN_INTEGRATION" = true ]; then
-            cargo test "${test_args[@]}" -- --ignored
+            cargo test ${verbose_flag} -- --ignored
         else
             print_warning "Skipping integration tests (use --integration to run)"
         fi
 
         print_info "Testing frontend..."
         cd "$FRONTEND_DIR"
-        cargo test "${test_args[@]}"
+        cargo test ${verbose_flag}
     fi
 
     cd "$PROJECT_ROOT"
@@ -1014,52 +1033,23 @@ run_tests() {
 run_check() {
     print_section "Running Checks"
 
+    local verbose_flag=""
+    [ "$VERBOSE" = true ] && verbose_flag="--verbose"
+
     if [ "$PARALLEL" = true ]; then
-        print_info "Running parallel checks..."
-
-        local backend_log=$(mktemp)
-        local frontend_log=$(mktemp)
-
-        # Run checks in parallel
-        (cd "$BACKEND_DIR" && cargo check ${VERBOSE:+--verbose} 2>&1) > "$backend_log" 2>&1 &
-        local backend_pid=$!
-
-        (cd "$FRONTEND_DIR" && cargo check ${VERBOSE:+--verbose} 2>&1) > "$frontend_log" 2>&1 &
-        local frontend_pid=$!
-
-        local failed=false
-
-        # Wait for backend
-        if wait $backend_pid; then
-            print_success "Backend check passed"
-        else
-            print_error "Backend check failed"
-            cat "$backend_log"
-            failed=true
-        fi
-
-        # Wait for frontend
-        if wait $frontend_pid; then
-            print_success "Frontend check passed"
-        else
-            print_error "Frontend check failed"
-            cat "$frontend_log"
-            failed=true
-        fi
-
-        rm -f "$backend_log" "$frontend_log"
-
-        if [ "$failed" = true ]; then
+        if ! run_parallel_tasks "check" \
+            "cargo check $verbose_flag" \
+            "cargo check $verbose_flag"; then
             exit 1
         fi
     else
         print_info "Checking backend..."
         cd "$BACKEND_DIR"
-        cargo check ${VERBOSE:+--verbose}
+        cargo check ${verbose_flag}
 
         print_info "Checking frontend..."
         cd "$FRONTEND_DIR"
-        cargo check ${VERBOSE:+--verbose}
+        cargo check ${verbose_flag}
     fi
 
     cd "$PROJECT_ROOT"
@@ -1138,54 +1128,24 @@ clean_artifacts() {
 run_lint() {
     print_section "Running Clippy Lints"
 
-    local clippy_args=(-- -D warnings)
-    if [ "$VERBOSE" = true ]; then
-        clippy_args=(--verbose -- -D warnings)
-    fi
+    local verbose_flag=""
+    [ "$VERBOSE" = true ] && verbose_flag="--verbose"
+
+    # Build clippy command string for parallel helper
+    local clippy_cmd="cargo clippy $verbose_flag -- -D warnings"
 
     if [ "$PARALLEL" = true ]; then
-        print_info "Running parallel lint checks..."
-
-        local backend_log=$(mktemp)
-        local frontend_log=$(mktemp)
-
-        (cd "$BACKEND_DIR" && cargo clippy "${clippy_args[@]}" 2>&1) > "$backend_log" 2>&1 &
-        local backend_pid=$!
-
-        (cd "$FRONTEND_DIR" && cargo clippy "${clippy_args[@]}" 2>&1) > "$frontend_log" 2>&1 &
-        local frontend_pid=$!
-
-        local failed=false
-
-        if wait $backend_pid; then
-            print_success "Backend lint passed"
-        else
-            print_error "Backend lint failed"
-            cat "$backend_log"
-            failed=true
-        fi
-
-        if wait $frontend_pid; then
-            print_success "Frontend lint passed"
-        else
-            print_error "Frontend lint failed"
-            cat "$frontend_log"
-            failed=true
-        fi
-
-        rm -f "$backend_log" "$frontend_log"
-
-        if [ "$failed" = true ]; then
+        if ! run_parallel_tasks "lint" "$clippy_cmd" "$clippy_cmd"; then
             exit 1
         fi
     else
         print_info "Linting backend..."
         cd "$BACKEND_DIR"
-        cargo clippy "${clippy_args[@]}"
+        cargo clippy ${verbose_flag} -- -D warnings
 
         print_info "Linting frontend..."
         cd "$FRONTEND_DIR"
-        cargo clippy "${clippy_args[@]}"
+        cargo clippy ${verbose_flag} -- -D warnings
     fi
 
     cd "$PROJECT_ROOT"
@@ -1231,18 +1191,22 @@ run_audit() {
     fi
     print_verbose "Using cargo-audit: $(cargo audit --version 2>/dev/null || echo 'unknown')"
 
+    # Always deny warnings for CI/quality checks; verbosity is separate
+    local audit_args=(--deny warnings)
+    [ "$VERBOSE" = true ] && audit_args+=(--color always)
+
     local audit_failed=false
 
     print_info "Auditing backend dependencies..."
     cd "$BACKEND_DIR"
-    if ! cargo audit ${VERBOSE:+--deny warnings}; then
+    if ! cargo audit "${audit_args[@]}"; then
         audit_failed=true
         print_warning "Backend audit found issues"
     fi
 
     print_info "Auditing frontend dependencies..."
     cd "$FRONTEND_DIR"
-    if ! cargo audit ${VERBOSE:+--deny warnings}; then
+    if ! cargo audit "${audit_args[@]}"; then
         audit_failed=true
         print_warning "Frontend audit found issues"
     fi
@@ -1360,6 +1324,24 @@ run_machete() {
 check_msrv() {
     print_section "Minimum Supported Rust Version Check"
 
+    # Require rustc to be present for version comparisons
+    if ! command_exists rustc; then
+        print_error "rustc not found - cannot check MSRV"
+        print_info "Install Rust via https://rustup.rs/"
+        return 1
+    fi
+
+    local current_version=""
+    current_version=$(rustc --version | sed 's/rustc \([0-9.]*\).*/\1/')
+
+    # Validate we got a proper version string (starts with digit)
+    if ! [[ "$current_version" =~ ^[0-9]+\.[0-9]+ ]]; then
+        print_error "Could not parse rustc version: $current_version"
+        return 1
+    fi
+
+    print_info "Current Rust version: $current_version"
+
     # Try to get MSRV from Cargo.toml
     local backend_msrv=""
     local frontend_msrv=""
@@ -1370,11 +1352,6 @@ check_msrv() {
     if [ -f "$FRONTEND_DIR/Cargo.toml" ]; then
         frontend_msrv=$(grep -E '^rust-version\s*=' "$FRONTEND_DIR/Cargo.toml" 2>/dev/null | sed 's/.*=\s*"\([^"]*\)".*/\1/' | head -1) || frontend_msrv=""
     fi
-
-    local current_version=""
-    current_version=$(rustc --version | sed 's/rustc \([0-9.]*\).*/\1/') || current_version="unknown"
-
-    print_info "Current Rust version: $current_version"
 
     if [ -n "$backend_msrv" ]; then
         print_info "Backend MSRV: $backend_msrv"
