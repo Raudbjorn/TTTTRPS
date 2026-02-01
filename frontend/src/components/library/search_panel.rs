@@ -77,7 +77,7 @@ pub fn SearchPanel() -> impl IntoView {
 
             spawn_local(async move {
                 let options = HybridSearchOptions {
-                    limit: 25,
+                    limit: Some(25),
                     source_type: if source_type == SourceType::All {
                         None
                     } else {
