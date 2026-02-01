@@ -289,11 +289,11 @@ run_parallel_tasks() {
     backend_log=$(mktemp)
     frontend_log=$(mktemp)
 
-    # Run tasks in parallel
-    (cd "$BACKEND_DIR" && eval "$backend_cmd" 2>&1) > "$backend_log" 2>&1 &
+    # Run tasks in parallel (redirect both stdout and stderr to log)
+    (cd "$BACKEND_DIR" && eval "$backend_cmd") > "$backend_log" 2>&1 &
     local backend_pid=$!
 
-    (cd "$FRONTEND_DIR" && eval "$frontend_cmd" 2>&1) > "$frontend_log" 2>&1 &
+    (cd "$FRONTEND_DIR" && eval "$frontend_cmd") > "$frontend_log" 2>&1 &
     local frontend_pid=$!
 
     local failed=false
