@@ -168,7 +168,7 @@ impl Grounder for CombinedGrounder {
         }
 
         let mut marked_text = text.to_string();
-        let total_valid = valid_links.len();
+        let _total_valid = valid_links.len();
 
         // Second pass: Build citations and insert markers in reverse order to preserve offsets
         // We use numbers 1..N based on their forward appearance in the text
@@ -184,10 +184,7 @@ impl Grounder for CombinedGrounder {
             );
         }
 
-        // reverse citations to match forward text order (since we processed rev)
-        citations.reverse();
-
-        // Reverse citations to match text order
+        // Reverse citations to match forward text order (since we processed in reverse)
         citations.reverse();
 
         // Calculate overall confidence

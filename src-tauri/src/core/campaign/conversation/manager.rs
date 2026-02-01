@@ -684,13 +684,14 @@ impl ConversationManager {
         .await?;
 
         // Copy messages up to the branch point
+        // Use row value comparison (created_at, id) to handle timestamp collisions safely
         let messages_to_copy = sqlx::query_as::<_, ConversationMessageRecord>(
             r#"
             SELECT * FROM conversation_messages
-            WHERE thread_id = ? AND created_at <= (
-                SELECT created_at FROM conversation_messages WHERE id = ?
+            WHERE thread_id = ? AND (created_at, id) <= (
+                SELECT created_at, id FROM conversation_messages WHERE id = ?
             )
-            ORDER BY created_at ASC
+            ORDER BY created_at ASC, id ASC
             "#,
         )
         .bind(source_thread_id)
@@ -728,8 +729,9 @@ impl ConversationManager {
             }
         }
 
-        // Update message count
+        // Update message count and refresh updated_at timestamp
         new_thread.message_count = copied_count;
+        new_thread.updated_at = chrono::Utc::now().to_rfc3339();
         let updated_record = new_thread.to_record();
         sqlx::query(
             r#"
