@@ -661,7 +661,8 @@ pub async fn gemini_oauth_with_callback(
     let should_open_browser = open_browser.unwrap_or(true);
 
     // Start the OAuth flow to get the auth URL and state
-    let (auth_url, oauth_state) = state.gemini.start_oauth_flow().await?;
+    // Note: oauth_state is stored internally by OAuthFlow and validated in complete_oauth_flow
+    let (auth_url, _oauth_state) = state.gemini.start_oauth_flow().await?;
 
     log::info!("Gemini OAuth: Generated auth URL: {}", &auth_url);
     log::info!("Gemini OAuth: Starting callback server on port 51121");

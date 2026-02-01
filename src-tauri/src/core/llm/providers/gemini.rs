@@ -489,6 +489,46 @@ impl GeminiClientTrait for MemoryStorageClient {
 }
 
 impl GeminiProvider {
+    /// Check if file storage has a gemini token (synchronous check).
+    ///
+    /// Used by Auto backend selection to prefer file storage when tokens exist there.
+    /// This matches the behavior of `GeminiState::file_storage_has_gemini_token()` in
+    /// the Tauri commands module.
+    fn file_storage_has_gemini_token() -> bool {
+        // Check unified path: ~/.local/share/ttrpg-assistant/oauth-tokens.json
+        let Some(app_path) = FileTokenStorage::app_token_path() else {
+            debug!("Gemini: Could not determine app token path");
+            return false;
+        };
+
+        if !app_path.exists() {
+            return false;
+        }
+
+        let content = match std::fs::read_to_string(&app_path) {
+            Ok(c) => c,
+            Err(e) => {
+                debug!("Gemini: Failed to read token file: {}", e);
+                return false;
+            }
+        };
+
+        let json: serde_json::Value = match serde_json::from_str(&content) {
+            Ok(j) => j,
+            Err(e) => {
+                debug!("Gemini: Failed to parse token file as JSON: {}", e);
+                return false;
+            }
+        };
+
+        if json.get("gemini").is_some() {
+            debug!("Gemini: Found existing token in file storage");
+            return true;
+        }
+
+        false
+    }
+
     /// Create a new provider with file-based token storage.
     ///
     /// Uses the app data path (~/.local/share/ttrpg-assistant/oauth-tokens.json).
@@ -574,10 +614,40 @@ impl GeminiProvider {
                 )
             }
             GeminiStorageBackend::Auto => {
-                // Try keyring first, fall back to file
+                // Smart Auto: Check file storage for existing tokens, prefer it when tokens exist.
+                //
+                // Design note: We only check file storage, not keyring, because:
+                // 1. File storage is the source of truth - GeminiState (Tauri commands) saves
+                //    tokens to file when using smart auto, ensuring existing users keep working.
+                // 2. This allows new users to get keyring (if available) while existing users
+                //    with file tokens continue using file storage seamlessly.
+                // 3. Checking keyring synchronously would require additional platform-specific
+                //    code and may have performance implications.
+                let file_has_tokens = Self::file_storage_has_gemini_token();
+
                 #[cfg(feature = "keyring")]
                 {
-                    if KeyringTokenStorage::is_available() {
+                    let keyring_available = KeyringTokenStorage::is_available();
+
+                    if file_has_tokens {
+                        // File has tokens - prefer file storage for consistency
+                        debug!("Gemini: Auto-selected file storage (has existing tokens)");
+                        let storage = FileTokenStorage::app_data_path().map_err(|e| {
+                            LLMError::NotConfigured(format!(
+                                "Failed to create file storage: {}",
+                                e
+                            ))
+                        })?;
+                        let gemini_client = CloudCodeClient::new(storage);
+                        (
+                            Arc::new(FileStorageClient {
+                                client: Arc::new(gemini_client),
+                            }),
+                            "file".to_string(),
+                        )
+                    } else if keyring_available {
+                        // No file tokens, keyring available -> use keyring
+                        debug!("Gemini: Auto-selected keyring storage (no file tokens)");
                         let storage = KeyringTokenStorage::new();
                         let gemini_client = CloudCodeClient::new(storage);
                         (
@@ -587,6 +657,8 @@ impl GeminiProvider {
                             "keyring".to_string(),
                         )
                     } else {
+                        // No file tokens, keyring not available -> use file (default)
+                        debug!("Gemini: Using file storage backend (default)");
                         let storage = FileTokenStorage::app_data_path().map_err(|e| {
                             LLMError::NotConfigured(format!(
                                 "Failed to create file storage: {}",
@@ -604,6 +676,11 @@ impl GeminiProvider {
                 }
                 #[cfg(not(feature = "keyring"))]
                 {
+                    // No keyring feature - always use file storage
+                    debug!(
+                        "Gemini: Using file storage backend ({})",
+                        if file_has_tokens { "has existing tokens" } else { "default" }
+                    );
                     let storage = FileTokenStorage::app_data_path().map_err(|e| {
                         LLMError::NotConfigured(format!("Failed to create file storage: {}", e))
                     })?;
