@@ -1170,7 +1170,7 @@ pub enum LLMProvider {
     Meilisearch,
     ClaudeCode,
     ClaudeDesktop,  // <-- CDP Provider
-    ClaudeGate,
+    Claude,
     GeminiCli,
 }
 

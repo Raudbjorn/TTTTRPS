@@ -98,9 +98,9 @@ impl LLMClient {
         }).collect())
     }
 
-    pub async fn list_claude_models(_api_key: &str) -> Result<Vec<ModelInfo>, String> {
+    pub async fn list_anthropic_models(_api_key: &str) -> Result<Vec<ModelInfo>, String> {
         // Mock implementation or fallback
-        Ok(get_fallback_models("claude"))
+        Ok(get_fallback_models("anthropic"))
     }
 
     pub async fn list_openai_models(_api_key: &str, _org_id: Option<String>) -> Result<Vec<ModelInfo>, String> {
@@ -133,7 +133,9 @@ fn format_size(size: u64) -> String {
 // Fallback models helper
 pub fn get_fallback_models(provider: &str) -> Vec<ModelInfo> {
     match provider {
-        "claude" => vec![
+        "anthropic" | "claude" => vec![
+            ModelInfo { id: "claude-3-5-sonnet-20241022".into(), name: "Claude 3.5 Sonnet".into(), description: None, context_length: Some(200000) },
+            ModelInfo { id: "claude-3-5-haiku-20241022".into(), name: "Claude 3.5 Haiku".into(), description: None, context_length: Some(200000) },
             ModelInfo { id: "claude-3-opus-20240229".into(), name: "Claude 3 Opus".into(), description: None, context_length: Some(200000) },
             ModelInfo { id: "claude-3-sonnet-20240229".into(), name: "Claude 3 Sonnet".into(), description: None, context_length: Some(200000) },
             ModelInfo { id: "claude-3-haiku-20240307".into(), name: "Claude 3 Haiku".into(), description: None, context_length: Some(200000) },

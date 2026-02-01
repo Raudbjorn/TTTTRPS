@@ -236,6 +236,7 @@ pub struct LLMSettings {
     pub host: Option<String>,
     pub model: String,
     pub embedding_model: Option<String>,
+    pub storage_backend: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -427,12 +428,12 @@ pub struct ModelInfo {
     pub description: Option<String>,
 }
 
-pub async fn list_claude_models(api_key: Option<String>) -> Result<Vec<ModelInfo>, String> {
+pub async fn list_anthropic_models(api_key: Option<String>) -> Result<Vec<ModelInfo>, String> {
     #[derive(Serialize)]
     struct Args {
         api_key: Option<String>,
     }
-    invoke("list_claude_models", &Args { api_key }).await
+    invoke("list_anthropic_models", &Args { api_key }).await
 }
 
 pub async fn list_openai_models(api_key: Option<String>) -> Result<Vec<ModelInfo>, String> {
@@ -4689,14 +4690,14 @@ pub enum TextExtractionProvider {
     #[default]
     Kreuzberg,
     /// Use Claude API for extraction (better quality, requires API auth)
-    ClaudeGate,
+    Claude,
 }
 
 impl TextExtractionProvider {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Kreuzberg => "kreuzberg",
-            Self::ClaudeGate => "claude_gate",
+            Self::Claude => "claude",
         }
     }
 }
@@ -4823,32 +4824,32 @@ pub async fn check_ocr_availability() -> Result<OcrAvailability, String> {
 // Claude Gate OAuth Commands
 // ============================================================================
 
-/// Storage backend options for Claude Gate tokens
+/// Storage backend options for Claude tokens
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
-pub enum ClaudeGateStorageBackend {
+pub enum ClaudeStorageBackend {
     /// Auto-select best available (keyring if available, else file)
     #[default]
     Auto,
     /// System keyring (GNOME Keyring, macOS Keychain, Windows Credential Manager)
     Keyring,
-    /// File-based storage (~/.config/cld/auth.json)
+    /// File-based storage (~/.local/share/ttrpg-assistant/oauth-tokens.json)
     File,
 }
 
-impl std::fmt::Display for ClaudeGateStorageBackend {
+impl std::fmt::Display for ClaudeStorageBackend {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ClaudeGateStorageBackend::Auto => write!(f, "Auto"),
-            ClaudeGateStorageBackend::Keyring => write!(f, "Keyring"),
-            ClaudeGateStorageBackend::File => write!(f, "File"),
+            ClaudeStorageBackend::Auto => write!(f, "Auto"),
+            ClaudeStorageBackend::Keyring => write!(f, "Keyring"),
+            ClaudeStorageBackend::File => write!(f, "File"),
         }
     }
 }
 
-/// Status of Claude Gate OAuth authentication
+/// Status of Claude OAuth authentication
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ClaudeGateStatus {
+pub struct ClaudeStatus {
     /// Whether the user is authenticated
     pub authenticated: bool,
     /// Storage backend being used
@@ -4865,13 +4866,13 @@ pub struct ClaudeGateStatus {
 }
 
 /// Get Claude Gate OAuth status
-pub async fn claude_gate_get_status() -> Result<ClaudeGateStatus, String> {
-    invoke_no_args("claude_gate_get_status").await
+pub async fn claude_get_status() -> Result<ClaudeStatus, String> {
+    invoke_no_args("claude_get_status").await
 }
 
 /// Response from starting OAuth flow
 #[derive(Debug, Clone, Deserialize)]
-pub struct ClaudeGateOAuthStartResponse {
+pub struct ClaudeOAuthStartResponse {
     /// URL to open in user's browser for OAuth authorization
     pub auth_url: String,
     /// State parameter for CSRF protection (pass back to complete_oauth)
@@ -4879,44 +4880,44 @@ pub struct ClaudeGateOAuthStartResponse {
 }
 
 /// Start OAuth flow - returns the authorization URL and CSRF state
-pub async fn claude_gate_start_oauth() -> Result<ClaudeGateOAuthStartResponse, String> {
-    invoke_no_args("claude_gate_start_oauth").await
+pub async fn claude_start_oauth() -> Result<ClaudeOAuthStartResponse, String> {
+    invoke_no_args("claude_start_oauth").await
 }
 
 /// Response from completing OAuth flow
 #[derive(Debug, Clone, Deserialize)]
-pub struct ClaudeGateOAuthCompleteResponse {
+pub struct ClaudeOAuthCompleteResponse {
     pub success: bool,
     pub error: Option<String>,
 }
 
 /// Complete OAuth flow with authorization code
-pub async fn claude_gate_complete_oauth(code: String, oauth_state: Option<String>) -> Result<ClaudeGateOAuthCompleteResponse, String> {
+pub async fn claude_complete_oauth(code: String, oauth_state: Option<String>) -> Result<ClaudeOAuthCompleteResponse, String> {
     #[derive(Serialize)]
     struct Args {
         code: String,
         oauth_state: Option<String>,
     }
-    invoke("claude_gate_complete_oauth", &Args { code, oauth_state }).await
+    invoke("claude_complete_oauth", &Args { code, oauth_state }).await
 }
 
-/// Logout from Claude Gate (remove stored token)
-pub async fn claude_gate_logout() -> Result<(), String> {
-    invoke_void_no_args("claude_gate_logout").await
+/// Logout from Claude (remove stored token)
+pub async fn claude_logout() -> Result<(), String> {
+    invoke_void_no_args("claude_logout").await
 }
 
-/// Set storage backend for Claude Gate tokens
-pub async fn claude_gate_set_storage_backend(backend: ClaudeGateStorageBackend) -> Result<(), String> {
+/// Set storage backend for Claude tokens
+pub async fn claude_set_storage_backend(backend: ClaudeStorageBackend) -> Result<(), String> {
     #[derive(Serialize)]
     struct Args {
-        backend: ClaudeGateStorageBackend,
+        backend: ClaudeStorageBackend,
     }
-    invoke_void("claude_gate_set_storage_backend", &Args { backend }).await
+    invoke_void("claude_set_storage_backend", &Args { backend }).await
 }
 
-/// Model info from Claude Gate API
+/// Model info from Claude API
 #[derive(Debug, Clone, Deserialize)]
-pub struct ClaudeGateModelInfo {
+pub struct ClaudeModelInfo {
     pub id: String,
     pub name: String,
 }
@@ -4924,8 +4925,8 @@ pub struct ClaudeGateModelInfo {
 /// List available models from Claude Gate API
 ///
 /// Requires authentication. Returns list of models the user can access.
-pub async fn claude_gate_list_models() -> Result<Vec<ClaudeGateModelInfo>, String> {
-    invoke_no_args("claude_gate_list_models").await
+pub async fn claude_list_models() -> Result<Vec<ClaudeModelInfo>, String> {
+    invoke_no_args("claude_list_models").await
 }
 
 // ============================================================================
@@ -4983,7 +4984,7 @@ pub async fn poll_copilot_auth(device_code: String) -> Result<CopilotAuthPollRes
 /// Storage backend options for Copilot tokens
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum CopilotGateStorageBackend {
+pub enum CopilotStorageBackend {
     /// File-based storage
     File,
     /// System keyring storage
@@ -4993,12 +4994,12 @@ pub enum CopilotGateStorageBackend {
     Auto,
 }
 
-impl std::fmt::Display for CopilotGateStorageBackend {
+impl std::fmt::Display for CopilotStorageBackend {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CopilotGateStorageBackend::Auto => write!(f, "Auto"),
-            CopilotGateStorageBackend::Keyring => write!(f, "Keyring"),
-            CopilotGateStorageBackend::File => write!(f, "File"),
+            CopilotStorageBackend::Auto => write!(f, "Auto"),
+            CopilotStorageBackend::Keyring => write!(f, "Keyring"),
+            CopilotStorageBackend::File => write!(f, "File"),
         }
     }
 }
@@ -5026,12 +5027,12 @@ pub async fn check_copilot_auth() -> Result<CopilotAuthStatus, String> {
 }
 
 /// Set storage backend for Copilot tokens
-pub async fn copilot_gate_set_storage_backend(backend: CopilotGateStorageBackend) -> Result<(), String> {
+pub async fn copilot_set_storage_backend(backend: CopilotStorageBackend) -> Result<(), String> {
     #[derive(Serialize)]
     struct Args {
-        backend: CopilotGateStorageBackend,
+        backend: CopilotStorageBackend,
     }
-    invoke_void("copilot_gate_set_storage_backend", &Args { backend }).await
+    invoke_void("copilot_set_storage_backend", &Args { backend }).await
 }
 
 /// Logout from Copilot (remove stored tokens)
@@ -5081,7 +5082,7 @@ pub async fn get_copilot_usage() -> Result<CopilotUsageInfo, String> {
 /// Model information from Copilot API
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CopilotGateModelInfo {
+pub struct CopilotModelInfo {
     /// The model ID (e.g., "gpt-4o", "claude-3.5-sonnet")
     pub id: String,
     /// Owner organization
@@ -5105,7 +5106,7 @@ pub struct CopilotGateModelInfo {
 /// List available models from Copilot API
 ///
 /// Requires authentication. Returns list of models the user can access.
-pub async fn get_copilot_models() -> Result<Vec<CopilotGateModelInfo>, String> {
+pub async fn get_copilot_models() -> Result<Vec<CopilotModelInfo>, String> {
     invoke_no_args("get_copilot_models").await
 }
 
@@ -5116,7 +5117,7 @@ pub async fn get_copilot_models() -> Result<Vec<CopilotGateModelInfo>, String> {
 /// Storage backend options for Gemini tokens
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum GeminiGateStorageBackend {
+pub enum GeminiStorageBackend {
     /// File-based storage
     File,
     /// System keyring storage
@@ -5126,19 +5127,19 @@ pub enum GeminiGateStorageBackend {
     Auto,
 }
 
-impl std::fmt::Display for GeminiGateStorageBackend {
+impl std::fmt::Display for GeminiStorageBackend {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            GeminiGateStorageBackend::Auto => write!(f, "Auto"),
-            GeminiGateStorageBackend::Keyring => write!(f, "Keyring"),
-            GeminiGateStorageBackend::File => write!(f, "File"),
+            GeminiStorageBackend::Auto => write!(f, "Auto"),
+            GeminiStorageBackend::Keyring => write!(f, "Keyring"),
+            GeminiStorageBackend::File => write!(f, "File"),
         }
     }
 }
 
 /// Status of Gemini OAuth authentication
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct GeminiGateStatus {
+pub struct GeminiStatus {
     /// Whether the user is authenticated
     pub authenticated: bool,
     /// Storage backend being used
@@ -5151,13 +5152,13 @@ pub struct GeminiGateStatus {
 }
 
 /// Get Gemini OAuth status
-pub async fn gemini_gate_get_status() -> Result<GeminiGateStatus, String> {
-    invoke_no_args("gemini_gate_get_status").await
+pub async fn gemini_get_status() -> Result<GeminiStatus, String> {
+    invoke_no_args("gemini_get_status").await
 }
 
 /// Response from starting Gemini OAuth flow
 #[derive(Debug, Clone, Deserialize)]
-pub struct GeminiGateOAuthStartResponse {
+pub struct GeminiOAuthStartResponse {
     /// URL to open in user's browser for OAuth authorization
     pub auth_url: String,
     /// State parameter for CSRF protection (pass back to complete_oauth)
@@ -5165,44 +5166,44 @@ pub struct GeminiGateOAuthStartResponse {
 }
 
 /// Start Gemini OAuth flow - returns the authorization URL and CSRF state
-pub async fn gemini_gate_start_oauth() -> Result<GeminiGateOAuthStartResponse, String> {
-    invoke_no_args("gemini_gate_start_oauth").await
+pub async fn gemini_start_oauth() -> Result<GeminiOAuthStartResponse, String> {
+    invoke_no_args("gemini_start_oauth").await
 }
 
 /// Response from completing Gemini OAuth flow
 #[derive(Debug, Clone, Deserialize)]
-pub struct GeminiGateOAuthCompleteResponse {
+pub struct GeminiOAuthCompleteResponse {
     pub success: bool,
     pub error: Option<String>,
 }
 
 /// Complete Gemini OAuth flow with authorization code
-pub async fn gemini_gate_complete_oauth(code: String, oauth_state: Option<String>) -> Result<GeminiGateOAuthCompleteResponse, String> {
+pub async fn gemini_complete_oauth(code: String, oauth_state: Option<String>) -> Result<GeminiOAuthCompleteResponse, String> {
     #[derive(Serialize)]
     struct Args {
         code: String,
         oauth_state: Option<String>,
     }
-    invoke("gemini_gate_complete_oauth", &Args { code, oauth_state }).await
+    invoke("gemini_complete_oauth", &Args { code, oauth_state }).await
 }
 
 /// Logout from Gemini (remove stored token)
-pub async fn gemini_gate_logout() -> Result<(), String> {
-    invoke_void_no_args("gemini_gate_logout").await
+pub async fn gemini_logout() -> Result<(), String> {
+    invoke_void_no_args("gemini_logout").await
 }
 
 /// Set storage backend for Gemini tokens
-pub async fn gemini_gate_set_storage_backend(backend: GeminiGateStorageBackend) -> Result<(), String> {
+pub async fn gemini_set_storage_backend(backend: GeminiStorageBackend) -> Result<(), String> {
     #[derive(Serialize)]
     struct Args {
-        backend: GeminiGateStorageBackend,
+        backend: GeminiStorageBackend,
     }
-    invoke_void("gemini_gate_set_storage_backend", &Args { backend }).await
+    invoke_void("gemini_set_storage_backend", &Args { backend }).await
 }
 
 /// Response from Gemini OAuth flow with automatic callback server
 #[derive(Debug, Clone, Deserialize)]
-pub struct GeminiGateOAuthCallbackResponse {
+pub struct GeminiOAuthCallbackResponse {
     /// Whether the OAuth flow completed successfully
     pub success: bool,
     /// Error message if the flow failed
@@ -5220,21 +5221,21 @@ pub struct GeminiGateOAuthCallbackResponse {
 /// 4. Completes the OAuth flow automatically
 ///
 /// Returns the result of the OAuth flow, including any errors.
-pub async fn gemini_gate_oauth_with_callback(
+pub async fn gemini_oauth_with_callback(
     timeout_secs: Option<u64>,
     open_browser: Option<bool>,
-) -> Result<GeminiGateOAuthCallbackResponse, String> {
+) -> Result<GeminiOAuthCallbackResponse, String> {
     #[derive(Serialize)]
     struct Args {
         timeout_secs: Option<u64>,
         open_browser: Option<bool>,
     }
-    invoke("gemini_gate_oauth_with_callback", &Args { timeout_secs, open_browser }).await
+    invoke("gemini_oauth_with_callback", &Args { timeout_secs, open_browser }).await
 }
 
 /// A model available via the Gemini Cloud Code API.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct GeminiGateModel {
+pub struct GeminiModel {
     /// Unique identifier for the model.
     pub id: String,
     /// Display name for the model.
@@ -5247,8 +5248,8 @@ pub struct GeminiGateModel {
 ///
 /// Returns models available for use with the authenticated account.
 /// Requires successful OAuth authentication first.
-pub async fn gemini_gate_list_models() -> Result<Vec<GeminiGateModel>, String> {
-    invoke_no_args("gemini_gate_list_models").await
+pub async fn gemini_list_models() -> Result<Vec<GeminiModel>, String> {
+    invoke_no_args("gemini_list_models").await
 }
 
 // ============================================================================

@@ -16,18 +16,18 @@ pub async fn list_ollama_models(host: String) -> Result<Vec<OllamaModel>, String
         .map_err(|e| e.to_string())
 }
 
-/// List available Claude models (with fallback)
+/// List available Anthropic models (API Key based)
 #[tauri::command]
-pub async fn list_claude_models(api_key: Option<String>) -> Result<Vec<ModelInfo>, String> {
+pub async fn list_anthropic_models(api_key: Option<String>) -> Result<Vec<ModelInfo>, String> {
     if let Some(key) = api_key {
         if !key.is_empty() && !key.starts_with("*") {
-            match crate::core::llm::LLMClient::list_claude_models(&key).await {
+            match crate::core::llm::LLMClient::list_anthropic_models(&key).await {
                 Ok(models) if !models.is_empty() => return Ok(models),
                 _ => {} // Fall through to fallback
             }
         }
     }
-    Ok(crate::core::llm::get_fallback_models("claude"))
+    Ok(crate::core::llm::get_fallback_models("anthropic"))
 }
 
 /// List available OpenAI models (with fallback)

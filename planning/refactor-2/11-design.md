@@ -327,9 +327,9 @@ pub struct AppState {
     pub extraction_settings: AsyncRwLock<ExtractionSettings>,
 
     // OAuth (already extracted)
-    pub claude_gate: Arc<ClaudeGateState>,
-    pub gemini_gate: Arc<GeminiGateState>,
-    pub copilot_gate: Arc<CopilotGateState>,
+    pub claude: Arc<ClaudeState>,
+    pub gemini: Arc<GeminiState>,
+    pub copilot: Arc<CopilotState>,
 
     // Archetype (already extracted)
     pub archetype_registry: AsyncRwLock<Option<Arc<ArchetypeRegistry>>>,

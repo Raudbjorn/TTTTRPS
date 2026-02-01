@@ -210,8 +210,8 @@ pub fn register_commands(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<
             llm::chat,
             llm::stream_chat,
             // OAuth
-            oauth::claude_gate_get_status,
-            oauth::claude_gate_start_oauth,
+            oauth::claude_get_status,
+            oauth::claude_start_oauth,
             // ... etc
         ])
 }

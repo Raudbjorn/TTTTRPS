@@ -166,7 +166,7 @@ impl MeilisearchPipeline {
 
         // Dispatch based on extraction provider
         match self.config.extraction_settings.text_extraction_provider {
-            TextExtractionProvider::ClaudeGate => {
+            TextExtractionProvider::Claude => {
                 // Use Claude API for extraction
                 log::info!("Using Claude API for extraction of '{}'", source_name);
                 return self
@@ -460,7 +460,7 @@ impl MeilisearchPipeline {
         source_type: &str,
     ) -> Result<ExtractionResult, SearchError> {
         // Check if Claude extraction supports this format
-        if !ClaudeDocumentExtractor::<crate::gate::claude::FileTokenStorage>::is_supported(path) {
+        if !ClaudeDocumentExtractor::<crate::oauth::claude::FileTokenStorage>::is_supported(path) {
             log::warn!(
                 "Claude extraction does not support '{}', falling back to kreuzberg",
                 source_type

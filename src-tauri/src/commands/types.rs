@@ -40,6 +40,7 @@ pub struct LLMSettings {
     pub host: Option<String>,
     pub model: String,
     pub embedding_model: Option<String>,
+    pub storage_backend: Option<String>,
 }
 
 impl std::fmt::Debug for LLMSettings {
@@ -50,6 +51,7 @@ impl std::fmt::Debug for LLMSettings {
             .field("host", &self.host)
             .field("model", &self.model)
             .field("embedding_model", &self.embedding_model)
+            .field("storage_backend", &self.storage_backend)
             .finish()
     }
 }
@@ -62,6 +64,7 @@ fn make_llm_settings(provider: &str, model: &str, has_api_key: bool, host: Optio
         host: host.map(String::from),
         model: model.to_string(),
         embedding_model: None,
+        storage_backend: None,
     }
 }
 
@@ -71,7 +74,11 @@ impl From<&crate::core::llm::LLMConfig> for LLMSettings {
 
         match config {
             LLMConfig::Ollama { host, model } => make_llm_settings("ollama", model, false, Some(host)),
-            LLMConfig::Claude { model, .. } => make_llm_settings("claude", model, true, None),
+            LLMConfig::Claude { model, storage_backend, .. } => {
+                let mut settings = make_llm_settings("claude", model, true, None);
+                settings.storage_backend = Some(storage_backend.clone());
+                settings
+            },
             LLMConfig::Google { model, .. } => make_llm_settings("google", model, true, None),
             LLMConfig::OpenAI { model, .. } => make_llm_settings("openai", model, true, None),
             LLMConfig::OpenRouter { model, .. } => make_llm_settings("openrouter", model, true, None),

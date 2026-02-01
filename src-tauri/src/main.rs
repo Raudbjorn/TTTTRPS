@@ -41,7 +41,7 @@ fn main() {
             }
 
             // Initialize managers (Meilisearch-based)
-            let (cm, sm, ns, creds, vm, sidecar_manager, search_client, personality_store, personality_manager, pipeline, _llm_router, version_manager, world_state_manager, relationship_manager, location_manager, llm_manager, claude_gate, gemini_gate, copilot_gate, setting_pack_loader,
+            let (cm, sm, ns, creds, vm, sidecar_manager, search_client, personality_store, personality_manager, pipeline, _llm_router, version_manager, world_state_manager, relationship_manager, location_manager, llm_manager, claude, gemini, copilot, setting_pack_loader,
                 // Phase 4: Personality Extensions
                 template_store, blend_rule_store, personality_blender, contextual_personality_manager) =
                 commands::AppState::init_defaults();
@@ -119,9 +119,9 @@ fn main() {
                     commands::load_extraction_config_disk(app.handle())
                         .unwrap_or_else(ingestion::ExtractionSettings::default)
                 ),
-                claude_gate,
-                gemini_gate,
-                copilot_gate,
+                claude,
+                gemini,
+                copilot,
                 // Archetype Registry fields - initialized lazily after Meilisearch starts
                 archetype_registry: tokio::sync::RwLock::new(None), // Initialized after Meilisearch is ready
                 vocabulary_manager: tokio::sync::RwLock::new(None), // Initialized after Meilisearch is ready
@@ -297,7 +297,7 @@ fn main() {
             commands::get_llm_config,
             commands::get_router_stats,
             commands::list_ollama_models,
-            commands::list_claude_models,
+            commands::list_anthropic_models,
             commands::list_openai_models,
             commands::list_gemini_models,
             commands::list_openrouter_models,
@@ -629,22 +629,22 @@ fn main() {
             commands::get_extraction_presets,
             commands::check_ocr_availability,
 
-            // Claude Gate OAuth Commands
-            commands::oauth::claude::claude_gate_get_status,
-            commands::oauth::claude::claude_gate_start_oauth,
-            commands::oauth::claude::claude_gate_complete_oauth,
-            commands::oauth::claude::claude_gate_logout,
-            commands::oauth::claude::claude_gate_set_storage_backend,
-            commands::oauth::claude::claude_gate_list_models,
+            // Claude OAuth Commands
+            commands::oauth::claude::claude_get_status,
+            commands::oauth::claude::claude_start_oauth,
+            commands::oauth::claude::claude_complete_oauth,
+            commands::oauth::claude::claude_logout,
+            commands::oauth::claude::claude_set_storage_backend,
+            commands::oauth::claude::claude_list_models,
 
             // Gemini OAuth Commands
-            commands::oauth::gemini::gemini_gate_get_status,
-            commands::oauth::gemini::gemini_gate_start_oauth,
-            commands::oauth::gemini::gemini_gate_complete_oauth,
-            commands::oauth::gemini::gemini_gate_logout,
-            commands::oauth::gemini::gemini_gate_set_storage_backend,
-            commands::oauth::gemini::gemini_gate_oauth_with_callback,
-            commands::oauth::gemini::gemini_gate_list_models,
+            commands::oauth::gemini::gemini_get_status,
+            commands::oauth::gemini::gemini_start_oauth,
+            commands::oauth::gemini::gemini_complete_oauth,
+            commands::oauth::gemini::gemini_logout,
+            commands::oauth::gemini::gemini_set_storage_backend,
+            commands::oauth::gemini::gemini_oauth_with_callback,
+            commands::oauth::gemini::gemini_list_models,
 
             // Copilot OAuth Commands (Device Code Flow)
             commands::oauth::copilot::start_copilot_auth,
@@ -653,7 +653,7 @@ fn main() {
             commands::oauth::copilot::logout_copilot,
             commands::oauth::copilot::get_copilot_usage,
             commands::oauth::copilot::get_copilot_models,
-            commands::oauth::copilot::copilot_gate_set_storage_backend,
+            commands::oauth::copilot::copilot_set_storage_backend,
 
             // Phase 4: Personality Extension Commands (TASK-PERS-014, TASK-PERS-015, TASK-PERS-016, TASK-PERS-017)
             // Template Commands

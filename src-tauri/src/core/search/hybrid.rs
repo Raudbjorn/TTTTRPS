@@ -802,7 +802,7 @@ mod tests {
 
     #[test]
     fn test_filter_building() {
-        let search_client = Arc::new(SearchClient::new("http://localhost:7700", None));
+        let search_client = Arc::new(SearchClient::new("http://localhost:7700", None).unwrap());
         let engine = HybridSearchEngine::with_defaults(search_client);
 
         let options = HybridSearchOptions {
@@ -820,7 +820,7 @@ mod tests {
 
     #[test]
     fn test_filter_building_empty() {
-        let search_client = Arc::new(SearchClient::new("http://localhost:7700", None));
+        let search_client = Arc::new(SearchClient::new("http://localhost:7700", None).unwrap());
         let engine = HybridSearchEngine::with_defaults(search_client);
 
         let options = HybridSearchOptions::default();
@@ -830,7 +830,7 @@ mod tests {
 
     #[test]
     fn test_has_vector_search() {
-        let search_client = Arc::new(SearchClient::new("http://localhost:7700", None));
+        let search_client = Arc::new(SearchClient::new("http://localhost:7700", None).unwrap());
         let engine = HybridSearchEngine::with_defaults(search_client);
 
         // No embedding provider = no vector search

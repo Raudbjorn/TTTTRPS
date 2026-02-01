@@ -104,7 +104,10 @@ impl LLMManager {
             router: LLMRouter::with_defaults(),
             proxy: RwLock::new(None),
             chat_client: RwLock::new(None),
-            proxy_port: 18787,
+            proxy_port: std::env::var("LLM_PROXY_PORT")
+                .ok()
+                .and_then(|p| p.parse().ok())
+                .unwrap_or(18787),
             current_proxy_provider: RwLock::new(None),
         }
     }

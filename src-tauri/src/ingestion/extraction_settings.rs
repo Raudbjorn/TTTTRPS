@@ -14,20 +14,20 @@ pub enum TextExtractionProvider {
     #[default]
     Kreuzberg,
     /// Use Claude API for extraction (better quality, requires API auth)
-    ClaudeGate,
+    Claude,
 }
 
 impl TextExtractionProvider {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Kreuzberg => "kreuzberg",
-            Self::ClaudeGate => "claude_gate",
+            Self::Claude => "claude",
         }
     }
 
     pub fn from_str(s: &str) -> Self {
         match s.to_lowercase().as_str() {
-            "claude_gate" | "claudegate" | "claude" => Self::ClaudeGate,
+            "claude" | "claude_gate" | "claude-gate" => Self::Claude,
             _ => Self::Kreuzberg,
         }
     }
@@ -36,7 +36,7 @@ impl TextExtractionProvider {
     pub fn display_name(&self) -> &'static str {
         match self {
             Self::Kreuzberg => "Kreuzberg (Local)",
-            Self::ClaudeGate => "Claude API",
+            Self::Claude => "Claude API",
         }
     }
 }
@@ -364,7 +364,7 @@ impl ExtractionSettings {
     /// Create settings for Claude-based extraction (high quality, slower)
     pub fn with_claude() -> Self {
         Self {
-            text_extraction_provider: TextExtractionProvider::ClaudeGate,
+            text_extraction_provider: TextExtractionProvider::Claude,
             ocr_enabled: false, // Claude handles scanned docs natively
             ocr_backend: OcrBackend::Disabled,
             force_ocr: false,

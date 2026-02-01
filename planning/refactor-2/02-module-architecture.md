@@ -29,9 +29,9 @@ Pattern: Functional decomposition within a single domain. Each file is focused (
 oauth/
   mod.rs          - Explicit re-exports of types AND commands
   common.rs       - Shared OAuth types (GateTokenInfo, GateOAuthFlowState)
-  claude.rs       - ClaudeGateState, 6 commands
-  gemini.rs       - GeminiGateState, 5 commands
-  copilot.rs      - CopilotGateState, 6 commands
+  claude.rs       - ClaudeState, 6 commands
+  gemini.rs       - GeminiState, 5 commands
+  copilot.rs      - CopilotState, 6 commands
 ```
 
 Pattern: Provider-based decomposition with shared types. Explicit re-exports for type safety.

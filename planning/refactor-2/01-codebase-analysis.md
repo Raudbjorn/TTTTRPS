@@ -110,9 +110,9 @@ This document analyzes `src-tauri/src/commands_legacy.rs` (8303 lines, ~310 Taur
 - `extraction_settings: AsyncRwLock<ExtractionSettings>`
 
 ### OAuth Providers
-- `claude_gate: Arc<ClaudeGateState>`
-- `gemini_gate: Arc<GeminiGateState>`
-- `copilot_gate: Arc<CopilotGateState>`
+- `claude: Arc<ClaudeState>`
+- `gemini: Arc<GeminiState>`
+- `copilot: Arc<CopilotState>`
 
 ### Archetype Registry
 - `archetype_registry: AsyncRwLock<Option<Arc<ArchetypeRegistry>>>`

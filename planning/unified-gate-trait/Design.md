@@ -2,7 +2,7 @@
 
 ## Overview
 
-This design document describes the architecture for unifying `claude_gate` and `gemini_gate` into a shared trait-based system. The core insight is that both implementations share ~70% of their code: OAuth 2.0 + PKCE flows, token storage, error handling, and client lifecycle. Provider-specific differences (API endpoints, token formats, request/response conversion) are isolated into trait implementations.
+This design document describes the architecture for unifying `claude` and `gemini` into a shared trait-based system. The core insight is that both implementations share ~70% of their code: OAuth 2.0 + PKCE flows, token storage, error handling, and client lifecycle. Provider-specific differences (API endpoints, token formats, request/response conversion) are isolated into trait implementations.
 
 ### Design Goals
 
@@ -317,8 +317,8 @@ impl TokenInfo {
 - `expires_at` must be positive Unix timestamp
 
 **Backward Compatibility**:
-- `#[serde(alias = "access")]` supports claude_gate's `access` field
-- `#[serde(alias = "expires")]` supports claude_gate's `expires` field
+- `#[serde(alias = "access")]` supports claude's `access` field
+- `#[serde(alias = "expires")]` supports claude's `expires` field
 - Default `token_type` handles missing field
 
 ### OAuthFlowState
@@ -438,8 +438,8 @@ pub enum AuthError {
 
 ### Backward Compatibility Testing
 
-- Load existing claude_gate token files
-- Load existing gemini_gate token files
+- Load existing claude token files
+- Load existing gemini token files
 - Verify API call compatibility with existing provider code
 
 ## Migration Strategy
@@ -459,6 +459,6 @@ pub enum AuthError {
 - Keep old modules as deprecated
 
 ### Phase 4: Remove Old Code
-- Delete `claude_gate/` and `gemini_gate/` directories
+- Delete `claude/` and `gemini/` directories
 - Remove deprecated re-exports
 - Final cleanup

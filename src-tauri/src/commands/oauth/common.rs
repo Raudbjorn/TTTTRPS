@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 
 // Re-export unified gate types
-pub use crate::gate::{OAuthFlowState as GateOAuthFlowState, TokenInfo as GateTokenInfo};
+pub use crate::oauth::{OAuthFlowState as GateOAuthFlowState, TokenInfo as GateTokenInfo};
 
 /// Common storage backend enum used by all OAuth providers
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

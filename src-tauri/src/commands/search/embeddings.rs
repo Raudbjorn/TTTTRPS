@@ -105,7 +105,7 @@ pub async fn setup_copilot_embeddings(
     });
 
     // First, ensure we're authenticated with Copilot
-    let is_authenticated = state.copilot_gate.is_authenticated().await
+    let is_authenticated = state.copilot.is_authenticated().await
         .map_err(|e| format!("Failed to check Copilot auth: {}", e))?;
 
     if !is_authenticated {
@@ -113,7 +113,7 @@ pub async fn setup_copilot_embeddings(
     }
 
     // Get a valid Copilot API token (refreshing if needed)
-    let api_key = state.copilot_gate.get_valid_token().await
+    let api_key = state.copilot.get_valid_token().await
         .map_err(|e| format!("Failed to get Copilot API token: {}", e))?;
 
     log::info!("Retrieved valid Copilot API token for Meilisearch embeddings");

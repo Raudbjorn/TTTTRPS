@@ -5,13 +5,13 @@ pub mod data;
 pub mod model_selection;
 pub mod extraction;
 pub mod embedding;
-pub mod claude_gate_auth;
+pub mod claude_auth;
 pub mod copilot_auth;
-pub mod gemini_gate_auth;
+pub mod gemini_auth;
 
-pub use claude_gate_auth::{ClaudeGateAuth, ClaudeGateStatusBadge};
+pub use claude_auth::{ClaudeAuth, ClaudeStatusBadge};
 pub use copilot_auth::{CopilotAuth, CopilotStatusBadge};
-pub use gemini_gate_auth::{GeminiGateAuth, GeminiGateStatusBadge};
+pub use gemini_auth::{GeminiAuth, GeminiStatusBadge};
 
 use leptos::prelude::*;
 pub use llm::LLMProvider;

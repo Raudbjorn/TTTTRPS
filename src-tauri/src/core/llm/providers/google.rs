@@ -1,7 +1,7 @@
 //! Google Provider Implementation (API Key-based)
 //!
 //! This is the API key-based Google provider for Gemini models.
-//! For OAuth-based access, use the Gemini provider (via gemini_gate).
+//! For OAuth-based access, use the Gemini provider (via gemini).
 
 use crate::core::llm::cost::{ProviderPricing, TokenUsage};
 use crate::core::llm::router::{

@@ -13,17 +13,25 @@ use super::types::{ExtractionPreset, OcrAvailability};
 // Persistence Helpers
 // ============================================================================
 
-fn get_extraction_config_path(app_handle: &tauri::AppHandle) -> PathBuf {
-    let dir = app_handle.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("."));
+fn get_extraction_config_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let dir = app_handle.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
     if !dir.exists() {
-        let _ = std::fs::create_dir_all(&dir);
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| format!("Failed to create directory {}: {}", dir.display(), e))?;
     }
-    dir.join("extraction_config.json")
+    Ok(dir.join("extraction_config.json"))
 }
 
 /// Load extraction settings from disk
 pub fn load_extraction_config_disk(app_handle: &tauri::AppHandle) -> Option<ExtractionSettings> {
-    let path = get_extraction_config_path(app_handle);
+    let path = match get_extraction_config_path(app_handle) {
+        Ok(p) => p,
+        Err(e) => {
+            log::warn!("Failed to get config path: {}", e);
+            return None;
+        }
+    };
     if path.exists() {
         if let Ok(content) = std::fs::read_to_string(&path) {
             match serde_json::from_str(&content) {
@@ -37,7 +45,7 @@ pub fn load_extraction_config_disk(app_handle: &tauri::AppHandle) -> Option<Extr
 
 /// Save extraction settings to disk
 fn save_extraction_config_disk(app_handle: &tauri::AppHandle, settings: &ExtractionSettings) -> Result<(), String> {
-    let path = get_extraction_config_path(app_handle);
+    let path = get_extraction_config_path(app_handle)?;
     let json = serde_json::to_string_pretty(settings)
         .map_err(|e| format!("Failed to serialize settings: {}", e))?;
     std::fs::write(&path, json)
@@ -70,15 +78,14 @@ pub async fn save_extraction_settings(
     // Validate settings
     settings.validate()?;
 
-    // Save to state
-    let mut settings_guard = state.extraction_settings.write().await;
-    *settings_guard = settings.clone();
-    drop(settings_guard);
-
-    // Persist to disk
+    // Persist to disk first
     save_extraction_config_disk(&app_handle, &settings)?;
 
-    log::info!("Extraction settings saved to memory and disk");
+    // Save to state only on success
+    let mut settings_guard = state.extraction_settings.write().await;
+    *settings_guard = settings;
+
+    log::info!("Extraction settings saved to disk and memory");
     Ok(())
 }
 

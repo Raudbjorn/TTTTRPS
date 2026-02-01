@@ -1,25 +1,27 @@
 //! Extraction provider settings component.
 //!
 //! This module provides UI for configuring text extraction providers,
-//! including Kreuzberg (default) and Claude Gate.
+//! including Kreuzberg (default) and Claude.
+//!
+//! Note: Claude is the new name for Claude Gate.
 
 use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
 use crate::bindings::{
-    claude_gate_get_status, ClaudeGateStatus,
+    claude_get_status, ClaudeStatus,
     get_extraction_settings, save_extraction_settings, TextExtractionProvider,
 };
 use crate::components::design_system::{Card, Badge, BadgeVariant};
 use crate::services::notification_service::show_error;
-use super::ClaudeGateAuth;
+use super::ClaudeAuth;
 
 /// Settings view for text extraction providers.
 #[component]
 pub fn ExtractionSettingsView() -> impl IntoView {
     // State
     let selected_provider = RwSignal::new(TextExtractionProvider::Kreuzberg);
-    let claude_gate_status = RwSignal::new(ClaudeGateStatus::default());
+    let claude_status = RwSignal::new(ClaudeStatus::default());
 
     // Save provider selection to backend
     let save_provider = move |provider: TextExtractionProvider| {
@@ -37,16 +39,16 @@ pub fn ExtractionSettingsView() -> impl IntoView {
         });
     };
 
-    // Initial load - get extraction settings and Claude Gate status
+    // Initial load - get extraction settings and Claude status
     Effect::new(move |_| {
         spawn_local(async move {
             // Load extraction settings
             if let Ok(settings) = get_extraction_settings().await {
                 selected_provider.set(settings.text_extraction_provider);
             }
-            // Load Claude Gate status for the badge
-            if let Ok(status) = claude_gate_get_status().await {
-                claude_gate_status.set(status);
+            // Load Claude status for the badge
+            if let Ok(status) = claude_get_status().await {
+                claude_status.set(status);
             }
         });
     });
@@ -109,26 +111,26 @@ pub fn ExtractionSettingsView() -> impl IntoView {
                         }}
                     </button>
 
-                    // Claude Gate Option
+                    // Claude Option
                     <button
                         class=move || format!(
                             "relative p-4 rounded-xl border-2 text-left transition-all duration-300 hover:scale-[1.02] group {}",
-                            if selected_provider.get() == TextExtractionProvider::ClaudeGate {
+                            if selected_provider.get() == TextExtractionProvider::Claude {
                                 "border-orange-400 bg-[var(--bg-elevated)] ring-2 ring-orange-400/20 shadow-lg"
                             } else {
                                 "border-[var(--border-subtle)] hover:border-[var(--border-strong)] bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)]"
                             }
                         )
                         on:click=move |_| {
-                            selected_provider.set(TextExtractionProvider::ClaudeGate);
-                            save_provider(TextExtractionProvider::ClaudeGate);
+                            selected_provider.set(TextExtractionProvider::Claude);
+                            save_provider(TextExtractionProvider::Claude);
                         }
                     >
                         <div class="flex items-center justify-between mb-2">
                             <span class="font-medium text-[var(--text-primary)] group-hover:text-orange-400 transition-colors">
-                                "Claude Gate"
+                                "Claude API"
                             </span>
-                            {move || if claude_gate_status.get().authenticated {
+                            {move || if claude_status.get().authenticated {
                                 view! { <Badge variant=BadgeVariant::Success>"Authenticated"</Badge> }.into_any()
                             } else {
                                 view! { <Badge variant=BadgeVariant::Warning>"Not Authenticated"</Badge> }.into_any()
@@ -144,7 +146,7 @@ pub fn ExtractionSettingsView() -> impl IntoView {
                         </div>
 
                         // Active indicator
-                        {move || if selected_provider.get() == TextExtractionProvider::ClaudeGate {
+                        {move || if selected_provider.get() == TextExtractionProvider::Claude {
                             view! {
                                 <div class="absolute top-3 right-3 text-orange-400 animate-fade-in">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -160,12 +162,12 @@ pub fn ExtractionSettingsView() -> impl IntoView {
                 </div>
             </Card>
 
-            // Claude Gate Authentication Section (shown when Claude Gate is selected)
-            {move || if selected_provider.get() == TextExtractionProvider::ClaudeGate {
+            // Claude Authentication Section (shown when Claude is selected)
+            {move || if selected_provider.get() == TextExtractionProvider::Claude {
                 view! {
-                    <ClaudeGateAuth
-                        on_status_change=Callback::new(move |status: ClaudeGateStatus| {
-                            claude_gate_status.set(status);
+                    <ClaudeAuth
+                        on_status_change=Callback::new(move |status: ClaudeStatus| {
+                            claude_status.set(status);
                         })
                     />
                 }.into_any()

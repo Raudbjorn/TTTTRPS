@@ -51,9 +51,9 @@ pub struct AppState {
     pub extraction_settings: AsyncRwLock<ExtractionSettings>,
 
     // OAuth Providers
-    pub claude_gate: Arc<ClaudeGateState>,
-    pub gemini_gate: Arc<GeminiGateState>,
-    pub copilot_gate: Arc<CopilotGateState>,
+    pub claude: Arc<ClaudeState>,
+    pub gemini: Arc<GeminiState>,
+    pub copilot: Arc<CopilotState>,
 
     // Archetype Registry (lazy-initialized after Meilisearch)
     pub archetype_registry: AsyncRwLock<Option<Arc<ArchetypeRegistry>>>,
@@ -92,7 +92,7 @@ Additional state types managed independently via `app.manage()`:
 | **Voice** | `voice_manager` | ~25 (extracted) |
 | **Search** | `search_client`, `sidecar_manager`, `ingestion_pipeline` | ~20 |
 | **Personality** | `personality_store`, `personality_manager`, `contextual_personality_manager` | ~25 |
-| **OAuth** | `claude_gate`, `gemini_gate`, `copilot_gate` | ~17 (extracted) |
+| **OAuth** | `claude`, `gemini`, `copilot` | ~17 (extracted) |
 | **Archetype** | `archetype_registry`, `vocabulary_manager`, `setting_pack_loader` | ~25 (extracted) |
 | **Versioning** | `version_manager`, `world_state_manager`, `relationship_manager` | ~30 |
 | **Analytics** | `UsageTrackerState`, `SearchAnalyticsState`, `AuditLoggerState` | ~20 |
@@ -371,8 +371,8 @@ Commands are registered via `tauri::generate_handler!` macro:
     // ...
 
     // OAuth Commands (extracted module)
-    commands::oauth::claude::claude_gate_get_status,
-    commands::oauth::claude::claude_gate_start_oauth,
+    commands::oauth::claude::claude_get_status,
+    commands::oauth::claude::claude_start_oauth,
     // ...
 
     // Archetype Commands (extracted module)
@@ -394,8 +394,8 @@ pub use commands_legacy::*;
 
 // Re-export extracted modules
 pub use oauth::{
-    ClaudeGateState, GeminiGateState, CopilotGateState,
-    claude_gate_get_status, claude_gate_start_oauth, /* ... */
+    ClaudeState, GeminiState, CopilotState,
+    claude_get_status, claude_start_oauth, /* ... */
 };
 
 pub use archetype::{

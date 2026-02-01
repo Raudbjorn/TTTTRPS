@@ -31,9 +31,9 @@ use crate::database::Database;
 
 // Re-export OAuth state types
 pub use super::oauth::{
-    ClaudeGateState, ClaudeGateStorageBackend,
-    GeminiGateState, GeminiGateStorageBackend,
-    CopilotGateState, CopilotGateStorageBackend,
+    ClaudeState, ClaudeStorageBackend,
+    GeminiState, GeminiStorageBackend,
+    CopilotState, CopilotStorageBackend,
 };
 
 // ============================================================================
@@ -64,9 +64,9 @@ pub struct AppState {
     // Document extraction settings
     pub extraction_settings: AsyncRwLock<crate::ingestion::ExtractionSettings>,
     // OAuth Gate clients
-    pub claude_gate: Arc<ClaudeGateState>,
-    pub gemini_gate: Arc<GeminiGateState>,
-    pub copilot_gate: Arc<CopilotGateState>,
+    pub claude: Arc<ClaudeState>,
+    pub gemini: Arc<GeminiState>,
+    pub copilot: Arc<CopilotState>,
     // Archetype Registry for unified character archetype management
     pub archetype_registry: AsyncRwLock<Option<Arc<ArchetypeRegistry>>>,
     // Vocabulary Bank Manager for NPC dialogue phrase management
@@ -99,9 +99,9 @@ impl AppState {
         RelationshipManager,
         crate::core::location_manager::LocationManager,
         Arc<AsyncRwLock<crate::core::llm::LLMManager>>,
-        Arc<ClaudeGateState>,
-        Arc<GeminiGateState>,
-        Arc<CopilotGateState>,
+        Arc<ClaudeState>,
+        Arc<GeminiState>,
+        Arc<CopilotState>,
         Arc<SettingPackLoader>,
         Arc<SettingTemplateStore>,
         Arc<BlendRuleStore>,
@@ -116,32 +116,32 @@ impl AppState {
         let personality_store = Arc::new(PersonalityStore::new());
         let personality_manager = Arc::new(PersonalityApplicationManager::new(personality_store.clone()));
 
-        // Initialize Claude Gate client
-        let claude_gate = match ClaudeGateState::with_defaults() {
+        // Initialize Claude Client
+        let claude = match ClaudeState::with_defaults() {
             Ok(state) => Arc::new(state),
             Err(e) => {
-                log::warn!("Failed to initialize Claude Gate with default storage: {}. Using file storage.", e);
-                Arc::new(ClaudeGateState::new(ClaudeGateStorageBackend::File)
-                    .expect("Failed to initialize Claude Gate with file storage"))
+                log::warn!("Failed to initialize Claude with default storage: {}. Using file storage.", e);
+                Arc::new(ClaudeState::new(ClaudeStorageBackend::File)
+                    .expect("Failed to initialize Claude with file storage"))
             }
         };
 
         // Initialize Gemini client
-        let gemini_gate = match GeminiGateState::with_defaults() {
+        let gemini = match GeminiState::with_defaults() {
             Ok(state) => Arc::new(state),
             Err(e) => {
                 log::warn!("Failed to initialize Gemini with default storage: {}. Using file storage.", e);
-                Arc::new(GeminiGateState::new(GeminiGateStorageBackend::File)
+                Arc::new(GeminiState::new(GeminiStorageBackend::File)
                     .expect("Failed to initialize Gemini with file storage"))
             }
         };
 
         // Initialize Copilot Gate client
-        let copilot_gate = match CopilotGateState::with_defaults() {
+        let copilot = match CopilotState::with_defaults() {
             Ok(state) => Arc::new(state),
             Err(e) => {
                 log::warn!("Failed to initialize Copilot Gate with default storage: {}. Using file storage.", e);
-                Arc::new(CopilotGateState::new(CopilotGateStorageBackend::File)
+                Arc::new(CopilotState::new(CopilotStorageBackend::File)
                     .expect("Failed to initialize Copilot Gate with file storage"))
             }
         };
@@ -190,9 +190,9 @@ impl AppState {
             RelationshipManager::default(),
             crate::core::location_manager::LocationManager::new(),
             Arc::new(AsyncRwLock::new(crate::core::llm::LLMManager::new())),
-            claude_gate,
-            gemini_gate,
-            copilot_gate,
+            claude,
+            gemini,
+            copilot,
             Arc::new(SettingPackLoader::new()),
             template_store,
             blend_rule_store,

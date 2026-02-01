@@ -35,16 +35,16 @@
 //! }
 //! ```
 
-use crate::gate::copilot::{
+use crate::oauth::copilot::{
     ChatResponse as CopilotChatResponse, CopilotClient,
     DeviceFlowPending, Message as CopilotMessage, PollResult, Role as CopilotRole,
     StreamChunk, Content as CopilotContent, ContentPart as CopilotContentPart,
     ImageUrl as CopilotImageUrl, EmbeddingResponse,
 };
-use crate::gate::copilot::storage::{GateStorageAdapter, MemoryTokenStorage};
-use crate::gate::storage::FileTokenStorage;
+use crate::oauth::copilot::storage::{GateStorageAdapter, MemoryTokenStorage};
+use crate::oauth::storage::FileTokenStorage;
 #[cfg(feature = "keyring")]
-use crate::gate::storage::KeyringTokenStorage;
+use crate::oauth::storage::KeyringTokenStorage;
 
 use crate::core::llm::cost::{ProviderPricing, TokenUsage};
 use crate::core::llm::router::{
@@ -158,10 +158,10 @@ pub struct CopilotLLMProvider {
 #[async_trait]
 trait CopilotClientTrait: Send + Sync {
     async fn is_authenticated(&self) -> bool;
-    async fn start_device_flow(&self) -> crate::gate::copilot::Result<DeviceFlowPending>;
-    async fn poll_for_token(&self, pending: &DeviceFlowPending) -> crate::gate::copilot::Result<PollResult>;
-    async fn complete_auth(&self, github_token: String) -> crate::gate::copilot::Result<()>;
-    async fn sign_out(&self) -> crate::gate::copilot::Result<()>;
+    async fn start_device_flow(&self) -> crate::oauth::copilot::Result<DeviceFlowPending>;
+    async fn poll_for_token(&self, pending: &DeviceFlowPending) -> crate::oauth::copilot::Result<PollResult>;
+    async fn complete_auth(&self, github_token: String) -> crate::oauth::copilot::Result<()>;
+    async fn sign_out(&self) -> crate::oauth::copilot::Result<()>;
     async fn send_message(
         &self,
         model: &str,
@@ -169,7 +169,7 @@ trait CopilotClientTrait: Send + Sync {
         messages: Vec<CopilotMessage>,
         system: Option<String>,
         temperature: Option<f32>,
-    ) -> crate::gate::copilot::Result<CopilotChatResponse>;
+    ) -> crate::oauth::copilot::Result<CopilotChatResponse>;
     async fn stream_message(
         &self,
         model: &str,
@@ -177,10 +177,10 @@ trait CopilotClientTrait: Send + Sync {
         messages: Vec<CopilotMessage>,
         system: Option<String>,
         temperature: Option<f32>,
-    ) -> crate::gate::copilot::Result<
-        std::pin::Pin<Box<dyn futures_util::Stream<Item = crate::gate::copilot::Result<StreamChunk>> + Send>>,
+    ) -> crate::oauth::copilot::Result<
+        std::pin::Pin<Box<dyn futures_util::Stream<Item = crate::oauth::copilot::Result<StreamChunk>> + Send>>,
     >;
-    async fn embeddings(&self, text: &str) -> crate::gate::copilot::Result<EmbeddingResponse>;
+    async fn embeddings(&self, text: &str) -> crate::oauth::copilot::Result<EmbeddingResponse>;
 }
 
 /// Wrapper for CopilotClient with FileTokenStorage
@@ -194,19 +194,19 @@ impl CopilotClientTrait for FileStorageClient {
         self.client.is_authenticated().await
     }
 
-    async fn start_device_flow(&self) -> crate::gate::copilot::Result<DeviceFlowPending> {
+    async fn start_device_flow(&self) -> crate::oauth::copilot::Result<DeviceFlowPending> {
         self.client.start_device_flow().await
     }
 
-    async fn poll_for_token(&self, pending: &DeviceFlowPending) -> crate::gate::copilot::Result<PollResult> {
+    async fn poll_for_token(&self, pending: &DeviceFlowPending) -> crate::oauth::copilot::Result<PollResult> {
         self.client.poll_for_token(pending).await
     }
 
-    async fn complete_auth(&self, github_token: String) -> crate::gate::copilot::Result<()> {
+    async fn complete_auth(&self, github_token: String) -> crate::oauth::copilot::Result<()> {
         self.client.complete_auth(github_token).await
     }
 
-    async fn sign_out(&self) -> crate::gate::copilot::Result<()> {
+    async fn sign_out(&self) -> crate::oauth::copilot::Result<()> {
         self.client.sign_out().await
     }
 
@@ -217,7 +217,7 @@ impl CopilotClientTrait for FileStorageClient {
         messages: Vec<CopilotMessage>,
         system: Option<String>,
         temperature: Option<f32>,
-    ) -> crate::gate::copilot::Result<CopilotChatResponse> {
+    ) -> crate::oauth::copilot::Result<CopilotChatResponse> {
         let mut builder = self.client.chat()
             .model(model)
             .max_tokens(max_tokens);
@@ -243,8 +243,8 @@ impl CopilotClientTrait for FileStorageClient {
         messages: Vec<CopilotMessage>,
         system: Option<String>,
         temperature: Option<f32>,
-    ) -> crate::gate::copilot::Result<
-        std::pin::Pin<Box<dyn futures_util::Stream<Item = crate::gate::copilot::Result<StreamChunk>> + Send>>,
+    ) -> crate::oauth::copilot::Result<
+        std::pin::Pin<Box<dyn futures_util::Stream<Item = crate::oauth::copilot::Result<StreamChunk>> + Send>>,
     > {
         let mut builder = self.client.chat()
             .model(model)
@@ -264,7 +264,7 @@ impl CopilotClientTrait for FileStorageClient {
         builder.send_stream().await
     }
 
-    async fn embeddings(&self, text: &str) -> crate::gate::copilot::Result<EmbeddingResponse> {
+    async fn embeddings(&self, text: &str) -> crate::oauth::copilot::Result<EmbeddingResponse> {
         self.client.embeddings().input(text).send().await
     }
 }
@@ -282,19 +282,19 @@ impl CopilotClientTrait for KeyringStorageClient {
         self.client.is_authenticated().await
     }
 
-    async fn start_device_flow(&self) -> crate::gate::copilot::Result<DeviceFlowPending> {
+    async fn start_device_flow(&self) -> crate::oauth::copilot::Result<DeviceFlowPending> {
         self.client.start_device_flow().await
     }
 
-    async fn poll_for_token(&self, pending: &DeviceFlowPending) -> crate::gate::copilot::Result<PollResult> {
+    async fn poll_for_token(&self, pending: &DeviceFlowPending) -> crate::oauth::copilot::Result<PollResult> {
         self.client.poll_for_token(pending).await
     }
 
-    async fn complete_auth(&self, github_token: String) -> crate::gate::copilot::Result<()> {
+    async fn complete_auth(&self, github_token: String) -> crate::oauth::copilot::Result<()> {
         self.client.complete_auth(github_token).await
     }
 
-    async fn sign_out(&self) -> crate::gate::copilot::Result<()> {
+    async fn sign_out(&self) -> crate::oauth::copilot::Result<()> {
         self.client.sign_out().await
     }
 
@@ -305,7 +305,7 @@ impl CopilotClientTrait for KeyringStorageClient {
         messages: Vec<CopilotMessage>,
         system: Option<String>,
         temperature: Option<f32>,
-    ) -> crate::gate::copilot::Result<CopilotChatResponse> {
+    ) -> crate::oauth::copilot::Result<CopilotChatResponse> {
         let mut builder = self.client.chat()
             .model(model)
             .max_tokens(max_tokens);
@@ -331,8 +331,8 @@ impl CopilotClientTrait for KeyringStorageClient {
         messages: Vec<CopilotMessage>,
         system: Option<String>,
         temperature: Option<f32>,
-    ) -> crate::gate::copilot::Result<
-        std::pin::Pin<Box<dyn futures_util::Stream<Item = crate::gate::copilot::Result<StreamChunk>> + Send>>,
+    ) -> crate::oauth::copilot::Result<
+        std::pin::Pin<Box<dyn futures_util::Stream<Item = crate::oauth::copilot::Result<StreamChunk>> + Send>>,
     > {
         let mut builder = self.client.chat()
             .model(model)
@@ -352,7 +352,7 @@ impl CopilotClientTrait for KeyringStorageClient {
         builder.send_stream().await
     }
 
-    async fn embeddings(&self, text: &str) -> crate::gate::copilot::Result<EmbeddingResponse> {
+    async fn embeddings(&self, text: &str) -> crate::oauth::copilot::Result<EmbeddingResponse> {
         self.client.embeddings().input(text).send().await
     }
 }
@@ -368,19 +368,19 @@ impl CopilotClientTrait for MemoryStorageClient {
         self.client.is_authenticated().await
     }
 
-    async fn start_device_flow(&self) -> crate::gate::copilot::Result<DeviceFlowPending> {
+    async fn start_device_flow(&self) -> crate::oauth::copilot::Result<DeviceFlowPending> {
         self.client.start_device_flow().await
     }
 
-    async fn poll_for_token(&self, pending: &DeviceFlowPending) -> crate::gate::copilot::Result<PollResult> {
+    async fn poll_for_token(&self, pending: &DeviceFlowPending) -> crate::oauth::copilot::Result<PollResult> {
         self.client.poll_for_token(pending).await
     }
 
-    async fn complete_auth(&self, github_token: String) -> crate::gate::copilot::Result<()> {
+    async fn complete_auth(&self, github_token: String) -> crate::oauth::copilot::Result<()> {
         self.client.complete_auth(github_token).await
     }
 
-    async fn sign_out(&self) -> crate::gate::copilot::Result<()> {
+    async fn sign_out(&self) -> crate::oauth::copilot::Result<()> {
         self.client.sign_out().await
     }
 
@@ -391,7 +391,7 @@ impl CopilotClientTrait for MemoryStorageClient {
         messages: Vec<CopilotMessage>,
         system: Option<String>,
         temperature: Option<f32>,
-    ) -> crate::gate::copilot::Result<CopilotChatResponse> {
+    ) -> crate::oauth::copilot::Result<CopilotChatResponse> {
         let mut builder = self.client.chat()
             .model(model)
             .max_tokens(max_tokens);
@@ -417,8 +417,8 @@ impl CopilotClientTrait for MemoryStorageClient {
         messages: Vec<CopilotMessage>,
         system: Option<String>,
         temperature: Option<f32>,
-    ) -> crate::gate::copilot::Result<
-        std::pin::Pin<Box<dyn futures_util::Stream<Item = crate::gate::copilot::Result<StreamChunk>> + Send>>,
+    ) -> crate::oauth::copilot::Result<
+        std::pin::Pin<Box<dyn futures_util::Stream<Item = crate::oauth::copilot::Result<StreamChunk>> + Send>>,
     > {
         let mut builder = self.client.chat()
             .model(model)
@@ -438,7 +438,7 @@ impl CopilotClientTrait for MemoryStorageClient {
         builder.send_stream().await
     }
 
-    async fn embeddings(&self, text: &str) -> crate::gate::copilot::Result<EmbeddingResponse> {
+    async fn embeddings(&self, text: &str) -> crate::oauth::copilot::Result<EmbeddingResponse> {
         self.client.embeddings().input(text).send().await
     }
 }
@@ -496,7 +496,7 @@ impl CopilotLLMProvider {
     ) -> Result<Self> {
         let (client, storage_name): (Arc<dyn CopilotClientTrait>, String) = match backend {
             CopilotStorageBackend::File => {
-                let storage = FileTokenStorage::default_path().map_err(|e| {
+                let storage = FileTokenStorage::app_data_path().map_err(|e| {
                     LLMError::NotConfigured(format!("Failed to create file storage: {}", e))
                 })?;
                 let adapter = GateStorageAdapter::new(storage);
@@ -549,7 +549,7 @@ impl CopilotLLMProvider {
                             "keyring".to_string(),
                         )
                     } else {
-                        let storage = FileTokenStorage::default_path().map_err(|e| {
+                        let storage = FileTokenStorage::app_data_path().map_err(|e| {
                             LLMError::NotConfigured(format!("Failed to create file storage: {}", e))
                         })?;
                         let adapter = GateStorageAdapter::new(storage);
@@ -565,7 +565,7 @@ impl CopilotLLMProvider {
                 }
                 #[cfg(not(feature = "keyring"))]
                 {
-                    let storage = FileTokenStorage::default_path().map_err(|e| {
+                    let storage = FileTokenStorage::app_data_path().map_err(|e| {
                         LLMError::NotConfigured(format!("Failed to create file storage: {}", e))
                     })?;
                     let adapter = GateStorageAdapter::new(storage);
@@ -838,7 +838,7 @@ impl LLMProvider for CopilotLLMProvider {
                     LLMError::AuthError(e.to_string())
                 } else {
                     match &e {
-                        crate::gate::copilot::Error::Api { status, message } => {
+                        crate::oauth::copilot::Error::Api { status, message } => {
                             if *status == 429 {
                                 LLMError::RateLimited { retry_after_secs: 60 }
                             } else {
@@ -848,7 +848,7 @@ impl LLMProvider for CopilotLLMProvider {
                                 }
                             }
                         }
-                        crate::gate::copilot::Error::RateLimited { retry_after } => {
+                        crate::oauth::copilot::Error::RateLimited { retry_after } => {
                             LLMError::RateLimited {
                                 retry_after_secs: retry_after.unwrap_or(60),
                             }
@@ -1033,11 +1033,11 @@ impl LLMProvider for CopilotLLMProvider {
                 } else {
                     match &e {
                         // Note: HTTP 429 is already converted to Error::RateLimited by the client
-                        crate::gate::copilot::Error::Api { status, message } => LLMError::ApiError {
+                        crate::oauth::copilot::Error::Api { status, message } => LLMError::ApiError {
                             status: *status,
                             message: message.clone(),
                         },
-                        crate::gate::copilot::Error::RateLimited { retry_after } => {
+                        crate::oauth::copilot::Error::RateLimited { retry_after } => {
                             LLMError::RateLimited {
                                 retry_after_secs: retry_after.unwrap_or(DEFAULT_RETRY_AFTER_SECS),
                             }

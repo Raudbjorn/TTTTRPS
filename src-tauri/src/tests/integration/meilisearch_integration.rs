@@ -29,7 +29,7 @@ const TEST_KEY: &str = "ttrpg-assistant-dev-key";
 
 /// Create a test search client
 fn test_client() -> SearchClient {
-    SearchClient::new(TEST_HOST, Some(TEST_KEY))
+    SearchClient::new(TEST_HOST, Some(TEST_KEY)).expect("Failed to create SearchClient")
 }
 
 /// Helper to create a test document
@@ -974,7 +974,7 @@ async fn test_search_nonexistent_index() {
 #[tokio::test]
 async fn test_invalid_connection() {
     // Create client with invalid host
-    let client = SearchClient::new("http://invalid-host:9999", None);
+    let client = SearchClient::new("http://invalid-host:9999", None).unwrap();
 
     // Health check should fail
     let healthy = client.health_check().await;

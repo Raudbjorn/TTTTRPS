@@ -14,13 +14,15 @@
 //! Run specific test: `cargo test llm_router`
 //! Run voice tests: `cargo test voice_manager`
 //! Run security tests: `cargo test security`
-//! Run session tests: `cargo test session_manager`
+//! Run session tests: `cargo test session`
 //! Run character gen tests: `cargo test character_gen`
 //! Run edge case tests: `cargo test edge_cases`
 
+// Modular test organization
+mod session;
+
+// Remaining monolithic test files
 mod voice_manager_tests;
-mod security_tests;
-mod session_manager_tests;
 mod edge_cases_tests;
 
 pub mod providers;

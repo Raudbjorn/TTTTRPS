@@ -16,7 +16,7 @@
 //! use crate::core::archetype::meilisearch::ArchetypeIndexManager;
 //! use crate::core::search::SearchClient;
 //!
-//! let search_client = SearchClient::new("http://localhost:7700", None);
+//! let search_client = SearchClient::new("http://localhost:7700", None).unwrap();
 //! let index_manager = ArchetypeIndexManager::new(search_client);
 //!
 //! // Ensure all indexes exist with proper configuration

@@ -42,27 +42,27 @@ pub use state::AppState;
 // Re-export error types
 pub use error::{CommandError, CommandResult};
 
-// Re-export OAuth types and commands (these will shadow the ones from commands_legacy)
+// Re-export OAuth types and commands
 pub use oauth::{
     // State types
-    ClaudeGateState, ClaudeGateStorageBackend,
-    GeminiGateState, GeminiGateStorageBackend,
-    CopilotGateState, CopilotGateStorageBackend,
+    ClaudeState, ClaudeStorageBackend,
+    GeminiState, GeminiStorageBackend,
+    CopilotState, CopilotStorageBackend,
     // Claude response types
-    ClaudeGateStatusResponse, ClaudeGateOAuthStartResponse, ClaudeGateOAuthCompleteResponse,
-    ClaudeGateLogoutResponse, ClaudeGateSetStorageResponse, ClaudeGateModelInfo,
+    ClaudeStatusResponse, ClaudeOAuthStartResponse, ClaudeOAuthCompleteResponse,
+    ClaudeLogoutResponse, ClaudeSetStorageResponse, ClaudeModelInfo,
     // Gemini response types
-    GeminiGateStatusResponse, GeminiGateOAuthStartResponse, GeminiGateOAuthCompleteResponse,
-    GeminiGateLogoutResponse, GeminiGateSetStorageResponse,
+    GeminiStatusResponse, GeminiOAuthStartResponse, GeminiOAuthCompleteResponse,
+    GeminiLogoutResponse, GeminiSetStorageResponse,
     // Copilot response types
     CopilotDeviceCodeResponse, CopilotAuthPollResult, CopilotAuthStatus,
-    CopilotUsageInfo, CopilotQuotaDetail, CopilotGateModelInfo,
+    CopilotUsageInfo, CopilotQuotaDetail, CopilotModelInfo,
     // Claude commands
-    claude_gate_get_status, claude_gate_start_oauth, claude_gate_complete_oauth,
-    claude_gate_logout, claude_gate_set_storage_backend, claude_gate_list_models,
+    claude_get_status, claude_start_oauth, claude_complete_oauth,
+    claude_logout, claude_set_storage_backend, claude_list_models,
     // Gemini commands
-    gemini_gate_get_status, gemini_gate_start_oauth, gemini_gate_complete_oauth,
-    gemini_gate_logout, gemini_gate_set_storage_backend,
+    gemini_get_status, gemini_start_oauth, gemini_complete_oauth,
+    gemini_logout, gemini_set_storage_backend,
     // Copilot commands
     start_copilot_auth, poll_copilot_auth, check_copilot_auth,
     logout_copilot, get_copilot_usage, get_copilot_models,

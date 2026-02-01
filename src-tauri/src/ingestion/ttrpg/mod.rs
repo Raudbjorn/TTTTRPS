@@ -45,6 +45,7 @@ pub use attribute_extractor::{
     FilterableFields,
 };
 pub use vocabulary::{
+    // Trait and implementations
     GameVocabulary, DnD5eVocabulary, Pf2eVocabulary,
     // Comprehensive vocabulary lists
     GENRES, FANTASY_CLASSES, SCIFI_CLASSES, HORROR_CLASSES, MODERN_CLASSES,
@@ -62,12 +63,14 @@ pub use vocabulary::{
     // Query processing (ported from MDMAI)
     TTRPG_CORE_VOCABULARY, QUERY_EXPANSIONS, QUERY_SYNONYMS, MECHANIC_TYPE_KEYWORDS,
     expand_query_term, expand_query, detect_mechanic_type, extract_semantic_keywords,
-    fuzzy_match, correct_spelling, correct_query_spelling,
+    fuzzy_match, levenshtein_distance, correct_spelling, correct_query_spelling,
     // BM25 and search (ported from MDMAI)
     BM25_STOP_WORDS, is_stop_word, filter_stop_words,
     SOURCE_BOOK_PATTERNS, detect_source_book,
     HEADER_PATTERNS, detect_header_level,
     DICE_PATTERNS, TABLE_ROW_PATTERNS, contains_dice_notation, count_dice_notation,
+    // Configuration modules
+    chunking_config, fusion_config,
 };
 pub use game_detector::{detect_game_system, detect_game_system_with_confidence, GameSystem, DetectionResult};
 pub use boundary_scorer::{BoundaryScorer, BoundaryType, BoundaryMatch};

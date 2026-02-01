@@ -8,13 +8,13 @@ use gloo_timers::callback::Timeout;
 #[allow(dead_code)]
 const SIDECAR_DM_EXTENSION_URL: &str = "https://github.com/Raudbjorn/sidecar-dm-gemini-extension";
 use crate::bindings::{
-    check_llm_health, configure_llm, get_llm_config, list_claude_models, list_gemini_models,
+    check_llm_health, configure_llm, get_llm_config, list_anthropic_models, list_gemini_models,
     list_ollama_models, list_openai_models, list_openrouter_models, list_provider_models,
     save_api_key, HealthStatus, LLMSettings, ModelInfo, OllamaModel,
     // Claude OAuth
-    claude_gate_get_status, claude_gate_list_models, ClaudeGateStatus,
+    claude_get_status, claude_list_models, ClaudeStatus,
     // Gemini OAuth
-    gemini_gate_list_models, GeminiGateStatus,
+    gemini_list_models, GeminiStatus,
     // Copilot OAuth
     check_copilot_auth, get_copilot_models, CopilotAuthStatus,
     // Embedding configuration
@@ -24,7 +24,7 @@ use crate::bindings::{
 };
 use crate::components::design_system::{Badge, BadgeVariant, Button, ButtonVariant, Card, Input};
 use crate::services::notification_service::{show_error, show_success};
-use super::{ClaudeGateAuth, CopilotAuth, GeminiGateAuth};
+use super::{ClaudeAuth, CopilotAuth, GeminiAuth};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum LLMProvider {
@@ -235,13 +235,13 @@ pub fn LLMSettingsView() -> impl IntoView {
     let provider_statuses = RwSignal::new(HashMap::<String, bool>::new());
 
     // Claude Gate OAuth status (for badge display and model fetching)
-    let claude_gate_status = RwSignal::new(ClaudeGateStatus::default());
+    let claude_status = RwSignal::new(ClaudeStatus::default());
 
     // Copilot OAuth status (for badge display and model fetching)
     let copilot_status = RwSignal::new(CopilotAuthStatus::default());
 
     // Gemini OAuth status (for badge display and model fetching)
-    let gemini_gate_status = RwSignal::new(GeminiGateStatus::default());
+    let gemini_status = RwSignal::new(GeminiStatus::default());
 
     // --- Helpers ---
 
@@ -290,12 +290,12 @@ pub fn LLMSettingsView() -> impl IntoView {
         spawn_local(async move {
             is_loading_models.set(true);
             let models = match provider {
-                LLMProvider::AnthropicAPI => list_claude_models(api_key).await.unwrap_or_default(),
+                LLMProvider::AnthropicAPI => list_anthropic_models(api_key).await.unwrap_or_default(),
                 LLMProvider::OpenAI => list_openai_models(api_key).await.unwrap_or_default(),
                 LLMProvider::Google => list_gemini_models(api_key).await.unwrap_or_default(),
                 LLMProvider::Gemini => {
                     // Gemini uses OAuth - fetch models from the Cloud Code API
-                    match gemini_gate_list_models().await {
+                    match gemini_list_models().await {
                         Ok(gate_models) => gate_models
                             .into_iter()
                             .map(|m| ModelInfo { id: m.id.clone(), name: m.name, description: m.description })
@@ -309,12 +309,15 @@ pub fn LLMSettingsView() -> impl IntoView {
                 LLMProvider::OpenRouter => list_openrouter_models().await.unwrap_or_default(),
                 LLMProvider::Claude => {
                     // Fetch models from Claude API (OAuth authenticated)
-                    match claude_gate_list_models().await {
-                        Ok(gate_models) => gate_models
+                    match claude_list_models().await {
+                        Ok(gate_models) if !gate_models.is_empty() => gate_models
                             .into_iter()
                             .map(|m| ModelInfo { id: m.id.clone(), name: m.name, description: None })
                             .collect(),
-                        Err(_) => Vec::new(),
+                        _ => {
+                            // Fall back to default models list if not authenticated or empty
+                            list_anthropic_models(None).await.unwrap_or_default()
+                        }
                     }
                 }
                 LLMProvider::Copilot => {
@@ -372,10 +375,10 @@ pub fn LLMSettingsView() -> impl IntoView {
             }
 
             // Check Claude OAuth status
-            match claude_gate_get_status().await {
+            match claude_get_status().await {
                 Ok(status) => {
                     statuses.insert("claude".to_string(), status.authenticated);
-                    claude_gate_status.set(status);
+                    claude_status.set(status);
                 }
                 Err(_) => {
                     statuses.insert("claude".to_string(), false);
@@ -478,6 +481,11 @@ pub fn LLMSettingsView() -> impl IntoView {
                      host: if provider == LLMProvider::Ollama { Some(key_or_host.clone()) } else { None },
                      model: model.clone(),
                      embedding_model: if provider == LLMProvider::Ollama { Some(emb.clone()) } else { None },
+                     storage_backend: if provider == LLMProvider::Claude {
+                         Some(claude_status.get_untracked().storage_backend)
+                     } else {
+                         None
+                     },
                  };
 
                  match configure_llm(settings).await {
@@ -619,12 +627,12 @@ pub fn LLMSettingsView() -> impl IntoView {
                                     // Claude OAuth panel - uses shared component
                                     view! {
                                         <div class="space-y-3">
-                                            <ClaudeGateAuth
+                                            <ClaudeAuth
                                                 show_card=false
-                                                on_status_change=Callback::new(move |status: ClaudeGateStatus| {
+                                                on_status_change=Callback::new(move |status: ClaudeStatus| {
                                                     let is_ready = status.authenticated;
                                                     provider_statuses.update(|map| { map.insert("claude".to_string(), is_ready); });
-                                                    claude_gate_status.set(status);
+                                                    claude_status.set(status);
                                                     // Trigger health check and model fetch after auth status changes
                                                     if is_ready {
                                                         spawn_local(async move {
@@ -677,12 +685,12 @@ pub fn LLMSettingsView() -> impl IntoView {
                                     // Gemini OAuth panel - uses shared component
                                     view! {
                                         <div class="space-y-3">
-                                            <GeminiGateAuth
+                                            <GeminiAuth
                                                 show_card=false
-                                                on_status_change=Callback::new(move |status: GeminiGateStatus| {
+                                                on_status_change=Callback::new(move |status: GeminiStatus| {
                                                     let is_ready = status.authenticated;
                                                     provider_statuses.update(|map| { map.insert("gemini".to_string(), is_ready); });
-                                                    gemini_gate_status.set(status);
+                                                    gemini_status.set(status);
                                                     // Trigger health check and model fetch after auth status changes
                                                     if is_ready {
                                                         spawn_local(async move {

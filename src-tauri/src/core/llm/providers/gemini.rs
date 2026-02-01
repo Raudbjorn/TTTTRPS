@@ -1,6 +1,6 @@
 //! Gemini Provider Implementation
 //!
-//! OAuth-based Google Cloud Code API access using the `gemini_gate` module.
+//! OAuth-based Google Cloud Code API access using the `gemini` module.
 //! This provider enables Gemini API access without requiring an API key
 //! by using Google OAuth 2.0 PKCE flow for authentication.
 //!
@@ -34,12 +34,12 @@
 //! }
 //! ```
 
-use crate::gate::gemini::{
+use crate::oauth::gemini::{
     CloudCodeClient, ContentDelta, FileTokenStorage,
     MemoryTokenStorage, MessagesResponse, StreamEvent, TokenInfo,
 };
 #[cfg(feature = "keyring")]
-use crate::gate::gemini::KeyringTokenStorage;
+use crate::oauth::gemini::KeyringTokenStorage;
 
 use crate::core::llm::cost::{ProviderPricing, TokenUsage};
 use crate::core::llm::router::{
@@ -72,7 +72,7 @@ const DEFAULT_MAX_TOKENS: u32 = 8192;
 #[serde(rename_all = "lowercase")]
 #[derive(Default)]
 pub enum GeminiStorageBackend {
-    /// File-based storage (~/.config/antigravity-gate/auth.json)
+    /// File-based storage (~/.local/share/ttrpg-assistant/oauth-tokens.json)
     File,
     /// System keyring (GNOME Keyring, macOS Keychain, Windows Credential Manager)
     #[cfg(feature = "keyring")]
@@ -135,7 +135,7 @@ impl Default for GeminiStatus {
 
 /// Gemini provider using OAuth authentication.
 ///
-/// This provider uses the `gemini_gate` module to authenticate with
+/// This provider uses the `gemini` module to authenticate with
 /// Google's OAuth 2.0 PKCE flow, enabling API access without
 /// requiring an API key.
 pub struct GeminiProvider {
@@ -152,34 +152,34 @@ pub struct GeminiProvider {
 /// Trait to abstract over different storage backends
 #[async_trait]
 trait GeminiClientTrait: Send + Sync {
-    async fn is_authenticated(&self) -> crate::gate::gemini::Result<bool>;
+    async fn is_authenticated(&self) -> crate::oauth::gemini::Result<bool>;
     async fn start_oauth_flow(
         &self,
-    ) -> crate::gate::gemini::Result<(String, crate::gate::gemini::OAuthFlowState)>;
+    ) -> crate::oauth::gemini::Result<(String, crate::oauth::gemini::OAuthFlowState)>;
     async fn complete_oauth_flow(
         &self,
         code: &str,
         state: Option<&str>,
-    ) -> crate::gate::gemini::Result<TokenInfo>;
-    async fn logout(&self) -> crate::gate::gemini::Result<()>;
-    async fn get_token_info(&self) -> crate::gate::gemini::Result<Option<TokenInfo>>;
+    ) -> crate::oauth::gemini::Result<TokenInfo>;
+    async fn logout(&self) -> crate::oauth::gemini::Result<()>;
+    async fn get_token_info(&self) -> crate::oauth::gemini::Result<Option<TokenInfo>>;
     async fn send_message(
         &self,
         model: &str,
         max_tokens: u32,
-        messages: Vec<crate::gate::gemini::Message>,
+        messages: Vec<crate::oauth::gemini::Message>,
         system: Option<String>,
         temperature: Option<f32>,
-    ) -> crate::gate::gemini::Result<MessagesResponse>;
+    ) -> crate::oauth::gemini::Result<MessagesResponse>;
     async fn stream_message(
         &self,
         model: &str,
         max_tokens: u32,
-        messages: Vec<crate::gate::gemini::Message>,
+        messages: Vec<crate::oauth::gemini::Message>,
         system: Option<String>,
         temperature: Option<f32>,
-    ) -> crate::gate::gemini::Result<
-        mpsc::Receiver<crate::gate::gemini::Result<StreamEvent>>,
+    ) -> crate::oauth::gemini::Result<
+        mpsc::Receiver<crate::oauth::gemini::Result<StreamEvent>>,
     >;
 }
 
@@ -190,13 +190,13 @@ struct FileStorageClient {
 
 #[async_trait]
 impl GeminiClientTrait for FileStorageClient {
-    async fn is_authenticated(&self) -> crate::gate::gemini::Result<bool> {
+    async fn is_authenticated(&self) -> crate::oauth::gemini::Result<bool> {
         self.client.is_authenticated().await
     }
 
     async fn start_oauth_flow(
         &self,
-    ) -> crate::gate::gemini::Result<(String, crate::gate::gemini::OAuthFlowState)> {
+    ) -> crate::oauth::gemini::Result<(String, crate::oauth::gemini::OAuthFlowState)> {
         self.client.start_oauth_flow().await
     }
 
@@ -204,15 +204,15 @@ impl GeminiClientTrait for FileStorageClient {
         &self,
         code: &str,
         state: Option<&str>,
-    ) -> crate::gate::gemini::Result<TokenInfo> {
+    ) -> crate::oauth::gemini::Result<TokenInfo> {
         self.client.complete_oauth_flow(code, state).await
     }
 
-    async fn logout(&self) -> crate::gate::gemini::Result<()> {
+    async fn logout(&self) -> crate::oauth::gemini::Result<()> {
         self.client.logout().await
     }
 
-    async fn get_token_info(&self) -> crate::gate::gemini::Result<Option<TokenInfo>> {
+    async fn get_token_info(&self) -> crate::oauth::gemini::Result<Option<TokenInfo>> {
         self.client.get_token_info().await
     }
 
@@ -220,10 +220,10 @@ impl GeminiClientTrait for FileStorageClient {
         &self,
         model: &str,
         max_tokens: u32,
-        messages: Vec<crate::gate::gemini::Message>,
+        messages: Vec<crate::oauth::gemini::Message>,
         system: Option<String>,
         temperature: Option<f32>,
-    ) -> crate::gate::gemini::Result<MessagesResponse> {
+    ) -> crate::oauth::gemini::Result<MessagesResponse> {
         let mut builder = Arc::clone(&self.client)
             .messages()
             .model(model)
@@ -247,10 +247,10 @@ impl GeminiClientTrait for FileStorageClient {
         &self,
         model: &str,
         max_tokens: u32,
-        messages: Vec<crate::gate::gemini::Message>,
+        messages: Vec<crate::oauth::gemini::Message>,
         system: Option<String>,
         temperature: Option<f32>,
-    ) -> crate::gate::gemini::Result<mpsc::Receiver<crate::gate::gemini::Result<StreamEvent>>>
+    ) -> crate::oauth::gemini::Result<mpsc::Receiver<crate::oauth::gemini::Result<StreamEvent>>>
     {
         let mut builder = Arc::clone(&self.client)
             .messages()
@@ -293,13 +293,13 @@ struct KeyringStorageClient {
 #[cfg(feature = "keyring")]
 #[async_trait]
 impl GeminiClientTrait for KeyringStorageClient {
-    async fn is_authenticated(&self) -> crate::gate::gemini::Result<bool> {
+    async fn is_authenticated(&self) -> crate::oauth::gemini::Result<bool> {
         self.client.is_authenticated().await
     }
 
     async fn start_oauth_flow(
         &self,
-    ) -> crate::gate::gemini::Result<(String, crate::gate::gemini::OAuthFlowState)> {
+    ) -> crate::oauth::gemini::Result<(String, crate::oauth::gemini::OAuthFlowState)> {
         self.client.start_oauth_flow().await
     }
 
@@ -307,15 +307,15 @@ impl GeminiClientTrait for KeyringStorageClient {
         &self,
         code: &str,
         state: Option<&str>,
-    ) -> crate::gate::gemini::Result<TokenInfo> {
+    ) -> crate::oauth::gemini::Result<TokenInfo> {
         self.client.complete_oauth_flow(code, state).await
     }
 
-    async fn logout(&self) -> crate::gate::gemini::Result<()> {
+    async fn logout(&self) -> crate::oauth::gemini::Result<()> {
         self.client.logout().await
     }
 
-    async fn get_token_info(&self) -> crate::gate::gemini::Result<Option<TokenInfo>> {
+    async fn get_token_info(&self) -> crate::oauth::gemini::Result<Option<TokenInfo>> {
         self.client.get_token_info().await
     }
 
@@ -323,10 +323,10 @@ impl GeminiClientTrait for KeyringStorageClient {
         &self,
         model: &str,
         max_tokens: u32,
-        messages: Vec<crate::gate::gemini::Message>,
+        messages: Vec<crate::oauth::gemini::Message>,
         system: Option<String>,
         temperature: Option<f32>,
-    ) -> crate::gate::gemini::Result<MessagesResponse> {
+    ) -> crate::oauth::gemini::Result<MessagesResponse> {
         let mut builder = Arc::clone(&self.client)
             .messages()
             .model(model)
@@ -350,10 +350,10 @@ impl GeminiClientTrait for KeyringStorageClient {
         &self,
         model: &str,
         max_tokens: u32,
-        messages: Vec<crate::gate::gemini::Message>,
+        messages: Vec<crate::oauth::gemini::Message>,
         system: Option<String>,
         temperature: Option<f32>,
-    ) -> crate::gate::gemini::Result<mpsc::Receiver<crate::gate::gemini::Result<StreamEvent>>>
+    ) -> crate::oauth::gemini::Result<mpsc::Receiver<crate::oauth::gemini::Result<StreamEvent>>>
     {
         let mut builder = Arc::clone(&self.client)
             .messages()
@@ -394,13 +394,13 @@ struct MemoryStorageClient {
 
 #[async_trait]
 impl GeminiClientTrait for MemoryStorageClient {
-    async fn is_authenticated(&self) -> crate::gate::gemini::Result<bool> {
+    async fn is_authenticated(&self) -> crate::oauth::gemini::Result<bool> {
         self.client.is_authenticated().await
     }
 
     async fn start_oauth_flow(
         &self,
-    ) -> crate::gate::gemini::Result<(String, crate::gate::gemini::OAuthFlowState)> {
+    ) -> crate::oauth::gemini::Result<(String, crate::oauth::gemini::OAuthFlowState)> {
         self.client.start_oauth_flow().await
     }
 
@@ -408,15 +408,15 @@ impl GeminiClientTrait for MemoryStorageClient {
         &self,
         code: &str,
         state: Option<&str>,
-    ) -> crate::gate::gemini::Result<TokenInfo> {
+    ) -> crate::oauth::gemini::Result<TokenInfo> {
         self.client.complete_oauth_flow(code, state).await
     }
 
-    async fn logout(&self) -> crate::gate::gemini::Result<()> {
+    async fn logout(&self) -> crate::oauth::gemini::Result<()> {
         self.client.logout().await
     }
 
-    async fn get_token_info(&self) -> crate::gate::gemini::Result<Option<TokenInfo>> {
+    async fn get_token_info(&self) -> crate::oauth::gemini::Result<Option<TokenInfo>> {
         self.client.get_token_info().await
     }
 
@@ -424,10 +424,10 @@ impl GeminiClientTrait for MemoryStorageClient {
         &self,
         model: &str,
         max_tokens: u32,
-        messages: Vec<crate::gate::gemini::Message>,
+        messages: Vec<crate::oauth::gemini::Message>,
         system: Option<String>,
         temperature: Option<f32>,
-    ) -> crate::gate::gemini::Result<MessagesResponse> {
+    ) -> crate::oauth::gemini::Result<MessagesResponse> {
         let mut builder = Arc::clone(&self.client)
             .messages()
             .model(model)
@@ -451,10 +451,10 @@ impl GeminiClientTrait for MemoryStorageClient {
         &self,
         model: &str,
         max_tokens: u32,
-        messages: Vec<crate::gate::gemini::Message>,
+        messages: Vec<crate::oauth::gemini::Message>,
         system: Option<String>,
         temperature: Option<f32>,
-    ) -> crate::gate::gemini::Result<mpsc::Receiver<crate::gate::gemini::Result<StreamEvent>>>
+    ) -> crate::oauth::gemini::Result<mpsc::Receiver<crate::oauth::gemini::Result<StreamEvent>>>
     {
         let mut builder = Arc::clone(&self.client)
             .messages()
@@ -491,7 +491,7 @@ impl GeminiClientTrait for MemoryStorageClient {
 impl GeminiProvider {
     /// Create a new provider with file-based token storage.
     ///
-    /// Uses the default path (~/.config/antigravity-gate/auth.json).
+    /// Uses the app data path (~/.local/share/ttrpg-assistant/oauth-tokens.json).
     pub fn new() -> Result<Self> {
         Self::with_storage(
             GeminiStorageBackend::File,
@@ -541,7 +541,7 @@ impl GeminiProvider {
     ) -> Result<Self> {
         let (client, storage_name): (Arc<dyn GeminiClientTrait>, String) = match backend {
             GeminiStorageBackend::File => {
-                let storage = FileTokenStorage::default_path().map_err(|e| {
+                let storage = FileTokenStorage::app_data_path().map_err(|e| {
                     LLMError::NotConfigured(format!("Failed to create file storage: {}", e))
                 })?;
                 let gemini_client = CloudCodeClient::new(storage);
@@ -587,7 +587,7 @@ impl GeminiProvider {
                             "keyring".to_string(),
                         )
                     } else {
-                        let storage = FileTokenStorage::default_path().map_err(|e| {
+                        let storage = FileTokenStorage::app_data_path().map_err(|e| {
                             LLMError::NotConfigured(format!(
                                 "Failed to create file storage: {}",
                                 e
@@ -604,7 +604,7 @@ impl GeminiProvider {
                 }
                 #[cfg(not(feature = "keyring"))]
                 {
-                    let storage = FileTokenStorage::default_path().map_err(|e| {
+                    let storage = FileTokenStorage::app_data_path().map_err(|e| {
                         LLMError::NotConfigured(format!("Failed to create file storage: {}", e))
                     })?;
                     let gemini_client = CloudCodeClient::new(storage);
@@ -673,7 +673,7 @@ impl GeminiProvider {
     ///
     /// The state should be stored and passed to `complete_oauth_flow`
     /// for CSRF protection.
-    pub async fn start_oauth_flow(&self) -> Result<(String, crate::gate::gemini::OAuthFlowState)> {
+    pub async fn start_oauth_flow(&self) -> Result<(String, crate::oauth::gemini::OAuthFlowState)> {
         self.client
             .start_oauth_flow()
             .await
@@ -745,28 +745,28 @@ impl GeminiProvider {
     // Message Conversion
     // ========================================================================
 
-    /// Convert ChatRequest messages to gemini_gate Message format.
+    /// Convert ChatRequest messages to gemini Message format.
     ///
     /// Note: System messages are filtered out here because the API expects
     /// the system prompt to be passed separately via the `system` parameter,
     /// not as part of the messages array.
-    fn convert_messages(&self, request: &ChatRequest) -> Vec<crate::gate::gemini::Message> {
+    fn convert_messages(&self, request: &ChatRequest) -> Vec<crate::oauth::gemini::Message> {
         request
             .messages
             .iter()
             .filter(|m| m.role != MessageRole::System)
             .map(|msg| match msg.role {
-                MessageRole::User => crate::gate::gemini::Message::user(&msg.content),
-                MessageRole::Assistant => crate::gate::gemini::Message::assistant(&msg.content),
+                MessageRole::User => crate::oauth::gemini::Message::user(&msg.content),
+                MessageRole::Assistant => crate::oauth::gemini::Message::assistant(&msg.content),
                 MessageRole::System => {
                     tracing::warn!("System message reached convert_messages unexpectedly");
-                    crate::gate::gemini::Message::user(&msg.content)
+                    crate::oauth::gemini::Message::user(&msg.content)
                 }
             })
             .collect()
     }
 
-    /// Convert gemini_gate MessagesResponse to ChatResponse
+    /// Convert gemini MessagesResponse to ChatResponse
     fn convert_response(&self, response: MessagesResponse, latency_ms: u64) -> ChatResponse {
         let content = response.text();
 
@@ -887,17 +887,10 @@ impl LLMProvider for GeminiProvider {
                         retry_after_secs: e.retry_after().map(|d| d.as_secs()).unwrap_or(60),
                     }
                 } else {
-                    match &e {
-                        crate::gate::gemini::Error::Api { status, message, .. } => {
-                            LLMError::ApiError {
-                                status: *status,
-                                message: message.clone(),
-                            }
-                        }
-                        _ => LLMError::ApiError {
-                            status: 0,
-                            message: e.to_string(),
-                        },
+                    // Use accessor methods to reliably extract status and message
+                    LLMError::ApiError {
+                        status: e.status().unwrap_or(0),
+                        message: e.api_message().map(String::from).unwrap_or_else(|| e.to_string()),
                     }
                 }
             })?;
@@ -944,10 +937,15 @@ impl LLMProvider for GeminiProvider {
             .map_err(|e| {
                 if e.is_auth_error() {
                     LLMError::AuthError(e.to_string())
+                } else if e.is_rate_limit() {
+                    LLMError::RateLimited {
+                        retry_after_secs: e.retry_after().map(|d| d.as_secs()).unwrap_or(60),
+                    }
                 } else {
+                    // Use accessor methods to reliably extract status and message
                     LLMError::ApiError {
-                        status: 0,
-                        message: e.to_string(),
+                        status: e.status().unwrap_or(0),
+                        message: e.api_message().map(String::from).unwrap_or_else(|| e.to_string()),
                     }
                 }
             })?;

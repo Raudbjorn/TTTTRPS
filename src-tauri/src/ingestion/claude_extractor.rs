@@ -9,7 +9,7 @@ use std::path::Path;
 use thiserror::Error;
 
 use super::kreuzberg_extractor::{ExtractedContent, Page};
-use crate::gate::claude::{ClaudeClient, FileTokenStorage, TokenStorage};
+use crate::oauth::claude::{ClaudeClient, FileTokenStorage, TokenStorage};
 
 // ============================================================================
 // Error Types
@@ -112,11 +112,11 @@ pub struct ClaudeDocumentExtractor<S: TokenStorage> {
 }
 
 impl ClaudeDocumentExtractor<FileTokenStorage> {
-    /// Create a new extractor using the default file token storage.
+    /// Create a new extractor using the app data file token storage.
     ///
-    /// The token is stored in `~/.config/cld/auth.json` by default.
+    /// The token is stored in `~/.local/share/ttrpg-assistant/oauth-tokens.json`.
     pub fn new() -> Result<Self> {
-        let storage = FileTokenStorage::default_path()
+        let storage = FileTokenStorage::app_data_path()
             .map_err(|e| ClaudeExtractionError::ConfigError(format!("Failed to create token storage: {}", e)))?;
 
         let client = ClaudeClient::builder()
@@ -657,7 +657,7 @@ impl<S: TokenStorage + 'static> ClaudeDocumentExtractor<S> {
 
 /// Extract text from a PDF using Claude API.
 ///
-/// Uses the default file token storage (`~/.config/cld/auth.json`).
+/// Uses the app data file token storage (`~/.local/share/ttrpg-assistant/oauth-tokens.json`).
 pub async fn extract_with_claude(path: &Path) -> Result<String> {
     let extractor = ClaudeDocumentExtractor::new()?;
     let cb: Option<fn(f32, &str)> = None;

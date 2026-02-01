@@ -40,7 +40,7 @@ The implementation is organized into 6 phases:
   - Implement `new()`, `is_expired()`, `needs_refresh()`, `time_until_expiry()`
   - Add default for `token_type` when deserializing
   - Write unit tests for expiration logic
-  - Write tests loading JSON from existing claude_gate and gemini_gate formats
+  - Write tests loading JSON from existing claude and gemini formats
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 6.1, 6.2_
 
 ### Phase 2: Storage
@@ -174,7 +174,7 @@ The implementation is organized into 6 phases:
 - [ ] 4.2 Implement GeminiProvider
   - Create `gate/providers/gemini.rs`
   - Implement `OAuthProvider` trait
-  - Default config from existing gemini_gate constants
+  - Default config from existing gemini constants
   - Use Google's OAuth endpoints
   - Include cloudcode scopes
   - Write unit tests for URL building
@@ -192,7 +192,7 @@ The implementation is organized into 6 phases:
 - [ ] 5. Wire up to application
 - [ ] 5.1 Create type aliases for existing usage
   - In `gate/mod.rs`, create type aliases matching old module names if needed
-  - E.g., `pub type ClaudeGateClient = GateClient<ClaudeProvider, FileTokenStorage>`
+  - E.g., `pub type ClaudeClient = GateClient<ClaudeProvider, FileTokenStorage>`
   - Export `TokenInfo`, `TokenStorage`, `Error`, `AuthError`
   - Ensure all public types are accessible from `gate::*`
   - _Requirements: 6.4, 6.5_
@@ -228,8 +228,8 @@ The implementation is organized into 6 phases:
   - _Requirements: 6.3_
 
 - [ ] 6.2 Delete old gate modules
-  - Delete `src-tauri/src/claude_gate/` directory
-  - Delete `src-tauri/src/gemini_gate/` directory
+  - Delete `src-tauri/src/claude/` directory
+  - Delete `src-tauri/src/gemini/` directory
   - Remove old module declarations from lib.rs/main.rs
   - Run `cargo check` and fix any remaining references
   - _Requirements: N/A (cleanup)_

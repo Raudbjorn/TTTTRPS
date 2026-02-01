@@ -2,7 +2,7 @@
 
 ## Introduction
 
-The TTRPG Assistant application currently has two separate OAuth-based API client implementations: `claude_gate` for Anthropic's Claude API and `gemini_gate` for Google's Gemini API via Cloud Code. Both modules share substantial overlapping functionality including OAuth 2.0 with PKCE authentication flows, token storage backends, error handling patterns, and client lifecycle management.
+The TTRPG Assistant application currently has two separate OAuth-based API client implementations: `claude` for Anthropic's Claude API and `gemini` for Google's Gemini API via Cloud Code. Both modules share substantial overlapping functionality including OAuth 2.0 with PKCE authentication flows, token storage backends, error handling patterns, and client lifecycle management.
 
 This refactoring aims to extract the common patterns into a unified `gate` trait/interface that both implementations can share, reducing code duplication, improving maintainability, and establishing a consistent contract for adding future API providers. The unified architecture will make it easier to swap providers, share storage implementations, and apply consistent error handling across the application.
 
@@ -83,8 +83,8 @@ This refactoring aims to extract the common patterns into a unified `gate` trait
 
 #### Acceptance Criteria
 
-1. WHEN loading existing claude_gate tokens THEN system SHALL successfully deserialize from current JSON format
-2. WHEN loading existing gemini_gate tokens THEN system SHALL successfully deserialize from current JSON format
+1. WHEN loading existing claude tokens THEN system SHALL successfully deserialize from current JSON format
+2. WHEN loading existing gemini tokens THEN system SHALL successfully deserialize from current JSON format
 3. IF new unified format differs THEN system SHALL provide migration path or dual-format support
 4. WHEN existing commands.rs code calls gate functions THEN system SHALL maintain compatible function signatures or provide adapters
 5. WHEN tests reference gate types THEN system SHALL maintain type compatibility or provide clear migration path

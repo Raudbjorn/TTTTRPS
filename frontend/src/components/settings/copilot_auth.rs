@@ -9,8 +9,8 @@ use gloo_timers::future::TimeoutFuture;
 
 use crate::bindings::{
     check_copilot_auth, start_copilot_auth, poll_copilot_auth, logout_copilot,
-    get_copilot_usage, open_url_in_browser, copilot_gate_set_storage_backend,
-    CopilotAuthStatus, CopilotUsageInfo, CopilotGateStorageBackend,
+    get_copilot_usage, open_url_in_browser, copilot_set_storage_backend,
+    CopilotAuthStatus, CopilotUsageInfo, CopilotStorageBackend,
 };
 use crate::components::design_system::{Select, SelectOption};
 use crate::components::design_system::{Badge, BadgeVariant};
@@ -264,13 +264,13 @@ pub fn CopilotAuth(
                         value=Signal::derive(move || status.get().storage_backend)
                         on_change=Callback::new(move |value: String| {
                             let backend = match value.as_str() {
-                                "keyring" => CopilotGateStorageBackend::Keyring,
-                                "file" => CopilotGateStorageBackend::File,
-                                _ => CopilotGateStorageBackend::Auto,
+                                "keyring" => CopilotStorageBackend::Keyring,
+                                "file" => CopilotStorageBackend::File,
+                                _ => CopilotStorageBackend::Auto,
                             };
                             spawn_local(async move {
                                 is_loading.set(true);
-                                match copilot_gate_set_storage_backend(backend).await {
+                                match copilot_set_storage_backend(backend).await {
                                     Ok(_) => {
                                         show_success("Storage Changed", Some("You may need to re-authenticate"));
                                         refresh_status();

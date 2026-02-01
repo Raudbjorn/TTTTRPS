@@ -386,22 +386,22 @@ Document extraction configuration.
 Claude OAuth flow.
 
 **Commands:**
-- `claude_gate_get_status` - Auth status
-- `claude_gate_start_oauth` - Start OAuth
-- `claude_gate_complete_oauth` - Complete OAuth
-- `claude_gate_logout` - Logout
-- `claude_gate_set_storage_backend` - Set storage
-- `claude_gate_list_models` - List models
+- `claude_get_status` - Auth status
+- `claude_start_oauth` - Start OAuth
+- `claude_complete_oauth` - Complete OAuth
+- `claude_logout` - Logout
+- `claude_set_storage_backend` - Set storage
+- `claude_list_models` - List models
 
 ### Group 42: Gemini Gate OAuth Commands (lines 8398-8590, ~193 lines)
 Gemini OAuth flow.
 
 **Commands:**
-- `gemini_gate_get_status` - Auth status
-- `gemini_gate_start_oauth` - Start OAuth
-- `gemini_gate_complete_oauth` - Complete OAuth
-- `gemini_gate_logout` - Logout
-- `gemini_gate_set_storage_backend` - Set storage
+- `gemini_get_status` - Auth status
+- `gemini_start_oauth` - Start OAuth
+- `gemini_complete_oauth` - Complete OAuth
+- `gemini_logout` - Logout
+- `gemini_set_storage_backend` - Set storage
 
 ### Group 43: Copilot Gate OAuth Commands (lines 8591-8900, ~310 lines)
 GitHub Copilot device code flow.
