@@ -1385,25 +1385,9 @@ check_msrv() {
 }
 
 # Compare semantic versions: returns 0 if $1 >= $2
+# Uses sort -V for robust version comparison (GNU coreutils, macOS)
 version_gte() {
-    local v1="$1"
-    local v2="$2"
-
-    # Split versions into arrays
-    IFS='.' read -ra V1 <<< "$v1"
-    IFS='.' read -ra V2 <<< "$v2"
-
-    # Compare each component
-    for i in 0 1 2; do
-        local n1="${V1[$i]:-0}"
-        local n2="${V2[$i]:-0}"
-        if [ "$n1" -gt "$n2" ]; then
-            return 0
-        elif [ "$n1" -lt "$n2" ]; then
-            return 1
-        fi
-    done
-    return 0  # Equal
+    [ "$1" = "$(printf '%s\n' "$1" "$2" | sort -V | tail -n1)" ]
 }
 
 show_version() {
