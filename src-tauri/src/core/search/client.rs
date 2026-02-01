@@ -33,12 +33,12 @@ pub struct SearchClient {
 }
 
 impl SearchClient {
-    pub fn new(host: &str, api_key: Option<&str>) -> Self {
-        Self {
-            client: Client::new(host, api_key).expect("Failed to create Meilisearch client"),
+    pub fn new(host: &str, api_key: Option<&str>) -> Result<Self> {
+        Ok(Self {
+            client: Client::new(host, api_key)?,
             host: host.to_string(),
             api_key: api_key.map(|s| s.to_string()),
-        }
+        })
     }
 
     pub fn host(&self) -> &str {

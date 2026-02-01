@@ -169,6 +169,9 @@ pub fn use_auto_save() -> (AutoSaveState, Callback<Option<PartialCampaign>>) {
 
             // Perform immediate save on retry
             if let Some(wizard_id) = ctx.wizard_id() {
+                if state.status.get() == AutoSaveStatus::Saving {
+                    return;
+                }
                 let data = pending_data.get();
                 state.status.set(AutoSaveStatus::Saving);
 

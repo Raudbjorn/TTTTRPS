@@ -430,7 +430,7 @@ impl GenerationOrchestrator {
         if let Some(max) = request.config.max_tokens.or(template.max_tokens) {
             chat_request = chat_request.with_max_tokens(max);
         }
-        if let Some(ref provider) = request.config.provider {
+        if let Some(ref provider) = request.config.provider.clone().or_else(|| template.metadata.recommended_model.clone()) {
             chat_request = chat_request.with_provider(provider);
         }
 
@@ -577,11 +577,20 @@ impl GenerationOrchestrator {
             let substring = &content[idx..];
             let mut depth = 0;
             let mut end_idx = None;
+            let mut in_string = false;
+            let mut escaped = false;
 
             for (i, ch) in substring.char_indices() {
+                if escaped {
+                    escaped = false;
+                    continue;
+                }
+
                 match ch {
-                    '{' => depth += 1,
-                    '}' => {
+                    '\\' if in_string => escaped = true,
+                    '"' => in_string = !in_string,
+                    '{' if !in_string => depth += 1,
+                    '}' if !in_string => {
                         depth -= 1;
                         if depth == 0 {
                             end_idx = Some(i);

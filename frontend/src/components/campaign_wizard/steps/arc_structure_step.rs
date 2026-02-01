@@ -94,13 +94,12 @@ fn PhaseEditor(
         <div class="space-y-3">
             {move || {
                 phases.get().iter().enumerate().map(|(i, phase)| {
-                    // Capture only the ID for stable updates and removal
+                    // Capture the ID for stable updates and removal
                     let phase_id = phase.id.clone();
                     let phase_id_for_name = phase_id.clone();
                     let phase_id_for_desc = phase_id.clone();
                     let phase_id_for_sessions = phase_id.clone();
                     let phase_id_for_remove = phase_id.clone();
-                    // Initial values for prop:value (display only)
                     let phase_name = phase.name.clone();
                     let phase_desc = phase.description.clone().unwrap_or_default();
                     let phase_sessions = phase.estimated_sessions.map(|s| s.to_string()).unwrap_or_default();
@@ -122,12 +121,13 @@ fn PhaseEditor(
                                         let id = phase_id_for_name.clone();
                                         move |ev| {
                                             // Read current values from signal to avoid stale captures
-                                            let current_phases = phases.get();
-                                            if let Some(current) = current_phases.iter().find(|p| p.id == id) {
-                                                let desc = current.description.clone().unwrap_or_default();
-                                                let sessions = current.estimated_sessions.map(|s| s.to_string()).unwrap_or_default();
-                                                update_phase(id.clone(), event_target_value(&ev), desc, sessions);
-                                            }
+                                            let current = phases.get();
+                                            let phase = current.iter().find(|p| p.id == id);
+                                            let (desc, sessions) = phase.map(|p| (
+                                                p.description.clone().unwrap_or_default(),
+                                                p.estimated_sessions.map(|s| s.to_string()).unwrap_or_default()
+                                            )).unwrap_or_default();
+                                            update_phase(id.clone(), event_target_value(&ev), desc, sessions)
                                         }
                                     }
                                 />
@@ -141,12 +141,13 @@ fn PhaseEditor(
                                         let id = phase_id_for_desc.clone();
                                         move |ev| {
                                             // Read current values from signal to avoid stale captures
-                                            let current_phases = phases.get();
-                                            if let Some(current) = current_phases.iter().find(|p| p.id == id) {
-                                                let name = current.name.clone();
-                                                let sessions = current.estimated_sessions.map(|s| s.to_string()).unwrap_or_default();
-                                                update_phase(id.clone(), name, event_target_value(&ev), sessions);
-                                            }
+                                            let current = phases.get();
+                                            let phase = current.iter().find(|p| p.id == id);
+                                            let (name, sessions) = phase.map(|p| (
+                                                p.name.clone(),
+                                                p.estimated_sessions.map(|s| s.to_string()).unwrap_or_default()
+                                            )).unwrap_or_default();
+                                            update_phase(id.clone(), name, event_target_value(&ev), sessions)
                                         }
                                     }
                                 />
@@ -165,12 +166,13 @@ fn PhaseEditor(
                                         let id = phase_id_for_sessions.clone();
                                         move |ev| {
                                             // Read current values from signal to avoid stale captures
-                                            let current_phases = phases.get();
-                                            if let Some(current) = current_phases.iter().find(|p| p.id == id) {
-                                                let name = current.name.clone();
-                                                let desc = current.description.clone().unwrap_or_default();
-                                                update_phase(id.clone(), name, desc, event_target_value(&ev));
-                                            }
+                                            let current = phases.get();
+                                            let phase = current.iter().find(|p| p.id == id);
+                                            let (name, desc) = phase.map(|p| (
+                                                p.name.clone(),
+                                                p.description.clone().unwrap_or_default()
+                                            )).unwrap_or_default();
+                                            update_phase(id.clone(), name, desc, event_target_value(&ev))
                                         }
                                     }
                                 />

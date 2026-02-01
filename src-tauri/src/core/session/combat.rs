@@ -139,6 +139,9 @@ impl Combatant {
     /// Cannot exceed max HP
     /// Returns the new current HP value
     pub fn heal(&mut self, amount: i32) -> i32 {
+        if amount <= 0 {
+            return self.current_hp.unwrap_or(0);
+        }
         if let (Some(current), Some(max)) = (self.current_hp, self.max_hp) {
             self.current_hp = Some((current + amount).min(max));
         }

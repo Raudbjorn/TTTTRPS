@@ -351,6 +351,7 @@ impl SearchAnalyticsOps for Database {
                 FROM search_analytics
                 WHERE created_at > ?
                 GROUP BY q
+                HAVING cnt >= 3
             ),
             older AS (
                 SELECT LOWER(TRIM(query)) as q, COUNT(*) as cnt
@@ -359,7 +360,8 @@ impl SearchAnalyticsOps for Database {
                 GROUP BY q
             )
             SELECT recent.q as query,
-                   CAST(recent.cnt AS REAL) / COALESCE(NULLIF(older.cnt, 0), 1) * 7.0 as trend_score
+                   -- Add smoothing (+5.0) to avoid high scores for single hits
+                   CAST(recent.cnt AS REAL) / (COALESCE(older.cnt, 0) + 5.0) as trend_score
             FROM recent
             LEFT JOIN older ON recent.q = older.q
             ORDER BY trend_score DESC

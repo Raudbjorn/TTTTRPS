@@ -247,21 +247,29 @@ pub fn ScopeStep(
                         let count_text = if preset == DurationPreset::Ongoing {
                             "Ongoing (no set end)".to_string()
                         } else {
-                            count.map(|c| format!("{} sessions", c)).unwrap_or_else(|| "? sessions".to_string())
+                            count
+                                .map(|c| format!("{} sessions", c))
+                                .unwrap_or_else(|| "? sessions".to_string())
                         };
 
                         let duration_text = duration
                             .map(|d| format!("{:.1} hours each", d))
                             .unwrap_or_else(|| "? hours each".to_string());
 
-                        let total_hours = count.zip(duration).map(|(c, d)| c as f32 * d);
-                        let total_text = total_hours
-                            .map(|h| format!("~{:.0} hours total", h))
-                            .unwrap_or_default();
+                        let total_text = if preset == DurationPreset::Ongoing {
+                            String::new()
+                        } else {
+                            let total_hours = count.zip(duration).map(|(c, d)| c as f32 * d);
+                            total_hours
+                                .map(|h| format!("~{:.0} hours total", h))
+                                .unwrap_or_default()
+                        };
 
                         view! {
                             <p>{count_text}" at "{duration_text}</p>
-                            <p class="text-zinc-500">{total_text}</p>
+                            {(!total_text.is_empty()).then(|| view! {
+                                <p class="text-zinc-500">{total_text}</p>
+                            })}
                             <p>"Pacing: "{pace.label()}</p>
                         }
                     }}

@@ -356,7 +356,6 @@ pub fn get_inspiration(question_id: &str) -> InspirationPrompt {
 fn SuggestionChipButton(
     chip: SuggestionChip,
     on_select: Callback<String>,
-    /// Selection state as a signal for reactive updates
     is_selected: Signal<bool>,
 ) -> impl IntoView {
     let value = chip.value.clone();

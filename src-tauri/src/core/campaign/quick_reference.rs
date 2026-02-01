@@ -100,6 +100,13 @@ pub enum QuickReferenceError {
     Render(String),
 }
 
+impl From<crate::database::quick_reference::QuickReferenceError> for QuickReferenceError {
+    fn from(e: crate::database::quick_reference::QuickReferenceError) -> Self {
+        QuickReferenceError::Database(e.to_string())
+    }
+}
+
+
 impl From<sqlx::Error> for QuickReferenceError {
     fn from(err: sqlx::Error) -> Self {
         QuickReferenceError::Database(err.to_string())
@@ -348,37 +355,40 @@ impl<'a> QuickReferenceCardManager<'a> {
         entity_id: &str,
         disclosure_level: Option<DisclosureLevel>,
     ) -> Result<PinnedCard, QuickReferenceError> {
-        // Check max cards first (this check is still subject to race, but the
-        // unique constraint on the database protects against duplicate pins)
-        let count = self.database.count_pinned_cards(session_id).await?;
-        if count >= MAX_PINNED_CARDS as i32 {
-            return Err(QuickReferenceError::MaxPinnedCardsReached {
-                max: MAX_PINNED_CARDS,
-            });
-        }
+        // Check max cards first to get count for display_order
+        // (The database transaction checks limit again for safety)
+        let count = self.database.count_pinned_cards(session_id)
+            .await
+            .map_err(|e| QuickReferenceError::Database(e.to_string()))?;
 
         // Create the pinned card record
         let disclosure = disclosure_level.unwrap_or_default();
         let record = PinnedCardRecord::new(
             session_id.to_string(),
-            entity_type,
+            entity_type.clone(),
             entity_id.to_string(),
             count, // Next available slot
         ).with_disclosure_level(disclosure);
 
-        // Attempt to insert - unique constraint violation indicates already pinned
-        match self.database.pin_card(&record).await {
+        // Attempt to insert with limit - the transaction ensures brand-consistent checks
+        match self.database.pin_card_with_limit(&record, MAX_PINNED_CARDS as i32).await {
             Ok(()) => {}
             Err(e) => {
-                // Check if this is a unique constraint violation
                 let err_str = e.to_string().to_lowercase();
+                // Check for limit error (mapped to Protocol error in database layer)
+                if err_str.contains("maximum pinned cards") {
+                    return Err(QuickReferenceError::MaxPinnedCardsReached {
+                        max: MAX_PINNED_CARDS,
+                    });
+                }
+                // Check if this is a unique constraint violation
                 if err_str.contains("unique") || err_str.contains("constraint") {
                     return Err(QuickReferenceError::AlreadyPinned {
                         entity_type: entity_type.to_string(),
                         entity_id: entity_id.to_string(),
                     });
                 }
-                return Err(e.into());
+                return Err(QuickReferenceError::Database(e.to_string()));
             }
         }
 
@@ -415,25 +425,9 @@ impl<'a> QuickReferenceCardManager<'a> {
         entity_type: CardEntityType,
         entity_id: &str,
     ) -> Result<(), QuickReferenceError> {
-        // Check if actually pinned
-        if !self.database
-            .is_entity_pinned(session_id, entity_type.as_str(), entity_id)
-            .await?
-        {
-            return Err(QuickReferenceError::NotPinned {
-                entity_type: entity_type.to_string(),
-                entity_id: entity_id.to_string(),
-            });
-        }
-
         self.database
-            .unpin_card_by_entity(session_id, entity_type.as_str(), entity_id)
+            .unpin_and_reorder(session_id, entity_type.as_str(), entity_id)
             .await?;
-
-        // Recompact the display orders
-        let remaining = self.database.get_pinned_cards(session_id).await?;
-        let ids: Vec<String> = remaining.iter().map(|c| c.id.clone()).collect();
-        self.database.reorder_pinned_cards(session_id, &ids).await?;
 
         info!(
             session_id = %session_id,
@@ -744,18 +738,67 @@ impl<'a> QuickReferenceCardManager<'a> {
     }
 
     fn html_to_text(&self, html: &str) -> String {
-        // Simple HTML to text conversion (strip tags)
+        // Simple HTML to text conversion (strip tags and decode basic entities)
         let mut text = String::new();
         let mut in_tag = false;
-        for c in html.chars() {
-            match c {
+        let mut i = 0;
+        let chars: Vec<char> = html.chars().collect();
+
+        while i < chars.len() {
+            match chars[i] {
                 '<' => in_tag = true,
                 '>' => in_tag = false,
-                _ if !in_tag => text.push(c),
+                '&' if !in_tag => {
+                    // Try to decode entity
+                    if let Some((decoded, end_idx)) = self.decode_html_entity(&chars[i..]) {
+                        text.push(decoded);
+                        i += end_idx;
+                    } else {
+                        text.push('&');
+                    }
+                }
+                _ if !in_tag => text.push(chars[i]),
                 _ => {}
             }
+            i += 1;
         }
         text.trim().to_string()
+    }
+
+    /// Decode basic HTML entities
+    fn decode_html_entity(&self, slice: &[char]) -> Option<(char, usize)> {
+        if slice.len() < 3 { return None; }
+
+        let mut end = 0;
+        for j in 1..std::cmp::min(10, slice.len()) {
+            if slice[j] == ';' {
+                end = j;
+                break;
+            }
+        }
+
+        if end == 0 { return None; }
+
+        let entity: String = slice[1..end].iter().collect();
+        match entity.as_str() {
+            "amp" => Some(('&', end)),
+            "lt" => Some(('<', end)),
+            "gt" => Some(('>', end)),
+            "quot" => Some(('"', end)),
+            "apos" | "#39" => Some(('\'', end)),
+            "nbsp" => Some((' ', end)),
+            _ if entity.starts_with("#x") => {
+                u32::from_str_radix(&entity[2..], 16).ok()
+                    .and_then(std::char::from_u32)
+                    .map(|c| (c, end))
+            }
+            _ if entity.starts_with('#') => {
+                entity[1..].parse::<u32>().ok()
+                    .and_then(std::char::from_u32)
+                    .map(|c| (c, end))
+            }
+            _ => None,
+        }
     }
 }
 

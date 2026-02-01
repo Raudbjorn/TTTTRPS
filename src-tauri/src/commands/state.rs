@@ -112,7 +112,7 @@ impl AppState {
         let search_client = SearchClient::new(
             &sidecar_config.url(),
             Some(&sidecar_config.master_key),
-        );
+        ).expect("Failed to create SearchClient");
         let personality_store = Arc::new(PersonalityStore::new());
         let personality_manager = Arc::new(PersonalityApplicationManager::new(personality_store.clone()));
 

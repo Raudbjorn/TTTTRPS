@@ -95,7 +95,11 @@ pub fn RandomTableDisplay(
 
         table.entries.iter().map(|entry| {
             let range_size = (entry.range_end - entry.range_start + 1) as f64;
-            let probability = range_size / range_total * 100.0;
+            let probability = if range_total > 0.0 {
+                range_size / range_total * 100.0
+            } else {
+                0.0
+            };
             (entry.clone(), probability, is_compound)
         }).collect::<Vec<_>>()
     };
@@ -196,10 +200,12 @@ pub fn RandomTableDisplay(
                             }
                         )>
                             // Probability background bar
-                            <div
-                                class="absolute inset-y-0 left-0 bg-purple-600/10"
-                                style=format!("width: {}%", probability)
-                            />
+                            {(!is_compound).then(|| view! {
+                                <div
+                                    class="absolute inset-y-0 left-0 bg-purple-600/10"
+                                    style=format!("width: {}%", probability)
+                                />
+                            })}
 
                             // Content
                             <div class="relative flex items-center gap-3">
@@ -217,16 +223,12 @@ pub fn RandomTableDisplay(
                                     {entry.result_text.clone()}
                                 </p>
 
-                                // Probability percentage (show ~ for compound dice as distribution is not uniform)
-                                <span class="shrink-0 text-xs text-zinc-500 tabular-nums" title={
-                                    if is_compound { "Approximate (compound dice have non-uniform distribution)" } else { "" }
-                                }>
-                                    {if is_compound {
-                                        format!("~{:.0}%", probability)
-                                    } else {
-                                        format!("{:.1}%", probability)
-                                    }}
-                                </span>
+                                // Probability percentage (hidden for compound dice as uniform distribution math is incorrect)
+                                {(!is_compound).then(|| view! {
+                                    <span class="shrink-0 text-xs text-zinc-500 tabular-nums">
+                                        {format!("{:.1}%", probability)}
+                                    </span>
+                                })}
 
                                 // Nested indicator
                                 {entry.nested_table_id.as_ref().map(|_| view! {
