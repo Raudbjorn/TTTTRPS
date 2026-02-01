@@ -189,7 +189,10 @@ fn CampaignCard(
 }
 
 /// Create Campaign Modal component (legacy, kept for reference)
-#[allow(dead_code)]
+/// 
+/// Note: The `#[component]` macro generates a struct with fields for `is_open` and `on_create`.
+/// Valid usages in the function body may not be detected by the linter for the generated struct,
+/// causing a false positive "fields are never read" warning.
 #[component]
 fn CreateCampaignModal(
     is_open: RwSignal<bool>,

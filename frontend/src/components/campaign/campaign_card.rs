@@ -98,11 +98,7 @@ impl CampaignGenre {
     }
 }
 
-/// Helper function to get system-based styling
-#[allow(dead_code)]
-fn get_system_style(system: &str) -> (&'static str, &'static str) {
-    CampaignGenre::from_system(system).style()
-}
+// get_system_style removed (unused)
 
 /// Format a timestamp to a human-readable "last played" string
 fn format_last_played(timestamp: &str) -> String {
@@ -470,6 +466,7 @@ pub fn CampaignCardCompact(
         <button
             class=format!("w-full flex items-center gap-3 p-3 rounded-r-lg transition-colors text-left group {}", selected_class)
             on:click=handle_click
+            aria-label=format!("Select campaign: {}", campaign_name.clone())
         >
             // Avatar with genre color
             <div class=format!("relative w-10 h-10 rounded-lg {} flex items-center justify-center text-sm font-bold {} shadow-md", bg_class, text_class)>
@@ -493,7 +490,7 @@ pub fn CampaignCardCompact(
                         "text-sm font-medium text-white group-hover:text-purple-300 truncate transition-colors"
                     }
                 }>
-                    {campaign_name}
+                    {campaign_name.clone()}
                 </div>
                 <div class="flex items-center gap-2 text-xs text-zinc-500">
                     <span>{campaign_system}</span>
@@ -568,6 +565,7 @@ pub fn CampaignCardMini(
         <button
             class="group relative w-full aspect-square rounded-lg overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-xl"
             on:click=handle_click
+            aria-label=format!("Select campaign: {}", campaign_name.clone())
         >
             // Background
             <div class=format!("absolute inset-0 {} transition-opacity", bg_class)></div>
@@ -590,8 +588,12 @@ pub fn CampaignCardMini(
 
             // Title tooltip on hover
             <div class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-                <p class="text-xs font-medium text-white truncate">{campaign_name}</p>
+                <p class="text-xs font-medium text-white truncate">{campaign_name.clone()}</p>
             </div>
         </button>
     }
 }
+
+#[cfg(test)]
+#[path = "campaign_card_tests.rs"]
+mod tests;
