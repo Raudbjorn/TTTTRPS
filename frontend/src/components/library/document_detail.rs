@@ -45,7 +45,7 @@ pub fn DocumentDetail() -> impl IntoView {
                 let source = doc.source.clone();
                 spawn_local(async move {
                     let options = HybridSearchOptions {
-                        limit: 5,
+                        limit: Some(5),
                         source_type: None,
                         campaign_id: None,
                         index: None,

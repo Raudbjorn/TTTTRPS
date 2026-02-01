@@ -176,8 +176,8 @@ pub async fn keyword_search(query: String, limit: usize) -> Result<Vec<SearchRes
 /// Options for hybrid search
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct HybridSearchOptions {
-    #[serde(default)]
-    pub limit: usize,
+    /// Number of results to return. None lets the backend apply its default.
+    pub limit: Option<usize>,
     pub source_type: Option<String>,
     pub campaign_id: Option<String>,
     pub index: Option<String>,
