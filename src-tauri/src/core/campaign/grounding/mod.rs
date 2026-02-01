@@ -168,7 +168,6 @@ impl Grounder for CombinedGrounder {
         }
 
         let mut marked_text = text.to_string();
-        let _total_valid = valid_links.len();
 
         // Second pass: Build citations and insert markers in reverse order to preserve offsets
         // We use numbers 1..N based on their forward appearance in the text

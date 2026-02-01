@@ -147,8 +147,6 @@ fn NpcEntry(
     let role = RwSignal::new(npc.get().role.unwrap_or_default());
     let description = RwSignal::new(npc.get().description.unwrap_or_default());
 
-    // Use the existing ID from the npc signal
-    let npc_id = npc.get_untracked().id.clone();
     Effect::new(move |_| {
         npc.update(|n| {
             n.name = name.get();

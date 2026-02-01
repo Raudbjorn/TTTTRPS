@@ -117,7 +117,7 @@ static SUGGESTION_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?s)```suggestion\s*\n(.*?)\n```").unwrap());
 static CITATION_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?s)```citation\s*\n(.*?)\n```").unwrap());
-static QUESTIONS_JSON_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?s)\[.*\]").unwrap());
+static QUESTIONS_JSON_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?s)\[.*?\]").unwrap());
 
 /// Parse the LLM response for suggestions and citations.
 fn parse_response(
