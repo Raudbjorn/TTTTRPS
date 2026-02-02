@@ -15,6 +15,8 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use console::{style, Color, Term};
+use flate2::write::GzEncoder;
+use flate2::Compression;
 use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
 use miette::Diagnostic;
 use pulldown_cmark::{CodeBlockKind, Event, Parser, Tag, TagEnd};
@@ -137,13 +139,16 @@ pub fn init() -> WorkerGuard {
         }
     }
 
-    // 2. Generate filename with timestamp
-    let now = chrono::Local::now();
-    let filename = format!("ttrpg-assistant-{}.log", now.format("%Y-%m-%d_%H-%M-%S"));
-
-    // 3. Setup file appender (Non-blocking)
-    let file_appender = tracing_appender::rolling::never(&log_dir, &filename);
+    // 2. Setup file appender (Rolling - Daily)
+    // "REALLY generous limits" -> Daily rotation with no size limit (default for tracing-appender rolling)
+    let file_appender = tracing_appender::rolling::daily(&log_dir, "ttrpg-assistant.log");
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+    // 3. Compress old logs in background
+    let log_dir_clone = log_dir.clone();
+    std::thread::spawn(move || {
+        compress_old_logs(log_dir_clone);
+    });
 
     // 4. Define Filters
     let env_filter =
@@ -182,11 +187,76 @@ pub fn init() -> WorkerGuard {
     init_miette();
 
     log::info!(
-        "Logging initialized. Writing to: {:?}",
-        log_dir.join(filename)
+        "Logging initialized. Writing to: {:?} (daily rolling)",
+        log_dir.join("ttrpg-assistant.log")
     );
 
     guard
+}
+
+/// Compress old log files in the background
+fn compress_old_logs(log_dir: PathBuf) {
+    let now = chrono::Local::now();
+    let today_suffix = now.format("%Y-%m-%d").to_string();
+
+    if let Ok(entries) = fs::read_dir(&log_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                // Check for files to compress
+                let should_compress = if name.starts_with("ttrpg-assistant.log.") {
+                    // New rolling format: prefix.YYYY-MM-DD
+                    // Compress if it's NOT today's log and NOT already compressed
+                    !name.ends_with(&today_suffix) && !name.ends_with(".gz")
+                } else if name.starts_with("ttrpg-assistant-") && name.ends_with(".log") {
+                    // Old format: ttrpg-assistant-YYYY-MM-DD_...
+                    // Always compress these as we've switched to rolling
+                    true
+                } else {
+                    false
+                };
+
+                if should_compress {
+                    if let Err(e) = compress_file(&path) {
+                        // Log to stderr since we might be inside the logging system (avoid recursion if possible, though log crate handles it)
+                        // Or just use the initialized logger
+                        log::warn!("Failed to compress old log {:?}: {}", path, e);
+                    } else {
+                        log::info!("Compressed old log: {:?}", path);
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn compress_file(path: &std::path::Path) -> std::io::Result<()> {
+    let file = fs::File::open(path)?;
+    let mut reader = std::io::BufReader::new(file);
+
+    // Create .gz path
+    let mut gz_path_name = path
+        .file_name()
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "No filename"))?
+        .to_os_string();
+    gz_path_name.push(".gz");
+    let gz_path = path.parent().unwrap().join(gz_path_name);
+
+    // Skip if already exists
+    if gz_path.exists() {
+        return Ok(());
+    }
+
+    let output = fs::File::create(&gz_path)?;
+    let mut encoder = GzEncoder::new(output, Compression::default());
+
+    std::io::copy(&mut reader, &mut encoder)?;
+    encoder.finish()?;
+
+    // Remove original file
+    fs::remove_file(path)?;
+
+    Ok(())
 }
 
 /// Initialize miette for beautiful error reporting
