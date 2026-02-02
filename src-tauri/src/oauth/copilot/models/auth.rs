@@ -61,26 +61,27 @@ pub struct CopilotTokenResponse {
     pub token: String,
 
     /// Unix timestamp when the token expires.
+    #[serde(alias = "expires_at")]
     pub expires_at: i64,
 
     /// Recommended refresh interval in seconds.
-    #[serde(default)]
+    #[serde(default, alias = "refresh_in")]
     pub refresh_in: u64,
 
     /// Additional token annotations (e.g., SKU info).
-    #[serde(default)]
+    #[serde(default, alias = "annotations_enabled")]
     pub annotations_enabled: bool,
 
     /// Chat-enabled flag.
-    #[serde(default)]
+    #[serde(default, alias = "chat_enabled")]
     pub chat_enabled: bool,
 
     /// Organization ID if using org-level access.
-    #[serde(default)]
+    #[serde(default, alias = "organization_id")]
     pub organization_id: Option<String>,
 
     /// Enterprise ID if using enterprise-level access.
-    #[serde(default)]
+    #[serde(default, alias = "enterprise_id")]
     pub enterprise_id: Option<String>,
 
     /// SKU (product tier).
@@ -92,7 +93,7 @@ pub struct CopilotTokenResponse {
     pub telemetry: Option<String>,
 
     /// Tracking ID for this token issuance.
-    #[serde(default)]
+    #[serde(default, alias = "tracking_id")]
     pub tracking_id: Option<String>,
 }
 
