@@ -5,6 +5,7 @@ pub mod wizard_state;
 pub mod session;
 pub mod game_mechanics;
 pub mod chat_context;
+pub mod streaming_chat;
 
 #[cfg(test)]
 mod theme_service_test;

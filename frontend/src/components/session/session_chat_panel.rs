@@ -157,11 +157,27 @@ pub fn SessionChatPanel(
     });
 
     // Set up streaming chunk listener
-    // Note: The unlisten handle is intentionally not stored for cleanup because:
-    // 1. JsValue isn't Send+Sync, so can't be stored in Leptos signals
-    // 2. on_cleanup requires Send+Sync closures
-    // 3. The stream_id filtering ensures only relevant chunks are processed
-    // 4. The listener is cleaned up when the window closes
+    //
+    // IMPORTANT: Understanding the unlisten handle behavior:
+    //
+    // The `_unlisten` JsValue returned by listen_chat_chunks_async is intentionally
+    // not stored. This is SAFE because:
+    //
+    // 1. **Dropping unlisten does NOT unregister the callback**: The callback is
+    //    captured by a JavaScript closure in Tauri's event system. The unlisten
+    //    handle only provides the *ability* to explicitly unregister - dropping
+    //    it just means you lose that ability.
+    //
+    // 2. **JsValue is !Send**: Cannot be stored in Leptos signals (which require
+    //    Send+Sync) or used with on_cleanup closures.
+    //
+    // 3. **Stream ID filtering prevents interference**: Each stream has a unique
+    //    UUID, so listeners from different component instances don't conflict.
+    //
+    // 4. **Graceful degradation**: try_update/try_set return None when signals
+    //    are disposed, preventing crashes if chunks arrive after unmount.
+    //
+    // 5. **Automatic cleanup**: Tauri cleans up all listeners when webview closes.
     {
         spawn_local(async move {
             let _unlisten = listen_chat_chunks_async(move |chunk: ChatChunk| {
