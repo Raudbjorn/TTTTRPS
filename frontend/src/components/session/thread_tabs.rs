@@ -12,6 +12,7 @@ use crate::bindings::{
     ConversationThread, ConversationPurpose, ThreadListOptions,
     list_conversation_threads, create_conversation_thread,
 };
+use crate::services::notification_service::show_error;
 
 /// Thread tabs component for conversation management
 #[component]
@@ -73,6 +74,7 @@ pub fn ThreadTabs(
                 }
                 Err(e) => {
                     log::error!("Failed to create thread: {}", e);
+                    show_error("Failed to Create Thread", Some(&e), None);
                 }
             }
         });

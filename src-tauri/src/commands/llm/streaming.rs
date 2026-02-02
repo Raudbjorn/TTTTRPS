@@ -39,8 +39,12 @@ pub async fn stream_chat(
     log::info!("[stream_chat] Starting with {} messages, system_prompt: {}",
         messages.len(),
         system_prompt.as_ref().map(|s| {
-            let preview: String = s.chars().take(50).collect();
-            if s.chars().count() > 50 { format!("{}...", preview) } else { preview }
+            let chars: Vec<char> = s.chars().take(51).collect();
+            if chars.len() > 50 {
+                format!("{}...", chars.into_iter().take(50).collect::<String>())
+            } else {
+                chars.into_iter().collect::<String>()
+            }
         }).unwrap_or_else(|| "None".to_string())
     );
 

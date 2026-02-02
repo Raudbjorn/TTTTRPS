@@ -76,6 +76,11 @@ pub fn NpcConversation(
     });
 
     // Set up streaming chunk listener
+    // Note: The unlisten handle is intentionally not stored for cleanup because:
+    // 1. JsValue isn't Send+Sync, so can't be stored in Leptos signals
+    // 2. on_cleanup requires Send+Sync closures
+    // 3. The stream_id filtering ensures only relevant chunks are processed
+    // 4. The listener is cleaned up when the window closes
     {
         spawn_local(async move {
             let _unlisten = listen_chat_chunks_async(move |chunk: ChatChunk| {

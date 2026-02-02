@@ -179,6 +179,7 @@ fn NpcContactItem(
     chat_callback: Option<Callback<NpcChatSelection>>,
 ) -> impl IntoView {
     let id = npc.id.clone();
+    let id_for_keydown = npc.id.clone();
     let id_for_chat = npc.id.clone();
     let name = npc.name.clone();
     let name_for_chat = npc.name.clone();
@@ -214,77 +215,90 @@ fn NpcContactItem(
     };
 
     view! {
-        <li role="option" aria-selected=is_selected.to_string()>
-            <button
-                class=format!(
-                    "w-full flex items-center gap-3 p-2 rounded-lg transition-colors text-left focus:outline-none focus:ring-2 focus:ring-[var(--accent)] {}",
-                    base_class
-                )
-                on:click=move |_| {
-                    if let Some(ref cb) = select_callback {
-                        cb.run(id.clone());
+        <li role="option" aria-selected=is_selected.to_string() class="relative">
+            <div class="flex items-center gap-3 p-2">
+                // Main clickable area (not a button to avoid nesting issues)
+                <div
+                    class=format!(
+                        "flex-1 flex items-center gap-3 rounded-lg transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-[var(--accent)] {}",
+                        base_class
+                    )
+                    role="button"
+                    tabindex="0"
+                    on:click=move |_| {
+                        if let Some(ref cb) = select_callback {
+                            cb.run(id.clone());
+                        }
                     }
-                }
-                on:dragover=move |e| e.prevent_default()
-                on:drop=move |e| {
-                    e.prevent_default();
-                    // TODO: Handle personality drag-drop assignment
-                }
-            >
-                // Selection indicator
-                {is_selected.then(|| view! {
-                    <div class="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-[var(--accent)] rounded-r"></div>
-                })}
+                    on:keydown=move |e: leptos::ev::KeyboardEvent| {
+                        if e.key() == "Enter" || e.key() == " " {
+                            e.prevent_default();
+                            if let Some(ref cb) = select_callback {
+                                cb.run(id_for_keydown.clone());
+                            }
+                        }
+                    }
+                    on:dragover=move |e| e.prevent_default()
+                    on:drop=move |e| {
+                        e.prevent_default();
+                        // TODO: Handle personality drag-drop assignment
+                    }
+                >
+                    // Selection indicator
+                    {is_selected.then(|| view! {
+                        <div class="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-[var(--accent)] rounded-r"></div>
+                    })}
 
-                // Avatar with status
-                <div class="relative flex-shrink-0">
-                    <div class="w-10 h-10 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] flex items-center justify-center text-sm font-bold text-[var(--text-muted)] overflow-hidden">
-                        {if avatar.is_empty() {
-                            view! {
-                                <span>{name.chars().next().unwrap_or('?')}</span>
-                            }.into_any()
-                        } else {
-                            view! {
-                                <img src=avatar.clone() alt="" class="w-full h-full object-cover" />
-                            }.into_any()
-                        }}
-                    </div>
-                    // Status indicator
-                    <div class=format!(
-                        "absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[var(--bg-surface)] {}",
-                        status_color
-                    )></div>
-                </div>
-
-                // Content
-                <div class="flex-1 min-w-0">
-                    <div class="flex items-baseline justify-between gap-2">
-                        <span class=format!("text-sm truncate {}", name_class)>
-                            {name}
-                        </span>
-                        {(!last_active.is_empty()).then(|| view! {
-                            <span class="text-[10px] text-[var(--text-muted)] font-mono flex-shrink-0">
-                                {format_time_short(&last_active)}
-                            </span>
-                        })}
-                    </div>
-                    <div class="flex items-center justify-between gap-2">
-                        <p class=format!("text-xs truncate {}", message_class)>
-                            {if last_message.is_empty() {
-                                "No messages yet".to_string()
+                    // Avatar with status
+                    <div class="relative flex-shrink-0">
+                        <div class="w-10 h-10 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] flex items-center justify-center text-sm font-bold text-[var(--text-muted)] overflow-hidden">
+                            {if avatar.is_empty() {
+                                view! {
+                                    <span>{name.chars().next().unwrap_or('?')}</span>
+                                }.into_any()
                             } else {
-                                last_message.clone()
+                                view! {
+                                    <img src=avatar.clone() alt="" class="w-full h-full object-cover" />
+                                }.into_any()
                             }}
-                        </p>
-                        {(unread > 0).then(|| view! {
-                            <span class="flex-shrink-0 px-1.5 py-0.5 min-w-[1.25rem] text-center text-[10px] font-bold text-white bg-[var(--accent)] rounded-full">
-                                {if unread > 99 { "99+".to_string() } else { unread.to_string() }}
+                        </div>
+                        // Status indicator
+                        <div class=format!(
+                            "absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[var(--bg-surface)] {}",
+                            status_color
+                        )></div>
+                    </div>
+
+                    // Content
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-baseline justify-between gap-2">
+                            <span class=format!("text-sm truncate {}", name_class)>
+                                {name}
                             </span>
-                        })}
+                            {(!last_active.is_empty()).then(|| view! {
+                                <span class="text-[10px] text-[var(--text-muted)] font-mono flex-shrink-0">
+                                    {format_time_short(&last_active)}
+                                </span>
+                            })}
+                        </div>
+                        <div class="flex items-center justify-between gap-2">
+                            <p class=format!("text-xs truncate {}", message_class)>
+                                {if last_message.is_empty() {
+                                    "No messages yet".to_string()
+                                } else {
+                                    last_message.clone()
+                                }}
+                            </p>
+                            {(unread > 0).then(|| view! {
+                                <span class="flex-shrink-0 px-1.5 py-0.5 min-w-[1.25rem] text-center text-[10px] font-bold text-white bg-[var(--accent)] rounded-full">
+                                    {if unread > 99 { "99+".to_string() } else { unread.to_string() }}
+                                </span>
+                            })}
+                        </div>
                     </div>
                 </div>
 
-                // Chat button
+                // Chat button (sibling, not nested inside main clickable area)
                 {chat_callback.map(move |cb| {
                     let chat_id = id_for_chat.clone();
                     let chat_name = name_for_chat.clone();
@@ -294,8 +308,7 @@ fn NpcContactItem(
                             class="flex-shrink-0 p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                             aria-label="Open chat"
                             title="Chat with this NPC"
-                            on:click=move |e| {
-                                e.stop_propagation();
+                            on:click=move |_| {
                                 cb.run(NpcChatSelection {
                                     id: chat_id.clone(),
                                     name: chat_name.clone(),
@@ -306,7 +319,7 @@ fn NpcContactItem(
                         </button>
                     }
                 })}
-            </button>
+            </div>
         </li>
     }
 }

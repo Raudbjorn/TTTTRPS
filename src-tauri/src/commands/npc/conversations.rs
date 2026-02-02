@@ -413,11 +413,18 @@ pub async fn stream_npc_chat(
                     created_at: chrono::Utc::now().to_rfc3339(),
                 };
                 msgs.push(assistant_msg.clone());
-                conv.messages_json = serde_json::to_string(&msgs).unwrap_or_default();
-                conv.last_message_at = assistant_msg.created_at;
-                conv.unread_count += 1;
-                if let Err(e) = database.save_npc_conversation(&conv).await {
-                    log::error!("[stream_npc_chat:{}] Failed to save response: {}", stream_id_clone, e);
+                match serde_json::to_string(&msgs) {
+                    Ok(json) => {
+                        conv.messages_json = json;
+                        conv.last_message_at = assistant_msg.created_at;
+                        conv.unread_count += 1;
+                        if let Err(e) = database.save_npc_conversation(&conv).await {
+                            log::error!("[stream_npc_chat:{}] Failed to save response: {}", stream_id_clone, e);
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("[stream_npc_chat:{}] Failed to serialize messages: {}", stream_id_clone, e);
+                    }
                 }
             }
         }

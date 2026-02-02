@@ -72,7 +72,17 @@ pub fn SessionChatPanel(
         messages.set(Vec::new());
         chat_session_id.set(None);
 
-        // If switching threads, clear streaming state
+        // Cancel any in-progress stream when switching threads
+        if let Some(stream_id) = current_stream_id.get_untracked() {
+            spawn_local(async move {
+                let _ = cancel_stream(stream_id).await;
+            });
+            current_stream_id.set(None);
+            streaming_message_id.set(None);
+            is_loading.set(false);
+        }
+
+        // Clear streaming state
         streaming_persistent_id.set(None);
         pending_finalization.set(None);
 
@@ -147,9 +157,11 @@ pub fn SessionChatPanel(
     });
 
     // Set up streaming chunk listener
-    // Note: The callback is kept alive by the Tauri event system, not by Rust
-    // The unlisten handle is stored but not currently used for cleanup
-    // (future enhancement: call unlisten on component unmount)
+    // Note: The unlisten handle is intentionally not stored for cleanup because:
+    // 1. JsValue isn't Send+Sync, so can't be stored in Leptos signals
+    // 2. on_cleanup requires Send+Sync closures
+    // 3. The stream_id filtering ensures only relevant chunks are processed
+    // 4. The listener is cleaned up when the window closes
     {
         spawn_local(async move {
             let _unlisten = listen_chat_chunks_async(move |chunk: ChatChunk| {
@@ -222,8 +234,6 @@ pub fn SessionChatPanel(
                     }
                 }
             }).await;
-            // Note: _unlisten is dropped here but callback remains registered
-            // via the Tauri event system until the window is closed
         });
     }
 

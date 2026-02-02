@@ -471,10 +471,13 @@ fn NpcDetailPanel(
                                     } else {
                                         "bg-zinc-800 border-zinc-700"
                                     };
-                                    let preview = if msg.content.len() > 100 {
-                                        format!("{}...", &msg.content[..100])
-                                    } else {
-                                        msg.content.clone()
+                                    let preview = {
+                                        let chars: Vec<char> = msg.content.chars().take(101).collect();
+                                        if chars.len() > 100 {
+                                            format!("{}...", chars.into_iter().take(100).collect::<String>())
+                                        } else {
+                                            msg.content.clone()
+                                        }
                                     };
                                     view! {
                                         <div class=format!("p-2 rounded border {} text-sm", bubble_class)>
