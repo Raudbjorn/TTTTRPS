@@ -1031,8 +1031,10 @@ impl MeilisearchPipeline {
             // If single page exceeds target, split it into smaller chunks
             while current_content.len() > config.chunk_size {
                 // Find a good split point (sentence boundary, paragraph, or forced)
+                // find_split_point always returns a valid char boundary
                 let split_at = find_split_point(&current_content, config.chunk_size);
 
+                // Safe slicing - split_at is guaranteed to be a char boundary
                 let chunk_content = current_content[..split_at].to_string();
                 let chunk = ChunkedDocument::new(
                     slug,
@@ -1046,8 +1048,11 @@ impl MeilisearchPipeline {
                 chunks.push(chunk);
                 chunk_index += 1;
 
-                // Keep overlap for continuity
-                let overlap_start = split_at.saturating_sub(config.chunk_overlap);
+                // Keep overlap for continuity - ensure overlap_start is on a char boundary
+                let overlap_start = snap_to_char_boundary(
+                    &current_content,
+                    split_at.saturating_sub(config.chunk_overlap),
+                );
                 current_content = current_content[overlap_start..].to_string();
             }
         }
@@ -1074,13 +1079,30 @@ impl Default for MeilisearchPipeline {
 // Text Splitting Utilities
 // ============================================================================
 
+/// Find the nearest valid UTF-8 char boundary at or before the given byte index.
+/// This prevents panics when slicing strings with multi-byte characters.
+fn snap_to_char_boundary(text: &str, index: usize) -> usize {
+    if index >= text.len() {
+        return text.len();
+    }
+    // Walk backwards to find a valid char boundary
+    let mut pos = index;
+    while pos > 0 && !text.is_char_boundary(pos) {
+        pos -= 1;
+    }
+    pos
+}
+
 /// Find a good split point in text, preferring sentence/paragraph boundaries.
+/// Always returns a valid UTF-8 char boundary.
 fn find_split_point(text: &str, target: usize) -> usize {
-    let search_range = text.get(..target.min(text.len())).unwrap_or(text);
+    // Snap target to a valid char boundary first
+    let safe_target = snap_to_char_boundary(text, target);
+    let search_range = text.get(..safe_target).unwrap_or(text);
 
     // Prefer paragraph break
     if let Some(pos) = search_range.rfind("\n\n") {
-        if pos > target / 2 {
+        if pos > safe_target / 2 {
             return pos + 2;
         }
     }
@@ -1088,7 +1110,7 @@ fn find_split_point(text: &str, target: usize) -> usize {
     // Then sentence boundary
     for pattern in [". ", "! ", "? ", ".\n", "!\n", "?\n"] {
         if let Some(pos) = search_range.rfind(pattern) {
-            if pos > target / 2 {
+            if pos > safe_target / 2 {
                 return pos + pattern.len();
             }
         }
@@ -1099,8 +1121,8 @@ fn find_split_point(text: &str, target: usize) -> usize {
         return pos + 1;
     }
 
-    // Last resort: hard cut
-    target.min(text.len())
+    // Last resort: hard cut at the safe boundary
+    safe_target
 }
 
 // ============================================================================
