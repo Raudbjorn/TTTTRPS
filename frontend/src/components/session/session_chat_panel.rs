@@ -240,7 +240,7 @@ pub fn SessionChatPanel(
                             });
 
                             if let Some(Some(content)) = final_content {
-                                log::info!("Deferring finalization for message {} (persistent_id not ready)", mid);
+                                log::info!("Deferring finalization for message ID {} (persistent_id not ready)", mid);
                                 let _ = pending_finalization.try_set(Some(PendingFinalization {
                                     message_id: mid,
                                     final_content: content,

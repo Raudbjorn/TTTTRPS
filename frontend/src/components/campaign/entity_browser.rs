@@ -396,7 +396,13 @@ fn NpcDetailPanel(
     let messages = Memo::new(move |_| {
         conversation.get()
             .map(|c| {
-                serde_json::from_str::<Vec<ConversationMessage>>(&c.messages_json).unwrap_or_default()
+                match serde_json::from_str::<Vec<ConversationMessage>>(&c.messages_json) {
+                    Ok(msgs) => msgs,
+                    Err(e) => {
+                        log::error!("Failed to parse NPC conversation messages: {}", e);
+                        Vec::new()
+                    }
+                }
             })
             .unwrap_or_default()
     });
@@ -474,7 +480,7 @@ fn NpcDetailPanel(
                                     let preview = {
                                         let chars: Vec<char> = msg.content.chars().take(101).collect();
                                         if chars.len() > 100 {
-                                            format!("{}...", chars.into_iter().take(100).collect::<String>())
+                                            format!("{}...", chars[..100].iter().collect::<String>())
                                         } else {
                                             msg.content.clone()
                                         }
