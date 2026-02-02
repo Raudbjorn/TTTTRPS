@@ -297,29 +297,39 @@ pub fn ActiveSessionWorkspace(
             </Show>
             </div>
 
-            // Chat Panel (collapsible sidebar)
-            <div class=move || format!(
-                "transition-all duration-300 flex flex-col {}",
-                if show_chat_panel.get() { "w-96" } else { "w-0 overflow-hidden" }
-            )>
-                // Chat panel toggle button
-                <div class="flex items-center justify-between mb-2">
-                    <h3 class="font-bold text-zinc-200 text-sm">"AI Assistant"</h3>
-                    <button
-                        class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-                        on:click=move |_| show_chat_panel.update(|v| *v = !*v)
-                    >
-                        {move || if show_chat_panel.get() { "Hide" } else { "Show" }}
-                    </button>
-                </div>
+            // Chat Panel Toggle (always visible)
+            <div class="flex flex-col">
+                // Toggle button - always accessible
+                <button
+                    type="button"
+                    class=move || format!(
+                        "px-2 py-1 rounded text-xs font-medium transition-colors {}",
+                        if show_chat_panel.get() {
+                            "bg-purple-600/20 text-purple-300 hover:bg-purple-600/30"
+                        } else {
+                            "bg-zinc-700 text-zinc-400 hover:bg-zinc-600 hover:text-zinc-300"
+                        }
+                    )
+                    on:click=move |_| show_chat_panel.update(|v| *v = !*v)
+                >
+                    {move || if show_chat_panel.get() { "< Hide AI" } else { "> Show AI" }}
+                </button>
+            </div>
 
-                // Session Chat Panel
-                <Show when=move || show_chat_panel.get()>
+            // Chat Panel (collapsible sidebar)
+            <Show when=move || show_chat_panel.get()>
+                <div class="w-96 flex flex-col transition-all duration-300">
+                    // Header
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="font-bold text-zinc-200 text-sm">"AI Assistant"</h3>
+                    </div>
+
+                    // Session Chat Panel
                     <div class="flex-1 min-h-[400px]">
                         <SessionChatPanel campaign_id=campaign_id_signal />
                     </div>
-                </Show>
-            </div>
+                </div>
+            </Show>
         </div>
     }
 }

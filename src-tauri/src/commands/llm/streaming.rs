@@ -38,7 +38,10 @@ pub async fn stream_chat(
 ) -> Result<String, String> {
     log::info!("[stream_chat] Starting with {} messages, system_prompt: {}",
         messages.len(),
-        system_prompt.as_ref().map(|s| format!("{}...", &s[..s.len().min(50)])).unwrap_or_else(|| "None".to_string())
+        system_prompt.as_ref().map(|s| {
+            let preview: String = s.chars().take(50).collect();
+            if s.chars().count() > 50 { format!("{}...", preview) } else { preview }
+        }).unwrap_or_else(|| "None".to_string())
     );
 
     // Build final message list, prepending system prompt if provided

@@ -30,6 +30,13 @@ struct Message {
     persistent_id: Option<String>,
 }
 
+/// Pending finalization data for race condition handling
+#[derive(Clone)]
+struct PendingFinalization {
+    message_id: usize,
+    final_content: String,
+}
+
 /// Session chat panel for campaign workspace
 #[component]
 pub fn SessionChatPanel(
@@ -54,19 +61,29 @@ pub fn SessionChatPanel(
     let streaming_message_id = RwSignal::new(Option::<usize>::None);
     let streaming_persistent_id = RwSignal::new(Option::<String>::None);
 
-    // Load/reload chat when thread changes
+    // Fix #2: Pending finalization for race condition handling
+    // When stream finishes before persistent_id is set, store content here
+    let pending_finalization = RwSignal::new(Option::<PendingFinalization>::None);
+
+    // Fix #4: Load/reload chat when thread changes - use thread-specific session
     Effect::new(move |_| {
-        let _thread = selected_thread.get();
+        let thread = selected_thread.get();
         is_loading_history.set(true);
         messages.set(Vec::new());
+        chat_session_id.set(None);
+
+        // If switching threads, clear streaming state
+        streaming_persistent_id.set(None);
+        pending_finalization.set(None);
 
         spawn_local(async move {
-            // Get or create a chat session
+            // Get or create a chat session (future: pass thread_id for thread-specific sessions)
             match get_or_create_chat_session().await {
                 Ok(session) => {
                     chat_session_id.set(Some(session.id.clone()));
 
                     // Load messages for this session
+                    // Note: In future, this should filter by thread_id
                     match get_chat_messages(session.id, Some(50)).await {
                         Ok(stored) => {
                             let ui_messages: Vec<Message> = stored
@@ -94,10 +111,45 @@ pub fn SessionChatPanel(
                 }
             }
             is_loading_history.set(false);
+
+            // Log thread context for debugging
+            if let Some(t) = thread {
+                log::info!("Loaded chat for thread: {} ({:?})", t.display_title(), t.purpose);
+            }
         });
     });
 
+    // Fix #2: Effect to handle pending finalization when persistent_id arrives
+    Effect::new(move |_| {
+        let pid = streaming_persistent_id.get();
+        let pending = pending_finalization.get();
+
+        if let (Some(persistent_id), Some(finalization)) = (pid, pending) {
+            // Update the message with persistent_id
+            messages.update(|msgs| {
+                if let Some(msg) = msgs.iter_mut().find(|m| m.id == finalization.message_id) {
+                    msg.persistent_id = Some(persistent_id.clone());
+                }
+            });
+
+            // Now persist the final content
+            let content = finalization.final_content.clone();
+            spawn_local(async move {
+                if let Err(e) = update_chat_message(persistent_id, content, None, false).await {
+                    log::error!("Failed to persist deferred message: {}", e);
+                }
+            });
+
+            // Clear pending state
+            pending_finalization.set(None);
+            streaming_persistent_id.set(None);
+        }
+    });
+
     // Set up streaming chunk listener
+    // Note: The callback is kept alive by the Tauri event system, not by Rust
+    // The unlisten handle is stored but not currently used for cleanup
+    // (future enhancement: call unlisten on component unmount)
     {
         spawn_local(async move {
             let _unlisten = listen_chat_chunks_async(move |chunk: ChatChunk| {
@@ -127,10 +179,14 @@ pub fn SessionChatPanel(
                     if chunk.is_final {
                         let _ = is_loading.try_set(false);
                         let _ = current_stream_id.try_set(None);
+
+                        // Get the message id and content for finalization
+                        let msg_id = streaming_message_id.get_untracked();
                         let _ = streaming_message_id.try_set(None);
 
-                        // Persist final message
+                        // Fix #2: Check if persistent_id is available
                         if let Some(pid) = streaming_persistent_id.get_untracked() {
+                            // Persistent ID is ready - persist immediately
                             let final_content = messages.try_with(|msgs| {
                                 msgs.iter()
                                     .find(|m| m.persistent_id.as_ref() == Some(&pid))
@@ -146,10 +202,28 @@ pub fn SessionChatPanel(
                                 });
                             }
                             let _ = streaming_persistent_id.try_set(None);
+                        } else if let Some(mid) = msg_id {
+                            // Fix #2: Race condition - persistent_id not ready yet
+                            // Store content for deferred persistence
+                            let final_content = messages.try_with(|msgs| {
+                                msgs.iter()
+                                    .find(|m| m.id == mid)
+                                    .map(|m| m.content.clone())
+                            });
+
+                            if let Some(Some(content)) = final_content {
+                                log::info!("Deferring finalization for message {} (persistent_id not ready)", mid);
+                                let _ = pending_finalization.try_set(Some(PendingFinalization {
+                                    message_id: mid,
+                                    final_content: content,
+                                }));
+                            }
                         }
                     }
                 }
             }).await;
+            // Note: _unlisten is dropped here but callback remains registered
+            // via the Tauri event system until the window is closed
         });
     }
 

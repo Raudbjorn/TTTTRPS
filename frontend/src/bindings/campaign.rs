@@ -905,12 +905,23 @@ impl ConversationThread {
 }
 
 /// Options for listing conversation threads
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThreadListOptions {
     pub campaign_id: Option<String>,
     pub purpose: Option<ConversationPurpose>,
     pub include_archived: bool,
     pub limit: i32,
+}
+
+impl Default for ThreadListOptions {
+    fn default() -> Self {
+        Self {
+            campaign_id: None,
+            purpose: None,
+            include_archived: false,
+            limit: 50, // Sensible default instead of 0
+        }
+    }
 }
 
 /// Create a new conversation thread
