@@ -109,6 +109,13 @@ fn get_initials(name: &str) -> String {
         .to_uppercase()
 }
 
+/// NPC selection data passed to callback
+#[derive(Clone, Debug)]
+pub struct NpcSelection {
+    pub id: String,
+    pub name: String,
+}
+
 /// Info Panel component (Slack-style NPC contact list)
 #[component]
 pub fn NpcList(
@@ -116,8 +123,8 @@ pub fn NpcList(
     campaign_id: Signal<String>,
     /// Currently selected NPC ID (if any)
     selected_npc_id: Signal<Option<String>>,
-    /// Callback when an NPC is selected
-    on_select_npc: Callback<String>,
+    /// Callback when an NPC is selected (receives both ID and name)
+    on_select_npc: Callback<NpcSelection>,
 ) -> impl IntoView {
     // NPC list state
     let npcs = RwSignal::new(Vec::<NpcSummary>::new());
@@ -340,7 +347,7 @@ fn NpcSection(
     npcs: Vec<NpcSummary>,
     collapsed: RwSignal<bool>,
     selected_npc_id: Signal<Option<String>>,
-    on_select_npc: Callback<String>,
+    on_select_npc: Callback<NpcSelection>,
 ) -> impl IntoView {
     let count = npcs.len();
 
@@ -407,9 +414,12 @@ fn NpcSection(
 fn NpcContactItem(
     npc: NpcSummary,
     is_selected: Signal<bool>,
-    on_click: Callback<String>,
+    on_click: Callback<NpcSelection>,
 ) -> impl IntoView {
-    let npc_id = StoredValue::new(npc.id.clone());
+    let npc_selection = StoredValue::new(NpcSelection {
+        id: npc.id.clone(),
+        name: npc.name.clone(),
+    });
     let npc_name = npc.name.clone();
     let npc_role = npc.role.clone();
     let avatar = npc.avatar_url.clone();
@@ -441,7 +451,7 @@ fn NpcContactItem(
 
                 classes.join(" ")
             }
-            on:click=move |_| on_click.run(npc_id.get_value())
+            on:click=move |_| on_click.run(npc_selection.get_value())
         >
             // Selection indicator
             {move || {

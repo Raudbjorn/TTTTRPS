@@ -465,6 +465,27 @@ pub async fn stream_chat(
     }).await
 }
 
+/// Start a streaming NPC chat session
+/// Uses NPC personality for system prompt and persists to NPC conversation
+pub async fn stream_npc_chat(
+    npc_id: String,
+    user_message: String,
+    provided_stream_id: Option<String>,
+) -> Result<String, String> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        npc_id: String,
+        user_message: String,
+        provided_stream_id: Option<String>,
+    }
+    invoke("stream_npc_chat", &Args {
+        npc_id,
+        user_message,
+        provided_stream_id,
+    }).await
+}
+
 /// Cancel an active streaming chat
 pub async fn cancel_stream(stream_id: String) -> Result<bool, String> {
     #[derive(Serialize)]

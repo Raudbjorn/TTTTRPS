@@ -30,13 +30,32 @@ use crate::core::llm::{ChatMessage, ChatChunk};
 pub async fn stream_chat(
     app_handle: tauri::AppHandle,
     messages: Vec<ChatMessage>,
-    _system_prompt: Option<String>,
+    system_prompt: Option<String>,
     temperature: Option<f32>,
     max_tokens: Option<u32>,
     provided_stream_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    log::info!("[stream_chat] Starting with {} messages", messages.len());
+    log::info!("[stream_chat] Starting with {} messages, system_prompt: {}",
+        messages.len(),
+        system_prompt.as_ref().map(|s| {
+            let chars: Vec<char> = s.chars().take(51).collect();
+            if chars.len() > 50 {
+                format!("{}...", chars.into_iter().take(50).collect::<String>())
+            } else {
+                chars.into_iter().collect::<String>()
+            }
+        }).unwrap_or_else(|| "None".to_string())
+    );
+
+    // Build final message list, prepending system prompt if provided
+    let final_messages = if let Some(prompt) = system_prompt {
+        let mut msgs = vec![ChatMessage::system(prompt)];
+        msgs.extend(messages);
+        msgs
+    } else {
+        messages
+    };
 
     let config = state.llm_config.read()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -64,7 +83,7 @@ pub async fn stream_chat(
     let manager_guard = manager.read().await;
 
     // Initiate the stream via Meilisearch manager (enables RAG)
-    let mut rx = manager_guard.chat_stream(messages, &model, temperature, max_tokens).await
+    let mut rx = manager_guard.chat_stream(final_messages, &model, temperature, max_tokens).await
         .map_err(|e| e.to_string())?;
 
     // Spawn a task to handle the stream asynchronously
