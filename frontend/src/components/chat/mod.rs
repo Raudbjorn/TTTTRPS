@@ -275,6 +275,13 @@ pub fn Chat() -> impl IntoView {
                                     spawn_local(async move {
                                         if let Err(e) = update_chat_message(pid_clone, content, tokens, false).await {
                                             log::error!("Failed to persist final message: {}", e);
+                                            // Import show_error inside spawn_local since we can't capture it
+                                            use crate::services::notification_service::show_error;
+                                            show_error(
+                                                "Save Failed",
+                                                Some(&format!("Final response may not be saved: {}", e)),
+                                                None,
+                                            );
                                         }
                                     });
                                 }
@@ -388,7 +395,19 @@ pub fn Chat() -> impl IntoView {
             return;
         }
 
-        let session_id_opt = chat_session_id.get();
+        // Guard against missing session - prevents race condition where user sends before session loads
+        let session_id = match chat_session_id.get() {
+            Some(id) => id,
+            None => {
+                log::warn!("Attempted to send message before chat session was ready");
+                show_error(
+                    "Chat Not Ready",
+                    Some("Please wait for the conversation to load."),
+                    None,
+                );
+                return;
+            }
+        };
 
         // Add user message
         let user_msg_id = next_message_id.get();
@@ -406,11 +425,17 @@ pub fn Chat() -> impl IntoView {
         });
 
         // Persist user message to database
-        if let Some(sid) = session_id_opt.clone() {
+        {
+            let sid = session_id.clone();
             let msg_content = msg.clone();
             spawn_local(async move {
                 if let Err(e) = add_chat_message(sid, "user".to_string(), msg_content, None).await {
                     log::error!("Failed to persist user message: {}", e);
+                    show_error(
+                        "Save Failed",
+                        Some(&format!("Message may not be saved: {}", e)),
+                        None,
+                    );
                 }
             });
         }
@@ -431,7 +456,8 @@ pub fn Chat() -> impl IntoView {
         });
 
         // Persist placeholder assistant message (will be updated when streaming completes)
-        if let Some(sid) = session_id_opt {
+        {
+            let sid = session_id;
             let streaming_persistent_id = streaming_persistent_id;
             let messages = messages;
             spawn_local(async move {
@@ -448,6 +474,11 @@ pub fn Chat() -> impl IntoView {
                     }
                     Err(e) => {
                         log::error!("Failed to persist assistant placeholder: {}", e);
+                        show_error(
+                            "Save Failed",
+                            Some(&format!("Response may not be saved: {}", e)),
+                            None,
+                        );
                     }
                 }
             });
@@ -720,38 +751,50 @@ pub fn Chat() -> impl IntoView {
 
             // Message Area
             <div class="flex-1 p-4 overflow-y-auto space-y-4">
-                {
-                    let layout = use_layout_state();
-                    view! {
-                        <For
-                            each=move || messages.get()
-                            key=|msg| (msg.id, msg.content.len(), msg.is_streaming)
-                            children=move |msg| {
-                                let role = msg.role.clone();
-                                let content = msg.content.clone();
-                                let tokens = msg.tokens;
-                                let is_streaming = msg.is_streaming;
-                                let show_tokens = layout.show_token_usage.get();
-                                let on_play_handler = if role == "assistant" && !is_streaming {
-                                    let content_for_play = content.clone();
-                                    Some(Callback::new(move |_: ()| play_message(content_for_play.clone())))
-                                } else {
-                                    None
-                                };
-                                view! {
-                                    <ChatMessage
-                                        role=role
-                                        content=content
-                                        tokens=tokens
-                                        is_streaming=is_streaming
-                                        on_play=on_play_handler
-                                        show_tokens=show_tokens
-                                    />
+                {move || {
+                    if is_loading_history.get() {
+                        // Show loading indicator while session and messages load
+                        view! {
+                            <div class="flex items-center justify-center h-32 text-gray-400">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-4 h-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin"></div>
+                                    <span>"Loading conversation..."</span>
+                                </div>
+                            </div>
+                        }.into_any()
+                    } else {
+                        let layout = use_layout_state();
+                        view! {
+                            <For
+                                each=move || messages.get()
+                                key=|msg| (msg.id, msg.content.len(), msg.is_streaming)
+                                children=move |msg| {
+                                    let role = msg.role.clone();
+                                    let content = msg.content.clone();
+                                    let tokens = msg.tokens;
+                                    let is_streaming = msg.is_streaming;
+                                    let show_tokens = layout.show_token_usage.get();
+                                    let on_play_handler = if role == "assistant" && !is_streaming {
+                                        let content_for_play = content.clone();
+                                        Some(Callback::new(move |_: ()| play_message(content_for_play.clone())))
+                                    } else {
+                                        None
+                                    };
+                                    view! {
+                                        <ChatMessage
+                                            role=role
+                                            content=content
+                                            tokens=tokens
+                                            is_streaming=is_streaming
+                                            on_play=on_play_handler
+                                            show_tokens=show_tokens
+                                        />
+                                    }
                                 }
-                            }
-                        />
+                            />
+                        }.into_any()
                     }
-                }
+                }}
             </div>
 
             // Input Area
@@ -761,12 +804,25 @@ pub fn Chat() -> impl IntoView {
                         <Input
                             value=message_input
                             placeholder="Ask the DM... (Escape to cancel)"
-                            disabled=is_loading
+                            disabled=Signal::derive(move || is_loading.get() || is_loading_history.get())
                             on_keydown=on_keydown
                         />
                     </div>
                     {move || {
-                        if is_loading.get() {
+                        if is_loading_history.get() {
+                            // Session loading - show disabled button with spinner
+                            view! {
+                                <Button
+                                    variant=ButtonVariant::Secondary
+                                    on_click=move |_: ev::MouseEvent| {}
+                                    disabled=true
+                                    class="opacity-50 cursor-not-allowed"
+                                >
+                                    <div class="w-4 h-4 mr-2 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                                    "..."
+                                </Button>
+                            }.into_any()
+                        } else if is_loading.get() {
                             view! {
                                 <Button
                                     variant=ButtonVariant::Secondary
