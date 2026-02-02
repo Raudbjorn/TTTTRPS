@@ -202,7 +202,7 @@ pub struct ChatMessageRecord {
     pub content: String,
     pub tokens_input: Option<i32>,
     pub tokens_output: Option<i32>,
-    pub is_streaming: i32,
+    pub is_streaming: bool,
     pub metadata: Option<String>,
     pub created_at: String,
 }

@@ -112,7 +112,7 @@ pub fn Chat() -> impl IntoView {
                                             (Some(i), Some(o)) => Some((i as u32, o as u32)),
                                             _ => None,
                                         },
-                                        is_streaming: m.is_streaming != 0,
+                                        is_streaming: m.is_streaming,
                                         stream_id: None,
                                         persistent_id: Some(m.id.clone()),
                                     })

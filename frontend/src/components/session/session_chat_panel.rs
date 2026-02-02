@@ -103,7 +103,7 @@ pub fn SessionChatPanel(
                                     id: idx,
                                     role: m.role.clone(),
                                     content: m.content.clone(),
-                                    is_streaming: m.is_streaming != 0,
+                                    is_streaming: m.is_streaming,
                                     stream_id: None,
                                     persistent_id: Some(m.id.clone()),
                                 })
