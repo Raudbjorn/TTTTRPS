@@ -323,7 +323,7 @@ pub fn LLMSettingsView() -> impl IntoView {
                 LLMProvider::Copilot => {
                     // Fetch models from Copilot API (OAuth authenticated)
                     match get_copilot_models().await {
-                        Ok(models) => models
+                        Ok(models) if !models.is_empty() => models
                             .into_iter()
                             .filter(|m| m.supports_chat)
                             .map(|m| ModelInfo {
@@ -332,7 +332,17 @@ pub fn LLMSettingsView() -> impl IntoView {
                                 description: Some(format!("by {} ({})", m.owned_by, if m.preview { "preview" } else { "stable" })),
                             })
                             .collect(),
-                        Err(_) => Vec::new(),
+                        _ => {
+                            // Fall back to default models when not authenticated
+                            vec![
+                                ModelInfo { id: "gpt-4o".to_string(), name: "GPT-4o".to_string(), description: Some("Latest GPT-4o model".to_string()) },
+                                ModelInfo { id: "gpt-4o-mini".to_string(), name: "GPT-4o Mini".to_string(), description: Some("Smaller, faster GPT-4o".to_string()) },
+                                ModelInfo { id: "claude-3.5-sonnet".to_string(), name: "Claude 3.5 Sonnet".to_string(), description: Some("Anthropic's Claude model".to_string()) },
+                                ModelInfo { id: "o1".to_string(), name: "o1".to_string(), description: Some("OpenAI's o1 reasoning model".to_string()) },
+                                ModelInfo { id: "o1-mini".to_string(), name: "o1 Mini".to_string(), description: Some("Smaller o1 model".to_string()) },
+                                ModelInfo { id: "o3-mini".to_string(), name: "o3 Mini".to_string(), description: Some("Latest o3 mini model".to_string()) },
+                            ]
+                        }
                     }
                 }
                 LLMProvider::Mistral

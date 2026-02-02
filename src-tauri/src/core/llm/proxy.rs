@@ -949,7 +949,8 @@ async fn handle_streaming_fallback(
                             content: Some(format!("Error: {}", e)),
                             tool_calls: None,
                         },
-                        finish_reason: Some("error".to_string()),
+                        // Use "stop" for spec compliance; "error" is not a valid OpenAI finish_reason
+                        finish_reason: Some("stop".to_string()),
                     }],
                 };
 

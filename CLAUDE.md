@@ -110,3 +110,28 @@ Configured in Settings, stored in system keyring:
 - Gemini (Google) - gemini-1.5-pro, gemini-1.5-flash
 - OpenAI - gpt-4o, gpt-4-turbo
 - Ollama (local) - no API key required
+
+## Session Resumption Protocol
+
+**CRITICAL**: When resuming from a compacted/summarized session, session summaries may claim work was completed that was never persisted to disk.
+
+Before continuing work after session resumption:
+
+1. **Verify critical changes exist** - Read the actual files mentioned in the summary to confirm edits were saved
+2. **Check git status** - If summary claims files were modified, verify they appear in `git diff`
+3. **Never trust "✅ completed" claims** - The summary reflects intent, not necessarily disk state
+4. **Commit early** - After confirming a fix works, commit immediately before any other operations
+
+Example verification after resumption:
+```bash
+# Summary claims streaming.rs was fixed - VERIFY IT:
+grep -n "serde(default)" src/oauth/copilot/models/streaming.rs
+
+# If grep returns nothing, the fix was NOT persisted - reapply it
+```
+
+This protocol exists because a regression occurred when:
+1. streaming.rs fix was made (in-memory edit)
+2. Session was compacted with summary claiming "✅ Fixed"
+3. Resumed session trusted summary, ran `git checkout main`
+4. Fix was lost, causing the same bug to reappear

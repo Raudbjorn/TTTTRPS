@@ -13,8 +13,10 @@ use crate::oauth::copilot::auth::refresh::REFRESH_BUFFER_SECS;
 // =============================================================================
 
 /// Response from GitHub's device code endpoint.
+///
+/// Note: GitHub's API returns snake_case fields, so we use that for deserialization.
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct DeviceCodeResponse {
     /// The device verification code (internal).
     pub device_code: String,
@@ -34,8 +36,10 @@ fn default_interval() -> u64 {
 }
 
 /// Response from GitHub's token endpoint after device flow completion.
+///
+/// Note: GitHub's API returns snake_case fields.
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct GitHubTokenResponse {
     /// The OAuth access token.
     pub access_token: String,

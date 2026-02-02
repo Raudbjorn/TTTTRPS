@@ -118,16 +118,17 @@ pub(crate) fn convert_request(request: &MessagesRequest) -> GoogleRequest {
         let thinking_budget = request.thinking.as_ref().map(|t| t.budget_tokens);
 
         if is_claude {
-            // Claude thinking config uses budget_tokens
-            let thinking_config = GoogleThinkingConfig::claude(thinking_budget.unwrap_or(10000));
+            // Compute effective budget (default 10000 if not specified)
+            let effective_budget = thinking_budget.unwrap_or(10000);
 
-            // Validate max_tokens > thinking_budget
-            if let Some(budget) = thinking_budget {
-                if let Some(max) = gen_config.max_output_tokens {
-                    if max <= budget {
-                        // Bump max_tokens to allow for response content
-                        gen_config.max_output_tokens = Some(budget + 8192);
-                    }
+            // Claude thinking config uses budget_tokens
+            let thinking_config = GoogleThinkingConfig::claude(effective_budget);
+
+            // Validate max_tokens > effective_budget (always check, not just when Some)
+            if let Some(max) = gen_config.max_output_tokens {
+                if max <= effective_budget {
+                    // Bump max_tokens to allow for response content
+                    gen_config.max_output_tokens = Some(effective_budget + 8192);
                 }
             }
 

@@ -45,18 +45,26 @@ pub enum StreamChunk {
 // =============================================================================
 
 /// Raw streaming data from the API (SSE format).
+///
+/// Note: GitHub Copilot's API may omit certain fields like `object` and `model`
+/// that are typically present in standard OpenAI responses. We use `#[serde(default)]`
+/// to handle these gracefully.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamData {
     /// Unique identifier for the completion.
+    #[serde(default)]
     pub id: String,
 
-    /// Object type (always "chat.completion.chunk").
+    /// Object type (usually "chat.completion.chunk", but may be omitted by Copilot).
+    #[serde(default = "default_object")]
     pub object: String,
 
     /// Unix timestamp of creation.
+    #[serde(default)]
     pub created: i64,
 
-    /// The model used.
+    /// The model used (may be omitted by Copilot API).
+    #[serde(default)]
     pub model: String,
 
     /// The streaming choices.
@@ -65,6 +73,11 @@ pub struct StreamData {
     /// Token usage (only in final chunk if requested).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<Usage>,
+}
+
+/// Default value for the `object` field when omitted by the API.
+fn default_object() -> String {
+    "chat.completion.chunk".to_string()
 }
 
 impl StreamData {
