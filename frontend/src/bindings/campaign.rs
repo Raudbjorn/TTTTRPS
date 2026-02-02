@@ -818,3 +818,140 @@ pub async fn mark_version_milestone(campaign_id: String, version_id: String) -> 
     struct Args { campaign_id: String, version_id: String }
     invoke_void("mark_version_milestone", &Args { campaign_id, version_id }).await
 }
+
+// ============================================================================
+// Conversation Threads (Phase 8)
+// ============================================================================
+
+/// Purpose/category for conversation threads
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConversationPurpose {
+    CampaignCreation,
+    SessionPlanning,
+    NpcGeneration,
+    CharacterBackground,
+    WorldBuilding,
+    General,
+}
+
+impl ConversationPurpose {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ConversationPurpose::CampaignCreation => "campaign_creation",
+            ConversationPurpose::SessionPlanning => "session_planning",
+            ConversationPurpose::NpcGeneration => "npc_generation",
+            ConversationPurpose::CharacterBackground => "character_background",
+            ConversationPurpose::WorldBuilding => "world_building",
+            ConversationPurpose::General => "general",
+        }
+    }
+
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            ConversationPurpose::CampaignCreation => "Campaign Creation",
+            ConversationPurpose::SessionPlanning => "Session Planning",
+            ConversationPurpose::NpcGeneration => "NPC Generation",
+            ConversationPurpose::CharacterBackground => "Character Background",
+            ConversationPurpose::WorldBuilding => "World Building",
+            ConversationPurpose::General => "General",
+        }
+    }
+
+    pub fn icon(&self) -> &'static str {
+        match self {
+            ConversationPurpose::CampaignCreation => "📜",
+            ConversationPurpose::SessionPlanning => "📅",
+            ConversationPurpose::NpcGeneration => "👤",
+            ConversationPurpose::CharacterBackground => "📖",
+            ConversationPurpose::WorldBuilding => "🌍",
+            ConversationPurpose::General => "💬",
+        }
+    }
+}
+
+impl Default for ConversationPurpose {
+    fn default() -> Self {
+        ConversationPurpose::General
+    }
+}
+
+/// A conversation thread with AI assistant
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationThread {
+    pub id: String,
+    pub campaign_id: Option<String>,
+    pub wizard_id: Option<String>,
+    pub purpose: ConversationPurpose,
+    pub title: Option<String>,
+    pub active_personality: Option<String>,
+    pub message_count: i32,
+    pub branched_from: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub archived_at: Option<String>,
+}
+
+impl ConversationThread {
+    pub fn is_archived(&self) -> bool {
+        self.archived_at.is_some()
+    }
+
+    pub fn display_title(&self) -> String {
+        self.title.clone().unwrap_or_else(|| {
+            format!("{} Thread", self.purpose.display_name())
+        })
+    }
+}
+
+/// Options for listing conversation threads
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ThreadListOptions {
+    pub campaign_id: Option<String>,
+    pub purpose: Option<ConversationPurpose>,
+    pub include_archived: bool,
+    pub limit: i32,
+}
+
+/// Create a new conversation thread
+pub async fn create_conversation_thread(
+    campaign_id: Option<String>,
+    purpose: String,
+    title: Option<String>,
+) -> Result<ConversationThread, String> {
+    #[derive(Serialize)]
+    struct Args {
+        campaign_id: Option<String>,
+        purpose: String,
+        title: Option<String>,
+    }
+    invoke("create_conversation_thread", &Args { campaign_id, purpose, title }).await
+}
+
+/// Get a conversation thread by ID
+pub async fn get_conversation_thread(thread_id: String) -> Result<Option<ConversationThread>, String> {
+    #[derive(Serialize)]
+    struct Args { thread_id: String }
+    invoke("get_conversation_thread", &Args { thread_id }).await
+}
+
+/// List conversation threads with optional filters
+pub async fn list_conversation_threads(options: ThreadListOptions) -> Result<Vec<ConversationThread>, String> {
+    #[derive(Serialize)]
+    struct Args { options: ThreadListOptions }
+    invoke("list_conversation_threads", &Args { options }).await
+}
+
+/// Archive a conversation thread
+pub async fn archive_conversation_thread(thread_id: String) -> Result<(), String> {
+    #[derive(Serialize)]
+    struct Args { thread_id: String }
+    invoke_void("archive_conversation_thread", &Args { thread_id }).await
+}
+
+/// Update a conversation thread's title
+pub async fn update_thread_title(thread_id: String, title: String) -> Result<(), String> {
+    #[derive(Serialize)]
+    struct Args { thread_id: String, title: String }
+    invoke_void("update_thread_title", &Args { thread_id, title }).await
+}

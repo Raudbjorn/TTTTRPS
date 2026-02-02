@@ -13,6 +13,7 @@ use crate::bindings::{
     GameSession, CombatState, Combatant,
 };
 use crate::components::design_system::{Button, ButtonVariant, Input, Card, CardHeader, CardBody, Badge, BadgeVariant};
+use crate::components::session::SessionChatPanel;
 
 /// Active session workspace component
 #[component]
@@ -23,7 +24,11 @@ pub fn ActiveSessionWorkspace(
     on_session_ended: Callback<()>,
 ) -> impl IntoView {
     let session_id = StoredValue::new(session.id.clone());
+    let campaign_id = StoredValue::new(session.campaign_id.clone());
     let session_number = session.session_number;
+
+    // Chat panel state
+    let show_chat_panel = RwSignal::new(true);
 
     // Combat state
     let combat = RwSignal::new(Option::<CombatState>::None);
@@ -55,10 +60,18 @@ pub fn ActiveSessionWorkspace(
         new_condition.set(String::new());
     };
 
+    // Derive campaign_id signal for chat panel
+    let campaign_id_signal = Signal::derive(move || Some(campaign_id.get_value()));
+
     view! {
-        <div class="space-y-6 max-w-5xl mx-auto">
-            // Session Control Bar
-            <Card>
+        <div class="flex gap-4 h-full">
+            // Main content area
+            <div class=move || format!(
+                "space-y-6 transition-all duration-300 {}",
+                if show_chat_panel.get() { "flex-1" } else { "w-full max-w-5xl mx-auto" }
+            )>
+                // Session Control Bar
+                <Card>
                 <div class="flex justify-between items-center p-4">
                     <div>
                         <div class="text-xs text-zinc-400 uppercase tracking-widest">"Current Session"</div>
@@ -258,6 +271,31 @@ pub fn ActiveSessionWorkspace(
                     on_close=Callback::new(move |_| close_condition_modal())
                 />
             </Show>
+            </div>
+
+            // Chat Panel (collapsible sidebar)
+            <div class=move || format!(
+                "transition-all duration-300 flex flex-col {}",
+                if show_chat_panel.get() { "w-96" } else { "w-0 overflow-hidden" }
+            )>
+                // Chat panel toggle button
+                <div class="flex items-center justify-between mb-2">
+                    <h3 class="font-bold text-zinc-200 text-sm">"AI Assistant"</h3>
+                    <button
+                        class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                        on:click=move |_| show_chat_panel.update(|v| *v = !*v)
+                    >
+                        {move || if show_chat_panel.get() { "Hide" } else { "Show" }}
+                    </button>
+                </div>
+
+                // Session Chat Panel
+                <Show when=move || show_chat_panel.get()>
+                    <div class="flex-1 min-h-[400px]">
+                        <SessionChatPanel campaign_id=campaign_id_signal />
+                    </div>
+                </Show>
+            </div>
         </div>
     }
 }

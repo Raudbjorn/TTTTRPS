@@ -29,6 +29,10 @@ pub mod entity_card;
 pub mod card_tray;
 pub mod cheat_sheet_viewer;
 
+// Phase 8: Conversation Thread Tabs & Session Chat
+pub mod thread_tabs;
+pub mod session_chat_panel;
+
 use leptos::prelude::*;
 use leptos::ev;
 use leptos_router::hooks::use_params;
@@ -84,6 +88,10 @@ pub use cheat_sheet_viewer::{
     CheatSheetViewer, FloatingCheatSheet,
     CheatSheet, CheatSheetSection, CheatSheetItem, SectionType, TruncationWarning,
 };
+
+// Phase 8: Thread Tabs & Session Chat exports
+pub use thread_tabs::{ThreadTabs, ThreadIndicator};
+pub use session_chat_panel::SessionChatPanel;
 
 /// Route params for session page
 #[derive(Params, PartialEq, Clone, Default)]
