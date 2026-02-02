@@ -458,6 +458,7 @@ fn main() {
             commands::mark_npc_read,
             commands::list_npc_summaries,
             commands::reply_as_npc,
+            commands::stream_npc_chat,
 
             // Document Ingestion & Search (Meilisearch)
             commands::ingest_document,
