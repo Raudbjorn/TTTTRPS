@@ -12,6 +12,13 @@
 use leptos::prelude::*;
 use crate::bindings::{list_npc_summaries, NpcSummary};
 
+/// Selection with both ID and name for NPC chat
+#[derive(Clone, Debug)]
+pub struct NpcChatSelection {
+    pub id: String,
+    pub name: String,
+}
+
 /// Info panel displaying NPC contacts (Slack DM style)
 #[component]
 pub fn InfoPanel(
@@ -26,6 +33,9 @@ pub fn InfoPanel(
     /// Callback to create a new NPC
     #[prop(optional, into)]
     on_create_npc: Option<Callback<()>>,
+    /// Callback to open chat with an NPC
+    #[prop(optional, into)]
+    on_chat_npc: Option<Callback<NpcChatSelection>>,
 ) -> impl IntoView {
     let campaign_id_clone = campaign_id.clone();
     let search_query = RwSignal::new(String::new());
@@ -124,17 +134,18 @@ pub fn InfoPanel(
                                 }.into_any()
                             } else {
                                 let selected = selected_npc_id.clone();
-                                let on_click = on_select_npc.clone();
                                 view! {
                                     <ul class="p-2 space-y-0.5" role="listbox" aria-label="NPC list">
-                                        {list.iter().map(|npc| {
+                                        {list.into_iter().map(|npc| {
                                             let is_selected = selected.as_ref() == Some(&npc.id);
-                                            let callback = on_click.clone();
+                                            let select_cb = on_select_npc;
+                                            let chat_cb = on_chat_npc;
                                             view! {
                                                 <NpcContactItem
-                                                    npc=npc.clone()
+                                                    npc=npc
                                                     is_selected=is_selected
-                                                    on_click=callback
+                                                    select_callback=select_cb
+                                                    chat_callback=chat_cb
                                                 />
                                             }
                                         }).collect_view()}
@@ -162,10 +173,15 @@ pub fn InfoPanel(
 fn NpcContactItem(
     npc: NpcSummary,
     is_selected: bool,
-    on_click: Option<Callback<String>>,
+    /// Callback when NPC is clicked/selected
+    select_callback: Option<Callback<String>>,
+    /// Callback to open chat with this NPC
+    chat_callback: Option<Callback<NpcChatSelection>>,
 ) -> impl IntoView {
     let id = npc.id.clone();
+    let id_for_chat = npc.id.clone();
     let name = npc.name.clone();
+    let name_for_chat = npc.name.clone();
     let avatar = npc.avatar_url.clone();
     let status = npc.status.clone();
     let last_active = npc.last_active.clone();
@@ -205,7 +221,7 @@ fn NpcContactItem(
                     base_class
                 )
                 on:click=move |_| {
-                    if let Some(ref cb) = on_click {
+                    if let Some(ref cb) = select_callback {
                         cb.run(id.clone());
                     }
                 }
@@ -267,6 +283,29 @@ fn NpcContactItem(
                         })}
                     </div>
                 </div>
+
+                // Chat button
+                {chat_callback.map(move |cb| {
+                    let chat_id = id_for_chat.clone();
+                    let chat_name = name_for_chat.clone();
+                    view! {
+                        <button
+                            type="button"
+                            class="flex-shrink-0 p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                            aria-label="Open chat"
+                            title="Chat with this NPC"
+                            on:click=move |e| {
+                                e.stop_propagation();
+                                cb.run(NpcChatSelection {
+                                    id: chat_id.clone(),
+                                    name: chat_name.clone(),
+                                });
+                            }
+                        >
+                            <ChatIcon />
+                        </button>
+                    }
+                })}
             </button>
         </li>
     }
@@ -327,6 +366,15 @@ fn UserIcon() -> impl IntoView {
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
             <circle cx="12" cy="7" r="4"></circle>
+        </svg>
+    }
+}
+
+#[component]
+fn ChatIcon() -> impl IntoView {
+    view! {
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
         </svg>
     }
 }

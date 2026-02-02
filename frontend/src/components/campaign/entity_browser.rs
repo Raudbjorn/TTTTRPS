@@ -6,8 +6,10 @@ use leptos::ev;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use crate::bindings::{
-    list_npcs, list_locations, NPC, LocationState,
+    list_npcs, list_locations, get_npc_conversation,
+    NPC, LocationState, NpcConversation, ConversationMessage,
 };
+use crate::components::campaign_details::{NpcConversation as NpcConversationPanel, NpcChatSelection};
 
 /// Entity type filter
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
@@ -158,6 +160,12 @@ pub fn EntityBrowser(
     let locations = RwSignal::new(Vec::<LocationState>::new());
     let is_loading = RwSignal::new(true);
 
+    // NPC Detail/Chat state
+    let selected_npc = RwSignal::new(Option::<NPC>::None);
+    let show_npc_chat = RwSignal::new(false);
+    let chat_npc_id = RwSignal::new(Option::<String>::None);
+    let chat_npc_name = RwSignal::new(Option::<String>::None);
+
     // Load data
     let campaign_id_clone = campaign_id.clone();
     Effect::new(move |_| {
@@ -188,8 +196,36 @@ pub fn EntityBrowser(
         search_query.set(target.value());
     };
 
+    // NPC selection handler - opens detail panel
+    let handle_npc_select = {
+        let npcs = npcs.clone();
+        Callback::new(move |npc_id: String| {
+            if let Some(npc) = npcs.get().into_iter().find(|n| n.id == npc_id) {
+                selected_npc.set(Some(npc));
+                show_npc_chat.set(false);
+            }
+        })
+    };
+
+    // Open NPC chat handler
+    let handle_open_chat = Callback::new(move |selection: NpcChatSelection| {
+        chat_npc_id.set(Some(selection.id));
+        chat_npc_name.set(Some(selection.name));
+        show_npc_chat.set(true);
+    });
+
+    // Close detail panel handler
+    let handle_close_detail = Callback::new(move |_: ()| {
+        selected_npc.set(None);
+        show_npc_chat.set(false);
+        chat_npc_id.set(None);
+        chat_npc_name.set(None);
+    });
+
     view! {
-        <div class="space-y-4">
+        <div class="flex gap-4">
+            // Main content area
+            <div class="flex-1 space-y-4">
             // Header
             <div class="flex flex-col md:flex-row md:items-center gap-4">
                 // Search
@@ -263,7 +299,7 @@ pub fn EntityBrowser(
                                             </h3>
                                             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                                 {filtered_npcs.into_iter().map(|npc| {
-                                                    view! { <NpcEntityCard npc=npc /> }
+                                                    view! { <NpcEntityCard npc=npc on_select=handle_npc_select /> }
                                                 }).collect_view()}
                                             </div>
                                         </div>
@@ -294,6 +330,191 @@ pub fn EntityBrowser(
                     }
                 }
             }}
+            </div> // Close main content area
+
+            // NPC Detail/Chat Panel (right side)
+            {move || {
+                let npc_id = chat_npc_id.get();
+                let npc_name = chat_npc_name.get();
+
+                if show_npc_chat.get() && npc_id.is_some() && npc_name.is_some() {
+                    // Full NPC Chat view
+                    view! {
+                        <div class="w-96 flex-shrink-0 border-l border-zinc-800 bg-zinc-950">
+                            <NpcConversationPanel
+                                npc_id=npc_id.unwrap()
+                                npc_name=npc_name.unwrap()
+                                on_close=handle_close_detail
+                            />
+                        </div>
+                    }.into_any()
+                } else if let Some(npc) = selected_npc.get() {
+                    // NPC Detail Panel with conversation preview
+                    view! {
+                        <NpcDetailPanel
+                            npc=npc
+                            on_chat=handle_open_chat
+                            on_close=handle_close_detail
+                        />
+                    }.into_any()
+                } else {
+                    view! { <div></div> }.into_any()
+                }
+            }}
         </div>
+    }
+}
+
+/// NPC Detail Panel showing NPC info and conversation preview
+#[component]
+fn NpcDetailPanel(
+    npc: NPC,
+    on_chat: Callback<NpcChatSelection>,
+    on_close: Callback<()>,
+) -> impl IntoView {
+    let npc_id = npc.id.clone();
+    let npc_name = npc.name.clone();
+    let npc_id_for_chat = npc.id.clone();
+    let npc_name_for_chat = npc.name.clone();
+
+    // Fetch conversation for this NPC
+    let conversation = RwSignal::new(Option::<NpcConversation>::None);
+    let is_loading = RwSignal::new(true);
+
+    Effect::new(move |_| {
+        let id = npc_id.clone();
+        spawn_local(async move {
+            match get_npc_conversation(id).await {
+                Ok(conv) => conversation.set(Some(conv)),
+                Err(_) => conversation.set(None),
+            }
+            is_loading.set(false);
+        });
+    });
+
+    // Parse messages from conversation
+    let messages = Memo::new(move |_| {
+        conversation.get()
+            .map(|c| {
+                serde_json::from_str::<Vec<ConversationMessage>>(&c.messages_json).unwrap_or_default()
+            })
+            .unwrap_or_default()
+    });
+
+    let initials = npc_name.chars().next().unwrap_or('?');
+
+    view! {
+        <div class="w-80 flex-shrink-0 border-l border-zinc-800 bg-zinc-900 flex flex-col h-full">
+            // Header
+            <div class="p-4 border-b border-zinc-800 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg bg-purple-900/50 flex items-center justify-center text-purple-300 font-bold">
+                        {initials.to_string()}
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-white">{npc.name.clone()}</h3>
+                        <p class="text-sm text-zinc-500">{npc.role.clone()}</p>
+                    </div>
+                </div>
+                <button
+                    class="p-2 text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-colors"
+                    aria-label="Close panel"
+                    on:click=move |_| on_close.run(())
+                >
+                    "×"
+                </button>
+            </div>
+
+            // Tags
+            {(!npc.tags.is_empty()).then(|| view! {
+                <div class="p-4 border-b border-zinc-800">
+                    <div class="flex flex-wrap gap-1">
+                        {npc.tags.iter().map(|tag| {
+                            view! {
+                                <span class="px-2 py-1 text-xs bg-zinc-800 text-zinc-400 rounded">
+                                    {tag.clone()}
+                                </span>
+                            }
+                        }).collect_view()}
+                    </div>
+                </div>
+            })}
+
+            // Conversation History
+            <div class="flex-1 overflow-y-auto p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <h4 class="text-sm font-bold text-zinc-400 uppercase tracking-wider">"Conversation History"</h4>
+                    <span class="text-xs text-zinc-600">{move || format!("{} messages", messages.get().len())}</span>
+                </div>
+
+                {move || {
+                    if is_loading.get() {
+                        view! {
+                            <div class="text-center py-8 text-zinc-500">"Loading..."</div>
+                        }.into_any()
+                    } else if messages.get().is_empty() {
+                        view! {
+                            <div class="text-center py-8 text-zinc-500">
+                                <p class="mb-2">"No conversation yet"</p>
+                                <p class="text-xs">"Start chatting to build a history"</p>
+                            </div>
+                        }.into_any()
+                    } else {
+                        let msgs = messages.get();
+                        let recent_msgs: Vec<_> = msgs.into_iter().rev().take(10).collect();
+                        view! {
+                            <div class="space-y-3">
+                                {recent_msgs.into_iter().map(|msg| {
+                                    let is_user = msg.role == "user";
+                                    let bubble_class = if is_user {
+                                        "bg-purple-900/30 border-purple-700/30"
+                                    } else {
+                                        "bg-zinc-800 border-zinc-700"
+                                    };
+                                    let preview = if msg.content.len() > 100 {
+                                        format!("{}...", &msg.content[..100])
+                                    } else {
+                                        msg.content.clone()
+                                    };
+                                    view! {
+                                        <div class=format!("p-2 rounded border {} text-sm", bubble_class)>
+                                            <span class=if is_user { "text-purple-300" } else { "text-zinc-300" }>
+                                                {preview}
+                                            </span>
+                                        </div>
+                                    }
+                                }).collect_view()}
+                            </div>
+                        }.into_any()
+                    }
+                }}
+            </div>
+
+            // Chat Action Button
+            <div class="p-4 border-t border-zinc-800">
+                <button
+                    class="w-full px-4 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+                    on:click=move |_| {
+                        on_chat.run(NpcChatSelection {
+                            id: npc_id_for_chat.clone(),
+                            name: npc_name_for_chat.clone(),
+                        });
+                    }
+                >
+                    <ChatIcon />
+                    "Start Conversation"
+                </button>
+            </div>
+        </div>
+    }
+}
+
+/// Chat icon for the detail panel
+#[component]
+fn ChatIcon() -> impl IntoView {
+    view! {
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        </svg>
     }
 }
