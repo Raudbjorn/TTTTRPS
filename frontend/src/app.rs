@@ -15,6 +15,7 @@ use crate::services::layout_service::provide_layout_state;
 use crate::services::theme_service::{ThemeState, provide_theme_state};
 use crate::services::notification_service::provide_notification_state;
 use crate::services::chat_context::provide_chat_context;
+use crate::services::chat_session_service::provide_chat_session_service;
 use crate::components::design_system::ToastContainer;
 
 #[component]
@@ -24,6 +25,7 @@ pub fn App() -> impl IntoView {
     provide_layout_state();
     provide_notification_state();
     provide_chat_context();
+    provide_chat_session_service();
 
     let theme_state = use_context::<ThemeState>();
 
