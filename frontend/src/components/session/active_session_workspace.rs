@@ -77,20 +77,44 @@ pub fn ActiveSessionWorkspace(
                         <div class="text-xs text-zinc-400 uppercase tracking-widest">"Current Session"</div>
                         <div class="text-2xl font-bold text-white">{format!("Session #{}", session_number)}</div>
                     </div>
-                    <Button
-                        variant=ButtonVariant::Destructive
-                        class="px-4 py-2 bg-red-600/20 text-red-400 border border-red-600/50"
-                        on_click=move |_: ev::MouseEvent| {
-                            let sid = session_id.get_value();
-                            spawn_local(async move {
-                                if end_session(sid).await.is_ok() {
-                                    on_session_ended.run(());
-                                }
-                            });
-                        }
-                    >
-                        "End Session"
-                    </Button>
+                    <div class="flex items-center gap-2">
+                        // Quick action: Plan Session
+                        <Button
+                            variant=ButtonVariant::Secondary
+                            class="px-4 py-2 bg-purple-600/20 text-purple-300 border border-purple-600/50 hover:bg-purple-600/30"
+                            on_click=move |_: ev::MouseEvent| {
+                                show_chat_panel.set(true);
+                            }
+                        >
+                            <span class="mr-1">"📅"</span>
+                            "Plan Session"
+                        </Button>
+                        // Quick action: Generate NPC
+                        <Button
+                            variant=ButtonVariant::Secondary
+                            class="px-4 py-2 bg-blue-600/20 text-blue-300 border border-blue-600/50 hover:bg-blue-600/30"
+                            on_click=move |_: ev::MouseEvent| {
+                                show_chat_panel.set(true);
+                            }
+                        >
+                            <span class="mr-1">"👤"</span>
+                            "Quick NPC"
+                        </Button>
+                        <Button
+                            variant=ButtonVariant::Destructive
+                            class="px-4 py-2 bg-red-600/20 text-red-400 border border-red-600/50"
+                            on_click=move |_: ev::MouseEvent| {
+                                let sid = session_id.get_value();
+                                spawn_local(async move {
+                                    if end_session(sid).await.is_ok() {
+                                        on_session_ended.run(());
+                                    }
+                                });
+                            }
+                        >
+                            "End Session"
+                        </Button>
+                    </div>
                 </div>
             </Card>
 
