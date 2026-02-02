@@ -52,9 +52,10 @@ pub fn SessionList(
         let mut current_session: Option<SessionSummary> = None;
 
         for s in all_sessions {
+            let status_lower = s.status.to_lowercase();
             if Some(&s.id) == active_id.as_ref() {
                 current_session = Some(s);
-            } else if s.status == "active" || s.status == "in_progress" {
+            } else if status_lower == "active" || status_lower == "in_progress" {
                 current_session = Some(s);
             } else {
                 past_sessions.push(s);
