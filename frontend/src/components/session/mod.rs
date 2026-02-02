@@ -33,6 +33,9 @@ pub mod cheat_sheet_viewer;
 pub mod thread_tabs;
 pub mod session_chat_panel;
 
+// Phase 10: Conversation List
+pub mod conversation_list;
+
 use leptos::prelude::*;
 use leptos::ev;
 use leptos_router::hooks::use_params;
@@ -41,7 +44,7 @@ use wasm_bindgen_futures::spawn_local;
 
 use crate::bindings::{
     get_campaign, get_active_session, list_sessions, start_session,
-    Campaign, GameSession, SessionSummary,
+    Campaign, GameSession, SessionSummary, ConversationThread,
 };
 use crate::components::design_system::{Button, ButtonVariant};
 use crate::components::campaign_details::NpcConversation;
@@ -93,10 +96,20 @@ pub use cheat_sheet_viewer::{
 pub use thread_tabs::{ThreadTabs, ThreadIndicator};
 pub use session_chat_panel::SessionChatPanel;
 
+// Phase 10: Conversation List exports
+pub use conversation_list::ConversationList;
+
 /// Route params for session page
 #[derive(Params, PartialEq, Clone, Default)]
 pub struct SessionParams {
     pub campaign_id: Option<String>,
+}
+
+/// Right sidebar tab selection
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum SidebarTab {
+    Npcs,
+    Conversations,
 }
 
 /// Main Session page component
@@ -125,6 +138,10 @@ pub fn Session() -> impl IntoView {
     // NPC Selection State
     let selected_npc_id = RwSignal::new(Option::<String>::None);
     let selected_npc_name = RwSignal::new(Option::<String>::None);
+
+    // Right sidebar tab state (NPCs vs Conversations)
+    let sidebar_tab = RwSignal::new(SidebarTab::Npcs);
+    let selected_conversation_id = RwSignal::new(Option::<String>::None);
 
     // Initial data load effect - also loads chat context for AI
     Effect::new(move |_| {
@@ -359,22 +376,72 @@ pub fn Session() -> impl IntoView {
                 </Show>
             </div>
 
-            // Right Sidebar: NPCs
-            <NpcList
-                campaign_id=campaign_id_memo.into()
-                selected_npc_id=selected_npc_id.into()
-                on_select_npc=Callback::new(move |id: String| {
-                    // Mock NPC name lookup - in production, would fetch from backend
-                    let name = match id.as_str() {
-                        "npc-1" => "Garrosh",
-                        "npc-2" => "Elara",
-                        "npc-3" => "Zoltan",
-                        _ => "Unknown NPC",
-                    };
-                    selected_npc_id.set(Some(id));
-                    selected_npc_name.set(Some(name.to_string()));
-                })
-            />
+            // Right Sidebar: Tabbed (NPCs / Conversations)
+            <div class="w-64 flex flex-col bg-zinc-900 border-l border-zinc-800">
+                // Tab bar
+                <div class="flex border-b border-zinc-800">
+                    <button
+                        type="button"
+                        class=move || format!(
+                            "flex-1 px-3 py-2 text-xs font-medium transition-colors {}",
+                            if sidebar_tab.get() == SidebarTab::Npcs {
+                                "text-purple-300 border-b-2 border-purple-500 bg-purple-900/20"
+                            } else {
+                                "text-zinc-500 hover:text-zinc-300"
+                            }
+                        )
+                        on:click=move |_| sidebar_tab.set(SidebarTab::Npcs)
+                    >
+                        "NPCs"
+                    </button>
+                    <button
+                        type="button"
+                        class=move || format!(
+                            "flex-1 px-3 py-2 text-xs font-medium transition-colors {}",
+                            if sidebar_tab.get() == SidebarTab::Conversations {
+                                "text-purple-300 border-b-2 border-purple-500 bg-purple-900/20"
+                            } else {
+                                "text-zinc-500 hover:text-zinc-300"
+                            }
+                        )
+                        on:click=move |_| sidebar_tab.set(SidebarTab::Conversations)
+                    >
+                        "Chats"
+                    </button>
+                </div>
+
+                // Tab content
+                <div class="flex-1 overflow-hidden">
+                    {move || match sidebar_tab.get() {
+                        SidebarTab::Npcs => view! {
+                            <NpcList
+                                campaign_id=campaign_id_memo.into()
+                                selected_npc_id=selected_npc_id.into()
+                                on_select_npc=Callback::new(move |id: String| {
+                                    let name = match id.as_str() {
+                                        "npc-1" => "Garrosh",
+                                        "npc-2" => "Elara",
+                                        "npc-3" => "Zoltan",
+                                        _ => "Unknown NPC",
+                                    };
+                                    selected_npc_id.set(Some(id));
+                                    selected_npc_name.set(Some(name.to_string()));
+                                })
+                            />
+                        }.into_any(),
+                        SidebarTab::Conversations => view! {
+                            <ConversationList
+                                campaign_id=Signal::derive(move || campaign_id_memo.get())
+                                selected_id=Signal::derive(move || selected_conversation_id.get())
+                                on_select=Callback::new(move |thread: ConversationThread| {
+                                    selected_conversation_id.set(Some(thread.id));
+                                    // TODO: Open conversation view
+                                })
+                            />
+                        }.into_any(),
+                    }}
+                </div>
+            </div>
         </div>
     }
 }

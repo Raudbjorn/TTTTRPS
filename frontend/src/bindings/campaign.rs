@@ -877,7 +877,7 @@ impl Default for ConversationPurpose {
 }
 
 /// A conversation thread with AI assistant
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConversationThread {
     pub id: String,
     pub campaign_id: Option<String>,
