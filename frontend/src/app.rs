@@ -14,6 +14,7 @@ use crate::components::analytics::{UsageDashboardPage, SearchAnalyticsPage, Audi
 use crate::services::layout_service::provide_layout_state;
 use crate::services::theme_service::{ThemeState, provide_theme_state};
 use crate::services::notification_service::provide_notification_state;
+use crate::services::chat_context::provide_chat_context;
 use crate::components::design_system::ToastContainer;
 
 #[component]
@@ -22,6 +23,7 @@ pub fn App() -> impl IntoView {
     provide_theme_state();
     provide_layout_state();
     provide_notification_state();
+    provide_chat_context();
 
     let theme_state = use_context::<ThemeState>();
 

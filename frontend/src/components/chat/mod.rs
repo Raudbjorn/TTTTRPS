@@ -11,12 +11,14 @@ use wasm_bindgen_futures::spawn_local;
 use std::sync::Arc;
 use crate::services::notification_service::{show_error, ToastAction};
 use crate::services::layout_service::use_layout_state;
+use crate::services::chat_context::try_use_chat_context;
 
 use crate::bindings::{
     cancel_stream, chat, check_llm_health, get_session_usage, listen_chat_chunks_async, stream_chat,
     ChatChunk, ChatRequestPayload, SessionUsage, StreamingChatMessage,
     // Global chat session bindings
     get_or_create_chat_session, get_chat_messages, add_chat_message, update_chat_message,
+    link_chat_to_game_session,
 };
 use crate::components::design_system::{Button, ButtonVariant, Input};
 
@@ -135,6 +137,29 @@ pub fn Chat() -> impl IntoView {
             is_loading_history.set(false);
         });
     }
+
+    // Link chat session to campaign when both are available
+    // This enables campaign-specific chat history in the database
+    Effect::new(move |_| {
+        let session_id = chat_session_id.get();
+        let campaign_ctx = try_use_chat_context();
+
+        if let (Some(sid), Some(ctx)) = (session_id, campaign_ctx) {
+            if let Some(campaign_id) = ctx.campaign_id() {
+                // Link chat session to campaign (fire and forget)
+                spawn_local(async move {
+                    // Use empty string for game_session_id since we're linking to campaign only
+                    if let Err(e) = link_chat_to_game_session(
+                        sid,
+                        String::new(), // No specific game session
+                        Some(campaign_id),
+                    ).await {
+                        log::warn!("Failed to link chat session to campaign: {}", e);
+                    }
+                });
+            }
+        }
+    });
 
     // Shared health check logic
     // Trigger for health check retry
@@ -511,8 +536,26 @@ pub fn Chat() -> impl IntoView {
             })
             .collect();
 
+        // Build system prompt with campaign context if available
+        let system_prompt = {
+            let base_prompt = "You are a TTRPG assistant helping a Game Master run engaging tabletop sessions. \
+                You have expertise in narrative design, encounter balancing, improvisation, and player engagement. \
+                Be helpful, creative, and supportive of the GM's vision.";
+
+            // Check if we have campaign context from the session workspace
+            if let Some(chat_ctx) = try_use_chat_context() {
+                if let Some(augmentation) = chat_ctx.build_prompt_augmentation() {
+                    Some(format!("{}{}", base_prompt, augmentation))
+                } else {
+                    Some(base_prompt.to_string())
+                }
+            } else {
+                Some(base_prompt.to_string())
+            }
+        };
+
         spawn_local(async move {
-            match stream_chat(history, None, None, None, Some(stream_id_clone)).await {
+            match stream_chat(history, system_prompt, None, None, Some(stream_id_clone)).await {
                 Ok(_) => {
                     // Stream started successfully (ID already set)
                 }

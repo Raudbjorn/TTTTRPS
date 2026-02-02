@@ -41,6 +41,7 @@ use crate::bindings::{
 };
 use crate::components::design_system::{Button, ButtonVariant};
 use crate::components::campaign_details::NpcConversation;
+use crate::services::chat_context::use_chat_context;
 
 use session_list::SessionList;
 use npc_list::NpcList;
@@ -103,6 +104,9 @@ pub fn Session() -> impl IntoView {
             .unwrap_or_default()
     });
 
+    // Get chat context for campaign-aware AI chat
+    let chat_ctx = use_chat_context();
+
     // State signals
     let campaign = RwSignal::new(Option::<Campaign>::None);
     let sessions = RwSignal::new(Vec::<SessionSummary>::new());
@@ -114,13 +118,16 @@ pub fn Session() -> impl IntoView {
     let selected_npc_id = RwSignal::new(Option::<String>::None);
     let selected_npc_name = RwSignal::new(Option::<String>::None);
 
-    // Initial data load effect
+    // Initial data load effect - also loads chat context for AI
     Effect::new(move |_| {
         let cid = campaign_id_memo.get();
         if cid.is_empty() {
             is_loading.set(false);
             return;
         }
+
+        // Load campaign context for AI chat (NPCs, locations, etc.)
+        chat_ctx.set_campaign(cid.clone());
 
         spawn_local(async move {
             // Load campaign data
@@ -141,6 +148,11 @@ pub fn Session() -> impl IntoView {
 
             is_loading.set(false);
         });
+    });
+
+    // Clear chat context when leaving session workspace
+    on_cleanup(move || {
+        chat_ctx.clear();
     });
 
     // Session ended callback
