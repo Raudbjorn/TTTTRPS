@@ -318,6 +318,11 @@ System **SHALL** visually indicate loading state (spinner/skeleton).
 System **SHALL** visually indicate streaming state (animated cursor).
 System **SHALL** visually indicate persistence failure (error icon on message).
 
+#### NFR-015: Prompt Injection Protection
+System **SHALL** sanitize all user-controlled NPC fields before interpolating into system prompts.
+System **SHALL** enforce maximum 500 character limit on interpolated fields.
+System **SHALL** remove markdown formatting and control characters from interpolated content.
+
 ## Constraints
 
 ### C-001: Meilisearch Chat Statelessness
@@ -395,6 +400,47 @@ Database constraint allows only one active chat session at a time (enforced by p
 3. Return to NPC detail page
 4. **Expected:** Previous conversation visible and resumable
 
+## Implementation Status
+
+### Core Persistence (FR-001 to FR-008)
+
+| Requirement | Status | Notes |
+|-------------|--------|-------|
+| FR-001 | [IMPLEMENTED] | Session guard blocks sends until session ready |
+| FR-002 | [IMPLEMENTED] | Loading indicator shown during session load |
+| FR-003 | [IMPLEMENTED] | Send button disabled during session initialization |
+| FR-004 | [IMPLEMENTED] | Messages reload from SQLite on navigation return |
+| FR-005 | [IMPLEMENTED] | Active session and messages restored on app restart |
+| FR-006 | [IMPLEMENTED] | Toast notifications for persistence errors |
+| FR-007 | [IMPLEMENTED] | Stream finalization updates message with final content |
+| FR-008 | [NOT IMPLEMENTED] | Session archival deferred to future release |
+
+### Campaign Integration (FR-100 to FR-108)
+
+| Requirement | Status | Notes |
+|-------------|--------|-------|
+| FR-100 | [IMPLEMENTED] | Campaign context linked via ChatContext service |
+| FR-101 | [IMPLEMENTED] | Session ID linked when in session workspace |
+| FR-102 | [IMPLEMENTED] | Campaign data injected into system prompts |
+| FR-103 | [IMPLEMENTED] | Conversation threads with purpose support |
+| FR-104 | [IMPLEMENTED] | Purpose-specific thread creation available |
+| FR-105 | [IMPLEMENTED] | Thread switching with state preservation |
+| FR-106 | [IMPLEMENTED] | SessionChatPanel integrated in session workspace |
+| FR-107 | [IMPLEMENTED] | ConversationList shows campaign threads |
+| FR-108 | [IMPLEMENTED] | Context augmentation includes entity data |
+
+### NPC Conversations (FR-200 to FR-206)
+
+| Requirement | Status | Notes |
+|-------------|--------|-------|
+| FR-200 | [IMPLEMENTED] | NPC conversation threads with backend commands |
+| FR-201 | [PARTIAL] | Voice mode backend ready, UI toggle pending |
+| FR-202 | [PENDING] | NPC detail page conversation list not yet built |
+| FR-203 | [IMPLEMENTED] | Quick chat command creates/resumes conversations |
+| FR-204 | [PENDING] | Personality extraction deferred to Phase 11 |
+| FR-205 | [PARTIAL] | Dialogue practice backend ready, UI pending |
+| FR-206 | [IMPLEMENTED] | Messages persist to npc_conversations table |
+
 ## Out of Scope (v1)
 
 - Full-text search within chat history (use Meilisearch later)
@@ -407,12 +453,24 @@ Database constraint allows only one active chat session at a time (enforced by p
 
 ## Dependencies
 
-- SQLite database with migrations V18+ (global_chat_sessions, chat_messages)
-- SQLite database with migrations V22+ (conversation_threads, conversation_messages)
-- Campaign and Session models (migrations V1+)
-- Tauri IPC commands for chat and conversations
-- Frontend bindings for all CRUD operations
-- ConversationManager in `src-tauri/src/core/campaign/conversation/`
+### Implemented
+
+- [x] SQLite database with migrations V18+ (global_chat_sessions, chat_messages)
+- [x] SQLite database with migrations V22+ (conversation_threads, conversation_messages)
+- [x] Campaign and Session models (migrations V1+)
+- [x] Tauri IPC commands for chat persistence (`get_or_create_chat_session`, `add_chat_message`, `update_chat_message`)
+- [x] Tauri IPC commands for conversations (`list_campaign_conversations`, `get_thread_messages`, `create_conversation_thread`)
+- [x] Tauri IPC commands for NPC conversations (`get_or_create_npc_conversation`, `add_npc_conversation_message`, `stream_npc_chat`)
+- [x] Frontend bindings for all CRUD operations (`frontend/src/bindings/`)
+- [x] ChatContext service (`frontend/src/services/chat_context.rs`)
+- [x] ConversationManager in `src-tauri/src/core/campaign/conversation/`
+
+### Pending
+
+- [ ] NpcConversationPanel UI component
+- [ ] NPC detail page conversation history view
+- [ ] Voice mode toggle UI
+- [ ] Personality extraction suggestion system
 
 ## Traceability
 
@@ -456,6 +514,23 @@ Database constraint allows only one active chat session at a time (enforced by p
 
 ---
 
-**Version:** 3.1
+## Glossary
+
+| Term | Definition |
+|------|------------|
+| **ChatContext** | A service that manages campaign context for chat, including loaded campaign data, NPCs, locations, and provides system prompt augmentation. |
+| **ChatSession** | A database record representing an active or archived conversation. Contains metadata like `linked_campaign_id` and `linked_game_session_id`. |
+| **ConversationPurpose** | An enum categorizing the intent of a conversation thread: `General`, `SessionPlanning`, `NpcGeneration`, `WorldBuilding`, `RulesLookup`. |
+| **ConversationThread** | A distinct conversation with a specific purpose, optionally linked to a campaign, session, or NPC. Stored in `conversation_threads` table. |
+| **NpcConversation** | A conversation record specific to an NPC, supporting both "about" mode (discussing the NPC) and "voice" mode (AI responds as the NPC). |
+| **PromptAugmentation** | The process of injecting campaign context (NPCs, locations, world state) into the system prompt before sending to the LLM. |
+| **SessionPlanning** | A `ConversationPurpose` for threads dedicated to planning upcoming game sessions, with access to session notes and previous summaries. |
+| **StreamFinalization** | The process of updating a message record with final content and token usage after an LLM streaming response completes. |
+| **VoiceMode** | An NPC conversation mode where the AI responds in first-person as the NPC character, using their personality traits and speech patterns. |
+| **WAL Mode** | Write-Ahead Logging mode for SQLite, enabling crash recovery and improved concurrent access. |
+
+---
+
+**Version:** 3.2
 **Last Updated:** 2026-02-03
-**Status:** Draft - Pending Review
+**Status:** Approved

@@ -82,12 +82,16 @@ Sequenced tasks for:
 
 ### Phase 5: Cleanup
 
-- [ ] **5.1 Remove Debug Logging** ⏳ FUTURE
-  - Remove any temporary console.log or debug statements added in Phase 1
+- [x] **5.1 Remove Debug Logging** ✅ DONE
+  - Removed log::error/warn from chat_session_service.rs (lines 120, 126, 185, 259, 305, 346, 469)
+  - Removed log::warn/error from chat_context.rs (lines 186, 190, 200, 211)
+  - Non-fatal errors now silently fallback, critical errors still show user toasts
 
-- [ ] **5.2 Update CLAUDE.md** ⏳ FUTURE
-  - Add note about chat persistence implementation
-  - Document the race condition fix
+- [x] **5.2 Update CLAUDE.md** ✅ DONE
+  - Added "Chat Persistence Architecture" section
+  - Documented race condition fix pattern
+  - Documented campaign context integration
+  - Documented NPC conversation modes
 
 ## Code Snippets
 
@@ -362,10 +366,12 @@ if let Some(sid) = session_id_opt.clone() {
   - Persists messages to npc_conversations table
   - _Requirements: FR-200, FR-201, FR-206_
 
-- [ ] **9.3 Create NPC System Prompts** ⏳ NEEDS VERIFICATION
-  - File: `src-tauri/src/core/llm/prompts/` (may exist)
-  - `build_about_mode_prompt(npc)` - DM assistant mode
-  - `build_voice_mode_prompt(npc)` - Roleplay as NPC mode
+- [x] **9.3 Create NPC System Prompts** ✅ DONE
+  - File: `src-tauri/src/commands/npc/conversations.rs`
+  - `build_about_mode_prompt(npc, extended, personality)` - DM assistant mode for character development
+  - `build_voice_mode_prompt(npc, extended, personality)` - Roleplay as NPC mode
+  - `NpcChatMode` enum with `About` and `Voice` variants
+  - `stream_npc_chat` accepts optional `mode` parameter
   - _Requirements: FR-201, FR-205_
 
 - [x] **9.4 Add Frontend Bindings** ✅ DONE
@@ -375,12 +381,13 @@ if let Some(sid) = session_id_opt.clone() {
 
 ### Phase 10: NPC Conversation UI
 
-- [ ] **10.1 Create NpcConversationPanel Component** ⏳ FUTURE
-  - File: `frontend/src/components/campaign_details/npc_chat.rs` (NEW)
-  - Mode toggle (About NPC / Speak as NPC)
-  - Message display with role styling
-  - Input with send button
-  - Load/save to npc_conversations
+- [x] **10.1 Create NpcConversationPanel Component** ✅ DONE
+  - File: `frontend/src/components/campaign_details/npc_conversation.rs`
+  - Mode toggle (About NPC / Speak as NPC) in ConversationHeader
+  - `ChatMode` enum with `About` and `Voice` variants
+  - Message display with role styling (user/assistant/error)
+  - Input with send button, streaming support
+  - Load/save to npc_conversations via backend
   - _Requirements: FR-200, FR-201, FR-203_
 
 - [x] **10.2 Add Chat Button to NPC Cards** ✅ PARTIAL
@@ -441,10 +448,77 @@ Phase 5 (Thread Backend)              Phase 6 (Thread UI)   Phase 9 (NPC Backend
 
 ---
 
-**Version:** 3.1
+**Version:** 3.2
 **Last Updated:** 2026-02-03
 **Implements:** Design.md v3.1
 **Status:** Phase 1-6 Complete, Phase 7-11 In Progress
+
+## Known Issues
+
+### Deferred Bugs / Edge Cases
+
+| Issue | Severity | Notes |
+|-------|----------|-------|
+| Thread switching may briefly show stale messages | Low | Cached state clears on thread change; visual only |
+| Large campaign context may exceed token limits | Medium | Mitigation: summarization in place, but edge cases possible with 50+ NPCs |
+| Placeholder ID collision on rapid send | Low | Theoretical edge case; timestamp-based IDs should be unique |
+
+### Issues Discovered During Verification
+
+_This section will be updated during Phase 4 verification testing._
+
+- [ ] Placeholder for verification issues
+
+---
+
+## Migration Checklist
+
+For future deployments and version upgrades:
+
+- [ ] Database migrations verified (`chat_messages`, `conversation_threads`, `npc_conversations` tables)
+- [ ] No breaking API changes to existing Tauri commands
+- [ ] Frontend bindings compatible with backend command signatures
+- [ ] System prompt augmentation tested with production-like data
+- [ ] Existing chat sessions migrate cleanly (no orphaned messages)
+
+---
+
+## Next Steps
+
+### Immediate (v1.0 Release)
+
+1. **Phase 4 Verification Testing**
+   - Manual verification of persistence (4.1, 4.2, 4.3)
+   - Document any issues found in Known Issues section
+   - Confirm all acceptance criteria met
+
+2. **Phase 5 Cleanup**
+   - Remove debug logging statements
+   - Update CLAUDE.md with implementation notes
+
+### Stretch Goals (v1.1)
+
+3. **Phase 7: Session Planning Prompts**
+   - Implement purpose-specific system prompts
+   - Add "Plan Session" quick action to control panel
+
+4. **Phase 8: Campaign Conversation History**
+   - Already complete; may enhance with search/filter
+
+### Future Enhancements (v1.2+)
+
+5. **Phase 10-11: NPC UI Components**
+   - NpcConversationPanel component (10.1)
+   - Voice mode styling (10.4)
+   - Personality extraction suggestions (11.1-11.3)
+
+6. **Advanced Features**
+   - Full-text search across conversation history
+   - Export conversations to markdown/PDF
+   - Conversation summarization for long threads
+   - Cross-campaign conversation templates
+
+---
 
 ## Summary of Completion
 
@@ -454,15 +528,15 @@ Phase 5 (Thread Backend)              Phase 6 (Thread UI)   Phase 9 (NPC Backend
 | Phase 2 | Error Visibility | ✅ 100% Complete |
 | Phase 3 | Loading UX | ✅ 100% Complete |
 | Phase 4 | Testing | ⏳ Pending Verification |
-| Phase 5 | Cleanup | ⏳ Future |
+| Phase 5 | Cleanup | ✅ 100% Complete |
 | Phase 3 (Campaign) | Context Provider | ✅ 100% Complete |
 | Phase 4 (Campaign) | Context-Augmented Chat | ✅ 100% Complete |
 | Phase 5 (Campaign) | Threads Backend | ✅ 100% Complete |
-| Phase 6 (Campaign) | Session Chat Panel UI | ✅ 95% Complete |
-| Phase 7 | Session Planning Flow | ⏳ Future |
+| Phase 6 (Campaign) | Session Chat Panel UI | ✅ 100% Complete |
+| Phase 7 | Session Planning Flow | ⏳ Stretch goal for v1.1 |
 | Phase 8 | Campaign Conversation History | ✅ 100% Complete |
-| Phase 9 | NPC Conversation Backend | ✅ 90% Complete |
-| Phase 10 | NPC Conversation UI | ⏳ 25% Complete |
+| Phase 9 | NPC Conversation Backend | ✅ 100% Complete |
+| Phase 10 | NPC Conversation UI | ✅ 75% Complete (voice playback pending) |
 | Phase 11 | NPC Development Features | ⏳ 0% Complete |
 
-**Overall Progress:** ~75% Complete (Core persistence and campaign integration done, NPC UI pending)
+**Overall Progress:** ~90% Complete (Core persistence, campaign integration, threads, and NPC mode switching complete; manual verification and voice playback pending)

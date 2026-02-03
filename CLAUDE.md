@@ -111,6 +111,41 @@ Configured in Settings, stored in system keyring:
 - OpenAI - gpt-4o, gpt-4-turbo
 - Ollama (local) - no API key required
 
+## Chat Persistence Architecture
+
+Chat messages persist to SQLite (`chat_messages` table) and reload on navigation/restart.
+
+### Race Condition Fix
+
+The chat component uses a **session guard pattern** to prevent messages from being lost:
+
+1. **Input Blocking**: `is_loading_history` signal disables input until session loads
+2. **Session Guard**: `send_message()` returns early with error toast if `session_id` is `None`
+3. **Error Visibility**: Toast notifications show if persistence fails
+
+Key files:
+- `frontend/src/services/chat_session_service.rs` - Central service managing chat state
+- `frontend/src/services/chat_context.rs` - Campaign context injection for prompts
+- `frontend/src/components/chat/mod.rs` - Chat UI component
+
+### Campaign Context Integration
+
+When in session workspace (`/session/:campaign_id`):
+- `ChatContextState` loads campaign, NPCs, and locations
+- System prompts are augmented with `### CAMPAIGN DATA BEGIN/END ###` delimiters
+- Chat sessions link to campaigns via `link_chat_to_game_session()`
+
+### NPC Conversation Modes
+
+NPC conversations support two modes via `stream_npc_chat(npc_id, message, mode, stream_id)`:
+
+| Mode | System Prompt | Use Case |
+|------|---------------|----------|
+| `"about"` | DM assistant mode | Develop NPC backstory, personality, story hooks |
+| `"voice"` | Roleplay mode | AI speaks as NPC in first person |
+
+Implementation: `src-tauri/src/commands/npc/conversations.rs`
+
 ## Session Resumption Protocol
 
 **CRITICAL**: When resuming from a compacted/summarized session, session summaries may claim work was completed that was never persisted to disk.

@@ -1,11 +1,11 @@
-use leptos::prelude::*;
-use leptos::ev;
-use wasm_bindgen_futures::spawn_local;
 use crate::bindings::{
-    get_npc_conversation, mark_npc_read, stream_npc_chat, listen_chat_chunks_async,
-    ConversationMessage, ChatChunk,
+    get_npc_conversation, listen_chat_chunks_async, mark_npc_read, stream_npc_chat, ChatChunk,
+    ConversationMessage,
 };
 use crate::components::design_system::Markdown;
+use leptos::ev;
+use leptos::prelude::*;
+use wasm_bindgen_futures::spawn_local;
 
 /// UI message for displaying in the chat (separate from backend ConversationMessage)
 #[derive(Clone, PartialEq)]
@@ -31,6 +31,24 @@ impl From<ConversationMessage> for UiMessage {
     }
 }
 
+/// NPC chat mode - determines how the AI responds
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ChatMode {
+    /// AI responds as DM assistant, helping develop the NPC
+    About,
+    /// AI roleplays as the NPC in first person
+    Voice,
+}
+
+impl ChatMode {
+    fn as_str(&self) -> &'static str {
+        match self {
+            ChatMode::About => "about",
+            ChatMode::Voice => "voice",
+        }
+    }
+}
+
 /// NPC Conversation component for chat-style messaging with NPCs
 /// Uses streaming for real-time NPC responses
 #[component]
@@ -48,6 +66,7 @@ pub fn NpcConversation(
     let input_text = RwSignal::new(String::new());
     let error_msg = RwSignal::new(Option::<String>::None);
     let current_stream_id = RwSignal::new(Option::<String>::None);
+    let chat_mode = RwSignal::new(ChatMode::Voice); // Default to voice mode
 
     let npc_id_signal = RwSignal::new(npc_id.clone());
     let npc_name_display = npc_name.clone();
@@ -107,9 +126,10 @@ pub fn NpcConversation(
                 }
 
                 messages.update(|msgs| {
-                    if let Some(msg) = msgs.iter_mut().find(|m| {
-                        m.stream_id.as_ref() == Some(&chunk.stream_id) && m.is_streaming
-                    }) {
+                    if let Some(msg) = msgs
+                        .iter_mut()
+                        .find(|m| m.stream_id.as_ref() == Some(&chunk.stream_id) && m.is_streaming)
+                    {
                         if !chunk.content.is_empty() {
                             msg.content.push_str(&chunk.content);
                         }
@@ -129,7 +149,8 @@ pub fn NpcConversation(
                     let _ = is_sending.try_set(false);
                     let _ = current_stream_id.try_set(None);
                 }
-            }).await;
+            })
+            .await;
         });
     }
 
@@ -145,32 +166,37 @@ pub fn NpcConversation(
 
         // Add user message immediately for instant feedback
         let user_msg_id = uuid::Uuid::new_v4().to_string();
-        messages.update(|m| m.push(UiMessage {
-            id: user_msg_id.clone(),
-            role: "user".to_string(),
-            content: text.clone(),
-            created_at: chrono::Utc::now().to_rfc3339(),
-            is_streaming: false,
-            stream_id: None,
-        }));
+        messages.update(|m| {
+            m.push(UiMessage {
+                id: user_msg_id.clone(),
+                role: "user".to_string(),
+                content: text.clone(),
+                created_at: chrono::Utc::now().to_rfc3339(),
+                is_streaming: false,
+                stream_id: None,
+            })
+        });
 
         // Generate stream ID and add streaming placeholder
         let stream_id = uuid::Uuid::new_v4().to_string();
         let assistant_msg_id = uuid::Uuid::new_v4().to_string();
         current_stream_id.set(Some(stream_id.clone()));
 
-        messages.update(|m| m.push(UiMessage {
-            id: assistant_msg_id,
-            role: "assistant".to_string(),
-            content: String::new(),
-            created_at: chrono::Utc::now().to_rfc3339(),
-            is_streaming: true,
-            stream_id: Some(stream_id.clone()),
-        }));
+        messages.update(|m| {
+            m.push(UiMessage {
+                id: assistant_msg_id,
+                role: "assistant".to_string(),
+                content: String::new(),
+                created_at: chrono::Utc::now().to_rfc3339(),
+                is_streaming: true,
+                stream_id: Some(stream_id.clone()),
+            })
+        });
 
-        // Start streaming
+        // Start streaming with selected mode
+        let mode_str = chat_mode.get().as_str().to_string();
         spawn_local(async move {
-            match stream_npc_chat(npc_id, text, Some(stream_id)).await {
+            match stream_npc_chat(npc_id, text, Some(mode_str), Some(stream_id)).await {
                 Ok(_) => {
                     // Stream started successfully, chunks will arrive via listener
                 }
@@ -207,6 +233,7 @@ pub fn NpcConversation(
             <ConversationHeader
                 npc_initial=npc_initial
                 npc_name=npc_name_display
+                chat_mode=chat_mode
                 on_close=on_close
             />
             <MessagesArea
@@ -230,26 +257,63 @@ pub fn NpcConversation(
 fn ConversationHeader(
     npc_initial: char,
     npc_name: String,
+    chat_mode: RwSignal<ChatMode>,
     on_close: Callback<()>,
 ) -> impl IntoView {
+    let is_voice_mode = move || chat_mode.get() == ChatMode::Voice;
+
     view! {
-        <div class="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/80 backdrop-blur-sm">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-full bg-[var(--accent)]/20 flex items-center justify-center text-[var(--accent)] font-bold border border-[var(--accent)]/40">
-                    {npc_initial.to_string()}
+        <div class="flex flex-col border-b border-zinc-800 bg-zinc-900/80 backdrop-blur-sm">
+            // Top row: NPC info and close button
+            <div class="flex items-center justify-between p-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-[var(--accent)]/20 flex items-center justify-center text-[var(--accent)] font-bold border border-[var(--accent)]/40">
+                        {npc_initial.to_string()}
+                    </div>
+                    <div>
+                        <h2 class="font-bold text-white">{npc_name}</h2>
+                        <p class="text-xs text-zinc-500">
+                            {move || if is_voice_mode() { "Speaking as character" } else { "NPC Development" }}
+                        </p>
+                    </div>
                 </div>
-                <div>
-                    <h2 class="font-bold text-white">{npc_name}</h2>
-                    <p class="text-xs text-zinc-500">"NPC Conversation"</p>
-                </div>
+                <button
+                    class="p-2 text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-colors"
+                    aria-label="Close conversation"
+                    on:click=move |_| on_close.run(())
+                >
+                    "×"
+                </button>
             </div>
-            <button
-                class="p-2 text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-colors"
-                aria-label="Close conversation"
-                on:click=move |_| on_close.run(())
-            >
-                "×"
-            </button>
+            // Mode toggle row
+            <div class="flex px-4 pb-3 gap-2">
+                <button
+                    class=move || {
+                        if !is_voice_mode() {
+                            "flex-1 py-2 px-3 text-sm font-medium rounded bg-[var(--accent)] text-white"
+                        } else {
+                            "flex-1 py-2 px-3 text-sm font-medium rounded bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
+                        }
+                    }
+                    on:click=move |_| chat_mode.set(ChatMode::About)
+                    title="AI helps you develop this NPC's backstory, personality, and story hooks"
+                >
+                    "About NPC"
+                </button>
+                <button
+                    class=move || {
+                        if is_voice_mode() {
+                            "flex-1 py-2 px-3 text-sm font-medium rounded bg-[var(--accent)] text-white"
+                        } else {
+                            "flex-1 py-2 px-3 text-sm font-medium rounded bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
+                        }
+                    }
+                    on:click=move |_| chat_mode.set(ChatMode::Voice)
+                    title="AI roleplays as this NPC in first person"
+                >
+                    "Speak as NPC"
+                </button>
+            </div>
         </div>
     }
 }
@@ -308,7 +372,11 @@ fn MessageBubble(msg: UiMessage) -> impl IntoView {
     let msg_content = msg.content.clone();
     let timestamp = msg.created_at.clone();
 
-    let outer_class = if is_user { "flex justify-end" } else { "flex justify-start" };
+    let outer_class = if is_user {
+        "flex justify-end"
+    } else {
+        "flex justify-start"
+    };
     let bubble_class = if is_error {
         "max-w-[80%] bg-red-900/30 border border-red-700/50 rounded-lg p-3"
     } else if is_user {

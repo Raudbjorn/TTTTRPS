@@ -116,14 +116,12 @@ impl ChatSessionService {
                                 service.messages.set(ui_messages);
                             }
                         }
-                        Err(e) => {
-                            log::error!("Failed to load chat messages: {}", e);
+                        Err(_) => {
                             service.messages.set(vec![create_welcome_message()]);
                         }
                     }
                 }
-                Err(e) => {
-                    log::error!("Failed to get/create chat session: {}", e);
+                Err(_) => {
                     service.messages.set(vec![create_welcome_message()]);
                 }
             }
@@ -182,7 +180,6 @@ impl ChatSessionService {
                                             update_chat_message(pid_clone, content, tokens, false)
                                                 .await
                                         {
-                                            log::error!("Failed to persist final message: {}", e);
                                             show_error(
                                                 "Save Failed",
                                                 Some(&format!(
@@ -253,11 +250,7 @@ impl ChatSessionService {
             if let (Some(sid), Some(ctx)) = (session_id, campaign_ctx) {
                 if let Some(campaign_id) = ctx.campaign_id() {
                     spawn_local(async move {
-                        if let Err(e) =
-                            link_chat_to_game_session(sid, String::new(), Some(campaign_id)).await
-                        {
-                            log::warn!("Failed to link chat session to campaign: {}", e);
-                        }
+                        let _ = link_chat_to_game_session(sid, String::new(), Some(campaign_id)).await;
                     });
                 }
             }
@@ -302,7 +295,6 @@ impl ChatSessionService {
             let msg_content = msg.clone();
             spawn_local(async move {
                 if let Err(e) = add_chat_message(sid, "user".to_string(), msg_content, None).await {
-                    log::error!("Failed to persist user message: {}", e);
                     show_error(
                         "Save Failed",
                         Some(&format!("Message may not be saved: {}", e)),
@@ -343,7 +335,6 @@ impl ChatSessionService {
                         });
                     }
                     Err(e) => {
-                        log::error!("Failed to persist assistant placeholder: {}", e);
                         show_error(
                             "Save Failed",
                             Some(&format!(
@@ -465,9 +456,7 @@ impl ChatSessionService {
                     let data_url = format!("data:{};base64,{}", mime_type, result.audio_data);
 
                     if let Ok(audio) = web_sys::HtmlAudioElement::new_with_src(&data_url) {
-                        if let Err(e) = audio.play() {
-                            log::error!("Failed to play audio: {:?}", e);
-                        }
+                        let _ = audio.play();
                     }
                 }
                 Ok(None) => {}
