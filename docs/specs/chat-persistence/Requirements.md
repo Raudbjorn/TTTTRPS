@@ -244,19 +244,79 @@ if let Some(sid) = session_id_opt.clone() {
 
 ## Non-Functional Requirements
 
-### NFR-001: Persistence Latency
+### Performance Requirements
+
+#### NFR-001: Persistence Latency
 System **SHALL** complete message persistence within 100ms under normal conditions.
+System **SHALL** complete persistence within 500ms under degraded conditions (retry scenario).
 
-### NFR-002: Load Time
+#### NFR-002: Load Time
 System **SHALL** load and display up to 100 messages within 500ms on mount.
+System **SHALL** provide incremental loading indicator for histories exceeding 100 messages.
 
-### NFR-003: Database Integrity
+#### NFR-003: UI Responsiveness
+System **SHALL NOT** block the main UI thread during persistence operations.
+System **SHALL** maintain 60fps animation during streaming responses.
+System **SHALL** respond to user input within 100ms.
+
+### Reliability Requirements
+
+#### NFR-004: Database Integrity
 System **SHALL** use SQLite WAL mode for crash recovery.
 System **SHALL** use transactions for multi-step operations.
+System **SHALL** validate foreign key constraints on write operations.
 
-### NFR-004: Offline Resilience
+#### NFR-005: Offline Resilience
 **WHEN** LLM provider is unavailable
 **THEN** system **SHALL** still persist user messages locally.
+**WHEN** database is temporarily unavailable (locked)
+**THEN** system **SHALL** retry up to 3 times with exponential backoff.
+
+#### NFR-006: Data Durability
+System **SHALL** persist messages before marking send as complete.
+System **SHALL NOT** lose messages during normal operation, navigation, or app restart.
+System **SHALL** queue failed persistence operations for retry (max 100 pending).
+
+#### NFR-007: Recovery Time Objective
+System **SHALL** recover from transient failures within 30 seconds.
+System **SHALL** notify user of unrecoverable failures within 5 seconds.
+
+### Scalability Requirements
+
+#### NFR-008: Message History Depth
+System **SHALL** support at least 10,000 messages per chat session.
+System **SHALL** paginate message loading for histories exceeding 100 messages.
+
+#### NFR-009: Concurrent Operations
+System **SHALL** handle up to 10 simultaneous persistence operations.
+System **SHALL** serialize writes to the same chat session to maintain order.
+
+#### NFR-010: Storage Limits
+System **SHALL** warn user when database exceeds 500MB.
+System **SHOULD** provide archival mechanism for old sessions (future).
+
+### Security Requirements
+
+#### NFR-011: Prompt Injection Prevention
+System **SHALL** sanitize all user-controlled text before injecting into system prompts.
+System **SHALL** remove markdown formatting, code blocks, and control characters from NPC fields.
+System **SHALL** enforce maximum field length (500 chars) for interpolated data.
+
+#### NFR-012: Data Isolation
+System **SHALL** isolate chat data per user account (future multi-user).
+System **SHALL NOT** expose chat data via unauthenticated IPC commands.
+
+### Usability Requirements
+
+#### NFR-013: Error Visibility
+System **SHALL** display user-friendly error messages within 2 seconds of failure.
+System **SHALL** provide actionable guidance ("Retry" button) for recoverable errors.
+System **SHALL** log detailed error context for debugging.
+
+#### NFR-014: State Indication
+System **SHALL** visually indicate loading state (spinner/skeleton).
+System **SHALL** visually indicate streaming state (animated cursor).
+System **SHALL** visually indicate persistence failure (error icon on message).
 
 ## Constraints
 
@@ -396,6 +456,6 @@ Database constraint allows only one active chat session at a time (enforced by p
 
 ---
 
-**Version:** 3.0
-**Last Updated:** 2026-02-01
+**Version:** 3.1
+**Last Updated:** 2026-02-03
 **Status:** Draft - Pending Review

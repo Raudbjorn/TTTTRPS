@@ -310,6 +310,278 @@ enum PersistenceError {
 // 3. Disable input until session is available
 ```
 
+## Error Recovery Strategies
+
+### Strategy 1: Retry with Exponential Backoff
+
+For transient failures (network timeout, DB lock), implement automatic retry:
+
+```rust
+const MAX_RETRIES: u32 = 3;
+const BASE_DELAY_MS: u64 = 1000;
+
+async fn persist_with_retry<F, T, E>(
+    operation: F,
+    operation_name: &str,
+) -> Result<T, E>
+where
+    F: Fn() -> Future<Output = Result<T, E>>,
+    E: std::fmt::Display,
+{
+    let mut attempts = 0;
+    let mut last_error = None;
+
+    while attempts < MAX_RETRIES {
+        match operation().await {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                attempts += 1;
+                last_error = Some(e);
+
+                if attempts < MAX_RETRIES {
+                    let delay = BASE_DELAY_MS * 2u64.pow(attempts - 1);
+                    log::warn!(
+                        "{} failed (attempt {}), retrying in {}ms",
+                        operation_name, attempts, delay
+                    );
+                    gloo_timers::future::sleep(Duration::from_millis(delay)).await;
+                }
+            }
+        }
+    }
+
+    Err(last_error.unwrap())
+}
+```
+
+### Strategy 2: Fallback Persistence Queue
+
+When immediate persistence fails, queue for background retry:
+
+```rust
+/// Pending message awaiting persistence
+#[derive(Clone, Serialize, Deserialize)]
+struct PendingMessage {
+    session_id: String,
+    role: String,
+    content: String,
+    created_at: DateTime<Utc>,
+    attempts: u32,
+    last_attempt: Option<DateTime<Utc>>,
+}
+
+/// Persistence queue stored in IndexedDB for crash recovery
+struct PersistenceQueue {
+    queue: VecDeque<PendingMessage>,
+    max_size: usize,
+}
+
+impl PersistenceQueue {
+    fn new(max_size: usize) -> Self {
+        Self { queue: VecDeque::new(), max_size }
+    }
+
+    fn enqueue(&mut self, msg: PendingMessage) -> Result<(), QueueFullError> {
+        if self.queue.len() >= self.max_size {
+            return Err(QueueFullError);
+        }
+        self.queue.push_back(msg);
+        self.save_to_indexeddb();
+        Ok(())
+    }
+
+    fn dequeue(&mut self) -> Option<PendingMessage> {
+        let msg = self.queue.pop_front();
+        if msg.is_some() {
+            self.save_to_indexeddb();
+        }
+        msg
+    }
+
+    fn requeue_failed(&mut self, mut msg: PendingMessage) {
+        msg.attempts += 1;
+        msg.last_attempt = Some(Utc::now());
+        // Add to back with incremented attempt count
+        self.queue.push_back(msg);
+        self.save_to_indexeddb();
+    }
+}
+```
+
+### Strategy 3: Streaming Placeholder Fallback
+
+When assistant placeholder creation fails, create it at finalization time:
+
+```rust
+/// Handle streaming message finalization
+async fn finalize_streaming_message(
+    stream_id: &str,
+    final_content: &str,
+    tokens: Option<(i32, i32)>,
+    streaming_persistent_id: &RwSignal<Option<String>>,
+    session_id: &str,
+) {
+    // Check if we have a persistent ID from placeholder creation
+    if let Some(pid) = streaming_persistent_id.get_untracked() {
+        // Normal path: update existing placeholder
+        match update_chat_message(pid.clone(), final_content.to_string(), tokens, false).await {
+            Ok(_) => {
+                log::debug!("Successfully updated placeholder {}", pid);
+            }
+            Err(e) => {
+                log::error!("Failed to update placeholder: {}", e);
+                // Fallback: try to create a new message
+                fallback_create_message(session_id, final_content, tokens).await;
+            }
+        }
+    } else {
+        // Placeholder creation failed earlier - create message now
+        log::warn!("No placeholder ID, creating message at finalization");
+        fallback_create_message(session_id, final_content, tokens).await;
+    }
+}
+
+async fn fallback_create_message(
+    session_id: &str,
+    content: &str,
+    tokens: Option<(i32, i32)>,
+) {
+    match add_chat_message(
+        session_id.to_string(),
+        "assistant".to_string(),
+        content.to_string(),
+        tokens,
+    ).await {
+        Ok(record) => {
+            log::info!("Fallback message created: {}", record.id);
+        }
+        Err(e) => {
+            log::error!("Fallback persistence also failed: {}", e);
+            show_error(
+                "Message Lost",
+                Some("Unable to save the assistant's response. Please try again."),
+                None,
+            );
+        }
+    }
+}
+```
+
+### Strategy 4: Graceful Degradation
+
+When persistence is completely unavailable, degrade gracefully:
+
+```rust
+/// Persistence availability state
+#[derive(Clone, Copy, PartialEq)]
+enum PersistenceState {
+    Available,
+    Degraded,      // Retrying, queue growing
+    Unavailable,   // All retries exhausted
+}
+
+/// UI adaptation based on persistence state
+fn adapt_ui_to_persistence_state(state: PersistenceState) -> impl IntoView {
+    match state {
+        PersistenceState::Available => {
+            view! { /* Normal UI */ }.into_any()
+        }
+        PersistenceState::Degraded => {
+            view! {
+                <div class="bg-yellow-100 text-yellow-800 p-2 text-sm">
+                    "⚠️ Some messages pending save. Don't close the app."
+                </div>
+            }.into_any()
+        }
+        PersistenceState::Unavailable => {
+            view! {
+                <div class="bg-red-100 text-red-800 p-2 text-sm">
+                    "❌ Message saving unavailable. Chat will work but history may be lost."
+                    <button class="underline ml-2" on:click=retry_persistence>
+                        "Retry"
+                    </button>
+                </div>
+            }.into_any()
+        }
+    }
+}
+```
+
+### Strategy 5: Session Recovery on Component Remount
+
+When Chat component remounts, check for orphaned messages:
+
+```rust
+/// Check for messages that were being streamed when component unmounted
+async fn recover_orphaned_messages(session_id: &str) {
+    let messages = get_chat_messages(session_id.to_string(), Some(10)).await.ok();
+
+    if let Some(msgs) = messages {
+        // Find any messages still marked as streaming
+        for msg in msgs.iter().filter(|m| m.is_streaming) {
+            log::warn!("Found orphaned streaming message: {}", msg.id);
+
+            // Mark as incomplete rather than streaming
+            if let Err(e) = update_chat_message(
+                msg.id.clone(),
+                format!("{}\n\n[Stream interrupted]", msg.content),
+                None,
+                false, // is_streaming = false
+            ).await {
+                log::error!("Failed to recover orphaned message: {}", e);
+            }
+        }
+    }
+}
+```
+
+### Error Recovery Decision Tree
+
+```
+Message send initiated
+        │
+        ▼
+┌───────────────────────┐
+│ Session ID available? │
+└───────┬───────────────┘
+        │
+    ┌───┴───┐
+    │ No    │ Yes
+    ▼       ▼
+┌───────┐ ┌───────────────────────┐
+│ Block │ │ Persist user message  │
+│ send  │ └───────────┬───────────┘
+└───────┘             │
+                  ┌───┴───┐
+                  │ Fail? │
+                  └───┬───┘
+              ┌───────┴───────┐
+              │ Yes           │ No
+              ▼               ▼
+       ┌──────────────┐  ┌──────────────┐
+       │ Retry (3x)   │  │ Create       │
+       │ w/ backoff   │  │ placeholder  │
+       └──────┬───────┘  └──────┬───────┘
+              │                 │
+          ┌───┴───┐         ┌───┴───┐
+          │ Fail? │         │ Fail? │
+          └───┬───┘         └───┬───┘
+      ┌───────┴───────┐     ┌───┴───┐
+      │ Yes           │ No  │ Yes   │ No
+      ▼               ▼     ▼       ▼
+┌───────────┐  ┌─────────┐ ┌─────────────────┐ ┌────────────┐
+│ Queue for │  │Continue │ │Set fallback flag│ │ Stream     │
+│ bg retry  │  │         │ │(create at final)│ │ response   │
+└───────────┘  └─────────┘ └─────────────────┘ └────────────┘
+      │                           │                   │
+      ▼                           │                   ▼
+┌───────────┐                     │          ┌────────────────┐
+│ Show toast│                     │          │ Finalize:      │
+│ "pending" │                     │          │ update or      │
+└───────────┘                     └──────────│ fallback create│
+                                             └────────────────┘
+```
+
 ## Testing Strategy
 
 ### Unit Tests
@@ -1291,7 +1563,7 @@ User clicks "Chat" on NPC card
 
 ---
 
-**Version:** 3.0
-**Last Updated:** 2026-02-01
+**Version:** 3.1
+**Last Updated:** 2026-02-03
 **Status:** Draft - Pending Review
-**Implements:** Requirements.md v3.0
+**Implements:** Requirements.md v3.1

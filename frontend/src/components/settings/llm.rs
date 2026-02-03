@@ -1,37 +1,57 @@
-use leptos::prelude::*;
-use leptos::ev;
-use wasm_bindgen_futures::spawn_local;
-use std::collections::HashMap;
 use gloo_timers::callback::Timeout;
+use leptos::ev;
+use leptos::prelude::*;
+use std::collections::HashMap;
+use wasm_bindgen_futures::spawn_local;
 
 /// GitHub URL for the Sidecar DM Gemini extension
 #[allow(dead_code)]
 const SIDECAR_DM_EXTENSION_URL: &str = "https://github.com/Raudbjorn/sidecar-dm-gemini-extension";
+use super::{ClaudeAuth, CopilotAuth, GeminiAuth};
 use crate::bindings::{
-    check_llm_health, configure_llm, get_llm_config, list_anthropic_models, list_gemini_models,
-    list_ollama_models, list_openai_models, list_openrouter_models, list_provider_models,
-    save_api_key, HealthStatus, LLMSettings, ModelInfo, OllamaModel,
-    // Claude OAuth
-    claude_get_status, claude_list_models, ClaudeStatus,
-    // Gemini OAuth
-    gemini_list_models, GeminiStatus,
     // Copilot OAuth
-    check_copilot_auth, get_copilot_models, CopilotAuthStatus,
+    check_copilot_auth,
+    check_llm_health,
+    // Claude OAuth
+    claude_get_status,
+    claude_list_models,
+    configure_llm,
+    // Gemini OAuth
+    gemini_list_models,
+    get_copilot_models,
+    get_llm_config,
+    list_anthropic_models,
+    list_gemini_models,
+    list_local_embedding_models,
     // Embedding configuration
-    list_ollama_embedding_models, setup_ollama_embeddings, OllamaEmbeddingModel,
-    list_local_embedding_models, setup_local_embeddings, LocalEmbeddingModel,
+    list_ollama_embedding_models,
+    list_ollama_models,
+    list_openai_models,
+    list_openrouter_models,
+    list_provider_models,
+    save_api_key,
     setup_copilot_embeddings,
+    setup_local_embeddings,
+    setup_ollama_embeddings,
+    ClaudeStatus,
+    CopilotAuthStatus,
+    GeminiStatus,
+    HealthStatus,
+    LLMSettings,
+    LocalEmbeddingModel,
+    ModelInfo,
+    OllamaEmbeddingModel,
+    OllamaModel,
 };
 use crate::components::design_system::{Badge, BadgeVariant, Button, ButtonVariant, Card, Input};
 use crate::services::notification_service::{show_error, show_success};
-use super::{ClaudeAuth, CopilotAuth, GeminiAuth};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum LLMProvider {
     Ollama,
     AnthropicAPI,
-    Google,      // Google AI Studio API key
-    Gemini,  // Gemini via OAuth (Google Cloud Code)
+    Google, // Google AI Studio API key
+    Gemini, // Gemini via OAuth (Google Cloud Code)
     OpenAI,
     OpenRouter,
     Mistral,
@@ -156,7 +176,7 @@ impl LLMProvider {
             LLMProvider::Cohere => Some("https://dashboard.cohere.com/api-keys"),
             LLMProvider::DeepSeek => Some("https://platform.deepseek.com/api_keys"),
             LLMProvider::Ollama => Some("https://ollama.com/download"),
-            LLMProvider::Claude => None, // Uses OAuth authentication
+            LLMProvider::Claude => None,  // Uses OAuth authentication
             LLMProvider::Copilot => None, // Uses GitHub OAuth authentication
         }
     }
@@ -166,8 +186,8 @@ impl LLMProvider {
             // Both AnthropicAPI (API key) and Claude (OAuth) are Anthropic providers, sharing brand color
             LLMProvider::AnthropicAPI | LLMProvider::Claude => "text-orange-400", // Anthropic Sienna
             LLMProvider::Google | LLMProvider::Gemini => "text-blue-400", // Google/Gemini Blue
-            LLMProvider::OpenAI => "text-emerald-400", // OpenAI Green
-            LLMProvider::Ollama => "text-white", // Ollama White
+            LLMProvider::OpenAI => "text-emerald-400",                    // OpenAI Green
+            LLMProvider::Ollama => "text-white",                          // Ollama White
             LLMProvider::OpenRouter => "text-violet-400",
             LLMProvider::Copilot => "text-[#6e40c9]", // GitHub Purple
             _ => "text-theme-accent",
@@ -199,9 +219,15 @@ impl std::fmt::Display for EmbedderProvider {
 impl EmbedderProvider {
     fn description(&self) -> &'static str {
         match self {
-            EmbedderProvider::Ollama => "Uses Ollama for embeddings. Requires Ollama to be running.",
-            EmbedderProvider::Local => "Uses HuggingFace models via ONNX. No external service required.",
-            EmbedderProvider::Copilot => "Uses GitHub Copilot via OAuth. Requires Copilot authentication.",
+            EmbedderProvider::Ollama => {
+                "Uses Ollama for embeddings. Requires Ollama to be running."
+            }
+            EmbedderProvider::Local => {
+                "Uses HuggingFace models via ONNX. No external service required."
+            }
+            EmbedderProvider::Copilot => {
+                "Uses GitHub Copilot via OAuth. Requires Copilot authentication."
+            }
         }
     }
 }
@@ -251,12 +277,16 @@ pub fn LLMSettingsView() -> impl IntoView {
             is_loading_models.set(true);
             match list_ollama_models(host.clone()).await {
                 Ok(models) => {
-                     ollama_models.set(models);
-                     provider_statuses.update(|map| { map.insert("ollama".to_string(), true); });
-                },
+                    ollama_models.set(models);
+                    provider_statuses.update(|map| {
+                        map.insert("ollama".to_string(), true);
+                    });
+                }
                 Err(_) => {
                     ollama_models.set(Vec::new());
-                    provider_statuses.update(|map| { map.insert("ollama".to_string(), false); });
+                    provider_statuses.update(|map| {
+                        map.insert("ollama".to_string(), false);
+                    });
                 }
             }
             // Also fetch embedding models
@@ -267,9 +297,21 @@ pub fn LLMSettingsView() -> impl IntoView {
                 Err(_) => {
                     // Use default embedding models if fetch fails
                     embedding_models.set(vec![
-                        OllamaEmbeddingModel { name: "nomic-embed-text".to_string(), size: "274 MB".to_string(), dimensions: 768 },
-                        OllamaEmbeddingModel { name: "mxbai-embed-large".to_string(), size: "669 MB".to_string(), dimensions: 1024 },
-                        OllamaEmbeddingModel { name: "all-minilm".to_string(), size: "46 MB".to_string(), dimensions: 384 },
+                        OllamaEmbeddingModel {
+                            name: "nomic-embed-text".to_string(),
+                            size: "274 MB".to_string(),
+                            dimensions: 768,
+                        },
+                        OllamaEmbeddingModel {
+                            name: "mxbai-embed-large".to_string(),
+                            size: "669 MB".to_string(),
+                            dimensions: 1024,
+                        },
+                        OllamaEmbeddingModel {
+                            name: "all-minilm".to_string(),
+                            size: "46 MB".to_string(),
+                            dimensions: 384,
+                        },
                     ]);
                 }
             }
@@ -290,7 +332,9 @@ pub fn LLMSettingsView() -> impl IntoView {
         spawn_local(async move {
             is_loading_models.set(true);
             let models = match provider {
-                LLMProvider::AnthropicAPI => list_anthropic_models(api_key).await.unwrap_or_default(),
+                LLMProvider::AnthropicAPI => {
+                    list_anthropic_models(api_key).await.unwrap_or_default()
+                }
                 LLMProvider::OpenAI => list_openai_models(api_key).await.unwrap_or_default(),
                 LLMProvider::Google => list_gemini_models(api_key).await.unwrap_or_default(),
                 LLMProvider::Gemini => {
@@ -298,7 +342,11 @@ pub fn LLMSettingsView() -> impl IntoView {
                     match gemini_list_models().await {
                         Ok(gate_models) => gate_models
                             .into_iter()
-                            .map(|m| ModelInfo { id: m.id.clone(), name: m.name, description: m.description })
+                            .map(|m| ModelInfo {
+                                id: m.id.clone(),
+                                name: m.name,
+                                description: m.description,
+                            })
                             .collect(),
                         Err(_) => {
                             // Fall back to default models list if not authenticated
@@ -312,7 +360,11 @@ pub fn LLMSettingsView() -> impl IntoView {
                     match claude_list_models().await {
                         Ok(gate_models) if !gate_models.is_empty() => gate_models
                             .into_iter()
-                            .map(|m| ModelInfo { id: m.id.clone(), name: m.name, description: None })
+                            .map(|m| ModelInfo {
+                                id: m.id.clone(),
+                                name: m.name,
+                                description: None,
+                            })
                             .collect(),
                         _ => {
                             // Fall back to default models list if not authenticated or empty
@@ -329,18 +381,46 @@ pub fn LLMSettingsView() -> impl IntoView {
                             .map(|m| ModelInfo {
                                 id: m.id.clone(),
                                 name: m.id.clone(),
-                                description: Some(format!("by {} ({})", m.owned_by, if m.preview { "preview" } else { "stable" })),
+                                description: Some(format!(
+                                    "by {} ({})",
+                                    m.owned_by,
+                                    if m.preview { "preview" } else { "stable" }
+                                )),
                             })
                             .collect(),
                         _ => {
                             // Fall back to default models when not authenticated
                             vec![
-                                ModelInfo { id: "gpt-4o".to_string(), name: "GPT-4o".to_string(), description: Some("Latest GPT-4o model".to_string()) },
-                                ModelInfo { id: "gpt-4o-mini".to_string(), name: "GPT-4o Mini".to_string(), description: Some("Smaller, faster GPT-4o".to_string()) },
-                                ModelInfo { id: "claude-3.5-sonnet".to_string(), name: "Claude 3.5 Sonnet".to_string(), description: Some("Anthropic's Claude model".to_string()) },
-                                ModelInfo { id: "o1".to_string(), name: "o1".to_string(), description: Some("OpenAI's o1 reasoning model".to_string()) },
-                                ModelInfo { id: "o1-mini".to_string(), name: "o1 Mini".to_string(), description: Some("Smaller o1 model".to_string()) },
-                                ModelInfo { id: "o3-mini".to_string(), name: "o3 Mini".to_string(), description: Some("Latest o3 mini model".to_string()) },
+                                ModelInfo {
+                                    id: "gpt-4o".to_string(),
+                                    name: "GPT-4o".to_string(),
+                                    description: Some("Latest GPT-4o model".to_string()),
+                                },
+                                ModelInfo {
+                                    id: "gpt-4o-mini".to_string(),
+                                    name: "GPT-4o Mini".to_string(),
+                                    description: Some("Smaller, faster GPT-4o".to_string()),
+                                },
+                                ModelInfo {
+                                    id: "claude-3.5-sonnet".to_string(),
+                                    name: "Claude 3.5 Sonnet".to_string(),
+                                    description: Some("Anthropic's Claude model".to_string()),
+                                },
+                                ModelInfo {
+                                    id: "o1".to_string(),
+                                    name: "o1".to_string(),
+                                    description: Some("OpenAI's o1 reasoning model".to_string()),
+                                },
+                                ModelInfo {
+                                    id: "o1-mini".to_string(),
+                                    name: "o1 Mini".to_string(),
+                                    description: Some("Smaller o1 model".to_string()),
+                                },
+                                ModelInfo {
+                                    id: "o3-mini".to_string(),
+                                    name: "o3 Mini".to_string(),
+                                    description: Some("Latest o3 mini model".to_string()),
+                                },
                             ]
                         }
                     }
@@ -349,11 +429,9 @@ pub fn LLMSettingsView() -> impl IntoView {
                 | LLMProvider::Groq
                 | LLMProvider::Together
                 | LLMProvider::Cohere
-                | LLMProvider::DeepSeek => {
-                    list_provider_models(provider.to_string_key())
-                        .await
-                        .unwrap_or_default()
-                }
+                | LLMProvider::DeepSeek => list_provider_models(provider.to_string_key())
+                    .await
+                    .unwrap_or_default(),
                 _ => Vec::new(),
             };
             cloud_models.set(models);
@@ -365,17 +443,29 @@ pub fn LLMSettingsView() -> impl IntoView {
         spawn_local(async move {
             let mut statuses = HashMap::new();
             let ollama_host = if let Ok(Some(config)) = get_llm_config().await {
-                config.host.unwrap_or_else(|| "http://localhost:11434".to_string())
+                config
+                    .host
+                    .unwrap_or_else(|| "http://localhost:11434".to_string())
             } else {
                 "http://localhost:11434".to_string()
             };
 
             if let Ok(models) = list_ollama_models(ollama_host).await {
-                 statuses.insert("ollama".to_string(), !models.is_empty());
+                statuses.insert("ollama".to_string(), !models.is_empty());
             } else {
-                 statuses.insert("ollama".to_string(), false);
+                statuses.insert("ollama".to_string(), false);
             }
-            let clouds = vec!["anthropic", "openai", "gemini", "mistral", "groq", "together", "cohere", "deepseek", "openrouter"];
+            let clouds = vec![
+                "anthropic",
+                "openai",
+                "gemini",
+                "mistral",
+                "groq",
+                "together",
+                "cohere",
+                "deepseek",
+                "openrouter",
+            ];
             for p in clouds {
                 if let Ok(Some(key)) = crate::bindings::get_api_key(p.to_string()).await {
                     statuses.insert(p.to_string(), !key.is_empty());
@@ -412,7 +502,6 @@ pub fn LLMSettingsView() -> impl IntoView {
 
     // Refresh Claude Code status
 
-
     // --- On Mount ---
     Effect::new(move |_| {
         check_providers();
@@ -423,17 +512,18 @@ pub fn LLMSettingsView() -> impl IntoView {
 
                 match provider {
                     LLMProvider::Ollama => {
-                        let host = config.host.unwrap_or_else(|| "http://localhost:11434".to_string());
+                        let host = config
+                            .host
+                            .unwrap_or_else(|| "http://localhost:11434".to_string());
                         api_key_or_host.set(host.clone());
                         fetch_ollama_models(host);
                     }
                     _ => {
                         api_key_or_host.set(String::new()); // Security: don't show key by default
-                        api_key_or_host.set(String::new()); // Security: don't show key by default
                         // Can't fetch models without key if we don't show it,
                         // but maybe we can fetch with stored key if we had a backend command for it?
                         // For now keep behavior same as `settings.rs`
-                         fetch_cloud_models(provider, None);
+                        fetch_cloud_models(provider, None);
                     }
                 }
                 model_name.set(config.model);
@@ -461,65 +551,81 @@ pub fn LLMSettingsView() -> impl IntoView {
         }
 
         // Debounce logic
-        timeout_handle.update_value(|h| { if let Some(t) = h.take() { t.cancel(); } });
+        timeout_handle.update_value(|h| {
+            if let Some(t) = h.take() {
+                t.cancel();
+            }
+        });
 
         let perform_save = move || {
-             is_saving.set(true);
-             save_status.set("Saving...".to_string());
-             spawn_local(async move {
-                 // OAuth providers don't need API keys - they use OAuth authentication
-                 let needs_api_key = !matches!(
-                     provider,
-                     LLMProvider::Ollama | LLMProvider::Claude | LLMProvider::Copilot
-                 );
-                 let key_to_save = if needs_api_key && !key_or_host.is_empty() {
-                      match save_api_key(provider.to_string_key(), key_or_host.clone()).await {
-                         Ok(_) => Some(key_or_host.clone()),
-                         Err(e) => {
-                             show_error("Key Save Failed", Some(&e), None);
-                             is_saving.set(false);
-                             return;
-                         }
-                      }
-                 } else {
-                     None
-                 };
+            is_saving.set(true);
+            save_status.set("Saving...".to_string());
+            spawn_local(async move {
+                // OAuth providers don't need API keys - they use OAuth authentication
+                let needs_api_key = !matches!(
+                    provider,
+                    LLMProvider::Ollama | LLMProvider::Claude | LLMProvider::Copilot
+                );
+                let key_to_save = if needs_api_key && !key_or_host.is_empty() {
+                    match save_api_key(provider.to_string_key(), key_or_host.clone()).await {
+                        Ok(_) => Some(key_or_host.clone()),
+                        Err(e) => {
+                            show_error("Key Save Failed", Some(&e), None);
+                            is_saving.set(false);
+                            return;
+                        }
+                    }
+                } else {
+                    None
+                };
 
-                 let settings = LLMSettings {
-                     provider: provider.to_string_key(),
-                     api_key: key_to_save,
-                     host: if provider == LLMProvider::Ollama { Some(key_or_host.clone()) } else { None },
-                     model: model.clone(),
-                     embedding_model: if provider == LLMProvider::Ollama { Some(emb.clone()) } else { None },
-                     storage_backend: if provider == LLMProvider::Claude {
-                         Some(claude_status.get_untracked().storage_backend)
-                     } else {
-                         None
-                     },
-                 };
+                let settings = LLMSettings {
+                    provider: provider.to_string_key(),
+                    api_key: key_to_save,
+                    host: if provider == LLMProvider::Ollama {
+                        Some(key_or_host.clone())
+                    } else {
+                        None
+                    },
+                    model: model.clone(),
+                    embedding_model: if provider == LLMProvider::Ollama {
+                        Some(emb.clone())
+                    } else {
+                        None
+                    },
+                    storage_backend: if provider == LLMProvider::Claude {
+                        Some(claude_status.get_untracked().storage_backend)
+                    } else {
+                        None
+                    },
+                };
 
-                 match configure_llm(settings).await {
-                     Ok(_) => {
-                         save_status.set("All changes saved".to_string());
-                         if let Ok(status) = check_llm_health().await {
-                             health_status.set(Some(status));
-                         }
-                         check_providers();
-                     }
-                     Err(e) => {
-                         show_error("Save Failed", Some(&e), None);
-                         save_status.set("Error saving".to_string());
-                     }
-                 }
-                 is_saving.set(false);
-             });
+                match configure_llm(settings).await {
+                    Ok(_) => {
+                        save_status.set("All changes saved".to_string());
+                        if let Ok(status) = check_llm_health().await {
+                            health_status.set(Some(status));
+                        }
+                        check_providers();
+                    }
+                    Err(e) => {
+                        show_error("Save Failed", Some(&e), None);
+                        save_status.set("Error saving".to_string());
+                    }
+                }
+                is_saving.set(false);
+            });
         };
 
         timeout_handle.set_value(Some(Timeout::new(1000, perform_save)));
     });
 
     on_cleanup(move || {
-        timeout_handle.update_value(|h| { if let Some(t) = h.take() { t.cancel(); } });
+        timeout_handle.update_value(|h| {
+            if let Some(t) = h.take() {
+                t.cancel();
+            }
+        });
     });
 
     // --- Handlers ---
@@ -528,35 +634,33 @@ pub fn LLMSettingsView() -> impl IntoView {
         selected_provider.set(p.clone());
         match p {
             LLMProvider::Ollama => {
-                 api_key_or_host.set("http://localhost:11434".to_string());
-                 model_name.set("llama3.2".to_string());
-                 fetch_ollama_models("http://localhost:11434".to_string());
-            },
+                api_key_or_host.set("http://localhost:11434".to_string());
+                model_name.set("llama3.2".to_string());
+                fetch_ollama_models("http://localhost:11434".to_string());
+            }
             LLMProvider::Claude => {
-                 // No API key needed - uses OAuth authentication
-                 api_key_or_host.set(String::new());
-                 model_name.set(p.default_model().to_string());
-                 // Fetch models from API if authenticated
-                 fetch_cloud_models(LLMProvider::Claude, None);
-            },
+                // No API key needed - uses OAuth authentication
+                api_key_or_host.set(String::new());
+                model_name.set(p.default_model().to_string());
+                // Fetch models from API if authenticated
+                fetch_cloud_models(LLMProvider::Claude, None);
+            }
             LLMProvider::Copilot => {
-                 // No API key needed - uses GitHub OAuth authentication
-                 api_key_or_host.set(String::new());
-                 model_name.set(p.default_model().to_string());
-                 // Fetch models from Copilot API if authenticated
-                 fetch_cloud_models(LLMProvider::Copilot, None);
-            },
+                // No API key needed - uses GitHub OAuth authentication
+                api_key_or_host.set(String::new());
+                model_name.set(p.default_model().to_string());
+                // Fetch models from Copilot API if authenticated
+                fetch_cloud_models(LLMProvider::Copilot, None);
+            }
             _ => {
-                 api_key_or_host.set(String::new());
-                 model_name.set(p.default_model().to_string());
-                 // Try to fetch with *no* key (gets stored key in backend?) Or just cleared?
-                 // Standard flow requires re-entry or just trusting stored key.
-                 cloud_models.set(Vec::new());
+                api_key_or_host.set(String::new());
+                model_name.set(p.default_model().to_string());
+                // Try to fetch with *no* key (gets stored key in backend?) Or just cleared?
+                // Standard flow requires re-entry or just trusting stored key.
+                cloud_models.set(Vec::new());
             }
         }
     };
-
-
 
     // --- UI Helpers ---
     let providers_list = vec![
@@ -565,8 +669,8 @@ pub fn LLMSettingsView() -> impl IntoView {
         LLMProvider::AnthropicAPI,
         LLMProvider::Claude,
         LLMProvider::Copilot,
-        LLMProvider::Google,       // Google AI Studio (API key)
-        LLMProvider::Gemini,   // Gemini (OAuth)
+        LLMProvider::Google, // Google AI Studio (API key)
+        LLMProvider::Gemini, // Gemini (OAuth)
         LLMProvider::OpenRouter,
         LLMProvider::Mistral,
         LLMProvider::Groq,
