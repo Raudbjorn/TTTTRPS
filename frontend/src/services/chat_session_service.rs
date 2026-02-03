@@ -1,13 +1,14 @@
-use leptos::prelude::*;
-use wasm_bindgen_futures::spawn_local;
 use crate::bindings::{
-    cancel_stream, check_llm_health, get_session_usage, listen_chat_chunks_async, stream_chat,
-    ChatChunk, SessionUsage, StreamingChatMessage,
-    get_or_create_chat_session, get_chat_messages, add_chat_message, update_chat_message,
-    link_chat_to_game_session, speak,
+    add_chat_message, cancel_stream, check_llm_health, get_chat_messages,
+    get_or_create_chat_session, get_session_usage, link_chat_to_game_session,
+    listen_chat_chunks_async, speak, stream_chat, update_chat_message, ChatChunk, SessionUsage,
+    StreamingChatMessage,
 };
-use crate::services::notification_service::show_error;
 use crate::services::chat_context::try_use_chat_context;
+use crate::services::notification_service::{show_error, ToastAction};
+use leptos::prelude::*;
+use std::sync::Arc;
+use wasm_bindgen_futures::spawn_local;
 
 /// Message in the chat history
 #[derive(Clone, PartialEq, Debug)]
@@ -49,6 +50,8 @@ pub struct ChatSessionService {
     pub current_stream_id: RwSignal<Option<String>>,
     pub streaming_message_id: RwSignal<Option<usize>>,
     pub streaming_persistent_id: RwSignal<Option<String>>,
+    /// Trigger to retry LLM health check
+    health_trigger: Trigger,
 }
 
 impl ChatSessionService {
@@ -71,6 +74,7 @@ impl ChatSessionService {
             current_stream_id: RwSignal::new(None),
             streaming_message_id: RwSignal::new(None),
             streaming_persistent_id: RwSignal::new(None),
+            health_trigger: Trigger::new(),
         };
 
         service.init();
@@ -79,7 +83,7 @@ impl ChatSessionService {
 
     fn init(&self) {
         let service = *self;
-        
+
         // 1. Load History
         spawn_local(async move {
             match get_or_create_chat_session().await {
@@ -130,9 +134,10 @@ impl ChatSessionService {
         spawn_local(async move {
             let _unlisten = listen_chat_chunks_async(move |chunk: ChatChunk| {
                 let result = service.messages.try_update(|msgs| {
-                    if let Some(msg) = msgs.iter_mut().find(|m| {
-                        m.stream_id.as_ref() == Some(&chunk.stream_id) && m.is_streaming
-                    }) {
+                    if let Some(msg) = msgs
+                        .iter_mut()
+                        .find(|m| m.stream_id.as_ref() == Some(&chunk.stream_id) && m.is_streaming)
+                    {
                         if !chunk.content.is_empty() {
                             msg.content.push_str(&chunk.content);
                         }
@@ -167,11 +172,25 @@ impl ChatSessionService {
                                 });
 
                                 if let Some(Some(content)) = final_content {
-                                    let tokens = chunk.usage.as_ref().map(|u| (u.input_tokens as i32, u.output_tokens as i32));
+                                    let tokens = chunk
+                                        .usage
+                                        .as_ref()
+                                        .map(|u| (u.input_tokens as i32, u.output_tokens as i32));
                                     let pid_clone = pid.clone();
                                     spawn_local(async move {
-                                        if let Err(e) = update_chat_message(pid_clone, content, tokens, false).await {
+                                        if let Err(e) =
+                                            update_chat_message(pid_clone, content, tokens, false)
+                                                .await
+                                        {
                                             log::error!("Failed to persist final message: {}", e);
+                                            show_error(
+                                                "Save Failed",
+                                                Some(&format!(
+                                                    "Final response may not be saved: {}",
+                                                    e
+                                                )),
+                                                None,
+                                            );
                                         }
                                     });
                                 }
@@ -187,24 +206,43 @@ impl ChatSessionService {
                     }
                     _ => {}
                 }
-            }).await;
+            })
+            .await;
         });
 
-        // 3. Health Check
-        spawn_local(async move {
-            service.llm_status.set("Checking...".to_string());
-            match check_llm_health().await {
-                Ok(status) => {
-                    if status.healthy {
-                        service.llm_status.set(format!("{} connected", status.provider));
-                    } else {
-                        service.llm_status.set(format!("{}: {}", status.provider, status.message));
+        // 3. Health Check (with retry support via Effect + Trigger)
+        let health_trigger = service.health_trigger;
+        Effect::new(move |_| {
+            health_trigger.track();
+            spawn_local(async move {
+                service.llm_status.set("Checking...".to_string());
+                match check_llm_health().await {
+                    Ok(status) => {
+                        if status.healthy {
+                            service
+                                .llm_status
+                                .set(format!("{} connected", status.provider));
+                        } else {
+                            service
+                                .llm_status
+                                .set(format!("{}: {}", status.provider, status.message));
+                            show_error("LLM Issue", Some(&status.message), None);
+                        }
+                    }
+                    Err(e) => {
+                        service.llm_status.set(format!("Error: {}", e));
+                        let retry = Some(ToastAction {
+                            label: "Retry".to_string(),
+                            handler: Arc::new(move || health_trigger.notify()),
+                        });
+                        show_error(
+                            "LLM Connection Error",
+                            Some(&format!("Could not connect: {}", e)),
+                            retry,
+                        );
                     }
                 }
-                Err(e) => {
-                    service.llm_status.set(format!("Error: {}", e));
-                }
-            }
+            });
         });
 
         // 4. Link Campaign Effect
@@ -215,11 +253,9 @@ impl ChatSessionService {
             if let (Some(sid), Some(ctx)) = (session_id, campaign_ctx) {
                 if let Some(campaign_id) = ctx.campaign_id() {
                     spawn_local(async move {
-                        if let Err(e) = link_chat_to_game_session(
-                            sid,
-                            String::new(),
-                            Some(campaign_id),
-                        ).await {
+                        if let Err(e) =
+                            link_chat_to_game_session(sid, String::new(), Some(campaign_id)).await
+                        {
                             log::warn!("Failed to link chat session to campaign: {}", e);
                         }
                     });
@@ -237,7 +273,11 @@ impl ChatSessionService {
         let session_id = match self.session_id.get() {
             Some(id) => id,
             None => {
-                show_error("Chat Not Ready", Some("Please wait for the conversation to load."), None);
+                show_error(
+                    "Chat Not Ready",
+                    Some("Please wait for the conversation to load."),
+                    None,
+                );
                 return;
             }
         };
@@ -263,6 +303,11 @@ impl ChatSessionService {
             spawn_local(async move {
                 if let Err(e) = add_chat_message(sid, "user".to_string(), msg_content, None).await {
                     log::error!("Failed to persist user message: {}", e);
+                    show_error(
+                        "Save Failed",
+                        Some(&format!("Message may not be saved: {}", e)),
+                        None,
+                    );
                 }
             });
         }
@@ -318,7 +363,10 @@ impl ChatSessionService {
             }
         });
 
-        let history: Vec<StreamingChatMessage> = self.messages.get().iter()
+        let history: Vec<StreamingChatMessage> = self
+            .messages
+            .get()
+            .iter()
             .filter(|m| m.role == "user" || m.role == "assistant")
             .filter(|m| m.id != assistant_msg_id)
             .map(|m| StreamingChatMessage {
@@ -328,8 +376,8 @@ impl ChatSessionService {
             .collect();
 
         let system_prompt = {
-            let base_prompt = "You are a TTRPG assistant helping a Game Master run engaging tabletop sessions. 
-                You have expertise in narrative design, encounter balancing, improvisation, and player engagement. 
+            let base_prompt = "You are a TTRPG assistant helping a Game Master run engaging tabletop sessions. \
+                You have expertise in narrative design, encounter balancing, improvisation, and player engagement. \
                 Be helpful, creative, and supportive of the GM's vision.";
 
             if let Some(chat_ctx) = try_use_chat_context() {
@@ -351,9 +399,10 @@ impl ChatSessionService {
                     service.messages.update(|msgs| {
                         if let Some(msg) = msgs.iter_mut().find(|m| m.id == assistant_msg_id) {
                             msg.role = "error".to_string();
-                            msg.content = format!("Streaming error: {}
-
-Course of Action: Check your network connection or verify the LLM provider settings.", e);
+                            msg.content = format!(
+                                "Streaming error: {}\n\nCourse of Action: Check your network connection or verify the LLM provider settings.",
+                                e
+                            );
                             msg.is_streaming = false;
                         }
                     });
@@ -381,9 +430,7 @@ Course of Action: Check your network connection or verify the LLM provider setti
                         if msg.content.is_empty() {
                             msg.content = "[Response canceled]".to_string();
                         } else {
-                            msg.content.push_str("
-
-[Stream canceled]");
+                            msg.content.push_str("\n\n[Stream canceled]");
                         }
                     }
                 });
@@ -398,11 +445,15 @@ Course of Action: Check your network connection or verify the LLM provider setti
     pub fn play_message(&self, text: String) {
         let messages = self.messages;
         let next_id = self.next_message_id;
-        
+
         spawn_local(async move {
             match speak(text).await {
                 Ok(Some(result)) => {
-                    let mime_type = if result.format == "mp3" { "audio/mpeg" } else { "audio/wav" };
+                    let mime_type = if result.format == "mp3" {
+                        "audio/mpeg"
+                    } else {
+                        "audio/wav"
+                    };
                     let data_url = format!("data:{};base64,{}", mime_type, result.audio_data);
 
                     if let Ok(audio) = web_sys::HtmlAudioElement::new_with_src(&data_url) {
