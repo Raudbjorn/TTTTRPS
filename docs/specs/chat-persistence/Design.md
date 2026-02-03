@@ -17,28 +17,28 @@ The codebase already has the foundational infrastructure:
 ### Current Flow (Broken)
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│ Component Mount                                                  │
-├─────────────────────────────────────────────────────────────────┤
-│ 1. spawn_local(get_or_create_chat_session())  ───► ASYNC       │
-│ 2. User can interact immediately              ───► RACE!        │
-│ 3. If send before session ready: persistence skipped            │
-└─────────────────────────────────────────────────────────────────┘
++---------------------------------------------------------------------+
+| Component Mount                                                      |
++---------------------------------------------------------------------+
+| 1. spawn_local(get_or_create_chat_session())  ---> ASYNC            |
+| 2. User can interact immediately              ---> RACE!            |
+| 3. If send before session ready: persistence skipped                |
++---------------------------------------------------------------------+
 ```
 
 ### Proposed Flow (Fixed)
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│ Component Mount                                                  │
-├─────────────────────────────────────────────────────────────────┤
-│ 1. is_loading_history = true (blocks input)                     │
-│ 2. spawn_local/Effect::new to run async work                    │
-│ 3. await get_or_create_chat_session()                           │
-│ 4. await get_chat_messages()                                    │
-│ 5. is_loading_history = false (enables input)                   │
-│ 6. Send requires session_id.is_some() assertion                 │
-└─────────────────────────────────────────────────────────────────┘
++---------------------------------------------------------------------+
+| Component Mount                                                      |
++---------------------------------------------------------------------+
+| 1. is_loading_history = true (blocks input)                         |
+| 2. spawn_local/Effect::new to run async work                        |
+| 3. await get_or_create_chat_session()                               |
+| 4. await get_chat_messages()                                        |
+| 5. is_loading_history = false (enables input)                       |
+| 6. Send requires session_id.is_some() assertion                     |
++---------------------------------------------------------------------+
 ```
 
 **Implementation Note (Leptos Async):**
@@ -244,31 +244,82 @@ The SQLite operations in `src-tauri/src/database/chat.rs` are correct. They prop
 
 Commands in `src-tauri/src/commands/session/chat.rs` are correctly implemented.
 
+---
+
+### Part 1 Implementation Notes
+
+**Status:** Implemented
+
+**Files:**
+- `frontend/src/components/chat/mod.rs` (lines 1-340)
+- `frontend/src/services/chat_session_service.rs` (lines 1-501)
+
+**What was implemented:**
+
+1. **ChatSessionService** (`chat_session_service.rs`): A dedicated service that encapsulates all chat state management and persistence logic. The component delegates to this service rather than handling state directly.
+
+2. **Session Loading Guard** (lines 267-283): The `send_message()` method checks for session availability before sending:
+   ```rust
+   let session_id = match self.session_id.get() {
+       Some(id) => id,
+       None => {
+           show_error("Chat Not Ready", Some("Please wait for the conversation to load."), None);
+           return;
+       }
+   };
+   ```
+
+3. **Input Blocking** (lines 218-219 in mod.rs): Input is disabled while loading history or streaming:
+   ```rust
+   disabled=Signal::derive(move || is_loading.get() || is_loading_history.get())
+   ```
+
+4. **Visual Loading State** (lines 163-173 in mod.rs): Shows spinner while loading conversation history.
+
+5. **Persistence with Error Notifications** (lines 300-357): User and assistant messages are persisted with error notifications on failure via `show_error()`.
+
+6. **Assistant Placeholder Pattern** (lines 315-358): Creates an empty assistant message placeholder before streaming, then updates it when streaming completes (lines 166-198).
+
+**Deviations from original design:**
+
+- **No retry queue implementation**: The design proposed a `RETRY_QUEUE` for resilience, but the implementation uses simpler fire-and-forget persistence with error notifications. This was deemed sufficient for the initial fix.
+- **Service-based architecture**: Instead of modifying the Chat component directly, a `ChatSessionService` was created to centralize all chat state management.
+- **Campaign context integration**: The service automatically links to campaign context when available via an Effect (lines 248-264).
+
+**Key patterns:**
+
+- `RwSignal` for reactive state management
+- `spawn_local` for async operations from sync context
+- `Effect::new` for reactive side effects (health check, campaign linking)
+- `Trigger` for manual effect re-execution (health check retry)
+
+---
+
 ## State Machine
 
 ```
-┌──────────────┐     mount      ┌───────────────┐
-│   Unmounted  │ ──────────────►│    Loading    │
-└──────────────┘                └───────┬───────┘
-       ▲                                │
-       │                    ┌───────────┴───────────┐
-       │                    │                       │
-       │ unmount            │ success               │ get_or_create_chat_session() failed
-       │                    ▼                       ▼
-       │            ┌───────────────┐       ┌───────────────┐
-       └────────────│     Ready     │◄──────│ Loading Failed│
-                    └───────┬───────┘ retry └───────────────┘
-                            │
-            ┌───────────────┼───────────────┐
-            │               │               │
-            │ send message  │               │ persist message failed
-            ▼               │               ▼
-    ┌───────────────┐       │       ┌─────────────────────┐
-    │   Streaming   │───────┘       │ Persistence Failed  │
-    └───────────────┘               └─────────┬───────────┘
-         response complete                    │
-                                              │ retry/recover
-                                              ▼
++--------------+     mount      +---------------+
+|   Unmounted  | -------------->|    Loading    |
++--------------+                +-------+-------+
+       ^                                |
+       |                    +-----------+-----------+
+       |                    |                       |
+       | unmount            | success               | get_or_create_chat_session() failed
+       |                    v                       v
+       |            +---------------+       +---------------+
+       +------------|     Ready     |<------|Loading Failed |
+                    +-------+-------+ retry +---------------+
+                            |
+            +---------------+---------------+
+            |               |               |
+            | send message  |               | persist message failed
+            v               |               v
+    +---------------+       |       +---------------------+
+    |   Streaming   |-------+       | Persistence Failed  |
+    +---------------+               +---------+-----------+
+         response complete                    |
+                                              | retry/recover
+                                              v
                                       (back to Ready)
 ```
 
@@ -276,12 +327,12 @@ Commands in `src-tauri/src/commands/session/chat.rs` are correctly implemented.
 
 | State | Entry Condition | Exit Transitions |
 |-------|-----------------|------------------|
-| Unmounted | Component not rendered | mount → Loading |
-| Loading | Component mounted | success → Ready, failure → Loading Failed |
-| Loading Failed | get_or_create_chat_session() error | retry → Loading, unmount → Unmounted |
-| Ready | Session loaded, input enabled | send → Streaming, persist fail → Persistence Failed |
-| Streaming | Message sent, awaiting response | complete → Ready |
-| Persistence Failed | add_chat_message() error | retry → Ready, dismiss → Ready |
+| Unmounted | Component not rendered | mount -> Loading |
+| Loading | Component mounted | success -> Ready, failure -> Loading Failed |
+| Loading Failed | get_or_create_chat_session() error | retry -> Loading, unmount -> Unmounted |
+| Ready | Session loaded, input enabled | send -> Streaming, persist fail -> Persistence Failed |
+| Streaming | Message sent, awaiting response | complete -> Ready |
+| Persistence Failed | add_chat_message() error | retry -> Ready, dismiss -> Ready |
 
 ## Error Handling
 
@@ -308,6 +359,278 @@ enum PersistenceError {
 // 1. Show error message in chat area
 // 2. Provide "Retry" button
 // 3. Disable input until session is available
+```
+
+## Error Recovery Strategies
+
+### Strategy 1: Retry with Exponential Backoff
+
+For transient failures (network timeout, DB lock), implement automatic retry:
+
+```rust
+const MAX_RETRIES: u32 = 3;
+const BASE_DELAY_MS: u64 = 1000;
+
+async fn persist_with_retry<F, T, E>(
+    operation: F,
+    operation_name: &str,
+) -> Result<T, E>
+where
+    F: Fn() -> Future<Output = Result<T, E>>,
+    E: std::fmt::Display,
+{
+    let mut attempts = 0;
+    let mut last_error = None;
+
+    while attempts < MAX_RETRIES {
+        match operation().await {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                attempts += 1;
+                last_error = Some(e);
+
+                if attempts < MAX_RETRIES {
+                    let delay = BASE_DELAY_MS * 2u64.pow(attempts - 1);
+                    log::warn!(
+                        "{} failed (attempt {}), retrying in {}ms",
+                        operation_name, attempts, delay
+                    );
+                    gloo_timers::future::sleep(Duration::from_millis(delay)).await;
+                }
+            }
+        }
+    }
+
+    Err(last_error.unwrap())
+}
+```
+
+### Strategy 2: Fallback Persistence Queue
+
+When immediate persistence fails, queue for background retry:
+
+```rust
+/// Pending message awaiting persistence
+#[derive(Clone, Serialize, Deserialize)]
+struct PendingMessage {
+    session_id: String,
+    role: String,
+    content: String,
+    created_at: DateTime<Utc>,
+    attempts: u32,
+    last_attempt: Option<DateTime<Utc>>,
+}
+
+/// Persistence queue stored in IndexedDB for crash recovery
+struct PersistenceQueue {
+    queue: VecDeque<PendingMessage>,
+    max_size: usize,
+}
+
+impl PersistenceQueue {
+    fn new(max_size: usize) -> Self {
+        Self { queue: VecDeque::new(), max_size }
+    }
+
+    fn enqueue(&mut self, msg: PendingMessage) -> Result<(), QueueFullError> {
+        if self.queue.len() >= self.max_size {
+            return Err(QueueFullError);
+        }
+        self.queue.push_back(msg);
+        self.save_to_indexeddb();
+        Ok(())
+    }
+
+    fn dequeue(&mut self) -> Option<PendingMessage> {
+        let msg = self.queue.pop_front();
+        if msg.is_some() {
+            self.save_to_indexeddb();
+        }
+        msg
+    }
+
+    fn requeue_failed(&mut self, mut msg: PendingMessage) {
+        msg.attempts += 1;
+        msg.last_attempt = Some(Utc::now());
+        // Add to back with incremented attempt count
+        self.queue.push_back(msg);
+        self.save_to_indexeddb();
+    }
+}
+```
+
+### Strategy 3: Streaming Placeholder Fallback
+
+When assistant placeholder creation fails, create it at finalization time:
+
+```rust
+/// Handle streaming message finalization
+async fn finalize_streaming_message(
+    stream_id: &str,
+    final_content: &str,
+    tokens: Option<(i32, i32)>,
+    streaming_persistent_id: &RwSignal<Option<String>>,
+    session_id: &str,
+) {
+    // Check if we have a persistent ID from placeholder creation
+    if let Some(pid) = streaming_persistent_id.get_untracked() {
+        // Normal path: update existing placeholder
+        match update_chat_message(pid.clone(), final_content.to_string(), tokens, false).await {
+            Ok(_) => {
+                log::debug!("Successfully updated placeholder {}", pid);
+            }
+            Err(e) => {
+                log::error!("Failed to update placeholder: {}", e);
+                // Fallback: try to create a new message
+                fallback_create_message(session_id, final_content, tokens).await;
+            }
+        }
+    } else {
+        // Placeholder creation failed earlier - create message now
+        log::warn!("No placeholder ID, creating message at finalization");
+        fallback_create_message(session_id, final_content, tokens).await;
+    }
+}
+
+async fn fallback_create_message(
+    session_id: &str,
+    content: &str,
+    tokens: Option<(i32, i32)>,
+) {
+    match add_chat_message(
+        session_id.to_string(),
+        "assistant".to_string(),
+        content.to_string(),
+        tokens,
+    ).await {
+        Ok(record) => {
+            log::info!("Fallback message created: {}", record.id);
+        }
+        Err(e) => {
+            log::error!("Fallback persistence also failed: {}", e);
+            show_error(
+                "Message Lost",
+                Some("Unable to save the assistant's response. Please try again."),
+                None,
+            );
+        }
+    }
+}
+```
+
+### Strategy 4: Graceful Degradation
+
+When persistence is completely unavailable, degrade gracefully:
+
+```rust
+/// Persistence availability state
+#[derive(Clone, Copy, PartialEq)]
+enum PersistenceState {
+    Available,
+    Degraded,      // Retrying, queue growing
+    Unavailable,   // All retries exhausted
+}
+
+/// UI adaptation based on persistence state
+fn adapt_ui_to_persistence_state(state: PersistenceState) -> impl IntoView {
+    match state {
+        PersistenceState::Available => {
+            view! { /* Normal UI */ }.into_any()
+        }
+        PersistenceState::Degraded => {
+            view! {
+                <div class="bg-yellow-100 text-yellow-800 p-2 text-sm">
+                    "Warning: Some messages pending save. Don't close the app."
+                </div>
+            }.into_any()
+        }
+        PersistenceState::Unavailable => {
+            view! {
+                <div class="bg-red-100 text-red-800 p-2 text-sm">
+                    "Error: Message saving unavailable. Chat will work but history may be lost."
+                    <button class="underline ml-2" on:click=retry_persistence>
+                        "Retry"
+                    </button>
+                </div>
+            }.into_any()
+        }
+    }
+}
+```
+
+### Strategy 5: Session Recovery on Component Remount
+
+When Chat component remounts, check for orphaned messages:
+
+```rust
+/// Check for messages that were being streamed when component unmounted
+async fn recover_orphaned_messages(session_id: &str) {
+    let messages = get_chat_messages(session_id.to_string(), Some(10)).await.ok();
+
+    if let Some(msgs) = messages {
+        // Find any messages still marked as streaming
+        for msg in msgs.iter().filter(|m| m.is_streaming) {
+            log::warn!("Found orphaned streaming message: {}", msg.id);
+
+            // Mark as incomplete rather than streaming
+            if let Err(e) = update_chat_message(
+                msg.id.clone(),
+                format!("{}\n\n[Stream interrupted]", msg.content),
+                None,
+                false, // is_streaming = false
+            ).await {
+                log::error!("Failed to recover orphaned message: {}", e);
+            }
+        }
+    }
+}
+```
+
+### Error Recovery Decision Tree
+
+```
+Message send initiated
+        |
+        v
++------------------------+
+| Session ID available?  |
++-------+----------------+
+        |
+    +---+---+
+    | No    | Yes
+    v       v
++-------+ +------------------------+
+| Block | | Persist user message   |
+| send  | +-----------+------------+
++-------+             |
+                  +---+---+
+                  | Fail? |
+                  +---+---+
+              +-------+-------+
+              | Yes           | No
+              v               v
+       +--------------+  +--------------+
+       | Retry (3x)   |  | Create       |
+       | w/ backoff   |  | placeholder  |
+       +------+-------+  +------+-------+
+              |                 |
+          +---+---+         +---+---+
+          | Fail? |         | Fail? |
+          +---+---+         +---+---+
+      +-------+-------+     +---+---+
+      | Yes           | No  | Yes   | No
+      v               v     v       v
++-----------+  +---------+ +-----------------+ +------------+
+| Queue for |  |Continue | |Set fallback flag| | Stream     |
+| bg retry  |  |         | |(create at final)| | response   |
++-----------+  +---------+ +-----------------+ +------------+
+      |                           |                   |
+      v                           |                   v
++-----------+                     |          +----------------+
+| Show toast|                     |          | Finalize:      |
+| "pending" |                     +----------|update or       |
++-----------+                                |fallback create |
+                                             +----------------+
 ```
 
 ## Testing Strategy
@@ -408,41 +731,41 @@ No database migrations required. Existing schema is sufficient.
 ### Database Tables (Already Exist)
 
 ```
-┌─────────────────────┐     ┌─────────────────────┐
-│ global_chat_sessions│     │ conversation_threads│
-├─────────────────────┤     ├─────────────────────┤
-│ id                  │     │ id                  │
-│ status              │     │ campaign_id (FK)    │
-│ linked_campaign_id ─┼──┐  │ wizard_id (FK)      │
-│ linked_game_session_│  │  │ purpose             │
-│ created_at          │  │  │ title               │
-│ updated_at          │  │  │ active_personality  │
-└─────────────────────┘  │  │ branched_from       │
-         │               │  └─────────────────────┘
-         │               │           │
-         ▼               │           ▼
-┌─────────────────────┐  │  ┌─────────────────────┐
-│ chat_messages       │  │  │ conversation_messages│
-├─────────────────────┤  │  ├─────────────────────┤
-│ id                  │  │  │ id                  │
-│ session_id (FK)     │  │  │ thread_id (FK)      │
-│ role                │  │  │ role                │
-│ content             │  │  │ content             │
-│ tokens_*            │  │  │ suggestions (JSON)  │
-│ is_streaming        │  │  │ citations (JSON)    │
-└─────────────────────┘  │  └─────────────────────┘
-                         │
-         ┌───────────────┘
-         ▼
-┌─────────────────────┐     ┌─────────────────────┐
-│ campaigns           │────►│ sessions            │
-├─────────────────────┤     ├─────────────────────┤
-│ id                  │     │ id                  │
-│ name                │     │ campaign_id (FK)    │
-│ system              │     │ session_number      │
-│ world_state (JSON)  │     │ status              │
-│ house_rules (JSON)  │     │ notes               │
-└─────────────────────┘     └─────────────────────┘
++---------------------+     +---------------------+
+| global_chat_sessions|     | conversation_threads|
++---------------------+     +---------------------+
+| id                  |     | id                  |
+| status              |     | campaign_id (FK)    |
+| linked_campaign_id -+--+  | wizard_id (FK)      |
+| linked_game_session_|  |  | purpose             |
+| created_at          |  |  | title               |
+| updated_at          |  |  | active_personality  |
++---------------------+  |  | branched_from       |
+         |               |  +---------------------+
+         |               |           |
+         v               |           v
++---------------------+  |  +---------------------+
+| chat_messages       |  |  | conversation_messages|
++---------------------+  |  +---------------------+
+| id                  |  |  | id                  |
+| session_id (FK)     |  |  | thread_id (FK)      |
+| role                |  |  | role                |
+| content             |  |  | content             |
+| tokens_*            |  |  | suggestions (JSON)  |
+| is_streaming        |  |  | citations (JSON)    |
++---------------------+  |  +---------------------+
+                         |
+         +---------------+
+         v
++---------------------+     +---------------------+
+| campaigns           |---->| sessions            |
++---------------------+     +---------------------+
+| id                  |     | id                  |
+| name                |     | campaign_id (FK)    |
+| system              |     | session_number      |
+| world_state (JSON)  |     | status              |
+| house_rules (JSON)  |     | notes               |
++---------------------+     +---------------------+
 ```
 
 ### ConversationPurpose Enum
@@ -472,34 +795,34 @@ pub enum ConversationPurpose {
 ### Context Flow
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                        User Navigation                            │
-├──────────────────────────────────────────────────────────────────┤
-│                                                                    │
-│  /chat (global)          /session/:campaign_id                    │
-│       │                           │                               │
-│       ▼                           ▼                               │
-│  ┌─────────────┐           ┌─────────────┐                       │
-│  │ Global Chat │           │ Session Chat│                       │
-│  │ (unlinked)  │           │ (linked)    │                       │
-│  └─────────────┘           └─────────────┘                       │
-│                                   │                               │
-│                    ┌──────────────┼──────────────┐               │
-│                    ▼              ▼              ▼               │
-│            ┌───────────┐  ┌───────────┐  ┌───────────┐          │
-│            │ Campaign  │  │ Session   │  │   NPC     │          │
-│            │ Context   │  │ Notes     │  │ Summaries │          │
-│            └───────────┘  └───────────┘  └───────────┘          │
-│                    │              │              │               │
-│                    └──────────────┴──────────────┘               │
-│                                   │                               │
-│                                   ▼                               │
-│                    ┌────────────────────────┐                    │
-│                    │    AI System Prompt    │                    │
-│                    │  (context-augmented)   │                    │
-│                    └────────────────────────┘                    │
-│                                                                    │
-└──────────────────────────────────────────────────────────────────┘
++----------------------------------------------------------------------+
+|                        User Navigation                                |
++----------------------------------------------------------------------+
+|                                                                       |
+|  /chat (global)          /session/:campaign_id                       |
+|       |                           |                                  |
+|       v                           v                                  |
+|  +-------------+           +-------------+                           |
+|  | Global Chat |           | Session Chat|                           |
+|  | (unlinked)  |           | (linked)    |                           |
+|  +-------------+           +-------------+                           |
+|                                   |                                  |
+|                    +--------------+--------------+                   |
+|                    v              v              v                   |
+|            +-----------+  +-----------+  +-----------+               |
+|            | Campaign  |  | Session   |  |   NPC     |               |
+|            | Context   |  | Notes     |  | Summaries |               |
+|            +-----------+  +-----------+  +-----------+               |
+|                    |              |              |                   |
+|                    +--------------+--------------+                   |
+|                                   |                                  |
+|                                   v                                  |
+|                    +------------------------+                        |
+|                    |    AI System Prompt    |                        |
+|                    |  (context-augmented)   |                        |
+|                    +------------------------+                        |
+|                                                                       |
++----------------------------------------------------------------------+
 ```
 
 ## Component Changes
@@ -725,41 +1048,97 @@ pub async fn stream_chat(
 }
 ```
 
+---
+
+### Part 2 Implementation Notes
+
+**Status:** Implemented
+
+**Files:**
+- `frontend/src/services/chat_context.rs` (lines 1-274)
+
+**What was implemented:**
+
+1. **ChatContext struct** (lines 32-45): Holds campaign, NPCs, locations, loading state, and error state.
+
+2. **ChatContextState wrapper** (lines 122-234): Provides reactive access to context via `RwSignal<ChatContext>` with helper methods:
+   - `set_campaign(campaign_id)` - Loads campaign data asynchronously
+   - `clear()` - Resets to default state
+   - `build_prompt_augmentation()` - Generates system prompt augmentation
+
+3. **System Prompt Augmentation** (lines 74-119): The `build_system_prompt_augmentation()` method creates a structured prompt addition with delimiters for security:
+   ```rust
+   prompt.push_str("### CAMPAIGN DATA BEGIN ###\n");
+   // ... campaign name, system, NPCs, locations ...
+   prompt.push_str("### CAMPAIGN DATA END ###\n");
+   ```
+
+4. **Provider/Consumer pattern** (lines 249-273):
+   - `provide_chat_context()` - Called in app root
+   - `use_chat_context()` - Used in components that need campaign context
+   - `try_use_chat_context()` - Non-panicking variant
+
+5. **Integration in ChatSessionService** (lines 386-400 in chat_session_service.rs): The service automatically augments the system prompt when campaign context is available:
+   ```rust
+   if let Some(chat_ctx) = try_use_chat_context() {
+       if let Some(augmentation) = chat_ctx.build_prompt_augmentation() {
+           Some(format!("{}{}", base_prompt, augmentation))
+       }
+   }
+   ```
+
+6. **Automatic Campaign Linking** (lines 248-264 in chat_session_service.rs): An Effect automatically links the chat session to the active campaign when context is available.
+
+**Deviations from original design:**
+
+- **LocationSummary type**: Created a lightweight `LocationSummary` struct instead of using full `LocationState` to reduce memory usage.
+- **NPC/Location limits**: The prompt augmentation limits NPCs to 20 and locations to 10 to prevent prompt bloat (lines 93-114).
+- **Delimiter-based security**: Uses `### CAMPAIGN DATA BEGIN/END ###` markers to help the LLM distinguish data from instructions (prompt injection mitigation).
+
+**Key patterns:**
+
+- `RwSignal` for reactive context state
+- `spawn_local` for async data loading
+- Builder pattern for prompt construction
+- Provider/consumer pattern via Leptos context
+
+---
+
 ## Data Flow: Session Planning
 
 ```
 User clicks "Plan Session" in Session Workspace
-         │
-         ▼
-┌──────────────────────────────────────────────────────────────────┐
-│ 1. Create ConversationThread                                      │
-│    - purpose: SessionPlanning                                     │
-│    - campaign_id: current campaign                                │
-│    - title: "Session N Planning"                                  │
-└──────────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌──────────────────────────────────────────────────────────────────┐
-│ 2. Load Session Planning System Prompt                           │
-│    "You are helping plan an engaging TTRPG session..."           │
-│    + Campaign context (NPCs, locations, world state)             │
-│    + Previous session summary (if available)                     │
-└──────────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌──────────────────────────────────────────────────────────────────┐
-│ 3. User sends planning messages                                   │
-│    - Saved to conversation_messages                               │
-│    - AI responses include suggestions (parsed from JSON blocks)  │
-└──────────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌──────────────────────────────────────────────────────────────────┐
-│ 4. User can accept suggestions                                    │
-│    - Create NPCs from suggestions                                 │
-│    - Add plot points from suggestions                             │
-│    - Track in acceptance_events table                             │
-└──────────────────────────────────────────────────────────────────┘
+         |
+         v
++----------------------------------------------------------------------+
+| 1. Create ConversationThread                                          |
+|    - purpose: SessionPlanning                                         |
+|    - campaign_id: current campaign                                    |
+|    - title: "Session N Planning"                                      |
++----------------------------------------------------------------------+
+         |
+         v
++----------------------------------------------------------------------+
+| 2. Load Session Planning System Prompt                                |
+|    "You are helping plan an engaging TTRPG session..."               |
+|    + Campaign context (NPCs, locations, world state)                 |
+|    + Previous session summary (if available)                         |
++----------------------------------------------------------------------+
+         |
+         v
++----------------------------------------------------------------------+
+| 3. User sends planning messages                                       |
+|    - Saved to conversation_messages                                   |
+|    - AI responses include suggestions (parsed from JSON blocks)      |
++----------------------------------------------------------------------+
+         |
+         v
++----------------------------------------------------------------------+
+| 4. User can accept suggestions                                        |
+|    - Create NPCs from suggestions                                     |
+|    - Add plot points from suggestions                                 |
+|    - Track in acceptance_events table                                 |
++----------------------------------------------------------------------+
 ```
 
 ## API Additions
@@ -923,24 +1302,24 @@ Rather than creating a new system, we'll enhance the existing `npc_conversations
 ## NPC Conversation Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                      NPC Detail Page                             │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌─────────────────┐  ┌─────────────────────────────────────┐   │
-│  │  NPC Info       │  │  Conversation Panel                  │   │
-│  │  - Name         │  │  ┌─────────────────────────────────┐│   │
-│  │  - Background   │  │  │ [Toggle: About NPC | As NPC]    ││   │
-│  │  - Personality  │  │  ├─────────────────────────────────┤│   │
-│  │  - Voice        │  │  │                                 ││   │
-│  │                 │  │  │  Message History                ││   │
-│  │  [Edit] [Chat]  │  │  │  - User: Tell me about...       ││   │
-│  │                 │  │  │  - AI: [context-aware response] ││   │
-│  └─────────────────┘  │  │                                 ││   │
-│                       │  ├─────────────────────────────────┤│   │
-│                       │  │  [Input field]  [Send]          ││   │
-│                       │  └─────────────────────────────────┘│   │
-│                       └─────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
++---------------------------------------------------------------------+
+|                      NPC Detail Page                                 |
++---------------------------------------------------------------------+
+|  +-----------------+  +-------------------------------------+        |
+|  |  NPC Info       |  |  Conversation Panel                 |        |
+|  |  - Name         |  |  +---------------------------------+|        |
+|  |  - Background   |  |  | [Toggle: About NPC | As NPC]    ||        |
+|  |  - Personality  |  |  +---------------------------------+|        |
+|  |  - Voice        |  |  |                                 ||        |
+|  |                 |  |  |  Message History                ||        |
+|  |  [Edit] [Chat]  |  |  |  - User: Tell me about...       ||        |
+|  |                 |  |  |  - AI: [context-aware response] ||        |
+|  +-----------------+  |  |                                 ||        |
+|                       |  +---------------------------------+|        |
+|                       |  |  [Input field]  [Send]          ||        |
+|                       |  +---------------------------------+|        |
+|                       +-------------------------------------+        |
++---------------------------------------------------------------------+
 ```
 
 ## NPC Conversation Modes
@@ -1264,34 +1643,188 @@ Current Situation: {situation}
 
 ```
 User clicks "Chat" on NPC card
-         │
-         ▼
-┌──────────────────────────────────────────────────────────────────┐
-│ 1. get_or_create_npc_conversation(npc_id, campaign_id)           │
-│    - Returns existing or creates new record                      │
-│    - Loads messages_json                                         │
-└──────────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌──────────────────────────────────────────────────────────────────┐
-│ 2. NpcConversationPanel renders                                   │
-│    - Mode toggle (About / As)                                     │
-│    - Message history                                              │
-│    - Input field                                                  │
-└──────────────────────────────────────────────────────────────────┘
-         │
-         ▼ (User sends message)
-┌──────────────────────────────────────────────────────────────────┐
-│ 3. stream_npc_chat(npc_id, campaign_id, messages, mode)          │
-│    - Builds system prompt based on mode                           │
-│    - Streams response                                             │
-│    - Saves to npc_conversations.messages_json                     │
-└──────────────────────────────────────────────────────────────────┘
+         |
+         v
++----------------------------------------------------------------------+
+| 1. get_or_create_npc_conversation(npc_id, campaign_id)                |
+|    - Returns existing or creates new record                           |
+|    - Loads messages_json                                              |
++----------------------------------------------------------------------+
+         |
+         v
++----------------------------------------------------------------------+
+| 2. NpcConversationPanel renders                                       |
+|    - Mode toggle (About / As)                                         |
+|    - Message history                                                  |
+|    - Input field                                                      |
++----------------------------------------------------------------------+
+         |
+         v (User sends message)
++----------------------------------------------------------------------+
+| 3. stream_npc_chat(npc_id, campaign_id, messages, mode)               |
+|    - Builds system prompt based on mode                               |
+|    - Streams response                                                 |
+|    - Saves to npc_conversations.messages_json                         |
++----------------------------------------------------------------------+
 ```
 
 ---
 
-**Version:** 3.0
-**Last Updated:** 2026-02-01
-**Status:** Draft - Pending Review
-**Implements:** Requirements.md v3.0
+### Part 3 Implementation Notes
+
+**Status:** Backend Implemented, UI Pending
+
+**Files:**
+- `src-tauri/src/commands/npc/conversations.rs` (lines 1-593)
+
+**What was implemented (Backend):**
+
+1. **Per-NPC Chat Lock** (lines 19-34): Prevents race conditions with concurrent NPC chat requests using per-NPC `Mutex`:
+   ```rust
+   static NPC_CHAT_LOCKS: Lazy<Mutex<HashMap<String, Arc<Mutex<()>>>>> = ...;
+   ```
+
+2. **NPC Conversation Commands** (lines 56-173):
+   - `list_npc_conversations(campaign_id)` - List all conversations for a campaign
+   - `get_npc_conversation(npc_id)` - Get specific conversation
+   - `add_npc_message(npc_id, content, role, parent_id)` - Add message to conversation
+   - `mark_npc_read(npc_id)` - Mark conversation as read
+   - `list_npc_summaries(campaign_id)` - Get NPC list with conversation metadata
+
+3. **Non-Streaming Reply** (lines 175-256): `reply_as_npc(npc_id)` - Generates a synchronous LLM reply using NPC personality.
+
+4. **Streaming NPC Chat** (lines 260-478): `stream_npc_chat(app_handle, npc_id, user_message, provided_stream_id, state)`:
+   - Acquires per-NPC lock to prevent races
+   - Builds system prompt from NPC personality
+   - Saves user message immediately
+   - Streams response via `chat-chunk` events
+   - Saves assistant response after streaming completes
+
+5. **NPC Extended Data** (lines 480-495): `NpcExtendedData` struct for parsing `data_json` fields (background, personality_traits, motivations, secrets, appearance, speaking_style).
+
+6. **System Prompt Builder** (lines 497-592): `build_npc_system_prompt()` constructs a character prompt using delimiters for security:
+   ```rust
+   prompt.push_str("### CHARACTER DATA BEGIN ###\n");
+   // ... NPC name, role, background, personality, speaking style ...
+   prompt.push_str("### CHARACTER DATA END ###\n");
+   ```
+
+**What's still UI-pending:**
+
+- **NpcConversationPanel component**: The frontend component for displaying and interacting with NPC conversations is not yet implemented.
+- **Mode toggle (About/As)**: The two-mode system (about NPC vs. speaking as NPC) is designed but not yet in the UI.
+- **Voice mode prompt**: The `build_voice_mode_prompt()` function exists in design but the actual implementation uses only the character roleplay mode.
+
+**Deviations from original design:**
+
+- **Single mode for streaming**: The `stream_npc_chat` command always uses the "As NPC" roleplay mode. The "About NPC" mode for development assistance is not yet implemented in the streaming path.
+- **Conversation auto-creation**: If no conversation exists when calling `stream_npc_chat`, one is automatically created (lines 314-326).
+- **Delimiter-based security**: Uses `### CHARACTER DATA BEGIN/END ###` markers in the system prompt (lines 519, 583).
+
+**Key patterns:**
+
+- Per-NPC mutex for concurrency safety
+- `spawn` for async streaming task
+- Event-based streaming via `app_handle.emit("chat-chunk", ...)`
+- JSON serialization for message persistence in `messages_json`
+
+---
+
+# API Reference
+
+This section documents all Tauri commands related to chat persistence and conversations.
+
+## Global Chat Commands
+
+Commands in `src-tauri/src/commands/session/chat.rs`:
+
+| Command | Signature | Description |
+|---------|-----------|-------------|
+| `get_or_create_chat_session` | `() -> Result<GlobalChatSessionRecord, String>` | Gets the active chat session or creates one if none exists |
+| `get_active_chat_session` | `() -> Result<Option<GlobalChatSessionRecord>, String>` | Gets the active chat session if one exists |
+| `get_chat_messages` | `(session_id: String, limit: Option<i32>) -> Result<Vec<ChatMessageRecord>, String>` | Gets messages for a session (default limit: 100) |
+| `add_chat_message` | `(session_id: String, role: String, content: String, tokens: Option<(i32, i32)>) -> Result<ChatMessageRecord, String>` | Adds a message to the session |
+| `update_chat_message` | `(message_id: String, content: String, tokens: Option<(i32, i32)>, is_streaming: bool) -> Result<(), String>` | Updates an existing message (e.g., after streaming) |
+| `link_chat_to_game_session` | `(chat_session_id: String, game_session_id: String, campaign_id: Option<String>) -> Result<(), String>` | Links chat session to a game session and/or campaign |
+| `end_chat_session_and_spawn_new` | `(chat_session_id: String) -> Result<GlobalChatSessionRecord, String>` | Archives current session and creates a new one |
+| `clear_chat_messages` | `(session_id: String) -> Result<u64, String>` | Deletes all messages in a session |
+| `list_chat_sessions` | `(limit: Option<i32>) -> Result<Vec<GlobalChatSessionRecord>, String>` | Lists recent sessions (default limit: 50) |
+| `get_chat_sessions_for_game` | `(game_session_id: String) -> Result<Vec<GlobalChatSessionRecord>, String>` | Gets chat sessions linked to a game session |
+
+## Conversation Thread Commands
+
+Commands in `src-tauri/src/commands/campaign/conversation.rs`:
+
+| Command | Signature | Description |
+|---------|-----------|-------------|
+| `create_conversation_thread` | `(purpose: ConversationPurpose, campaign_id: Option<String>, wizard_id: Option<String>, title: Option<String>) -> Result<ConversationThread, String>` | Creates a new conversation thread |
+| `get_conversation_thread` | `(thread_id: String) -> Result<Option<ConversationThread>, String>` | Gets a thread by ID |
+| `list_conversation_threads` | `(campaign_id: Option<String>, purpose: Option<ConversationPurpose>, include_archived: Option<bool>, limit: Option<i32>) -> Result<Vec<ConversationThread>, String>` | Lists threads with optional filtering |
+| `archive_conversation_thread` | `(thread_id: String) -> Result<(), String>` | Archives a thread (no new messages) |
+| `update_conversation_thread_title` | `(thread_id: String, title: String) -> Result<ConversationThread, String>` | Updates thread title |
+| `send_conversation_message` | `(thread_id: String, content: String) -> Result<SendMessageResult, String>` | Sends message and gets AI response |
+| `get_conversation_messages` | `(thread_id: String, limit: Option<i32>, before: Option<String>) -> Result<PaginatedMessages, String>` | Gets messages with pagination |
+| `add_conversation_message` | `(thread_id: String, role: ConversationRole, content: String) -> Result<ConversationMessage, String>` | Adds message without AI response |
+| `accept_suggestion` | `(message_id: String, suggestion_id: String) -> Result<SuggestionAcceptResult, String>` | Marks a suggestion as accepted |
+| `reject_suggestion` | `(message_id: String, suggestion_id: String, reason: Option<String>) -> Result<SuggestionRejectResult, String>` | Marks a suggestion as rejected |
+| `get_pending_suggestions` | `(thread_id: String) -> Result<Vec<PendingSuggestion>, String>` | Gets unprocessed suggestions |
+| `branch_conversation` | `(source_thread_id: String, branch_message_id: String) -> Result<ConversationThread, String>` | Creates a branch from a message |
+| `generate_clarifying_questions` | `(thread_id: String, context: String) -> Result<Vec<ClarifyingQuestion>, String>` | Generates AI questions for wizard steps |
+
+## NPC Conversation Commands
+
+Commands in `src-tauri/src/commands/npc/conversations.rs`:
+
+| Command | Signature | Description |
+|---------|-----------|-------------|
+| `list_npc_conversations` | `(campaign_id: String) -> Result<Vec<NpcConversation>, String>` | Lists all NPC conversations in a campaign |
+| `get_npc_conversation` | `(npc_id: String) -> Result<NpcConversation, String>` | Gets conversation for a specific NPC |
+| `add_npc_message` | `(npc_id: String, content: String, role: String, parent_id: Option<String>) -> Result<ConversationMessage, String>` | Adds message to NPC conversation |
+| `mark_npc_read` | `(npc_id: String) -> Result<(), String>` | Resets unread count for NPC conversation |
+| `list_npc_summaries` | `(campaign_id: String) -> Result<Vec<NpcSummary>, String>` | Gets NPCs with conversation metadata |
+| `reply_as_npc` | `(npc_id: String) -> Result<ConversationMessage, String>` | Generates synchronous NPC reply |
+| `stream_npc_chat` | `(npc_id: String, user_message: String, provided_stream_id: Option<String>) -> Result<String, String>` | Streams NPC response (returns stream_id) |
+
+## Types
+
+### ConversationPurpose
+
+```rust
+pub enum ConversationPurpose {
+    CampaignCreation,   // Campaign wizard flow
+    SessionPlanning,    // Planning a specific session
+    NpcGeneration,      // Creating NPCs
+    WorldBuilding,      // Building campaign world
+    CharacterBackground,// Character backstories
+    General,            // General DM assistance
+}
+```
+
+### ConversationRole
+
+```rust
+pub enum ConversationRole {
+    User,
+    Assistant,
+    System,
+}
+```
+
+### SendMessageResult
+
+```rust
+pub struct SendMessageResult {
+    pub user_message: ConversationMessage,
+    pub assistant_message: ConversationMessage,
+    pub model: String,
+    pub tokens_in: i64,
+    pub tokens_out: i64,
+}
+```
+
+---
+
+**Version:** 3.2
+**Last Updated:** 2026-02-03
+**Status:** Approved
+**Implements:** Requirements.md v3.1

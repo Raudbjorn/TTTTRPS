@@ -1,5 +1,6 @@
 
 pub mod models;
+pub mod logging;
 pub mod voice;
 pub mod llm;
 // llm_router moved to llm::router

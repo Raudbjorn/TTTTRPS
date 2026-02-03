@@ -54,7 +54,13 @@ impl NotificationState {
         }
     }
 
-    pub fn add(&self, toast_type: ToastType, title: String, message: Option<String>, action: Option<ToastAction>) {
+    pub fn add(
+        &self,
+        toast_type: ToastType,
+        title: String,
+        message: Option<String>,
+        action: Option<ToastAction>,
+    ) {
         let id = Uuid::new_v4();
         let notification = Notification {
             id,
@@ -102,18 +108,33 @@ pub fn remove_notification(id: Uuid) {
 
 pub fn show_success(title: &str, message: Option<&str>) {
     if let Some(state) = use_context::<NotificationState>() {
-        state.add(ToastType::Success, title.to_string(), message.map(String::from), None);
+        state.add(
+            ToastType::Success,
+            title.to_string(),
+            message.map(String::from),
+            None,
+        );
     }
 }
 
 pub fn show_error(title: &str, message: Option<&str>, action: Option<ToastAction>) {
     if let Some(state) = use_context::<NotificationState>() {
-        state.add(ToastType::Error, title.to_string(), message.map(String::from), action);
+        state.add(
+            ToastType::Error,
+            title.to_string(),
+            message.map(String::from),
+            action,
+        );
     }
 }
 
 pub fn show_info(title: &str, message: Option<&str>) {
     if let Some(state) = use_context::<NotificationState>() {
-        state.add(ToastType::Info, title.to_string(), message.map(String::from), None);
+        state.add(
+            ToastType::Info,
+            title.to_string(),
+            message.map(String::from),
+            None,
+        );
     }
 }

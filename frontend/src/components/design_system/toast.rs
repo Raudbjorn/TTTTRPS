@@ -1,6 +1,6 @@
-use leptos::prelude::*;
-use crate::services::notification_service::{Notification, ToastType, remove_notification};
 use crate::components::design_system::{Button, ButtonVariant};
+use crate::services::notification_service::{remove_notification, Notification, ToastType};
+use leptos::prelude::*;
 
 #[component]
 pub fn ToastContainer() -> impl IntoView {
@@ -26,17 +26,23 @@ pub fn Toast(notification: Notification) -> impl IntoView {
     let close = move || {
         set_is_exiting.set(true);
         // Wait for animation then remove
-        set_timeout(move || {
-            remove_notification(id);
-        }, std::time::Duration::from_millis(300));
+        set_timeout(
+            move || {
+                remove_notification(id);
+            },
+            std::time::Duration::from_millis(300),
+        );
     };
 
     // Auto-close if duration is set
     if let Some(duration) = notification.duration_ms {
         let close = close.clone();
-        set_timeout(move || {
-            close();
-        }, std::time::Duration::from_millis(duration));
+        set_timeout(
+            move || {
+                close();
+            },
+            std::time::Duration::from_millis(duration),
+        );
     }
 
     let bg_class = match notification.toast_type {

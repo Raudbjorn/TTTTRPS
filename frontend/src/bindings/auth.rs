@@ -1,5 +1,5 @@
+use super::core::{invoke, invoke_no_args, invoke_void};
 use serde::{Deserialize, Serialize};
-use super::core::{invoke, invoke_void, invoke_no_args};
 
 // ============================================================================
 // Claude Gate OAuth Commands
@@ -73,7 +73,10 @@ pub struct ClaudeOAuthCompleteResponse {
 }
 
 /// Complete OAuth flow with authorization code
-pub async fn claude_complete_oauth(code: String, oauth_state: Option<String>) -> Result<ClaudeOAuthCompleteResponse, String> {
+pub async fn claude_complete_oauth(
+    code: String,
+    oauth_state: Option<String>,
+) -> Result<ClaudeOAuthCompleteResponse, String> {
     #[derive(Serialize)]
     struct Args {
         code: String,
@@ -359,7 +362,10 @@ pub struct GeminiOAuthCompleteResponse {
 }
 
 /// Complete Gemini OAuth flow with authorization code
-pub async fn gemini_complete_oauth(code: String, oauth_state: Option<String>) -> Result<GeminiOAuthCompleteResponse, String> {
+pub async fn gemini_complete_oauth(
+    code: String,
+    oauth_state: Option<String>,
+) -> Result<GeminiOAuthCompleteResponse, String> {
     #[derive(Serialize)]
     struct Args {
         code: String,
@@ -411,7 +417,14 @@ pub async fn gemini_oauth_with_callback(
         timeout_secs: Option<u64>,
         open_browser: Option<bool>,
     }
-    invoke("gemini_oauth_with_callback", &Args { timeout_secs, open_browser }).await
+    invoke(
+        "gemini_oauth_with_callback",
+        &Args {
+            timeout_secs,
+            open_browser,
+        },
+    )
+    .await
 }
 
 /// A model available via the Gemini Cloud Code API.

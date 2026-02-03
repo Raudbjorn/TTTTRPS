@@ -231,7 +231,7 @@ e.g., Feel like cunning rogues pulling off heists
                            placeholder-zinc-500 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none resize-none"
                     rows="2"
                     placeholder="Topics, themes, or content types you want to avoid (one per line)
-e.g., Gore, harm to children, spiders"
+    e.g., Gore, harm to children, spiders"
                     prop:value=move || avoid.get()
                     on:input=move |ev| avoid.set(event_target_value(&ev))
                 />

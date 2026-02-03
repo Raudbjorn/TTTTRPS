@@ -12,8 +12,9 @@ use tauri::{Manager, RunEvent};
 use native_features::NativeFeaturesState;
 
 fn main() {
-    // Initialize logging
-    env_logger::init();
+    // Initialize logging (Rich terminal + file logging)
+    // The guard must be kept alive for the duration of the program
+    let _log_guard = ttrpg_assistant::core::logging::init();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())

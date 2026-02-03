@@ -90,6 +90,17 @@ async-trait = "0.1"
 # Keychain dependencies
 keyring = "2.3"
 tracing = "0.1.44"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2"
+tracing-log = "0.2"
+miette = { version = "7.2", features = ["fancy"] }
+indicatif = "0.17"
+console = "0.15"
+syntect = "5.2"
+pulldown-cmark = "0.10"
+supports-color = "3.0"
+is-terminal = "0.4"
+emojis = "0.6"
 
 # LLM Proxy (OpenAI-compatible endpoint for Meilisearch chat)
 axum = "0.7"

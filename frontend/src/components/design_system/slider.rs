@@ -186,11 +186,7 @@ pub fn DiscreteSlider(
                     // Snap to nearest tick
                     let closest = ticks_clone
                         .iter()
-                        .min_by(|a, b| {
-                            ((*a - val).abs())
-                                .partial_cmp(&((*b - val).abs()))
-                                .unwrap()
-                        })
+                        .min_by(|a, b| ((*a - val).abs()).partial_cmp(&((*b - val).abs())).unwrap())
                         .copied()
                         .unwrap_or(val);
                     value.set(closest);

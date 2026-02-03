@@ -8,8 +8,8 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 
 use crate::bindings::{
-    generate_character_advanced, list_system_info,
-    get_game_system_info, Character, GenerationOptions, GameSystemInfo,
+    generate_character_advanced, get_game_system_info, list_system_info, Character, GameSystemInfo,
+    GenerationOptions,
 };
 use crate::components::design_system::{Button, ButtonVariant, Card, CardBody, CardHeader, Input};
 
@@ -47,7 +47,8 @@ pub fn CharacterCreator() -> impl IntoView {
                 Ok(system_list) => {
                     systems.set(system_list.clone());
                     // Set default system (D&D 5e)
-                    if let Some(default_system) = system_list.into_iter().find(|s| s.id == "dnd5e") {
+                    if let Some(default_system) = system_list.into_iter().find(|s| s.id == "dnd5e")
+                    {
                         selected_system.set(Some(default_system));
                     }
                 }
@@ -94,10 +95,18 @@ pub fn CharacterCreator() -> impl IntoView {
             let options = GenerationOptions {
                 system: Some(system),
                 name: if name.is_empty() { None } else { Some(name) },
-                concept: if concept.is_empty() { None } else { Some(concept) },
+                concept: if concept.is_empty() {
+                    None
+                } else {
+                    Some(concept)
+                },
                 race: if race.is_empty() { None } else { Some(race) },
                 character_class: if class.is_empty() { None } else { Some(class) },
-                background: if background.is_empty() { None } else { Some(background) },
+                background: if background.is_empty() {
+                    None
+                } else {
+                    Some(background)
+                },
                 level: Some(level),
                 point_buy: None,
                 random_stats: random,

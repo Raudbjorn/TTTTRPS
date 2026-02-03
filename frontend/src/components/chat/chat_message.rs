@@ -111,7 +111,8 @@ pub fn ChatMessage(
                 <TypingIndicator />
                 <span class="text-xs text-zinc-500">"Thinking..."</span>
             </div>
-        }.into_any()
+        }
+        .into_any()
     } else if is_streaming {
         // Show content with a blinking cursor at the end
         view! {

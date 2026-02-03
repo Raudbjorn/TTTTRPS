@@ -10,11 +10,13 @@
 
 use leptos::prelude::*;
 use wasm_bindgen::JsCast; // Import JsCast for dyn_ref
-// use std::ops::Deref; // Import Deref for deref
-use wasm_bindgen_futures::spawn_local;
-use phosphor_leptos::{Icon, IconWeight, PLAY, PAUSE, SKIP_BACK, SKIP_FORWARD, SPEAKER_X, SPEAKER_LOW, SPEAKER_HIGH};
+                          // use std::ops::Deref; // Import Deref for deref
 use crate::bindings::{get_voice_queue, QueuedVoice, VoiceStatus};
 use crate::utils::formatting::format_time_mm_ss;
+use phosphor_leptos::{
+    Icon, IconWeight, PAUSE, PLAY, SKIP_BACK, SKIP_FORWARD, SPEAKER_HIGH, SPEAKER_LOW, SPEAKER_X,
+};
+use wasm_bindgen_futures::spawn_local;
 
 /// Volume level for the media bar
 #[derive(Clone, Copy, PartialEq)]

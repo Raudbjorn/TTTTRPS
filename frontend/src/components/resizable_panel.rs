@@ -7,10 +7,7 @@ pub enum ResizeSide {
 }
 
 #[component]
-pub fn DragHandle(
-    side: ResizeSide,
-    #[prop(into)] on_drag_start: Callback<()>,
-) -> impl IntoView {
+pub fn DragHandle(side: ResizeSide, #[prop(into)] on_drag_start: Callback<()>) -> impl IntoView {
     let position_class = match side {
         ResizeSide::Left => "right-[-2px]",
         ResizeSide::Right => "left-[-2px]",

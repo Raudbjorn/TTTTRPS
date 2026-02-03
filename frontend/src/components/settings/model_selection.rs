@@ -6,9 +6,9 @@
 //! - Usage meters (5h and 7d windows)
 //! - Selection reason
 
-use leptos::prelude::*;
 use crate::bindings::get_model_selection;
 use crate::components::design_system::{Badge, BadgeVariant, Card};
+use leptos::prelude::*;
 
 /// A progress bar for displaying usage utilization
 #[component]
@@ -33,17 +33,17 @@ fn UsageMeter(
     view! {
         <div class="space-y-1">
             <div class="flex justify-between text-xs">
-                <span class="text-[var(--text-muted)]">{label}</span>
-                <span class="text-[var(--text-secondary)]">{format!("{:.0}%", percentage)}</span>
+                <span class="text-theme-muted">{label}</span>
+                <span class="text-theme-secondary">{format!("{:.0}%", percentage)}</span>
             </div>
-            <div class="h-2 bg-[var(--bg-deep)] rounded-full overflow-hidden">
+            <div class="h-2 bg-theme-deep rounded-full overflow-hidden">
                 <div
                     class=format!("h-full {} transition-all duration-300", color_class)
                     style=format!("width: {}%", percentage)
                 />
             </div>
             {(!resets_at.is_empty()).then(|| view! {
-                <div class="text-[10px] text-[var(--text-muted)]">
+                <div class="text-[10px] text-theme-muted">
                     "Resets: " {resets_at.clone()}
                 </div>
             })}
@@ -54,8 +54,8 @@ fn UsageMeter(
 /// Get badge variant for subscription plan
 fn plan_badge_variant(plan: &str) -> BadgeVariant {
     match plan {
-        "max_20" => BadgeVariant::Success,  // Max 20x - premium
-        "max" => BadgeVariant::Success,     // Max 5x
+        "max_20" => BadgeVariant::Success, // Max 20x - premium
+        "max" => BadgeVariant::Success,    // Max 5x
         "pro" => BadgeVariant::Info,
         "team" | "enterprise" => BadgeVariant::Info,
         "api" => BadgeVariant::Default,
@@ -82,15 +82,13 @@ fn plan_display(plan: &str) -> &'static str {
 #[component]
 pub fn ModelSelectionDashboard() -> impl IntoView {
     // Fetch model selection on mount using LocalResource for WASM compatibility
-    let selection = LocalResource::new(move || async move {
-        get_model_selection().await.ok()
-    });
+    let selection = LocalResource::new(move || async move { get_model_selection().await.ok() });
 
     view! {
         <Card class="p-4">
             <Suspense fallback=move || view! {
                 <div class="flex items-center justify-center py-4">
-                    <div class="animate-pulse text-[var(--text-muted)]">"Loading model selection..."</div>
+                    <div class="animate-pulse text-theme-muted">"Loading model selection..."</div>
                 </div>
             }>
                 {move || {
@@ -113,7 +111,7 @@ pub fn ModelSelectionDashboard() -> impl IntoView {
                                 <div class="space-y-4">
                                     // Header with plan badge
                                     <div class="flex items-center justify-between">
-                                        <h4 class="text-sm font-semibold text-[var(--text-primary)]">
+                                        <h4 class="text-sm font-semibold text-theme-primary">
                                             "Smart Model Selection"
                                         </h4>
                                         <Badge variant=plan_badge_variant(&plan_for_badge)>
@@ -123,8 +121,8 @@ pub fn ModelSelectionDashboard() -> impl IntoView {
 
                                     // Selected model
                                     <div class="flex items-center gap-2">
-                                        <span class="text-xs text-[var(--text-muted)]">"Model:"</span>
-                                        <span class="text-sm font-medium text-[var(--text-primary)]">
+                                        <span class="text-xs text-theme-muted">"Model:"</span>
+                                        <span class="text-sm font-medium text-theme-primary">
                                             {model_short}
                                         </span>
                                         {override_active.then(|| view! {
@@ -149,8 +147,8 @@ pub fn ModelSelectionDashboard() -> impl IntoView {
                                     </div>
 
                                     // Selection reason
-                                    <div class="pt-2 border-t border-[var(--border-subtle)]">
-                                        <p class="text-xs text-[var(--text-muted)] italic">
+                                    <div class="pt-2 border-t border-theme-subtle">
+                                        <p class="text-xs text-theme-muted italic">
                                             {reason}
                                         </p>
                                     </div>
@@ -160,10 +158,10 @@ pub fn ModelSelectionDashboard() -> impl IntoView {
                         None => {
                             view! {
                                 <div class="text-center py-4">
-                                    <p class="text-sm text-[var(--text-muted)]">
+                                    <p class="text-sm text-theme-muted">
                                         "Model selection unavailable"
                                     </p>
-                                    <p class="text-xs text-[var(--text-muted)] mt-1">
+                                    <p class="text-xs text-theme-muted mt-1">
                                         "Configure Claude Code provider to enable"
                                     </p>
                                 </div>

@@ -8,8 +8,7 @@ use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
 use crate::bindings::{
-    Campaign, NpcSummary, LocationState,
-    get_campaign, list_npc_summaries, list_locations,
+    get_campaign, list_locations, list_npc_summaries, Campaign, LocationState, NpcSummary,
 };
 
 /// Summary of a location for chat context (lighter than full LocationState)
@@ -63,7 +62,9 @@ impl ChatContext {
 
     /// Get the campaign description/setting
     pub fn campaign_description(&self) -> Option<&str> {
-        self.campaign.as_ref().and_then(|c| c.description.as_deref())
+        self.campaign
+            .as_ref()
+            .and_then(|c| c.description.as_deref())
     }
 
     /// Build a system prompt augmentation string from the context
@@ -145,7 +146,8 @@ impl ChatContextState {
 
     /// Get the campaign ID if available
     pub fn campaign_id(&self) -> Option<String> {
-        self.context.with(|c| c.campaign.as_ref().map(|camp| camp.id.clone()))
+        self.context
+            .with(|c| c.campaign.as_ref().map(|camp| camp.id.clone()))
     }
 
     /// Set the campaign context by loading campaign data
@@ -181,34 +183,20 @@ impl ChatContextState {
                     }
                     Ok(None) => {
                         c.error = Some("Campaign not found".to_string());
-                        log::warn!("Campaign not found: {}", campaign_id);
                     }
                     Err(e) => {
                         c.error = Some(format!("Failed to load campaign: {}", e));
-                        log::error!("Failed to load campaign: {}", e);
                     }
                 }
 
-                // Handle NPCs
-                match npcs_result {
-                    Ok(npcs) => {
-                        c.npcs = npcs;
-                    }
-                    Err(e) => {
-                        log::warn!("Failed to load NPCs: {}", e);
-                        // Non-fatal, continue with empty NPCs
-                    }
+                // Handle NPCs (non-fatal if missing)
+                if let Ok(npcs) = npcs_result {
+                    c.npcs = npcs;
                 }
 
-                // Handle locations
-                match locations_result {
-                    Ok(locations) => {
-                        c.locations = locations.into_iter().map(LocationSummary::from).collect();
-                    }
-                    Err(e) => {
-                        log::warn!("Failed to load locations: {}", e);
-                        // Non-fatal, continue with empty locations
-                    }
+                // Handle locations (non-fatal if missing)
+                if let Ok(locations) = locations_result {
+                    c.locations = locations.into_iter().map(LocationSummary::from).collect();
                 }
             });
         });

@@ -42,11 +42,10 @@ pub async fn invoke<A: Serialize, R: for<'de> Deserialize<'de>>(
     let args_js = serde_wasm_bindgen::to_value(args)
         .map_err(|e| format!("Failed to serialize args: {}", e))?;
 
-    let result = invoke_raw(cmd, args_js).await
-        .map_err(|e| {
-            serde_wasm_bindgen::from_value::<String>(e)
-                .unwrap_or_else(|_| "Unknown invoke error".to_string())
-        })?;
+    let result = invoke_raw(cmd, args_js).await.map_err(|e| {
+        serde_wasm_bindgen::from_value::<String>(e)
+            .unwrap_or_else(|_| "Unknown invoke error".to_string())
+    })?;
 
     serde_wasm_bindgen::from_value(result)
         .map_err(|e| format!("Failed to deserialize response: {}", e))
@@ -65,11 +64,10 @@ pub async fn invoke_void<A: Serialize>(cmd: &str, args: &A) -> Result<(), String
     let args_js = serde_wasm_bindgen::to_value(args)
         .map_err(|e| format!("Failed to serialize args: {}", e))?;
 
-    let result = invoke_raw(cmd, args_js).await
-        .map_err(|e| {
-            serde_wasm_bindgen::from_value::<String>(e)
-                .unwrap_or_else(|_| "Unknown invoke error".to_string())
-        })?;
+    let result = invoke_raw(cmd, args_js).await.map_err(|e| {
+        serde_wasm_bindgen::from_value::<String>(e)
+            .unwrap_or_else(|_| "Unknown invoke error".to_string())
+    })?;
 
     // For void commands, null/undefined means success
     // Only check for error object with __TAURI_ERROR__ or similar patterns if we needed to,
@@ -150,7 +148,8 @@ pub async fn pick_pdf_file() -> Option<String> {
         default_path: None,
         directory: Some(false),
         multiple: Some(false),
-    }).await
+    })
+    .await
 }
 
 /// Open a file picker for any supported document type
@@ -200,7 +199,8 @@ pub async fn pick_document_file() -> Option<String> {
         default_path: None,
         directory: Some(false),
         multiple: Some(false),
-    }).await
+    })
+    .await
 }
 
 // ============================================================================

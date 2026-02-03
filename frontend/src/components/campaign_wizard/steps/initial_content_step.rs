@@ -14,8 +14,7 @@ use crate::services::wizard_state::{
 fn CollapsibleSection(
     title: &'static str,
     count: Signal<usize>,
-    #[prop(default = false)]
-    default_open: bool,
+    #[prop(default = false)] default_open: bool,
     children: ChildrenFn,
 ) -> impl IntoView {
     let is_open = RwSignal::new(default_open);
@@ -57,10 +56,7 @@ fn CollapsibleSection(
 
 /// Location entry component
 #[component]
-fn LocationEntry(
-    location: RwSignal<LocationDraft>,
-    on_remove: Callback<()>,
-) -> impl IntoView {
+fn LocationEntry(location: RwSignal<LocationDraft>, on_remove: Callback<()>) -> impl IntoView {
     let name = RwSignal::new(location.get().name);
     let location_type = RwSignal::new(location.get().location_type.unwrap_or_default());
     let description = RwSignal::new(location.get().description.unwrap_or_default());
@@ -72,8 +68,16 @@ fn LocationEntry(
         location.set(LocationDraft {
             id: loc_id.clone(),
             name: name.get(),
-            location_type: if location_type.get().is_empty() { None } else { Some(location_type.get()) },
-            description: if description.get().is_empty() { None } else { Some(description.get()) },
+            location_type: if location_type.get().is_empty() {
+                None
+            } else {
+                Some(location_type.get())
+            },
+            description: if description.get().is_empty() {
+                None
+            } else {
+                Some(description.get())
+            },
             is_starting_location: is_starting.get(),
         });
     });
@@ -139,10 +143,7 @@ fn LocationEntry(
 
 /// NPC entry component
 #[component]
-fn NpcEntry(
-    npc: RwSignal<NpcDraft>,
-    on_remove: Callback<()>,
-) -> impl IntoView {
+fn NpcEntry(npc: RwSignal<NpcDraft>, on_remove: Callback<()>) -> impl IntoView {
     let name = RwSignal::new(npc.get().name);
     let role = RwSignal::new(npc.get().role.unwrap_or_default());
     let description = RwSignal::new(npc.get().description.unwrap_or_default());
@@ -150,8 +151,16 @@ fn NpcEntry(
     Effect::new(move |_| {
         npc.update(|n| {
             n.name = name.get();
-            n.role = if role.get().is_empty() { None } else { Some(role.get()) };
-            n.description = if description.get().is_empty() { None } else { Some(description.get()) };
+            n.role = if role.get().is_empty() {
+                None
+            } else {
+                Some(role.get())
+            };
+            n.description = if description.get().is_empty() {
+                None
+            } else {
+                Some(description.get())
+            };
         });
     });
 
@@ -205,10 +214,7 @@ fn NpcEntry(
 
 /// Plot hook entry component
 #[component]
-fn PlotHookEntry(
-    hook: RwSignal<PlotHookDraft>,
-    on_remove: Callback<()>,
-) -> impl IntoView {
+fn PlotHookEntry(hook: RwSignal<PlotHookDraft>, on_remove: Callback<()>) -> impl IntoView {
     let title = RwSignal::new(hook.get().title);
     let description = RwSignal::new(hook.get().description.unwrap_or_default());
     let hook_type = RwSignal::new(hook.get().hook_type);
@@ -219,7 +225,11 @@ fn PlotHookEntry(
         hook.set(PlotHookDraft {
             id: hook_id.clone(),
             title: title.get(),
-            description: if description.get().is_empty() { None } else { Some(description.get()) },
+            description: if description.get().is_empty() {
+                None
+            } else {
+                Some(description.get())
+            },
             hook_type: hook_type.get(),
         });
     });
@@ -302,13 +312,20 @@ pub fn InitialContentStep(
 
     // Local form state
     let locations: RwSignal<Vec<RwSignal<LocationDraft>>> = RwSignal::new(
-        content.locations.into_iter().map(|l| RwSignal::new(l)).collect()
+        content
+            .locations
+            .into_iter()
+            .map(|l| RwSignal::new(l))
+            .collect(),
     );
-    let npcs: RwSignal<Vec<RwSignal<NpcDraft>>> = RwSignal::new(
-        content.npcs.into_iter().map(|n| RwSignal::new(n)).collect()
-    );
+    let npcs: RwSignal<Vec<RwSignal<NpcDraft>>> =
+        RwSignal::new(content.npcs.into_iter().map(|n| RwSignal::new(n)).collect());
     let plot_hooks: RwSignal<Vec<RwSignal<PlotHookDraft>>> = RwSignal::new(
-        content.plot_hooks.into_iter().map(|h| RwSignal::new(h)).collect()
+        content
+            .plot_hooks
+            .into_iter()
+            .map(|h| RwSignal::new(h))
+            .collect(),
     );
 
     // This step is always valid (optional)

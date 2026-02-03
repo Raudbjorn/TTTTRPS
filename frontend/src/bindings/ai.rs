@@ -1,5 +1,5 @@
+use super::core::{invoke, invoke_no_args, invoke_void, listen_event};
 use serde::{Deserialize, Serialize};
-use super::core::{invoke, invoke_void, invoke_no_args, listen_event};
 use wasm_bindgen::prelude::*;
 
 // ============================================================================
@@ -218,7 +218,10 @@ pub async fn get_active_chat_session() -> Result<Option<GlobalChatSession>, Stri
 }
 
 /// Get messages for a chat session
-pub async fn get_chat_messages(session_id: String, limit: Option<i32>) -> Result<Vec<ChatMessageRecord>, String> {
+pub async fn get_chat_messages(
+    session_id: String,
+    limit: Option<i32>,
+) -> Result<Vec<ChatMessageRecord>, String> {
     #[derive(Serialize)]
     struct Args {
         session_id: String,
@@ -241,7 +244,16 @@ pub async fn add_chat_message(
         content: String,
         tokens: Option<(i32, i32)>,
     }
-    invoke("add_chat_message", &Args { session_id, role, content, tokens }).await
+    invoke(
+        "add_chat_message",
+        &Args {
+            session_id,
+            role,
+            content,
+            tokens,
+        },
+    )
+    .await
 }
 
 /// Update a chat message (e.g., after streaming completes)
@@ -258,7 +270,16 @@ pub async fn update_chat_message(
         tokens: Option<(i32, i32)>,
         is_streaming: bool,
     }
-    invoke_void("update_chat_message", &Args { message_id, content, tokens, is_streaming }).await
+    invoke_void(
+        "update_chat_message",
+        &Args {
+            message_id,
+            content,
+            tokens,
+            is_streaming,
+        },
+    )
+    .await
 }
 
 /// Link the current chat session to a game session
@@ -273,11 +294,21 @@ pub async fn link_chat_to_game_session(
         game_session_id: String,
         campaign_id: Option<String>,
     }
-    invoke_void("link_chat_to_game_session", &Args { chat_session_id, game_session_id, campaign_id }).await
+    invoke_void(
+        "link_chat_to_game_session",
+        &Args {
+            chat_session_id,
+            game_session_id,
+            campaign_id,
+        },
+    )
+    .await
 }
 
 /// Archive the current chat session and create a new one
-pub async fn end_chat_session_and_spawn_new(chat_session_id: String) -> Result<GlobalChatSession, String> {
+pub async fn end_chat_session_and_spawn_new(
+    chat_session_id: String,
+) -> Result<GlobalChatSession, String> {
     #[derive(Serialize)]
     struct Args {
         chat_session_id: String,
@@ -304,7 +335,9 @@ pub async fn list_chat_sessions(limit: Option<i32>) -> Result<Vec<GlobalChatSess
 }
 
 /// Get chat sessions linked to a specific game session
-pub async fn get_chat_sessions_for_game(game_session_id: String) -> Result<Vec<GlobalChatSession>, String> {
+pub async fn get_chat_sessions_for_game(
+    game_session_id: String,
+) -> Result<Vec<GlobalChatSession>, String> {
     #[derive(Serialize)]
     struct Args {
         game_session_id: String,
@@ -456,20 +489,31 @@ pub async fn stream_chat(
         max_tokens: Option<u32>,
         provided_stream_id: Option<String>,
     }
-    invoke("stream_chat", &Args {
-        messages,
-        system_prompt,
-        temperature,
-        max_tokens,
-        provided_stream_id,
-    }).await
+    invoke(
+        "stream_chat",
+        &Args {
+            messages,
+            system_prompt,
+            temperature,
+            max_tokens,
+            provided_stream_id,
+        },
+    )
+    .await
 }
 
 /// Start a streaming NPC chat session
 /// Uses NPC personality for system prompt and persists to NPC conversation
+///
+/// # Arguments
+/// * `npc_id` - The NPC to chat with
+/// * `user_message` - The user's message
+/// * `mode` - "about" for DM assistant mode, "voice" (default) for roleplay mode
+/// * `provided_stream_id` - Optional stream ID for tracking
 pub async fn stream_npc_chat(
     npc_id: String,
     user_message: String,
+    mode: Option<String>,
     provided_stream_id: Option<String>,
 ) -> Result<String, String> {
     #[derive(Serialize)]
@@ -477,13 +521,19 @@ pub async fn stream_npc_chat(
     struct Args {
         npc_id: String,
         user_message: String,
+        mode: Option<String>,
         provided_stream_id: Option<String>,
     }
-    invoke("stream_npc_chat", &Args {
-        npc_id,
-        user_message,
-        provided_stream_id,
-    }).await
+    invoke(
+        "stream_npc_chat",
+        &Args {
+            npc_id,
+            user_message,
+            mode,
+            provided_stream_id,
+        },
+    )
+    .await
 }
 
 /// Cancel an active streaming chat
@@ -511,19 +561,21 @@ pub fn listen_chat_chunks<F>(callback: F) -> JsValue
 where
     F: Fn(ChatChunk) + 'static,
 {
-    listen_event("chat-chunk", move |event| {
-        match serde_wasm_bindgen::from_value::<StreamEventWrapper>(event.clone()) {
+    listen_event(
+        "chat-chunk",
+        move |event| match serde_wasm_bindgen::from_value::<StreamEventWrapper>(event.clone()) {
             Ok(wrapper) => callback(wrapper.payload),
             Err(e) => {
-                let json_str = js_sys::JSON::stringify(&event).unwrap_or(js_sys::JsString::from("?"));
+                let json_str =
+                    js_sys::JSON::stringify(&event).unwrap_or(js_sys::JsString::from("?"));
                 web_sys::console::error_2(
                     &JsValue::from_str("Failed to deserialize chat-chunk event:"),
-                    &e.into()
+                    &e.into(),
                 );
                 web_sys::console::log_2(&JsValue::from_str("Event data:"), &json_str);
             }
-        }
-    })
+        },
+    )
 }
 
 /// Listen for streaming chat chunks (async version for Tauri 2)
@@ -536,8 +588,9 @@ where
     #[cfg(debug_assertions)]
     web_sys::console::log_1(&"[DEBUG] listen_chat_chunks_async: Setting up listener...".into());
 
-    let promise = listen_event("chat-chunk", move |event| {
-        match serde_wasm_bindgen::from_value::<StreamEventWrapper>(event.clone()) {
+    let promise = listen_event(
+        "chat-chunk",
+        move |event| match serde_wasm_bindgen::from_value::<StreamEventWrapper>(event.clone()) {
             Ok(wrapper) => {
                 callback(wrapper.payload);
             }
@@ -549,8 +602,8 @@ where
                 );
                 web_sys::console::log_2(&"Event data:".into(), &json_str);
             }
-        }
-    });
+        },
+    );
 
     // Await the promise to get the unlisten function
     match JsFuture::from(js_sys::Promise::from(promise)).await {

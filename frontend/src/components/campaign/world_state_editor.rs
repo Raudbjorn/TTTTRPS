@@ -3,15 +3,13 @@
 //! Provides UI for managing world state including in-game date,
 //! world events, location states, and custom fields.
 
+use crate::bindings::{
+    advance_in_game_date, delete_world_event, get_world_state, set_in_game_date,
+    set_world_custom_field, CalendarConfig, InGameDate, LocationState, WorldEvent, WorldState,
+};
 use leptos::ev;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use crate::bindings::{
-    get_world_state, set_in_game_date, advance_in_game_date,
-    delete_world_event, set_world_custom_field,
-    WorldState, WorldEvent, LocationState, InGameDate,
-    CalendarConfig,
-};
 
 /// World state editor tab
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
@@ -66,7 +64,8 @@ fn InGameDatePicker(
     let day = RwSignal::new(date.day);
     let era = RwSignal::new(date.era.clone().unwrap_or_default());
 
-    let month_names = calendar.as_ref()
+    let month_names = calendar
+        .as_ref()
         .map(|c| c.month_names.clone())
         .unwrap_or_else(|| (1..=12).map(|i| format!("Month {}", i)).collect());
 
@@ -76,7 +75,11 @@ fn InGameDatePicker(
             year: year.get(),
             month: month.get(),
             day: day.get(),
-            era: if era.get().is_empty() { None } else { Some(era.get()) },
+            era: if era.get().is_empty() {
+                None
+            } else {
+                Some(era.get())
+            },
             calendar: date.calendar.clone(),
             time: date.time.clone(),
         };
@@ -168,8 +171,7 @@ fn InGameDatePicker(
 fn DateTimeContent(
     campaign_id: String,
     world_state: WorldState,
-    #[prop(optional)]
-    _on_update: Option<Callback<WorldState>>,
+    #[prop(optional)] _on_update: Option<Callback<WorldState>>,
 ) -> impl IntoView {
     let current_date = RwSignal::new(world_state.current_date.clone());
     let is_saving = RwSignal::new(false);
@@ -274,10 +276,7 @@ fn DateTimeContent(
 
 /// Event type badge
 #[component]
-fn EventTypeBadge(
-    #[prop(into)]
-    event_type: String,
-) -> impl IntoView {
+fn EventTypeBadge(#[prop(into)] event_type: String) -> impl IntoView {
     let (bg, text) = match event_type.as_str() {
         "combat" | "battle" => ("bg-red-900/50", "text-red-300"),
         "political" => ("bg-blue-900/50", "text-blue-300"),
@@ -301,8 +300,7 @@ fn EventTypeBadge(
 #[component]
 fn WorldEventCard(
     event: WorldEvent,
-    #[prop(optional)]
-    on_delete: Option<Callback<String>>,
+    #[prop(optional)] on_delete: Option<Callback<String>>,
 ) -> impl IntoView {
     let event_id = event.id.clone();
 
@@ -439,8 +437,7 @@ fn EventsContent(
 #[component]
 fn LocationStateCard(
     location: LocationState,
-    #[prop(optional)]
-    on_edit: Option<Callback<String>>,
+    #[prop(optional)] on_edit: Option<Callback<String>>,
 ) -> impl IntoView {
     let location_id = location.location_id.clone();
 
@@ -515,8 +512,7 @@ fn LocationStateCard(
 /// Locations tab content
 #[component]
 fn LocationsContent(
-    #[prop(into)]
-    _campaign_id: String,
+    #[prop(into)] _campaign_id: String,
     locations: Vec<LocationState>,
 ) -> impl IntoView {
     let locations_signal = RwSignal::new(locations);
@@ -622,7 +618,10 @@ fn CustomFieldsContent(
             let cid = campaign_id_add.clone();
             spawn_local(async move {
                 let json_value = serde_json::Value::String(val);
-                if set_world_custom_field(cid, key.clone(), json_value.clone()).await.is_ok() {
+                if set_world_custom_field(cid, key.clone(), json_value.clone())
+                    .await
+                    .is_ok()
+                {
                     fields.update(|f| {
                         f.insert(key, json_value);
                     });

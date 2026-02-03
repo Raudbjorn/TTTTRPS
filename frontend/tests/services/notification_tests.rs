@@ -2,14 +2,13 @@
 //!
 //! Tests for NotificationService toast lifecycle, toast types, and actions.
 
-use wasm_bindgen_test::*;
 use leptos::prelude::*;
+use std::sync::Arc;
 use ttrpg_assistant_frontend::services::notification_service::{
-    NotificationState, ToastType, ToastAction, Notification,
-    provide_notification_state
+    provide_notification_state, Notification, NotificationState, ToastAction, ToastType,
 };
 use uuid::Uuid;
-use std::sync::Arc;
+use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
 

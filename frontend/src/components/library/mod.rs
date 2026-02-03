@@ -9,29 +9,29 @@
 //! - `DocumentDetail` - Detailed document view with metadata
 //! - `SourceManager` - Source management and ingestion
 
-mod search_panel;
-mod document_list;
 mod document_detail;
+mod document_list;
+mod search_panel;
 mod source_manager;
 
-pub use search_panel::SearchPanel;
-pub use document_list::DocumentList;
 pub use document_detail::DocumentDetail;
+pub use document_list::DocumentList;
+pub use search_panel::SearchPanel;
 pub use source_manager::SourceManager;
 
-use leptos::prelude::*;
+use crate::services::notification_service::show_error;
 use leptos::ev;
+use leptos::prelude::*;
 use leptos::task::spawn_local;
 use wasm_bindgen::prelude::*;
-use crate::services::notification_service::show_error;
 
 use crate::bindings::{
-    check_meilisearch_health, ingest_document_two_phase, listen_event,
-    pick_document_file,
-    HybridSearchResultPayload, list_library_documents, LibraryDocument,
-    rebuild_library_metadata,
+    check_meilisearch_health, ingest_document_two_phase, list_library_documents, listen_event,
+    pick_document_file, rebuild_library_metadata, HybridSearchResultPayload, LibraryDocument,
 };
-use crate::components::design_system::{Badge, BadgeVariant, Button, ButtonVariant, Card, CardHeader, CardBody};
+use crate::components::design_system::{
+    Badge, BadgeVariant, Button, ButtonVariant, Card, CardBody, CardHeader,
+};
 
 // ============================================================================
 // Types
@@ -445,26 +445,35 @@ pub fn Library() -> impl IntoView {
                             mark_auto_repair_done(); // Prevent re-running on subsequent mounts
 
                             if let Ok(health) = check_meilisearch_health().await {
-                                let total_indexed: u64 = health.document_counts
+                                let total_indexed: u64 = health
+                                    .document_counts
                                     .as_ref()
                                     .map(|c| c.values().sum())
                                     .unwrap_or(0);
 
                                 if total_indexed > 0 {
-                                    log::info!("Library empty but {} docs indexed, auto-repairing...", total_indexed);
-                                    ingestion_status.set("Recovering library metadata...".to_string());
+                                    log::info!(
+                                        "Library empty but {} docs indexed, auto-repairing...",
+                                        total_indexed
+                                    );
+                                    ingestion_status
+                                        .set("Recovering library metadata...".to_string());
 
                                     // Auto-repair
                                     if let Ok(count) = rebuild_library_metadata().await {
                                         if count > 0 {
                                             log::info!("Auto-repaired {} documents", count);
                                             // Reload the list
-                                            if let Ok(repaired_docs) = list_library_documents().await {
+                                            if let Ok(repaired_docs) =
+                                                list_library_documents().await
+                                            {
                                                 let source_docs = convert_docs(repaired_docs);
-                                                let chunks: usize = source_docs.iter().map(|d| d.chunk_count).sum();
+                                                let chunks: usize =
+                                                    source_docs.iter().map(|d| d.chunk_count).sum();
                                                 documents.set(source_docs);
                                                 total_chunks.set(chunks);
-                                                ingestion_status.set(format!("Recovered {} documents", count));
+                                                ingestion_status
+                                                    .set(format!("Recovered {} documents", count));
                                             }
                                         } else {
                                             ingestion_status.set(String::new());

@@ -1,5 +1,5 @@
+use super::core::{invoke, invoke_no_args, invoke_void};
 use serde::{Deserialize, Serialize};
-use super::core::{invoke, invoke_void, invoke_no_args};
 
 // ============================================================================
 // Document Ingestion
@@ -49,7 +49,10 @@ pub async fn ingest_pdf(path: String) -> Result<IngestResult, String> {
 }
 
 /// Ingest document into Meilisearch (indexes the content)
-pub async fn ingest_document(path: String, options: Option<IngestOptions>) -> Result<String, String> {
+pub async fn ingest_document(
+    path: String,
+    options: Option<IngestOptions>,
+) -> Result<String, String> {
     #[derive(Serialize)]
     struct Args {
         path: String,
@@ -59,14 +62,24 @@ pub async fn ingest_document(path: String, options: Option<IngestOptions>) -> Re
 }
 
 /// Ingest document using two-phase pipeline with per-document indexes.
-pub async fn ingest_document_two_phase(path: String, title_override: Option<String>) -> Result<TwoPhaseIngestResult, String> {
+pub async fn ingest_document_two_phase(
+    path: String,
+    title_override: Option<String>,
+) -> Result<TwoPhaseIngestResult, String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
     struct Args {
         path: String,
         title_override: Option<String>,
     }
-    invoke("ingest_document_two_phase", &Args { path, title_override }).await
+    invoke(
+        "ingest_document_two_phase",
+        &Args {
+            path,
+            title_override,
+        },
+    )
+    .await
 }
 
 // ============================================================================
@@ -127,7 +140,9 @@ pub async fn delete_library_document(id: String) -> Result<(), String> {
 }
 
 /// Update a library document's TTRPG metadata
-pub async fn update_library_document(request: UpdateLibraryDocumentRequest) -> Result<LibraryDocument, String> {
+pub async fn update_library_document(
+    request: UpdateLibraryDocumentRequest,
+) -> Result<LibraryDocument, String> {
     #[derive(Serialize)]
     struct Args {
         request: UpdateLibraryDocumentRequest,

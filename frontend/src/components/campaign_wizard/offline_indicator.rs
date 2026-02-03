@@ -198,8 +198,7 @@ pub fn AiUnavailableBanner(
 #[component]
 pub fn AiStatusDot(
     status: Signal<LlmAvailability>,
-    #[prop(default = false)]
-    show_label: bool,
+    #[prop(default = false)] show_label: bool,
 ) -> impl IntoView {
     view! {
         <div class="flex items-center gap-1.5" title={move || match status.get() {

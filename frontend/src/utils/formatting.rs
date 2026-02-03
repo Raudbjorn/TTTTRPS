@@ -48,13 +48,22 @@ mod tests {
 
     #[test]
     fn test_format_last_played_iso_timestamp() {
-        assert_eq!(format_last_played("2023-01-01T12:00:00Z"), "Last: 2023-01-01");
-        assert_eq!(format_last_played("2024-12-31T23:59:59.999Z"), "Last: 2024-12-31");
+        assert_eq!(
+            format_last_played("2023-01-01T12:00:00Z"),
+            "Last: 2023-01-01"
+        );
+        assert_eq!(
+            format_last_played("2024-12-31T23:59:59.999Z"),
+            "Last: 2024-12-31"
+        );
     }
 
     #[test]
     fn test_format_last_played_with_timezone_offset() {
-        assert_eq!(format_last_played("2023-06-15T10:30:00+02:00"), "Last: 2023-06-15");
+        assert_eq!(
+            format_last_played("2023-06-15T10:30:00+02:00"),
+            "Last: 2023-06-15"
+        );
     }
 
     #[test]

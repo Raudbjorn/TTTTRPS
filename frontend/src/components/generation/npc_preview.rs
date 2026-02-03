@@ -151,9 +151,7 @@ fn ImportanceSection(
     label: &'static str,
     children: ChildrenFn,
 ) -> impl IntoView {
-    let should_show = Signal::derive(move || {
-        importance.get().level() >= min_importance.level()
-    });
+    let should_show = Signal::derive(move || importance.get().level() >= min_importance.level());
 
     view! {
         <Show when=move || should_show.get()>

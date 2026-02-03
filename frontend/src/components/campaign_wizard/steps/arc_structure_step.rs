@@ -58,9 +58,7 @@ fn template_phases(template: ArcTemplate) -> Vec<(&'static str, &'static str)> {
 
 /// Phase editor component
 #[component]
-fn PhaseEditor(
-    phases: RwSignal<Vec<ArcPhaseConfig>>,
-) -> impl IntoView {
+fn PhaseEditor(phases: RwSignal<Vec<ArcPhaseConfig>>) -> impl IntoView {
     let add_phase = move |_| {
         phases.update(|p| {
             p.push(ArcPhaseConfig {

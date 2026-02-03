@@ -9,9 +9,9 @@
 //!   - Session count and player statistics
 //!   - Quick-action delete button
 
-use leptos::prelude::*;
-use leptos::ev;
 use crate::bindings::Campaign;
+use leptos::ev;
+use leptos::prelude::*;
 
 /// Get system-based styling for campaign card
 fn get_system_style(system: &str) -> (&'static str, &'static str) {
@@ -31,21 +31,19 @@ fn get_system_style(system: &str) -> (&'static str, &'static str) {
             "from-fuchsia-900 via-violet-900 to-purple-950",
             "text-fuchsia-300",
         )
-    } else if s.contains("space") || s.contains("alien") || s.contains("scifi") || s.contains("mothership") {
-        (
-            "from-cyan-900 via-blue-950 to-slate-900",
-            "text-cyan-200",
-        )
+    } else if s.contains("space")
+        || s.contains("alien")
+        || s.contains("scifi")
+        || s.contains("mothership")
+    {
+        ("from-cyan-900 via-blue-950 to-slate-900", "text-cyan-200")
     } else if s.contains("delta") || s.contains("spy") || s.contains("noir") {
         (
             "from-stone-800 via-amber-950 to-stone-900",
             "text-amber-100",
         )
     } else {
-        (
-            "from-zinc-700 via-zinc-800 to-zinc-900",
-            "text-zinc-300",
-        )
+        ("from-zinc-700 via-zinc-800 to-zinc-900", "text-zinc-300")
     }
 }
 
@@ -68,7 +66,13 @@ pub fn CampaignCard(
     on_delete: Option<Callback<(String, String)>>,
 ) -> impl IntoView {
     let (bg_gradient, text_color) = get_system_style(&campaign.system);
-    let initials = campaign.name.chars().next().unwrap_or('?').to_uppercase().to_string();
+    let initials = campaign
+        .name
+        .chars()
+        .next()
+        .unwrap_or('?')
+        .to_uppercase()
+        .to_string();
     let is_hovered = RwSignal::new(false);
 
     let campaign_id = campaign.id.clone();
@@ -196,8 +200,7 @@ pub fn CampaignCard(
 pub fn CampaignCardCompact(
     campaign: Campaign,
     session_count: u32,
-    #[prop(into)]
-    on_click: Callback<String>,
+    #[prop(into)] on_click: Callback<String>,
 ) -> impl IntoView {
     let (bg_gradient, text_color) = get_system_style(&campaign.system);
     let campaign_id = campaign.id.clone();

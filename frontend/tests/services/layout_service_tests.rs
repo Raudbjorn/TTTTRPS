@@ -3,11 +3,11 @@
 //! Tests for LayoutService responsive states, sidebar/infopanel visibility,
 //! width management, and view navigation.
 
-use wasm_bindgen_test::*;
 use leptos::prelude::*;
 use ttrpg_assistant_frontend::services::layout_service::{
-    LayoutState, ViewType, provide_layout_state, use_layout_state
+    provide_layout_state, use_layout_state, LayoutState, ViewType,
 };
+use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
 

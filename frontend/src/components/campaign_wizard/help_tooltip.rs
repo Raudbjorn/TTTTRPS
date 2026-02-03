@@ -305,11 +305,13 @@ pub mod terminology {
                         {children()}
                     </span>
                 </RichTooltip>
-            }.into_any()
+            }
+            .into_any()
         } else {
             view! {
                 {children()}
-            }.into_any()
+            }
+            .into_any()
         }
     }
 }
@@ -462,13 +464,11 @@ fn get_step_help(step: &str) -> Vec<StepHelpEntry> {
                 description: "Campaigns evolve - this is just the starting point.",
             },
         ],
-        _ => vec![
-            StepHelpEntry {
-                icon: "💡",
-                title: "Need help?",
-                description: "Use the AI assistant for suggestions.",
-            },
-        ],
+        _ => vec![StepHelpEntry {
+            icon: "💡",
+            title: "Need help?",
+            description: "Use the AI assistant for suggestions.",
+        }],
     }
 }
 

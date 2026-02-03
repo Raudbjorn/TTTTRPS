@@ -1,8 +1,8 @@
-use wasm_bindgen_test::*;
 use leptos::prelude::*;
+use leptos_router::components::Router;
 use ttrpg_assistant_frontend::components::chat::HeaderLink;
 use ttrpg_assistant_frontend::services::layout_service::provide_layout_state;
-use leptos_router::components::Router;
+use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
 
@@ -40,6 +40,4 @@ fn test_header_link_regression() {
 
     // For now, this test compiles and mounts. If the regression exists (panic on mount),
     // this test will fail to complete successfully.
-
-
 }

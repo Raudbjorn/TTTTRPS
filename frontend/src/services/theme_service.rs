@@ -537,7 +537,8 @@ impl ThemeDefinition {
             effect_glow: 0.0,
 
             // Noir: Subtle Vignette
-            bg_image: "radial-gradient(circle, transparent 40%, rgba(0, 0, 0, 0.4) 100%)".to_string(),
+            bg_image: "radial-gradient(circle, transparent 40%, rgba(0, 0, 0, 0.4) 100%)"
+                .to_string(),
         }
     }
 

@@ -2,15 +2,17 @@
 //!
 //! Displays token usage, costs, and budget status for LLM providers.
 
-use leptos::prelude::*;
 use leptos::ev;
+use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
 use crate::bindings::{
-    get_usage_by_period, get_cost_breakdown, get_budget_status,
-    set_budget_limit, UsageStats, CostBreakdown, BudgetStatus, BudgetLimit,
+    get_budget_status, get_cost_breakdown, get_usage_by_period, set_budget_limit, BudgetLimit,
+    BudgetStatus, CostBreakdown, UsageStats,
 };
-use crate::components::design_system::{Button, ButtonVariant, Card, CardBody, CardHeader, Input, Select};
+use crate::components::design_system::{
+    Button, ButtonVariant, Card, CardBody, CardHeader, Input, Select,
+};
 
 // ============================================================================
 // Usage Dashboard Component

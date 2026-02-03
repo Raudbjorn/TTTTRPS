@@ -267,9 +267,8 @@ pub fn LoadingButton(
     #[prop(default = ButtonLoadingVariant::Primary)]
     variant: ButtonLoadingVariant,
 ) -> impl IntoView {
-    let is_disabled = Signal::derive(move || {
-        is_loading.get() || disabled.map(|d| d.get()).unwrap_or(false)
-    });
+    let is_disabled =
+        Signal::derive(move || is_loading.get() || disabled.map(|d| d.get()).unwrap_or(false));
 
     let variant_class = match variant {
         ButtonLoadingVariant::Primary => "bg-purple-600 hover:bg-purple-500 text-white",

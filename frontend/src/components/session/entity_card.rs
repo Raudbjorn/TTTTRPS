@@ -219,10 +219,7 @@ fn CardHeader(
 
 /// Entity card body content
 #[component]
-fn CardBody(
-    html_content: String,
-    disclosure_level: DisclosureLevel,
-) -> impl IntoView {
+fn CardBody(html_content: String, disclosure_level: DisclosureLevel) -> impl IntoView {
     let max_height = match disclosure_level {
         DisclosureLevel::Minimal => "max-h-12",
         DisclosureLevel::Summary => "max-h-32",
@@ -281,11 +278,7 @@ pub fn EntityCard(
     let is_pinned = card.is_pinned;
     let tags = card.tags.clone();
 
-    let base_class = if compact {
-        "w-40 p-2"
-    } else {
-        "w-full p-3"
-    };
+    let base_class = if compact { "w-40 p-2" } else { "w-full p-3" };
 
     let disclosure = if expanded {
         DisclosureLevel::Complete

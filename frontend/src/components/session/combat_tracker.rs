@@ -3,16 +3,13 @@
 //! Main combat tracking component with initiative order, HP tracking,
 //! conditions, and round management.
 
-use leptos::prelude::*;
 use leptos::ev;
+use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
-use crate::bindings::{
-    start_combat, end_combat, get_combat, next_turn,
-    CombatState,
-};
-use crate::components::design_system::{Button, ButtonVariant, Card, CardHeader, CardBody};
 use super::initiative_list::InitiativeList;
+use crate::bindings::{end_combat, get_combat, next_turn, start_combat, CombatState};
+use crate::components::design_system::{Button, ButtonVariant, Card, CardBody, CardHeader};
 
 /// Combat tracker component
 #[component]

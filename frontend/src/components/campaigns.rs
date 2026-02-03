@@ -3,17 +3,20 @@
 //! Displays a list of campaigns with create/delete functionality.
 //! Campaign management components with archive/restore support.
 
+use crate::services::notification_service::{show_error, show_success, ToastAction};
 use leptos::ev;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::hooks::use_navigate;
 use std::sync::Arc;
-use crate::services::notification_service::{show_error, show_success, ToastAction};
 
-use crate::bindings::{list_campaigns, create_campaign, delete_campaign, archive_campaign, restore_campaign, list_archived_campaigns, Campaign};
-use crate::components::design_system::{Button, ButtonVariant, LoadingSpinner};
+use crate::bindings::{
+    archive_campaign, create_campaign, delete_campaign, list_archived_campaigns, list_campaigns,
+    restore_campaign, Campaign,
+};
 use crate::components::campaign::CampaignCreateModal;
 use crate::components::campaign_wizard::WizardShell;
+use crate::components::design_system::{Button, ButtonVariant, LoadingSpinner};
 
 /// Helper function to get system-based styling
 fn get_system_style(system: &str) -> (&'static str, &'static str) {
@@ -24,10 +27,7 @@ fn get_system_style(system: &str) -> (&'static str, &'static str) {
             "text-amber-200",
         )
     } else if s.contains("cthulhu") || s.contains("horror") || s.contains("vampire") {
-        (
-            "bg-gradient-to-br from-slate-800 to-black",
-            "text-red-400",
-        )
+        ("bg-gradient-to-br from-slate-800 to-black", "text-red-400")
     } else if s.contains("cyber") || s.contains("shadow") || s.contains("neon") {
         (
             "bg-gradient-to-br from-fuchsia-900 to-purple-900",
@@ -70,10 +70,7 @@ fn StatCard(
 
 /// Badge component for system type display
 #[component]
-fn SystemBadge(
-    #[prop(into)]
-    system: String,
-) -> impl IntoView {
+fn SystemBadge(#[prop(into)] system: String) -> impl IntoView {
     view! {
         <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700">
             {system}
@@ -83,10 +80,7 @@ fn SystemBadge(
 
 /// Campaign card component
 #[component]
-fn CampaignCard(
-    campaign: Campaign,
-    on_delete: Callback<(String, String)>,
-) -> impl IntoView {
+fn CampaignCard(campaign: Campaign, on_delete: Callback<(String, String)>) -> impl IntoView {
     let navigate = use_navigate();
     let (bg_class, text_class) = get_system_style(&campaign.system);
     let initials = campaign.name.chars().next().unwrap_or('?');
@@ -189,7 +183,7 @@ fn CampaignCard(
 }
 
 /// Create Campaign Modal component (legacy, kept for reference)
-/// 
+///
 /// Note: The `#[component]` macro generates a struct with fields for `is_open` and `on_create`.
 /// Valid usages in the function body may not be detected by the linter for the generated struct,
 /// causing a false positive "fields are never read" warning.
@@ -401,10 +395,10 @@ pub fn Campaigns() -> impl IntoView {
                             handler: Arc::new(move || refresh_trigger.notify()),
                         });
 
-                         show_error(
+                        show_error(
                             "Failed to load campaigns",
                             Some(&format!("Could not fetch campaign list: {}", e)),
-                            retry
+                            retry,
                         );
                     }
                 }
@@ -446,7 +440,9 @@ pub fn Campaigns() -> impl IntoView {
 
     Effect::new(move |_| {
         let list = campaigns.get();
-        if list.is_empty() { return; }
+        if list.is_empty() {
+            return;
+        }
 
         spawn_local(async move {
             let mut s = 0;
@@ -493,7 +489,10 @@ pub fn Campaigns() -> impl IntoView {
     let handle_ai_wizard_create = Callback::new(move |campaign: Campaign| {
         campaigns.update(|c| c.push(campaign));
         show_ai_wizard.set(false);
-        show_success("Campaign created with AI assistance!", Some("Your adventure awaits."));
+        show_success(
+            "Campaign created with AI assistance!",
+            Some("Your adventure awaits."),
+        );
     });
 
     // Handle legacy campaign creation (from simple modal)
@@ -541,21 +540,32 @@ pub fn Campaigns() -> impl IntoView {
                             if let Ok(list) = list_campaigns().await {
                                 campaigns.set(list);
                             }
-                            show_success("Campaign Restored", Some(&format!("{} is back in action.", name)));
+                            show_success(
+                                "Campaign Restored",
+                                Some(&format!("{} is back in action.", name)),
+                            );
                         } else {
                             // Move from active to archived
-                            if let Some(campaign) = campaigns.get().into_iter().find(|c| c.id == id) {
+                            if let Some(campaign) = campaigns.get().into_iter().find(|c| c.id == id)
+                            {
                                 archived_campaigns.update(|c| c.push(campaign));
                             }
                             campaigns.update(|c| c.retain(|campaign| campaign.id != id));
-                            show_success("Campaign Archived", Some(&format!("{} has been archived.", name)));
+                            show_success(
+                                "Campaign Archived",
+                                Some(&format!("{} has been archived.", name)),
+                            );
                         }
                     }
                     Err(e) => {
                         show_error(
-                            if is_restore { "Failed to restore" } else { "Failed to archive" },
+                            if is_restore {
+                                "Failed to restore"
+                            } else {
+                                "Failed to archive"
+                            },
                             Some(&e),
-                            None
+                            None,
                         );
                     }
                 }
@@ -603,8 +613,11 @@ pub fn Campaigns() -> impl IntoView {
                 match delete_campaign(id.clone()).await {
                     Ok(_) => {
                         campaigns.update(|c| c.retain(|campaign| campaign.id != id));
-                         show_success("Campaign Deleted", Some(&format!("{} is gone forever.", name)));
-                         delete_confirm.set(None);
+                        show_success(
+                            "Campaign Deleted",
+                            Some(&format!("{} is gone forever.", name)),
+                        );
+                        delete_confirm.set(None);
                     }
                     Err(e) => {
                         show_error("Failed to delete", Some(&e), None);

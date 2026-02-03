@@ -2,16 +2,14 @@
 //!
 //! Displays the initiative order with combatant management.
 
-use leptos::prelude::*;
 use leptos::ev;
+use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
-use crate::bindings::{
-    CombatState, add_combatant, add_combatant_full,
-};
-use crate::components::design_system::{Button, ButtonVariant};
 use super::combatant_card::CombatantCard;
 use super::condition_manager::ConditionModal;
+use crate::bindings::{add_combatant, add_combatant_full, CombatState};
+use crate::components::design_system::{Button, ButtonVariant};
 
 /// Initiative list component
 #[component]

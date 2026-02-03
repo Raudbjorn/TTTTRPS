@@ -17,9 +17,7 @@
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use super::entity_card::{
-    PinnedCard, EntityCardCompact, EntityCardCompactProps,
-};
+use super::entity_card::{EntityCardCompact, EntityCardCompactProps, PinnedCard};
 
 // ============================================================================
 // Constants
@@ -63,9 +61,7 @@ impl Default for CardTray {
 
 /// Empty slot placeholder
 #[component]
-fn EmptySlot(
-    slot_number: usize,
-) -> impl IntoView {
+fn EmptySlot(slot_number: usize) -> impl IntoView {
     view! {
         <div
             class="w-36 h-24 bg-zinc-900/50 border border-dashed border-zinc-700
@@ -85,10 +81,7 @@ fn EmptySlot(
 
 /// Slot counter showing used/total
 #[component]
-fn SlotCounter(
-    used: usize,
-    total: usize,
-) -> impl IntoView {
+fn SlotCounter(used: usize, total: usize) -> impl IntoView {
     let is_full = used >= total;
 
     view! {

@@ -2,8 +2,8 @@
 //!
 //! Unit tests for design system enums, variants, and styling logic.
 
-use crate::components::design_system::button::{ButtonVariant, ButtonSize};
 use crate::components::design_system::badge::BadgeVariant;
+use crate::components::design_system::button::{ButtonSize, ButtonVariant};
 
 // ========================================================================
 // ButtonVariant Tests
@@ -80,25 +80,37 @@ fn test_button_variant_classes_unique() {
 #[test]
 fn test_button_variant_destructive_has_red() {
     let class = ButtonVariant::Destructive.class();
-    assert!(class.contains("red"), "Destructive should contain 'red' color");
+    assert!(
+        class.contains("red"),
+        "Destructive should contain 'red' color"
+    );
 }
 
 #[test]
 fn test_button_variant_link_has_underline() {
     let class = ButtonVariant::Link.class();
-    assert!(class.contains("underline"), "Link variant should have underline styles");
+    assert!(
+        class.contains("underline"),
+        "Link variant should have underline styles"
+    );
 }
 
 #[test]
 fn test_button_variant_outline_has_border() {
     let class = ButtonVariant::Outline.class();
-    assert!(class.contains("border"), "Outline variant should have border");
+    assert!(
+        class.contains("border"),
+        "Outline variant should have border"
+    );
 }
 
 #[test]
 fn test_button_variant_ghost_has_hover() {
     let class = ButtonVariant::Ghost.class();
-    assert!(class.contains("hover:"), "Ghost variant should have hover styles");
+    assert!(
+        class.contains("hover:"),
+        "Ghost variant should have hover styles"
+    );
 }
 
 // ========================================================================
@@ -153,7 +165,10 @@ fn test_button_size_classes_unique() {
 #[test]
 fn test_button_size_sm_smaller_text() {
     let class = ButtonSize::Sm.class();
-    assert!(class.contains("text-xs"), "Sm size should have smaller text");
+    assert!(
+        class.contains("text-xs"),
+        "Sm size should have smaller text"
+    );
 }
 
 #[test]

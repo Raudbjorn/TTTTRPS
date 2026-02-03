@@ -1,7 +1,7 @@
+use super::core::{invoke, invoke_no_args, invoke_void};
+use super::mechanics::Character;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use super::core::{invoke, invoke_void, invoke_no_args};
-use super::mechanics::Character;
 
 // ============================================================================
 // World State Types
@@ -107,31 +107,43 @@ pub struct CalendarConfig {
 
 pub async fn get_world_state(campaign_id: String) -> Result<WorldState, String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String }
+    struct Args {
+        campaign_id: String,
+    }
     invoke("get_world_state", &Args { campaign_id }).await
 }
 
 pub async fn update_world_state(world_state: WorldState) -> Result<(), String> {
     #[derive(Serialize)]
-    struct Args { world_state: WorldState }
+    struct Args {
+        world_state: WorldState,
+    }
     invoke_void("update_world_state", &Args { world_state }).await
 }
 
 pub async fn set_in_game_date(campaign_id: String, date: InGameDate) -> Result<(), String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String, date: InGameDate }
+    struct Args {
+        campaign_id: String,
+        date: InGameDate,
+    }
     invoke_void("set_in_game_date", &Args { campaign_id, date }).await
 }
 
 pub async fn advance_in_game_date(campaign_id: String, days: i32) -> Result<InGameDate, String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String, days: i32 }
+    struct Args {
+        campaign_id: String,
+        days: i32,
+    }
     invoke("advance_in_game_date", &Args { campaign_id, days }).await
 }
 
 pub async fn get_in_game_date(campaign_id: String) -> Result<InGameDate, String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String }
+    struct Args {
+        campaign_id: String,
+    }
     invoke("get_in_game_date", &Args { campaign_id }).await
 }
 
@@ -152,7 +164,18 @@ pub async fn add_world_event(
         event_type: String,
         impact: String,
     }
-    invoke("add_world_event", &Args { campaign_id, title, description, date, event_type, impact }).await
+    invoke(
+        "add_world_event",
+        &Args {
+            campaign_id,
+            title,
+            description,
+            date,
+            event_type,
+            impact,
+        },
+    )
+    .await
 }
 
 pub async fn list_world_events(
@@ -161,31 +184,81 @@ pub async fn list_world_events(
     limit: Option<usize>,
 ) -> Result<Vec<WorldEvent>, String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String, event_type: Option<String>, limit: Option<usize> }
-    invoke("list_world_events", &Args { campaign_id, event_type, limit }).await
+    struct Args {
+        campaign_id: String,
+        event_type: Option<String>,
+        limit: Option<usize>,
+    }
+    invoke(
+        "list_world_events",
+        &Args {
+            campaign_id,
+            event_type,
+            limit,
+        },
+    )
+    .await
 }
 
 pub async fn delete_world_event(campaign_id: String, event_id: String) -> Result<(), String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String, event_id: String }
-    invoke_void("delete_world_event", &Args { campaign_id, event_id }).await
+    struct Args {
+        campaign_id: String,
+        event_id: String,
+    }
+    invoke_void(
+        "delete_world_event",
+        &Args {
+            campaign_id,
+            event_id,
+        },
+    )
+    .await
 }
 
-pub async fn set_location_state(campaign_id: String, location: LocationState) -> Result<(), String> {
+pub async fn set_location_state(
+    campaign_id: String,
+    location: LocationState,
+) -> Result<(), String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String, location: LocationState }
-    invoke_void("set_location_state", &Args { campaign_id, location }).await
+    struct Args {
+        campaign_id: String,
+        location: LocationState,
+    }
+    invoke_void(
+        "set_location_state",
+        &Args {
+            campaign_id,
+            location,
+        },
+    )
+    .await
 }
 
-pub async fn get_location_state(campaign_id: String, location_id: String) -> Result<Option<LocationState>, String> {
+pub async fn get_location_state(
+    campaign_id: String,
+    location_id: String,
+) -> Result<Option<LocationState>, String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String, location_id: String }
-    invoke("get_location_state", &Args { campaign_id, location_id }).await
+    struct Args {
+        campaign_id: String,
+        location_id: String,
+    }
+    invoke(
+        "get_location_state",
+        &Args {
+            campaign_id,
+            location_id,
+        },
+    )
+    .await
 }
 
 pub async fn list_locations(campaign_id: String) -> Result<Vec<LocationState>, String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String }
+    struct Args {
+        campaign_id: String,
+    }
     invoke("list_locations", &Args { campaign_id }).await
 }
 
@@ -195,8 +268,20 @@ pub async fn update_location_condition(
     condition: String,
 ) -> Result<(), String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String, location_id: String, condition: String }
-    invoke_void("update_location_condition", &Args { campaign_id, location_id, condition }).await
+    struct Args {
+        campaign_id: String,
+        location_id: String,
+        condition: String,
+    }
+    invoke_void(
+        "update_location_condition",
+        &Args {
+            campaign_id,
+            location_id,
+            condition,
+        },
+    )
+    .await
 }
 
 pub async fn set_world_custom_field(
@@ -205,31 +290,68 @@ pub async fn set_world_custom_field(
     value: serde_json::Value,
 ) -> Result<(), String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String, key: String, value: serde_json::Value }
-    invoke_void("set_world_custom_field", &Args { campaign_id, key, value }).await
+    struct Args {
+        campaign_id: String,
+        key: String,
+        value: serde_json::Value,
+    }
+    invoke_void(
+        "set_world_custom_field",
+        &Args {
+            campaign_id,
+            key,
+            value,
+        },
+    )
+    .await
 }
 
-pub async fn get_world_custom_field(campaign_id: String, key: String) -> Result<Option<serde_json::Value>, String> {
+pub async fn get_world_custom_field(
+    campaign_id: String,
+    key: String,
+) -> Result<Option<serde_json::Value>, String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String, key: String }
+    struct Args {
+        campaign_id: String,
+        key: String,
+    }
     invoke("get_world_custom_field", &Args { campaign_id, key }).await
 }
 
-pub async fn list_world_custom_fields(campaign_id: String) -> Result<std::collections::HashMap<String, serde_json::Value>, String> {
+pub async fn list_world_custom_fields(
+    campaign_id: String,
+) -> Result<std::collections::HashMap<String, serde_json::Value>, String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String }
+    struct Args {
+        campaign_id: String,
+    }
     invoke("list_world_custom_fields", &Args { campaign_id }).await
 }
 
-pub async fn set_calendar_config(campaign_id: String, config: CalendarConfig) -> Result<(), String> {
+pub async fn set_calendar_config(
+    campaign_id: String,
+    config: CalendarConfig,
+) -> Result<(), String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String, config: CalendarConfig }
-    invoke_void("set_calendar_config", &Args { campaign_id, config }).await
+    struct Args {
+        campaign_id: String,
+        config: CalendarConfig,
+    }
+    invoke_void(
+        "set_calendar_config",
+        &Args {
+            campaign_id,
+            config,
+        },
+    )
+    .await
 }
 
 pub async fn get_calendar_config(campaign_id: String) -> Result<Option<CalendarConfig>, String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String }
+    struct Args {
+        campaign_id: String,
+    }
     invoke("get_calendar_config", &Args { campaign_id }).await
 }
 
@@ -274,7 +396,12 @@ pub async fn get_npc_conversation(npc_id: String) -> Result<NpcConversation, Str
     invoke("get_npc_conversation", &Args { npc_id }).await
 }
 
-pub async fn add_npc_message(npc_id: String, content: String, role: String, parent_id: Option<String>) -> Result<ConversationMessage, String> {
+pub async fn add_npc_message(
+    npc_id: String,
+    content: String,
+    role: String,
+    parent_id: Option<String>,
+) -> Result<ConversationMessage, String> {
     #[derive(Serialize)]
     struct Args {
         npc_id: String,
@@ -282,7 +409,16 @@ pub async fn add_npc_message(npc_id: String, content: String, role: String, pare
         role: String,
         parent_id: Option<String>,
     }
-    invoke("add_npc_message", &Args { npc_id, content, role, parent_id }).await
+    invoke(
+        "add_npc_message",
+        &Args {
+            npc_id,
+            content,
+            role,
+            parent_id,
+        },
+    )
+    .await
 }
 
 pub async fn mark_npc_read(npc_id: String) -> Result<(), String> {
@@ -360,7 +496,7 @@ pub struct NPCRelationship {
 pub struct PlotHook {
     pub description: String,
     pub hook_type: String, // Enum stringified
-    pub urgency: String, // Enum stringified
+    pub urgency: String,   // Enum stringified
     pub reward_hint: Option<String>,
 }
 
@@ -392,13 +528,23 @@ pub struct NpcSummary {
     pub last_active: String,
 }
 
-pub async fn generate_npc(options: NPCGenerationOptions, campaign_id: Option<String>) -> Result<NPC, String> {
+pub async fn generate_npc(
+    options: NPCGenerationOptions,
+    campaign_id: Option<String>,
+) -> Result<NPC, String> {
     #[derive(Serialize)]
     struct Args {
         options: NPCGenerationOptions,
         campaign_id: Option<String>,
     }
-    invoke("generate_npc", &Args { options, campaign_id }).await
+    invoke(
+        "generate_npc",
+        &Args {
+            options,
+            campaign_id,
+        },
+    )
+    .await
 }
 
 pub async fn get_npc(id: String) -> Result<Option<NPC>, String> {
@@ -554,11 +700,22 @@ pub async fn create_entity_relationship(
         strength: Option<String>,
         description: Option<String>,
     }
-    invoke("create_entity_relationship", &Args {
-        campaign_id, source_id, source_type, source_name,
-        target_id, target_type, target_name, relationship_type,
-        strength, description,
-    }).await
+    invoke(
+        "create_entity_relationship",
+        &Args {
+            campaign_id,
+            source_id,
+            source_type,
+            source_name,
+            target_id,
+            target_type,
+            target_name,
+            relationship_type,
+            strength,
+            description,
+        },
+    )
+    .await
 }
 
 pub async fn get_entity_relationship(
@@ -566,25 +723,54 @@ pub async fn get_entity_relationship(
     relationship_id: String,
 ) -> Result<Option<EntityRelationship>, String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String, relationship_id: String }
-    invoke("get_entity_relationship", &Args { campaign_id, relationship_id }).await
+    struct Args {
+        campaign_id: String,
+        relationship_id: String,
+    }
+    invoke(
+        "get_entity_relationship",
+        &Args {
+            campaign_id,
+            relationship_id,
+        },
+    )
+    .await
 }
 
 pub async fn update_entity_relationship(relationship: EntityRelationship) -> Result<(), String> {
     #[derive(Serialize)]
-    struct Args { relationship: EntityRelationship }
+    struct Args {
+        relationship: EntityRelationship,
+    }
     invoke_void("update_entity_relationship", &Args { relationship }).await
 }
 
-pub async fn delete_entity_relationship(campaign_id: String, relationship_id: String) -> Result<(), String> {
+pub async fn delete_entity_relationship(
+    campaign_id: String,
+    relationship_id: String,
+) -> Result<(), String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String, relationship_id: String }
-    invoke_void("delete_entity_relationship", &Args { campaign_id, relationship_id }).await
+    struct Args {
+        campaign_id: String,
+        relationship_id: String,
+    }
+    invoke_void(
+        "delete_entity_relationship",
+        &Args {
+            campaign_id,
+            relationship_id,
+        },
+    )
+    .await
 }
 
-pub async fn list_entity_relationships(campaign_id: String) -> Result<Vec<RelationshipSummary>, String> {
+pub async fn list_entity_relationships(
+    campaign_id: String,
+) -> Result<Vec<RelationshipSummary>, String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String }
+    struct Args {
+        campaign_id: String,
+    }
     invoke("list_entity_relationships", &Args { campaign_id }).await
 }
 
@@ -593,8 +779,18 @@ pub async fn get_relationships_for_entity(
     entity_id: String,
 ) -> Result<Vec<EntityRelationship>, String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String, entity_id: String }
-    invoke("get_relationships_for_entity", &Args { campaign_id, entity_id }).await
+    struct Args {
+        campaign_id: String,
+        entity_id: String,
+    }
+    invoke(
+        "get_relationships_for_entity",
+        &Args {
+            campaign_id,
+            entity_id,
+        },
+    )
+    .await
 }
 
 pub async fn get_relationships_between_entities(
@@ -603,8 +799,20 @@ pub async fn get_relationships_between_entities(
     entity_b: String,
 ) -> Result<Vec<EntityRelationship>, String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String, entity_a: String, entity_b: String }
-    invoke("get_relationships_between_entities", &Args { campaign_id, entity_a, entity_b }).await
+    struct Args {
+        campaign_id: String,
+        entity_a: String,
+        entity_b: String,
+    }
+    invoke(
+        "get_relationships_between_entities",
+        &Args {
+            campaign_id,
+            entity_a,
+            entity_b,
+        },
+    )
+    .await
 }
 
 pub async fn get_entity_graph(
@@ -612,8 +820,18 @@ pub async fn get_entity_graph(
     include_inactive: Option<bool>,
 ) -> Result<EntityGraph, String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String, include_inactive: Option<bool> }
-    invoke("get_entity_graph", &Args { campaign_id, include_inactive }).await
+    struct Args {
+        campaign_id: String,
+        include_inactive: Option<bool>,
+    }
+    invoke(
+        "get_entity_graph",
+        &Args {
+            campaign_id,
+            include_inactive,
+        },
+    )
+    .await
 }
 
 pub async fn get_ego_graph(
@@ -622,8 +840,20 @@ pub async fn get_ego_graph(
     depth: Option<usize>,
 ) -> Result<EntityGraph, String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String, entity_id: String, depth: Option<usize> }
-    invoke("get_ego_graph", &Args { campaign_id, entity_id, depth }).await
+    struct Args {
+        campaign_id: String,
+        entity_id: String,
+        depth: Option<usize>,
+    }
+    invoke(
+        "get_ego_graph",
+        &Args {
+            campaign_id,
+            entity_id,
+            depth,
+        },
+    )
+    .await
 }
 
 // ============================================================================
@@ -725,141 +955,261 @@ pub async fn set_active_personality(request: SetActivePersonalityRequest) -> Res
     invoke_void("set_active_personality", &Args { request }).await
 }
 
-pub async fn get_active_personality(session_id: String, campaign_id: String) -> Result<Option<String>, String> {
-    invoke("get_active_personality", &json!({
-        "session_id": session_id,
-        "campaign_id": campaign_id
-    })).await
+pub async fn get_active_personality(
+    session_id: String,
+    campaign_id: String,
+) -> Result<Option<String>, String> {
+    invoke(
+        "get_active_personality",
+        &json!({
+            "session_id": session_id,
+            "campaign_id": campaign_id
+        }),
+    )
+    .await
 }
 
 pub async fn get_personality_prompt(personality_id: String) -> Result<String, String> {
-    invoke("get_personality_prompt", &json!({
-        "personality_id": personality_id
-    })).await
+    invoke(
+        "get_personality_prompt",
+        &json!({
+            "personality_id": personality_id
+        }),
+    )
+    .await
 }
 
-pub async fn apply_personality_to_text(text: String, personality_id: String) -> Result<String, String> {
-    invoke("apply_personality_to_text", &json!({
-        "text": text,
-        "personality_id": personality_id
-    })).await
+pub async fn apply_personality_to_text(
+    text: String,
+    personality_id: String,
+) -> Result<String, String> {
+    invoke(
+        "apply_personality_to_text",
+        &json!({
+            "text": text,
+            "personality_id": personality_id
+        }),
+    )
+    .await
 }
 
-pub async fn get_personality_context(campaign_id: String) -> Result<ActivePersonalityContext, String> {
-    invoke("get_personality_context", &json!({
-        "campaign_id": campaign_id
-    })).await
+pub async fn get_personality_context(
+    campaign_id: String,
+) -> Result<ActivePersonalityContext, String> {
+    invoke(
+        "get_personality_context",
+        &json!({
+            "campaign_id": campaign_id
+        }),
+    )
+    .await
 }
 
-pub async fn get_session_personality_context(session_id: String, campaign_id: String) -> Result<ActivePersonalityContext, String> {
-    invoke("get_session_personality_context", &json!({
-        "session_id": session_id,
-        "campaign_id": campaign_id
-    })).await
+pub async fn get_session_personality_context(
+    session_id: String,
+    campaign_id: String,
+) -> Result<ActivePersonalityContext, String> {
+    invoke(
+        "get_session_personality_context",
+        &json!({
+            "session_id": session_id,
+            "campaign_id": campaign_id
+        }),
+    )
+    .await
 }
 
 pub async fn set_personality_context(context: ActivePersonalityContext) -> Result<(), String> {
-    invoke_void("set_personality_context", &json!({
-        "context": context
-    })).await
+    invoke_void(
+        "set_personality_context",
+        &json!({
+            "context": context
+        }),
+    )
+    .await
 }
 
-pub async fn set_narrator_personality(campaign_id: String, personality_id: Option<String>) -> Result<(), String> {
-    invoke_void("set_narrator_personality", &json!({
-        "campaign_id": campaign_id,
-        "personality_id": personality_id
-    })).await
+pub async fn set_narrator_personality(
+    campaign_id: String,
+    personality_id: Option<String>,
+) -> Result<(), String> {
+    invoke_void(
+        "set_narrator_personality",
+        &json!({
+            "campaign_id": campaign_id,
+            "personality_id": personality_id
+        }),
+    )
+    .await
 }
 
-pub async fn assign_npc_personality(campaign_id: String, npc_id: String, personality_id: String) -> Result<(), String> {
-    invoke_void("assign_npc_personality", &json!({
-        "campaign_id": campaign_id,
-        "npc_id": npc_id,
-        "personality_id": personality_id
-    })).await
+pub async fn assign_npc_personality(
+    campaign_id: String,
+    npc_id: String,
+    personality_id: String,
+) -> Result<(), String> {
+    invoke_void(
+        "assign_npc_personality",
+        &json!({
+            "campaign_id": campaign_id,
+            "npc_id": npc_id,
+            "personality_id": personality_id
+        }),
+    )
+    .await
 }
 
 pub async fn unassign_npc_personality(campaign_id: String, npc_id: String) -> Result<(), String> {
-    invoke_void("unassign_npc_personality", &json!({
-        "campaign_id": campaign_id,
-        "npc_id": npc_id
-    })).await
+    invoke_void(
+        "unassign_npc_personality",
+        &json!({
+            "campaign_id": campaign_id,
+            "npc_id": npc_id
+        }),
+    )
+    .await
 }
 
 pub async fn set_scene_mood(campaign_id: String, mood: Option<SceneMood>) -> Result<(), String> {
-    invoke_void("set_scene_mood", &json!({
-        "campaign_id": campaign_id,
-        "mood": mood
-    })).await
+    invoke_void(
+        "set_scene_mood",
+        &json!({
+            "campaign_id": campaign_id,
+            "mood": mood
+        }),
+    )
+    .await
 }
 
 pub async fn set_personality_settings(request: PersonalitySettingsRequest) -> Result<(), String> {
-    invoke_void("set_personality_settings", &json!({
-        "request": request
-    })).await
+    invoke_void(
+        "set_personality_settings",
+        &json!({
+            "request": request
+        }),
+    )
+    .await
 }
 
 pub async fn set_personality_active(campaign_id: String, active: bool) -> Result<(), String> {
-    invoke_void("set_personality_active", &json!({
-        "campaign_id": campaign_id,
-        "active": active
-    })).await
+    invoke_void(
+        "set_personality_active",
+        &json!({
+            "campaign_id": campaign_id,
+            "active": active
+        }),
+    )
+    .await
 }
 
 pub async fn preview_personality(personality_id: String) -> Result<PersonalityPreview, String> {
-    invoke("preview_personality", &json!({
-        "personality_id": personality_id
-    })).await
+    invoke(
+        "preview_personality",
+        &json!({
+            "personality_id": personality_id
+        }),
+    )
+    .await
 }
 
-pub async fn preview_personality_extended(personality_id: String) -> Result<ExtendedPersonalityPreview, String> {
-    invoke("preview_personality_extended", &json!({
-        "personality_id": personality_id
-    })).await
+pub async fn preview_personality_extended(
+    personality_id: String,
+) -> Result<ExtendedPersonalityPreview, String> {
+    invoke(
+        "preview_personality_extended",
+        &json!({
+            "personality_id": personality_id
+        }),
+    )
+    .await
 }
 
-pub async fn generate_personality_preview(personality_id: String) -> Result<PreviewResponse, String> {
-    invoke("generate_personality_preview", &json!({
-        "personality_id": personality_id
-    })).await
+pub async fn generate_personality_preview(
+    personality_id: String,
+) -> Result<PreviewResponse, String> {
+    invoke(
+        "generate_personality_preview",
+        &json!({
+            "personality_id": personality_id
+        }),
+    )
+    .await
 }
 
-pub async fn test_personality(personality_id: String, test_prompt: String) -> Result<String, String> {
-    invoke("test_personality", &json!({
-        "personality_id": personality_id,
-        "test_prompt": test_prompt
-    })).await
+pub async fn test_personality(
+    personality_id: String,
+    test_prompt: String,
+) -> Result<String, String> {
+    invoke(
+        "test_personality",
+        &json!({
+            "personality_id": personality_id,
+            "test_prompt": test_prompt
+        }),
+    )
+    .await
 }
 
-pub async fn get_session_system_prompt(session_id: String, campaign_id: String, content_type: String) -> Result<String, String> {
-    invoke("get_session_system_prompt", &json!({
-        "session_id": session_id,
-        "campaign_id": campaign_id,
-        "content_type": content_type
-    })).await
+pub async fn get_session_system_prompt(
+    session_id: String,
+    campaign_id: String,
+    content_type: String,
+) -> Result<String, String> {
+    invoke(
+        "get_session_system_prompt",
+        &json!({
+            "session_id": session_id,
+            "campaign_id": campaign_id,
+            "content_type": content_type
+        }),
+    )
+    .await
 }
 
-pub async fn style_npc_dialogue(npc_id: String, campaign_id: String, raw_dialogue: String) -> Result<StyledContent, String> {
-    invoke("style_npc_dialogue", &json!({
-        "npc_id": npc_id,
-        "campaign_id": campaign_id,
-        "raw_dialogue": raw_dialogue
-    })).await
+pub async fn style_npc_dialogue(
+    npc_id: String,
+    campaign_id: String,
+    raw_dialogue: String,
+) -> Result<StyledContent, String> {
+    invoke(
+        "style_npc_dialogue",
+        &json!({
+            "npc_id": npc_id,
+            "campaign_id": campaign_id,
+            "raw_dialogue": raw_dialogue
+        }),
+    )
+    .await
 }
 
-pub async fn build_npc_system_prompt(npc_id: String, campaign_id: String, additional_context: Option<String>) -> Result<String, String> {
-    invoke("build_npc_system_prompt", &json!({
-        "npc_id": npc_id,
-        "campaign_id": campaign_id,
-        "additional_context": additional_context
-    })).await
+pub async fn build_npc_system_prompt(
+    npc_id: String,
+    campaign_id: String,
+    additional_context: Option<String>,
+) -> Result<String, String> {
+    invoke(
+        "build_npc_system_prompt",
+        &json!({
+            "npc_id": npc_id,
+            "campaign_id": campaign_id,
+            "additional_context": additional_context
+        }),
+    )
+    .await
 }
 
-pub async fn build_narration_prompt(campaign_id: String, narration_type: String) -> Result<String, String> {
-    invoke("build_narration_prompt", &json!({
-        "campaign_id": campaign_id,
-        "narration_type": narration_type
-    })).await
+pub async fn build_narration_prompt(
+    campaign_id: String,
+    narration_type: String,
+) -> Result<String, String> {
+    invoke(
+        "build_narration_prompt",
+        &json!({
+            "campaign_id": campaign_id,
+            "narration_type": narration_type
+        }),
+    )
+    .await
 }
 
 pub async fn list_personalities() -> Result<Vec<PersonalityPreview>, String> {
@@ -867,7 +1217,11 @@ pub async fn list_personalities() -> Result<Vec<PersonalityPreview>, String> {
 }
 
 pub async fn clear_session_personality_context(session_id: String) -> Result<(), String> {
-    invoke_void("clear_session_personality_context", &json!({
-        "session_id": session_id
-    })).await
+    invoke_void(
+        "clear_session_personality_context",
+        &json!({
+            "session_id": session_id
+        }),
+    )
+    .await
 }

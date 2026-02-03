@@ -1,8 +1,19 @@
-
 pub const STANDARD_CONDITIONS: &[&str] = &[
-    "Blinded", "Charmed", "Deafened", "Exhaustion", "Frightened", "Grappled",
-    "Incapacitated", "Invisible", "Paralyzed", "Petrified", "Poisoned",
-    "Prone", "Restrained", "Stunned", "Unconscious",
+    "Blinded",
+    "Charmed",
+    "Deafened",
+    "Exhaustion",
+    "Frightened",
+    "Grappled",
+    "Incapacitated",
+    "Invisible",
+    "Paralyzed",
+    "Petrified",
+    "Poisoned",
+    "Prone",
+    "Restrained",
+    "Stunned",
+    "Unconscious",
 ];
 
 pub fn get_condition_description(name: &str) -> Option<&'static str> {

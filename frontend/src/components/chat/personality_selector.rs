@@ -12,13 +12,11 @@ use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
 use crate::bindings::{
-    list_personalities, preview_personality, set_active_personality,
-    get_active_personality, PersonalityPreview, SetActivePersonalityRequest,
-    set_personality_settings, PersonalitySettingsRequest,
+    get_active_personality, list_personalities, preview_personality, set_active_personality,
+    set_personality_settings, PersonalityPreview, PersonalitySettingsRequest,
+    SetActivePersonalityRequest,
 };
 use crate::components::design_system::{Button, ButtonVariant};
-
-
 
 /// Personality Selector component for the chat interface
 #[component]
@@ -201,19 +199,19 @@ pub fn PersonalitySelector(
             {move || {
                 if is_expanded.get() {
                     Some(view! {
-                        <div class="absolute top-full left-0 mt-2 w-80 bg-theme-secondary border border-theme rounded-lg shadow-xl z-50">
+                        <div class="absolute top-full left-0 mt-2 w-80 bg-theme-surface border border-theme-subtle rounded-lg shadow-xl z-50">
                             // Header
-                            <div class="p-3 border-b border-theme flex justify-between items-center">
+                            <div class="p-3 border-b border-theme-subtle flex justify-between items-center">
                                 <h3 class="font-semibold text-theme-primary">"Personality"</h3>
                                 <div class="flex gap-2">
                                     <button
-                                        class="text-xs text-theme-secondary hover:text-theme-primary"
+                                        class="text-xs text-theme-muted hover:text-theme-primary"
                                         on:click=move |_| show_settings.update(|v| *v = !*v)
                                     >
                                         "Settings"
                                     </button>
                                     <button
-                                        class="text-theme-secondary hover:text-theme-primary"
+                                        class="text-theme-muted hover:text-theme-primary"
                                         on:click=move |_| is_expanded.set(false)
                                     >
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -232,7 +230,7 @@ pub fn PersonalitySelector(
                             {move || {
                                 if is_loading.get() {
                                     Some(view! {
-                                        <div class="p-4 text-center text-theme-secondary">
+                                        <div class="p-4 text-center text-theme-muted">
                                             <div class="animate-spin w-6 h-6 border-2 border-theme-primary border-t-transparent rounded-full mx-auto"></div>
                                             <p class="mt-2 text-sm">"Loading personalities..."</p>
                                         </div>
@@ -262,7 +260,7 @@ pub fn PersonalitySelector(
                                                 }
                                             >
                                                 <div class="font-medium text-theme-primary">"No Personality"</div>
-                                                <div class="text-xs text-theme-secondary mt-1">"Use default AI behavior"</div>
+                                                <div class="text-xs text-theme-muted mt-1">"Use default AI behavior"</div>
                                             </button>
 
                                             // Personality options
@@ -291,7 +289,7 @@ pub fn PersonalitySelector(
                                                             }
                                                         >
                                                             <div class="font-medium text-theme-primary">{name}</div>
-                                                            <div class="text-xs text-theme-secondary mt-1 flex flex-wrap gap-1">
+                                                            <div class="text-xs text-theme-muted mt-1 flex flex-wrap gap-1">
                                                                 {traits.into_iter().map(|t| view! {
                                                                     <span class="bg-theme-primary/10 px-1 py-0.5 rounded">{t}</span>
                                                                 }).collect::<Vec<_>>()}
@@ -310,14 +308,14 @@ pub fn PersonalitySelector(
                             // Preview section
                             {move || {
                                 selected_preview.get().map(|preview| view! {
-                                    <div class="p-3 border-t border-theme bg-theme-primary/5">
-                                        <h4 class="text-xs font-semibold text-theme-secondary mb-2">"Preview"</h4>
+                                    <div class="p-3 border-t border-theme-subtle bg-theme-primary/5">
+                                        <h4 class="text-xs font-semibold text-theme-muted mb-2">"Preview"</h4>
                                         <div class="text-sm text-theme-primary">
                                             {preview.sample_greetings.first().cloned().unwrap_or_else(|| "No sample available".to_string())}
                                         </div>
                                         <div class="mt-2 flex flex-wrap gap-1">
                                             {preview.characteristics.into_iter().map(|c| view! {
-                                                <span class="text-xs bg-theme-secondary px-2 py-0.5 rounded">{c}</span>
+                                                <span class="text-xs bg-theme-surface px-2 py-0.5 rounded">{c}</span>
                                             }).collect::<Vec<_>>()}
                                         </div>
                                     </div>
@@ -328,14 +326,14 @@ pub fn PersonalitySelector(
                             {move || {
                                 if show_settings.get() {
                                     Some(view! {
-                                        <div class="p-3 border-t border-theme">
-                                            <h4 class="text-xs font-semibold text-theme-secondary mb-3">"Narrative Settings"</h4>
+                                        <div class="p-3 border-t border-theme-subtle">
+                                            <h4 class="text-xs font-semibold text-theme-muted mb-3">"Narrative Settings"</h4>
 
                                             // Tone selector
                                             <div class="mb-3">
-                                                <label class="block text-xs text-theme-secondary mb-1">"Tone"</label>
+                                                <label class="block text-xs text-theme-muted mb-1">"Tone"</label>
                                                 <select
-                                                    class="w-full bg-theme-primary text-theme-primary border border-theme rounded px-2 py-1 text-sm"
+                                                    class="w-full bg-theme-primary text-theme-primary border border-theme-subtle rounded px-2 py-1 text-sm"
                                                     on:change=move |e| {
                                                         use wasm_bindgen::JsCast;
                                                         let target = e.target().unwrap().unchecked_into::<web_sys::HtmlSelectElement>();
@@ -355,9 +353,9 @@ pub fn PersonalitySelector(
 
                                             // Vocabulary selector
                                             <div class="mb-3">
-                                                <label class="block text-xs text-theme-secondary mb-1">"Vocabulary"</label>
+                                                <label class="block text-xs text-theme-muted mb-1">"Vocabulary"</label>
                                                 <select
-                                                    class="w-full bg-theme-primary text-theme-primary border border-theme rounded px-2 py-1 text-sm"
+                                                    class="w-full bg-theme-primary text-theme-primary border border-theme-subtle rounded px-2 py-1 text-sm"
                                                     on:change=move |e| {
                                                         use wasm_bindgen::JsCast;
                                                         let target = e.target().unwrap().unchecked_into::<web_sys::HtmlSelectElement>();
@@ -374,9 +372,9 @@ pub fn PersonalitySelector(
 
                                             // Verbosity selector
                                             <div class="mb-3">
-                                                <label class="block text-xs text-theme-secondary mb-1">"Verbosity"</label>
+                                                <label class="block text-xs text-theme-muted mb-1">"Verbosity"</label>
                                                 <select
-                                                    class="w-full bg-theme-primary text-theme-primary border border-theme rounded px-2 py-1 text-sm"
+                                                    class="w-full bg-theme-primary text-theme-primary border border-theme-subtle rounded px-2 py-1 text-sm"
                                                     on:change=move |e| {
                                                         use wasm_bindgen::JsCast;
                                                         let target = e.target().unwrap().unchecked_into::<web_sys::HtmlSelectElement>();
@@ -392,9 +390,9 @@ pub fn PersonalitySelector(
 
                                             // Genre selector
                                             <div class="mb-3">
-                                                <label class="block text-xs text-theme-secondary mb-1">"Genre"</label>
+                                                <label class="block text-xs text-theme-muted mb-1">"Genre"</label>
                                                 <select
-                                                    class="w-full bg-theme-primary text-theme-primary border border-theme rounded px-2 py-1 text-sm"
+                                                    class="w-full bg-theme-primary text-theme-primary border border-theme-subtle rounded px-2 py-1 text-sm"
                                                     on:change=move |e| {
                                                         use wasm_bindgen::JsCast;
                                                         let target = e.target().unwrap().unchecked_into::<web_sys::HtmlSelectElement>();
@@ -463,7 +461,7 @@ pub fn PersonalityIndicator(
 
     view! {
         {move || preview.get().map(|p| view! {
-            <span class="inline-flex items-center gap-1 text-xs text-theme-secondary bg-theme-secondary px-2 py-0.5 rounded">
+            <span class="inline-flex items-center gap-1 text-xs text-theme-muted bg-theme-surface px-2 py-0.5 rounded">
                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />

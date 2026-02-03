@@ -2,17 +2,15 @@
 //!
 //! Main dashboard view for campaign management with tabs for different features.
 
-use leptos::ev;
-use leptos::prelude::*;
-use leptos::task::spawn_local;
-use crate::bindings::{
-    Campaign, get_campaign, get_campaign_stats, CampaignStats,
-};
-use super::version_history::VersionHistory;
-use super::world_state_editor::WorldStateEditor;
 use super::entity_browser::EntityBrowser;
 #[allow(unused_imports)]
 use super::relationship_graph::RelationshipGraph;
+use super::version_history::VersionHistory;
+use super::world_state_editor::WorldStateEditor;
+use crate::bindings::{get_campaign, get_campaign_stats, Campaign, CampaignStats};
+use leptos::ev;
+use leptos::prelude::*;
+use leptos::task::spawn_local;
 
 /// Dashboard tab
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
@@ -70,12 +68,9 @@ fn TabButton(
 /// Stat card for overview
 #[component]
 fn StatCard(
-    #[prop(into)]
-    label: String,
-    #[prop(into)]
-    value: String,
-    #[prop(optional)]
-    icon: Option<String>,
+    #[prop(into)] label: String,
+    #[prop(into)] value: String,
+    #[prop(optional)] icon: Option<String>,
 ) -> impl IntoView {
     view! {
         <div class="bg-zinc-900 border border-zinc-800 rounded-lg p-4">

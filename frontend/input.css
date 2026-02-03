@@ -190,6 +190,10 @@
     color: var(--text-primary);
   }
 
+  .text-theme-secondary {
+    color: var(--text-secondary);
+  }
+
   .text-theme-muted {
     color: var(--text-muted);
   }
@@ -214,12 +218,38 @@
     background-color: var(--bg-elevated);
   }
 
+  .bg-theme-accent {
+    background-color: var(--accent);
+  }
+
   .border-theme-subtle {
     border-color: var(--border-subtle);
   }
 
   .border-theme-strong {
     border-color: var(--border-strong);
+  }
+
+  .border-theme-accent {
+    border-color: var(--accent);
+  }
+
+  .bg-theme-muted {
+    background-color: var(--text-muted);
+  }
+
+  /* Focus variants */
+  .focus\:border-theme-accent:focus {
+    border-color: var(--accent);
+  }
+
+  .focus\:ring-theme-accent:focus {
+    --tw-ring-color: var(--accent);
+  }
+
+  /* Placeholder variant */
+  .placeholder\:text-theme-muted::placeholder {
+    color: var(--text-muted);
   }
 
   /* Border Radius Using Theme Variables */

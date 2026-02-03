@@ -22,7 +22,6 @@
 
 use leptos::prelude::*;
 
-
 #[component]
 fn GraphFilterToggle(
     entity_type: EntityType,

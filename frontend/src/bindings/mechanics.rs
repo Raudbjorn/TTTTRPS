@@ -1,5 +1,5 @@
+use super::core::{invoke, invoke_no_args, invoke_void};
 use serde::{Deserialize, Serialize};
-use super::core::{invoke, invoke_void, invoke_no_args};
 
 // ============================================================================
 // Combat Types
@@ -66,7 +66,16 @@ pub async fn add_combatant(
     initiative: i32,
     combatant_type: String,
 ) -> Result<Combatant, String> {
-    add_combatant_full(session_id, name, initiative, combatant_type, None, None, None).await
+    add_combatant_full(
+        session_id,
+        name,
+        initiative,
+        combatant_type,
+        None,
+        None,
+        None,
+    )
+    .await
 }
 
 pub async fn add_combatant_full(
@@ -88,7 +97,19 @@ pub async fn add_combatant_full(
         hp_max: Option<i32>,
         armor_class: Option<i32>,
     }
-    invoke("add_combatant", &Args { session_id, name, initiative, combatant_type, hp_current, hp_max, armor_class }).await
+    invoke(
+        "add_combatant",
+        &Args {
+            session_id,
+            name,
+            initiative,
+            combatant_type,
+            hp_current,
+            hp_max,
+            armor_class,
+        },
+    )
+    .await
 }
 
 pub async fn remove_combatant(session_id: String, combatant_id: String) -> Result<(), String> {
@@ -97,7 +118,14 @@ pub async fn remove_combatant(session_id: String, combatant_id: String) -> Resul
         session_id: String,
         combatant_id: String,
     }
-    invoke_void("remove_combatant", &Args { session_id, combatant_id }).await
+    invoke_void(
+        "remove_combatant",
+        &Args {
+            session_id,
+            combatant_id,
+        },
+    )
+    .await
 }
 
 pub async fn next_turn(session_id: String) -> Result<Option<Combatant>, String> {
@@ -108,44 +136,92 @@ pub async fn next_turn(session_id: String) -> Result<Option<Combatant>, String> 
     invoke("next_turn", &Args { session_id }).await
 }
 
-pub async fn damage_combatant(session_id: String, combatant_id: String, amount: i32) -> Result<i32, String> {
+pub async fn damage_combatant(
+    session_id: String,
+    combatant_id: String,
+    amount: i32,
+) -> Result<i32, String> {
     #[derive(Serialize)]
     struct Args {
         session_id: String,
         combatant_id: String,
         amount: i32,
     }
-    invoke("damage_combatant", &Args { session_id, combatant_id, amount }).await
+    invoke(
+        "damage_combatant",
+        &Args {
+            session_id,
+            combatant_id,
+            amount,
+        },
+    )
+    .await
 }
 
-pub async fn heal_combatant(session_id: String, combatant_id: String, amount: i32) -> Result<i32, String> {
+pub async fn heal_combatant(
+    session_id: String,
+    combatant_id: String,
+    amount: i32,
+) -> Result<i32, String> {
     #[derive(Serialize)]
     struct Args {
         session_id: String,
         combatant_id: String,
         amount: i32,
     }
-    invoke("heal_combatant", &Args { session_id, combatant_id, amount }).await
+    invoke(
+        "heal_combatant",
+        &Args {
+            session_id,
+            combatant_id,
+            amount,
+        },
+    )
+    .await
 }
 
-pub async fn add_condition(session_id: String, combatant_id: String, condition_name: String) -> Result<(), String> {
+pub async fn add_condition(
+    session_id: String,
+    combatant_id: String,
+    condition_name: String,
+) -> Result<(), String> {
     #[derive(Serialize)]
     struct Args {
         session_id: String,
         combatant_id: String,
         condition_name: String,
     }
-    invoke_void("add_condition", &Args { session_id, combatant_id, condition_name }).await
+    invoke_void(
+        "add_condition",
+        &Args {
+            session_id,
+            combatant_id,
+            condition_name,
+        },
+    )
+    .await
 }
 
-pub async fn remove_condition(session_id: String, combatant_id: String, condition_name: String) -> Result<(), String> {
+pub async fn remove_condition(
+    session_id: String,
+    combatant_id: String,
+    condition_name: String,
+) -> Result<(), String> {
     #[derive(Serialize)]
     struct Args {
         session_id: String,
         combatant_id: String,
         condition_name: String,
     }
-    invoke_void("remove_condition", &Args { session_id, combatant_id, condition_name }).await
+    invoke_void(
+        "remove_condition",
+        &Args {
+            session_id,
+            combatant_id,
+            condition_name,
+        },
+    )
+    .await
 }
 
 // ============================================================================
@@ -281,28 +357,83 @@ pub async fn add_condition_advanced(request: AddConditionRequest) -> Result<(), 
     invoke_void("add_condition_advanced", &request).await
 }
 
-pub async fn remove_condition_by_id(session_id: String, combatant_id: String, condition_id: String) -> Result<(), String> {
+pub async fn remove_condition_by_id(
+    session_id: String,
+    combatant_id: String,
+    condition_id: String,
+) -> Result<(), String> {
     #[derive(Serialize)]
-    struct Args { session_id: String, combatant_id: String, condition_id: String }
-    invoke_void("remove_condition_by_id", &Args { session_id, combatant_id, condition_id }).await
+    struct Args {
+        session_id: String,
+        combatant_id: String,
+        condition_id: String,
+    }
+    invoke_void(
+        "remove_condition_by_id",
+        &Args {
+            session_id,
+            combatant_id,
+            condition_id,
+        },
+    )
+    .await
 }
 
-pub async fn get_combatant_conditions(session_id: String, combatant_id: String) -> Result<Vec<AdvancedCondition>, String> {
+pub async fn get_combatant_conditions(
+    session_id: String,
+    combatant_id: String,
+) -> Result<Vec<AdvancedCondition>, String> {
     #[derive(Serialize)]
-    struct Args { session_id: String, combatant_id: String }
-    invoke("get_combatant_conditions", &Args { session_id, combatant_id }).await
+    struct Args {
+        session_id: String,
+        combatant_id: String,
+    }
+    invoke(
+        "get_combatant_conditions",
+        &Args {
+            session_id,
+            combatant_id,
+        },
+    )
+    .await
 }
 
-pub async fn tick_conditions_end_of_turn(session_id: String, combatant_id: String) -> Result<Vec<String>, String> {
+pub async fn tick_conditions_end_of_turn(
+    session_id: String,
+    combatant_id: String,
+) -> Result<Vec<String>, String> {
     #[derive(Serialize)]
-    struct Args { session_id: String, combatant_id: String }
-    invoke("tick_conditions_end_of_turn", &Args { session_id, combatant_id }).await
+    struct Args {
+        session_id: String,
+        combatant_id: String,
+    }
+    invoke(
+        "tick_conditions_end_of_turn",
+        &Args {
+            session_id,
+            combatant_id,
+        },
+    )
+    .await
 }
 
-pub async fn tick_conditions_start_of_turn(session_id: String, combatant_id: String) -> Result<Vec<String>, String> {
+pub async fn tick_conditions_start_of_turn(
+    session_id: String,
+    combatant_id: String,
+) -> Result<Vec<String>, String> {
     #[derive(Serialize)]
-    struct Args { session_id: String, combatant_id: String }
-    invoke("tick_conditions_start_of_turn", &Args { session_id, combatant_id }).await
+    struct Args {
+        session_id: String,
+        combatant_id: String,
+    }
+    invoke(
+        "tick_conditions_start_of_turn",
+        &Args {
+            session_id,
+            combatant_id,
+        },
+    )
+    .await
 }
 
 pub async fn list_condition_templates() -> Result<Vec<String>, String> {

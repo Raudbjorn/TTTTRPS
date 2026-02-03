@@ -3,11 +3,10 @@
 //! Tests for campaign wizard step navigation, pacing options, experience levels,
 //! arc templates, party roles, and narrative styles.
 
-use wasm_bindgen_test::*;
 use ttrpg_assistant_frontend::services::wizard_state::{
-    WizardStep, CampaignPacing, ExperienceLevel, ArcTemplate,
-    PartyRole, NarrativeStyle,
+    ArcTemplate, CampaignPacing, ExperienceLevel, NarrativeStyle, PartyRole, WizardStep,
 };
+use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
 
@@ -85,9 +84,18 @@ fn test_wizard_step_next_navigation() {
     assert_eq!(WizardStep::Basics.next(), Some(WizardStep::Intent));
     assert_eq!(WizardStep::Intent.next(), Some(WizardStep::Scope));
     assert_eq!(WizardStep::Scope.next(), Some(WizardStep::Players));
-    assert_eq!(WizardStep::Players.next(), Some(WizardStep::PartyComposition));
-    assert_eq!(WizardStep::PartyComposition.next(), Some(WizardStep::ArcStructure));
-    assert_eq!(WizardStep::ArcStructure.next(), Some(WizardStep::InitialContent));
+    assert_eq!(
+        WizardStep::Players.next(),
+        Some(WizardStep::PartyComposition)
+    );
+    assert_eq!(
+        WizardStep::PartyComposition.next(),
+        Some(WizardStep::ArcStructure)
+    );
+    assert_eq!(
+        WizardStep::ArcStructure.next(),
+        Some(WizardStep::InitialContent)
+    );
     assert_eq!(WizardStep::InitialContent.next(), Some(WizardStep::Review));
     assert_eq!(WizardStep::Review.next(), None);
 }
@@ -98,10 +106,22 @@ fn test_wizard_step_previous_navigation() {
     assert_eq!(WizardStep::Intent.previous(), Some(WizardStep::Basics));
     assert_eq!(WizardStep::Scope.previous(), Some(WizardStep::Intent));
     assert_eq!(WizardStep::Players.previous(), Some(WizardStep::Scope));
-    assert_eq!(WizardStep::PartyComposition.previous(), Some(WizardStep::Players));
-    assert_eq!(WizardStep::ArcStructure.previous(), Some(WizardStep::PartyComposition));
-    assert_eq!(WizardStep::InitialContent.previous(), Some(WizardStep::ArcStructure));
-    assert_eq!(WizardStep::Review.previous(), Some(WizardStep::InitialContent));
+    assert_eq!(
+        WizardStep::PartyComposition.previous(),
+        Some(WizardStep::Players)
+    );
+    assert_eq!(
+        WizardStep::ArcStructure.previous(),
+        Some(WizardStep::PartyComposition)
+    );
+    assert_eq!(
+        WizardStep::InitialContent.previous(),
+        Some(WizardStep::ArcStructure)
+    );
+    assert_eq!(
+        WizardStep::Review.previous(),
+        Some(WizardStep::InitialContent)
+    );
 }
 
 #[wasm_bindgen_test]
@@ -109,7 +129,12 @@ fn test_wizard_step_navigation_roundtrip() {
     // next then previous should return to original (except at boundaries)
     for step in WizardStep::all() {
         if let Some(next) = step.next() {
-            assert_eq!(next.previous(), Some(step), "Roundtrip failed for {:?}", step);
+            assert_eq!(
+                next.previous(),
+                Some(step),
+                "Roundtrip failed for {:?}",
+                step
+            );
         }
     }
 }
@@ -180,7 +205,11 @@ fn test_campaign_pacing_labels() {
 fn test_campaign_pacing_descriptions() {
     for pacing in CampaignPacing::all() {
         let desc = pacing.description();
-        assert!(!desc.is_empty(), "Pacing {:?} should have description", pacing);
+        assert!(
+            !desc.is_empty(),
+            "Pacing {:?} should have description",
+            pacing
+        );
     }
 }
 
@@ -262,7 +291,11 @@ fn test_arc_template_labels() {
 fn test_arc_template_descriptions() {
     for template in ArcTemplate::all() {
         let desc = template.description();
-        assert!(!desc.is_empty(), "Template {:?} should have description", template);
+        assert!(
+            !desc.is_empty(),
+            "Template {:?} should have description",
+            template
+        );
     }
 }
 
@@ -402,25 +435,37 @@ fn has_no_duplicates<T: PartialEq>(items: &[T]) -> bool {
 #[wasm_bindgen_test]
 fn test_wizard_step_all_unique() {
     let steps = WizardStep::all();
-    assert!(has_no_duplicates(&steps), "WizardStep::all() has duplicates");
+    assert!(
+        has_no_duplicates(&steps),
+        "WizardStep::all() has duplicates"
+    );
 }
 
 #[wasm_bindgen_test]
 fn test_campaign_pacing_all_unique() {
     let pacing = CampaignPacing::all();
-    assert!(has_no_duplicates(&pacing), "CampaignPacing::all() has duplicates");
+    assert!(
+        has_no_duplicates(&pacing),
+        "CampaignPacing::all() has duplicates"
+    );
 }
 
 #[wasm_bindgen_test]
 fn test_experience_level_all_unique() {
     let levels = ExperienceLevel::all();
-    assert!(has_no_duplicates(&levels), "ExperienceLevel::all() has duplicates");
+    assert!(
+        has_no_duplicates(&levels),
+        "ExperienceLevel::all() has duplicates"
+    );
 }
 
 #[wasm_bindgen_test]
 fn test_arc_template_all_unique() {
     let templates = ArcTemplate::all();
-    assert!(has_no_duplicates(&templates), "ArcTemplate::all() has duplicates");
+    assert!(
+        has_no_duplicates(&templates),
+        "ArcTemplate::all() has duplicates"
+    );
 }
 
 #[wasm_bindgen_test]
@@ -435,5 +480,8 @@ fn test_party_role_all_unique() {
 #[wasm_bindgen_test]
 fn test_narrative_style_all_unique() {
     let styles = NarrativeStyle::all();
-    assert!(has_no_duplicates(&styles), "NarrativeStyle::all() has duplicates");
+    assert!(
+        has_no_duplicates(&styles),
+        "NarrativeStyle::all() has duplicates"
+    );
 }

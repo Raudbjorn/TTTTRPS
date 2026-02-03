@@ -277,7 +277,10 @@ pub fn use_draft_recovery() -> (RwSignal<bool>, RwSignal<Vec<WizardSummary>>) {
                     // Show notification for quick access
                     if incomplete.len() == 1 {
                         let draft = &incomplete[0];
-                        let name = draft.campaign_name.clone().unwrap_or_else(|| "Untitled".to_string());
+                        let name = draft
+                            .campaign_name
+                            .clone()
+                            .unwrap_or_else(|| "Untitled".to_string());
                         show_info(
                             &format!("Resume \"{}\"?", name),
                             Some("You have an incomplete campaign draft."),
@@ -326,7 +329,11 @@ fn format_relative_time(timestamp: &str) -> String {
 
         let minutes = duration.num_minutes();
         if minutes < 60 {
-            return format!("{} minute{} ago", minutes, if minutes == 1 { "" } else { "s" });
+            return format!(
+                "{} minute{} ago",
+                minutes,
+                if minutes == 1 { "" } else { "s" }
+            );
         }
 
         let hours = duration.num_hours();
@@ -358,10 +365,7 @@ fn format_relative_time(timestamp: &str) -> String {
 
 /// Small badge indicator for drafts available
 #[component]
-pub fn DraftBadge(
-    count: Signal<usize>,
-    on_click: Callback<()>,
-) -> impl IntoView {
+pub fn DraftBadge(count: Signal<usize>, on_click: Callback<()>) -> impl IntoView {
     view! {
         <Show when=move || { count.get() > 0 }>
             <button

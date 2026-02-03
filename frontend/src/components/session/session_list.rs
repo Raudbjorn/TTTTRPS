@@ -46,15 +46,20 @@ pub fn SessionList(
         let all_sessions = sessions.get();
         let active_id = active_session_id.get();
 
-        let max_sess_num = all_sessions.iter().map(|s| s.session_number).max().unwrap_or(0);
+        let max_sess_num = all_sessions
+            .iter()
+            .map(|s| s.session_number)
+            .max()
+            .unwrap_or(0);
 
         let mut past_sessions: Vec<SessionSummary> = vec![];
         let mut current_session: Option<SessionSummary> = None;
 
         for s in all_sessions {
+            let status_lower = s.status.to_lowercase();
             if Some(&s.id) == active_id.as_ref() {
                 current_session = Some(s);
-            } else if s.status == "active" || s.status == "in_progress" {
+            } else if status_lower == "active" || status_lower == "in_progress" {
                 current_session = Some(s);
             } else {
                 past_sessions.push(s);
@@ -84,17 +89,12 @@ pub fn SessionList(
     // Total play time calculation
     let total_playtime = Memo::new(move |_| {
         let all_sessions = sessions.get();
-        let total: i64 = all_sessions
-            .iter()
-            .filter_map(|s| s.duration_minutes)
-            .sum();
+        let total: i64 = all_sessions.iter().filter_map(|s| s.duration_minutes).sum();
         format_duration(total)
     });
 
     // Session count
-    let session_count = Memo::new(move |_| {
-        sessions.get().len()
-    });
+    let session_count = Memo::new(move |_| sessions.get().len());
 
     view! {
         <div class="flex flex-col h-full bg-zinc-900 border-r border-zinc-800 w-64">

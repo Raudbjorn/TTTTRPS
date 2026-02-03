@@ -13,7 +13,7 @@ use crate::services::wizard_state::{
 fn CharacterEntry(
     index: usize,
     character: RwSignal<CharacterSummary>,
-    on_remove: Callback<String>,  // Changed to use id instead of index
+    on_remove: Callback<String>, // Changed to use id instead of index
 ) -> impl IntoView {
     let char_id = character.get().id.clone();
     let name = RwSignal::new(character.get().name.unwrap_or_default());
@@ -23,8 +23,16 @@ fn CharacterEntry(
     // Update parent when fields change
     Effect::new(move |_| {
         character.update(|c| {
-            c.name = if name.get().is_empty() { None } else { Some(name.get()) };
-            c.class = if class.get().is_empty() { None } else { Some(class.get()) };
+            c.name = if name.get().is_empty() {
+                None
+            } else {
+                Some(name.get())
+            };
+            c.class = if class.get().is_empty() {
+                None
+            } else {
+                Some(class.get())
+            };
             c.role = role.get();
         });
     });
@@ -128,17 +136,20 @@ pub fn PartyCompositionStep(
     // Initialize characters from draft or create empty slots
     let initial_chars: Vec<RwSignal<CharacterSummary>> = if composition.characters.is_empty() {
         (0..player_count as usize)
-            .map(|_| RwSignal::new(CharacterSummary {
-                id: uuid::Uuid::new_v4().to_string(),
-                name: None,
-                class: None,
-                subclass: None,
-                level: None,
-                role: None,
-            }))
+            .map(|_| {
+                RwSignal::new(CharacterSummary {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    name: None,
+                    class: None,
+                    subclass: None,
+                    level: None,
+                    role: None,
+                })
+            })
             .collect()
     } else {
-        composition.characters
+        composition
+            .characters
             .into_iter()
             .map(|c| RwSignal::new(c))
             .collect()
@@ -147,8 +158,20 @@ pub fn PartyCompositionStep(
     let characters = RwSignal::new(initial_chars);
 
     // Level range
-    let start_level = RwSignal::new(composition.level_range.as_ref().map(|r| r.start_level).unwrap_or(1));
-    let end_level = RwSignal::new(composition.level_range.as_ref().map(|r| r.end_level).unwrap_or(10));
+    let start_level = RwSignal::new(
+        composition
+            .level_range
+            .as_ref()
+            .map(|r| r.start_level)
+            .unwrap_or(1),
+    );
+    let end_level = RwSignal::new(
+        composition
+            .level_range
+            .as_ref()
+            .map(|r| r.end_level)
+            .unwrap_or(10),
+    );
 
     // This step is always valid (optional)
     Effect::new(move |_| {
@@ -157,10 +180,7 @@ pub fn PartyCompositionStep(
 
     // Update form_data when inputs change
     Effect::new(move |_| {
-        let char_data: Vec<CharacterSummary> = characters.get()
-            .iter()
-            .map(|c| c.get())
-            .collect();
+        let char_data: Vec<CharacterSummary> = characters.get().iter().map(|c| c.get()).collect();
 
         form_data.set(Some(StepData::PartyComposition(PartyCompositionData {
             characters: char_data,

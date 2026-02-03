@@ -12,13 +12,13 @@
 //!   - Cmd+. (or Ctrl+.) : Toggle sidebar
 //!   - Cmd+/ (or Ctrl+/) : Toggle info panel
 
-use leptos::prelude::*;
-use wasm_bindgen::prelude::*;
-use wasm_bindgen::JsCast;
-use crate::services::layout_service::LayoutState;
 use crate::components::layout::icon_rail::IconRail;
 use crate::components::layout::media_bar::MediaBar;
 use crate::components::resizable_panel::{DragHandle, ResizeSide};
+use crate::services::layout_service::LayoutState;
+use leptos::prelude::*;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
 
 #[component]
 pub fn MainShell(
@@ -98,10 +98,8 @@ pub fn MainShell(
         }) as Box<dyn FnMut()>);
 
         if let Some(window) = web_sys::window() {
-            let _ = window.add_event_listener_with_callback(
-                "resize",
-                handle_resize.as_ref().unchecked_ref(),
-            );
+            let _ = window
+                .add_event_listener_with_callback("resize", handle_resize.as_ref().unchecked_ref());
             // Trigger once on mount
             let _ = handle_resize
                 .as_ref()
@@ -114,7 +112,13 @@ pub fn MainShell(
     let is_mobile = Signal::derive(move || window_width.get() < 900.0);
 
     // Computed grid template columns
-    let rail_width_px = Signal::derive(move || if layout.text_navigation.get() { 200 } else { 64 });
+    let rail_width_px = Signal::derive(move || {
+        if layout.text_navigation.get() {
+            200
+        } else {
+            64
+        }
+    });
 
     let grid_template_cols = Signal::derive(move || {
         let sidebar_w = layout.sidebar_width.get();
@@ -205,7 +209,11 @@ pub fn MainShell(
 
     // Sidebar class based on mobile/desktop
     let sidebar_class = Signal::derive(move || {
-        let rail_w = if layout.text_navigation.get() { "200px" } else { "64px" };
+        let rail_w = if layout.text_navigation.get() {
+            "200px"
+        } else {
+            "64px"
+        };
         if is_mobile.get() {
             if sidebar_visible.get() {
                 format!("fixed left-[{}] top-0 bottom-[56px] w-[300px] z-50 shadow-2xl border-r border-[var(--border-subtle)] bg-[var(--bg-surface)] overflow-visible transition-transform duration-300", rail_w)

@@ -1,6 +1,6 @@
-use leptos::prelude::*;
-use leptos::ev;
 use crate::components::design_system::Select;
+use leptos::ev;
+use leptos::prelude::*;
 
 /// Mock personality data structure
 #[derive(Clone, PartialEq)]

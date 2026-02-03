@@ -3,9 +3,9 @@
 //! Common logic for handling streaming chat responses across components.
 //! Used by Chat, NpcConversation, and SessionChatPanel.
 
+use crate::bindings::{listen_chat_chunks_async, ChatChunk};
 use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;
-use crate::bindings::{ChatChunk, listen_chat_chunks_async};
 
 /// Trait for messages that support streaming updates
 pub trait StreamingMessage {
@@ -47,10 +47,8 @@ pub type OnStreamComplete = Box<dyn Fn(String, String) + 'static>;
 /// * `messages` - RwSignal containing the message list
 /// * `find_and_update` - Closure that finds and updates a streaming message
 /// * `on_complete` - Optional callback when stream completes (receives stream_id, final_content)
-pub fn setup_stream_listener<T, F>(
-    messages: RwSignal<Vec<T>>,
-    find_and_update: F,
-) where
+pub fn setup_stream_listener<T, F>(messages: RwSignal<Vec<T>>, find_and_update: F)
+where
     T: Clone + Send + Sync + 'static,
     F: Fn(&mut Vec<T>, &ChatChunk) -> Option<String> + Clone + 'static,
 {
@@ -60,10 +58,9 @@ pub fn setup_stream_listener<T, F>(
             let find_and_update = find_and_update.clone();
 
             // Try to update messages - returns None if signal is disposed
-            let _result = messages.try_update(|msgs| {
-                find_and_update(msgs, &chunk)
-            });
-        }).await;
+            let _result = messages.try_update(|msgs| find_and_update(msgs, &chunk));
+        })
+        .await;
     });
 }
 
@@ -79,9 +76,10 @@ pub fn process_chat_chunk<T>(
     get_content: impl Fn(&T) -> &str,
 ) -> Option<String> {
     // Find the message matching this stream
-    if let Some(msg) = msgs.iter_mut().find(|m| {
-        get_stream_id(m) == Some(&chunk.stream_id) && is_streaming(m)
-    }) {
+    if let Some(msg) = msgs
+        .iter_mut()
+        .find(|m| get_stream_id(m) == Some(&chunk.stream_id) && is_streaming(m))
+    {
         // Append content
         if !chunk.content.is_empty() {
             append_content(msg, &chunk.content);

@@ -8,10 +8,9 @@ use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
 use crate::bindings::{
-    gemini_get_status, gemini_start_oauth, gemini_complete_oauth,
-    gemini_logout, gemini_set_storage_backend, open_url_in_browser,
-    gemini_oauth_with_callback,
-    GeminiStatus, GeminiStorageBackend,
+    gemini_complete_oauth, gemini_get_status, gemini_logout, gemini_oauth_with_callback,
+    gemini_set_storage_backend, gemini_start_oauth, open_url_in_browser, GeminiStatus,
+    GeminiStorageBackend,
 };
 use crate::components::design_system::{Badge, BadgeVariant, Select, SelectOption};
 use crate::services::notification_service::{show_error, show_success};
@@ -76,7 +75,10 @@ pub fn GeminiAuth(
             match gemini_oauth_with_callback(Some(300), Some(true)).await {
                 Ok(response) => {
                     if response.success {
-                        show_success("Login Complete", Some("Successfully authenticated with Gemini"));
+                        show_success(
+                            "Login Complete",
+                            Some("Successfully authenticated with Gemini"),
+                        );
                         refresh_status();
                     } else {
                         // If automatic callback failed, offer manual fallback
@@ -112,7 +114,11 @@ pub fn GeminiAuth(
                             awaiting_code.set(true);
                         }
                         Err(e) => {
-                            show_error("Browser Open Failed", Some(&format!("{}. Copy the URL shown below.", e)), None);
+                            show_error(
+                                "Browser Open Failed",
+                                Some(&format!("{}. Copy the URL shown below.", e)),
+                                None,
+                            );
                             awaiting_code.set(true);
                         }
                     }
@@ -135,7 +141,10 @@ pub fn GeminiAuth(
             match gemini_complete_oauth(code, csrf_state).await {
                 Ok(result) => {
                     if result.success {
-                        show_success("Login Complete", Some("Successfully authenticated with Gemini"));
+                        show_success(
+                            "Login Complete",
+                            Some("Successfully authenticated with Gemini"),
+                        );
                         awaiting_code.set(false);
                         auth_code.set(String::new());
                         oauth_url.set(None);
@@ -210,13 +219,13 @@ pub fn GeminiAuth(
                 }}
             </div>
 
-            <p class="text-sm text-[var(--text-muted)]">
+            <p class="text-sm text-theme-muted">
                 "Gemini requires OAuth authentication with your Google Cloud account."
             </p>
 
             // Storage backend selector
             <div class="space-y-2">
-                <label class="text-xs text-[var(--text-muted)]">"Token Storage Backend"</label>
+                <label class="text-xs text-theme-muted">"Token Storage Backend"</label>
                 <div class="flex flex-col gap-2">
                     <Select
                         value=Signal::derive(move || status.get().storage_backend)
@@ -261,20 +270,20 @@ pub fn GeminiAuth(
             {move || {
                 if awaiting_code.get() {
                     view! {
-                        <div class="flex flex-col gap-2 p-3 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)]">
+                        <div class="flex flex-col gap-2 p-3 rounded-lg bg-theme-elevated border border-theme-subtle">
                             // Show OAuth URL if available (for manual copy when popup blocked)
                             {move || {
                                 if let Some(url) = oauth_url.get() {
                                     view! {
                                         <div class="flex flex-col gap-1">
-                                            <p class="text-xs text-[var(--text-secondary)]">
+                                            <p class="text-xs text-theme-secondary">
                                                 "If the browser didn't open, copy this URL:"
                                             </p>
                                             <div class="flex gap-2 items-center">
                                                 <input
                                                     type="text"
                                                     readonly=true
-                                                    class="flex-1 px-2 py-1 text-xs rounded bg-[var(--bg-deep)] border border-[var(--border-subtle)] text-[var(--text-muted)] font-mono truncate"
+                                                    class="flex-1 px-2 py-1 text-xs rounded bg-theme-deep border border-theme-subtle text-theme-muted font-mono truncate"
                                                     prop:value=url.clone()
                                                 />
                                                 <button
@@ -304,14 +313,14 @@ pub fn GeminiAuth(
                                     view! { <div></div> }.into_any()
                                 }
                             }}
-                            <p class="text-xs text-[var(--text-secondary)]">
+                            <p class="text-xs text-theme-secondary">
                                 "After authorizing in your browser, paste the authorization code here:"
                             </p>
                             <div class="flex gap-2">
                                 <input
                                     type="text"
                                     placeholder="Paste authorization code..."
-                                    class="flex-1 px-3 py-1.5 text-sm rounded-lg bg-[var(--bg-deep)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-blue-400"
+                                    class="flex-1 px-3 py-1.5 text-sm rounded-lg bg-theme-deep border border-theme-subtle text-theme-primary placeholder:text-theme-muted focus:outline-none focus:border-blue-400"
                                     prop:value=move || auth_code.get()
                                     on:input=move |ev| {
                                         auth_code.set(event_target_value(&ev));
@@ -325,7 +334,7 @@ pub fn GeminiAuth(
                                     "Complete Login"
                                 </button>
                                 <button
-                                    class="px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--bg-surface)] text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] transition-colors"
+                                    class="px-3 py-1.5 text-xs font-medium rounded-lg bg-theme-surface text-theme-muted hover:bg-theme-elevated transition-colors"
                                     on:click=move |_| cancel_auth()
                                 >
                                     "Cancel"
@@ -370,7 +379,7 @@ pub fn GeminiAuth(
                 }}
 
                 <button
-                    class="px-4 py-2 text-sm font-medium rounded-lg bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] transition-colors disabled:opacity-50"
+                    class="px-4 py-2 text-sm font-medium rounded-lg bg-theme-elevated text-theme-secondary hover:bg-theme-surface transition-colors disabled:opacity-50"
                     disabled=move || is_loading.get()
                     on:click=move |_| refresh_status()
                 >
@@ -382,10 +391,11 @@ pub fn GeminiAuth(
 
     if show_card {
         view! {
-            <div class="p-6 rounded-xl bg-[var(--bg-surface)] border border-blue-400/30 space-y-4">
+            <div class="p-6 rounded-xl bg-theme-surface border border-blue-400/30 space-y-4">
                 {content}
             </div>
-        }.into_any()
+        }
+        .into_any()
     } else {
         view! { <div>{content}</div> }.into_any()
     }

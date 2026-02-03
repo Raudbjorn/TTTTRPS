@@ -75,8 +75,18 @@ pub fn ScopeStep(
 
     // Local form state
     let duration_preset = RwSignal::new(DurationPreset::MediumCampaign);
-    let session_count = RwSignal::new(scope.session_count.map(|c| c.to_string()).unwrap_or_else(|| "15".to_string()));
-    let session_duration = RwSignal::new(scope.session_duration_hours.map(|h| h.to_string()).unwrap_or_else(|| "3".to_string()));
+    let session_count = RwSignal::new(
+        scope
+            .session_count
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| "15".to_string()),
+    );
+    let session_duration = RwSignal::new(
+        scope
+            .session_duration_hours
+            .map(|h| h.to_string())
+            .unwrap_or_else(|| "3".to_string()),
+    );
     let pacing = RwSignal::new(scope.pacing.unwrap_or_default());
 
     // This step is required - must have valid numbers

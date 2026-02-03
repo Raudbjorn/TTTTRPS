@@ -1,5 +1,5 @@
+use super::core::{invoke, invoke_no_args, invoke_void, invoke_void_no_args};
 use serde::{Deserialize, Serialize};
-use super::core::{invoke, invoke_void, invoke_no_args, invoke_void_no_args};
 
 // ============================================================================
 // System Info & Health
@@ -147,13 +147,17 @@ pub async fn get_usage_stats() -> Result<UsageStats, String> {
 
 pub async fn get_usage_by_period(hours: i64) -> Result<UsageStats, String> {
     #[derive(Serialize)]
-    struct Args { hours: i64 }
+    struct Args {
+        hours: i64,
+    }
     invoke("get_usage_by_period", &Args { hours }).await
 }
 
 pub async fn get_cost_breakdown(hours: Option<i64>) -> Result<CostBreakdown, String> {
     #[derive(Serialize)]
-    struct Args { hours: Option<i64> }
+    struct Args {
+        hours: Option<i64>,
+    }
     invoke("get_cost_breakdown", &Args { hours }).await
 }
 
@@ -163,13 +167,17 @@ pub async fn get_budget_status() -> Result<Vec<BudgetStatus>, String> {
 
 pub async fn set_budget_limit(limit: BudgetLimit) -> Result<(), String> {
     #[derive(Serialize)]
-    struct Args { limit: BudgetLimit }
+    struct Args {
+        limit: BudgetLimit,
+    }
     invoke_void("set_budget_limit", &Args { limit }).await
 }
 
 pub async fn get_provider_usage(provider: String) -> Result<ProviderUsage, String> {
     #[derive(Serialize)]
-    struct Args { provider: String }
+    struct Args {
+        provider: String,
+    }
     invoke("get_provider_usage", &Args { provider }).await
 }
 
@@ -214,7 +222,14 @@ pub async fn get_audit_logs(
         count: Option<usize>,
         min_severity: Option<String>,
     }
-    invoke("get_audit_logs", &Args { count, min_severity }).await
+    invoke(
+        "get_audit_logs",
+        &Args {
+            count,
+            min_severity,
+        },
+    )
+    .await
 }
 
 pub async fn query_audit_logs(
@@ -232,9 +247,17 @@ pub async fn query_audit_logs(
         search_text: Option<String>,
         limit: Option<usize>,
     }
-    invoke("query_audit_logs", &Args {
-        from_hours, min_severity, event_types, search_text, limit
-    }).await
+    invoke(
+        "query_audit_logs",
+        &Args {
+            from_hours,
+            min_severity,
+            event_types,
+            search_text,
+            limit,
+        },
+    )
+    .await
 }
 
 pub async fn export_audit_logs(format: String, from_hours: Option<i64>) -> Result<String, String> {
@@ -248,7 +271,9 @@ pub async fn export_audit_logs(format: String, from_hours: Option<i64>) -> Resul
 
 pub async fn clear_old_logs(days: i64) -> Result<usize, String> {
     #[derive(Serialize)]
-    struct Args { days: i64 }
+    struct Args {
+        days: i64,
+    }
     invoke("clear_old_logs", &Args { days }).await
 }
 

@@ -8,8 +8,8 @@
 //!   - Quick-action buttons for session management
 //!   - Keyboard accessible with proper ARIA labels
 
-use leptos::prelude::*;
 use crate::bindings::SessionSummary;
+use leptos::prelude::*;
 
 /// Session status for grouping
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -208,10 +208,8 @@ pub fn ContextSidebar(
 fn SessionSection(
     title: &'static str,
     expanded: RwSignal<bool>,
-    #[prop(optional)]
-    indicator: Option<impl IntoView + 'static>,
-    #[prop(optional)]
-    count: Option<usize>,
+    #[prop(optional)] indicator: Option<impl IntoView + 'static>,
+    #[prop(optional)] count: Option<usize>,
     children: Children,
 ) -> impl IntoView {
     let toggle = move |_: web_sys::MouseEvent| {
@@ -274,8 +272,13 @@ fn SessionCard(
     let had_combat = session.had_combat;
 
     let status_badge = match status {
-        SessionStatus::Current => Some(("Live", "bg-green-500/20 text-green-400 border-green-500/30")),
-        SessionStatus::Planned => Some(("Scheduled", "bg-blue-500/20 text-blue-400 border-blue-500/30")),
+        SessionStatus::Current => {
+            Some(("Live", "bg-green-500/20 text-green-400 border-green-500/30"))
+        }
+        SessionStatus::Planned => Some((
+            "Scheduled",
+            "bg-blue-500/20 text-blue-400 border-blue-500/30",
+        )),
         SessionStatus::Past => None,
     };
 
