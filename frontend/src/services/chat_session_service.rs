@@ -344,6 +344,14 @@ impl ChatSessionService {
                     }
                     Err(e) => {
                         log::error!("Failed to persist assistant placeholder: {}", e);
+                        show_error(
+                            "Save Failed",
+                            Some(&format!(
+                                "The assistant's response may not be saved correctly: {}",
+                                e
+                            )),
+                            None,
+                        );
                     }
                 }
             });
