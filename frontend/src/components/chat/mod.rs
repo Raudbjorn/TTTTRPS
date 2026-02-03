@@ -48,9 +48,9 @@ pub fn Chat() -> impl IntoView {
     });
 
     view! {
-        <div class="flex flex-col h-screen bg-theme-primary text-theme-primary font-sans transition-colors duration-300">
+        <div class="flex flex-col h-screen bg-theme-deep text-theme-primary font-sans transition-colors duration-300">
             // Header
-            <div class="p-4 bg-theme-secondary border-b border-theme flex justify-between items-center">
+            <div class="p-4 bg-theme-surface border-b border-theme-subtle flex justify-between items-center">
                 <div class="flex items-center gap-4">
                     <h1 class="text-xl font-bold">"Sidecar DM"</h1>
                     <span class=move || {
@@ -209,7 +209,7 @@ pub fn Chat() -> impl IntoView {
             </div>
 
             // Input Area
-            <div class="p-4 bg-theme-secondary border-t border-theme">
+            <div class="p-4 bg-theme-surface border-t border-theme-subtle">
                 <div class="flex gap-2 max-w-4xl mx-auto">
                     <div class="flex-1">
                         <Input
@@ -313,7 +313,7 @@ pub fn HeaderLink(
     let icon_children = children();
 
     view! {
-        <A href=href attr:class="group relative text-theme-secondary hover:text-theme-primary transition-colors p-2 rounded hover:bg-white/5 flex items-center justify-center">
+        <A href=href attr:class="group relative text-theme-muted hover:text-theme-primary transition-colors p-2 rounded hover:bg-white/5 flex items-center justify-center">
             // Icon (Hidden in text mode, but rendered once to avoid re-creation issues)
             <div class=move || if text_mode.get() { "hidden" } else { "" }>
                 {icon_children}
