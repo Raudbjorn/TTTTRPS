@@ -39,14 +39,14 @@ pub fn SettingsShell() -> impl IntoView {
     let active_tab = RwSignal::new(SettingsTab::General);
 
     view! {
-        <div class="flex h-screen bg-[var(--bg-deep)] text-[var(--text-primary)] font-sans overflow-hidden">
+        <div class="flex h-screen bg-theme-deep text-theme-primary font-sans overflow-hidden">
             // Sidebar Navigation
-            <aside class="w-64 flex-shrink-0 border-r border-[var(--border-subtle)] bg-[var(--bg-surface)] flex flex-col">
+            <aside class="w-64 flex-shrink-0 border-r border-theme-subtle bg-theme-surface flex flex-col">
                 <div class="p-6">
                     <h2 class="text-2xl font-bold font-display bg-gradient-to-r from-[var(--accent-primary)] to-[var(--accent-secondary)] bg-clip-text text-transparent">
                         "Settings"
                     </h2>
-                    <p class="text-sm text-[var(--text-muted)] mt-1">"Configure your assistant"</p>
+                    <p class="text-sm text-theme-muted mt-1">"Configure your assistant"</p>
                 </div>
 
                 <nav class="flex-1 px-4 space-y-2 overflow-y-auto">
@@ -87,13 +87,13 @@ pub fn SettingsShell() -> impl IntoView {
                     />
                 </nav>
 
-                <div class="p-4 border-t border-[var(--border-subtle)] text-xs text-[var(--text-muted)] text-center">
+                <div class="p-4 border-t border-theme-subtle text-xs text-theme-muted text-center">
                     "TTRPG Assistant v0.1.0"
                 </div>
             </aside>
 
             // Main Content Area
-            <main class="flex-1 overflow-y-auto relative bg-[var(--bg-deep)]">
+            <main class="flex-1 overflow-y-auto relative bg-theme-deep">
                 <div class="max-w-4xl mx-auto p-8 min-h-full">
                     <div class="transition-opacity duration-300 ease-in-out">
                          {move || match active_tab.get() {
@@ -125,9 +125,9 @@ fn TabButton(
             class=move || format!(
                 "w-full text-left px-4 py-3 rounded-xl transition-all duration-200 group relative overflow-hidden {}",
                 if is_active() {
-                    "bg-[var(--accent-primary)] text-white shadow-lg shadow-[var(--accent-primary)]/20"
+                    "bg-theme-accent text-white shadow-lg shadow-[var(--accent-primary)]/20"
                 } else {
-                    "hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    "hover:bg-theme-elevated text-theme-secondary hover:text-theme-primary"
                 }
             )
             on:click=move |_| active_tab.set(tab)
@@ -144,10 +144,10 @@ fn TabButton(
                     }}
                 </span>
                 <div>
-                    <div class=move || format!("font-semibold {}", if is_active() { "text-white" } else { "text-[var(--text-primary)]" })>
+                    <div class=move || format!("font-semibold {}", if is_active() { "text-white" } else { "text-theme-primary" })>
                         {label}
                     </div>
-                    <div class=move || format!("text-xs {}", if is_active() { "text-white/80" } else { "text-[var(--text-muted)]" })>
+                    <div class=move || format!("text-xs {}", if is_active() { "text-white/80" } else { "text-theme-muted" })>
                         {desc}
                     </div>
                 </div>

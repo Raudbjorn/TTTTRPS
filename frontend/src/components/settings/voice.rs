@@ -382,8 +382,8 @@ pub fn VoiceSettingsView() -> impl IntoView {
     view! {
         <div class="space-y-8 animate-fade-in pb-20">
             <div class="space-y-2">
-                <h3 class="text-xl font-bold text-[var(--text-primary)]">"Voice & Audio"</h3>
-                <p class="text-[var(--text-muted)]">"Manage Text-to-Speech engines and voice clones."</p>
+                <h3 class="text-xl font-bold text-theme-primary">"Voice & Audio"</h3>
+                <p class="text-theme-muted">"Manage Text-to-Speech engines and voice clones."</p>
             </div>
 
             // Provider Installation Status
@@ -391,18 +391,18 @@ pub fn VoiceSettingsView() -> impl IntoView {
                 <div class="space-y-4">
                     <div class="flex items-center justify-between">
                         <div>
-                            <h4 class="text-lg font-semibold text-[var(--text-primary)]">"Local TTS Providers"</h4>
-                            <p class="text-sm text-[var(--text-muted)]">"Offline voice synthesis engines"</p>
+                            <h4 class="text-lg font-semibold text-theme-primary">"Local TTS Providers"</h4>
+                            <p class="text-sm text-theme-muted">"Offline voice synthesis engines"</p>
                         </div>
                     </div>
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         // Piper Status
-                        <div class="p-4 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+                        <div class="p-4 rounded-lg bg-theme-surface border border-theme-subtle">
                             <div class="flex items-center justify-between mb-2">
                                 <div class="flex items-center gap-2">
                                     <span class="text-lg">"⚡"</span>
-                                    <span class="font-medium text-[var(--text-primary)]">"Piper"</span>
+                                    <span class="font-medium text-theme-primary">"Piper"</span>
                                 </div>
                                 {move || {
                                     let status = piper_status.get();
@@ -418,14 +418,14 @@ pub fn VoiceSettingsView() -> impl IntoView {
                                             </span>
                                         }.into_any(),
                                         None => view! {
-                                            <span class="px-2 py-1 text-xs rounded bg-[var(--bg-deep)] text-[var(--text-muted)] animate-pulse">
+                                            <span class="px-2 py-1 text-xs rounded bg-theme-deep text-theme-muted animate-pulse">
                                                 "Checking..."
                                             </span>
                                         }.into_any(),
                                     }
                                 }}
                             </div>
-                            <p class="text-xs text-[var(--text-muted)] mb-3">"Fast, lightweight neural TTS"</p>
+                            <p class="text-xs text-theme-muted mb-3">"Fast, lightweight neural TTS"</p>
                             {move || {
                                 let status = piper_status.get();
                                 let installing = installing_provider.get();
@@ -434,7 +434,7 @@ pub fn VoiceSettingsView() -> impl IntoView {
                                         let version = s.version.clone().unwrap_or_default();
                                         let voices = s.voices_available;
                                         view! {
-                                            <div class="text-xs text-[var(--text-muted)]">
+                                            <div class="text-xs text-theme-muted">
                                                 {if !version.is_empty() {
                                                     format!("v{} • ", version)
                                                 } else {
@@ -476,11 +476,11 @@ pub fn VoiceSettingsView() -> impl IntoView {
                         </div>
 
                         // Coqui Status
-                        <div class="p-4 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+                        <div class="p-4 rounded-lg bg-theme-surface border border-theme-subtle">
                             <div class="flex items-center justify-between mb-2">
                                 <div class="flex items-center gap-2">
                                     <span class="text-lg">"🎭"</span>
-                                    <span class="font-medium text-[var(--text-primary)]">"Coqui TTS"</span>
+                                    <span class="font-medium text-theme-primary">"Coqui TTS"</span>
                                 </div>
                                 {move || {
                                     let status = coqui_status.get();
@@ -496,14 +496,14 @@ pub fn VoiceSettingsView() -> impl IntoView {
                                             </span>
                                         }.into_any(),
                                         None => view! {
-                                            <span class="px-2 py-1 text-xs rounded bg-[var(--bg-deep)] text-[var(--text-muted)] animate-pulse">
+                                            <span class="px-2 py-1 text-xs rounded bg-theme-deep text-theme-muted animate-pulse">
                                                 "Checking..."
                                             </span>
                                         }.into_any(),
                                     }
                                 }}
                             </div>
-                            <p class="text-xs text-[var(--text-muted)] mb-3">"High-quality voice cloning & XTTS"</p>
+                            <p class="text-xs text-theme-muted mb-3">"High-quality voice cloning & XTTS"</p>
                             {move || {
                                 let status = coqui_status.get();
                                 let installing = installing_provider.get();
@@ -511,7 +511,7 @@ pub fn VoiceSettingsView() -> impl IntoView {
                                     Some(s) if s.installed => {
                                         let version = s.version.clone().unwrap_or_default();
                                         view! {
-                                            <div class="text-xs text-[var(--text-muted)]">
+                                            <div class="text-xs text-theme-muted">
                                                 {if !version.is_empty() {
                                                     format!("v{}", version)
                                                 } else {
@@ -557,7 +557,7 @@ pub fn VoiceSettingsView() -> impl IntoView {
             <Card class="p-6">
                 <div class="grid grid-cols-1 gap-6">
                     <div>
-                        <label class="block text-sm font-medium text-[var(--text-secondary)] mb-2">"Provider"</label>
+                        <label class="block text-sm font-medium text-theme-secondary mb-2">"Provider"</label>
                         <SelectRw
                             value=selected_voice_provider
                             on_change=Callback::new(move |val: String| handle_provider_change(val))
@@ -571,7 +571,7 @@ pub fn VoiceSettingsView() -> impl IntoView {
                     {move || {
                         let provider = selected_voice_provider.get();
                         match provider.as_str() {
-                            "Disabled" => view! { <div class="text-[var(--text-muted)] italic">"Voice disabled."</div> }.into_any(),
+                            "Disabled" => view! { <div class="text-theme-muted italic">"Voice disabled."</div> }.into_any(),
                             _ => {
                                 let provider = provider.clone();
                                 let is_piper = provider == "Piper";
@@ -589,10 +589,10 @@ pub fn VoiceSettingsView() -> impl IntoView {
                                     _ => ""
                                 };
                                 view! {
-                                <div class="space-y-4 border-t border-[var(--border-subtle)] pt-4 animate-fade-in">
+                                <div class="space-y-4 border-t border-theme-subtle pt-4 animate-fade-in">
                                     <Show when=move || !is_piper>
                                         <div>
-                                            <label class="block text-sm font-medium text-[var(--text-secondary)] mb-2">
+                                            <label class="block text-sm font-medium text-theme-secondary mb-2">
                                                 {label}
                                             </label>
                                             <Input
@@ -605,7 +605,7 @@ pub fn VoiceSettingsView() -> impl IntoView {
 
                                     <Show when=move || is_piper>
                                         <div>
-                                            <label class="block text-sm font-medium text-[var(--text-secondary)] mb-2">"Models Directory (Optional)"</label>
+                                            <label class="block text-sm font-medium text-theme-secondary mb-2">"Models Directory (Optional)"</label>
                                             <Input
                                                 value=piper_models_dir
                                                 placeholder="/path/to/piper/models"
@@ -615,7 +615,7 @@ pub fn VoiceSettingsView() -> impl IntoView {
 
                                     <Show when=move || !is_piper>
                                         <div>
-                                            <label class="block text-sm font-medium text-[var(--text-secondary)] mb-2">"Model ID"</label>
+                                            <label class="block text-sm font-medium text-theme-secondary mb-2">"Model ID"</label>
                                             <Input value=voice_model_id />
                                         </div>
                                     </Show>
@@ -625,7 +625,7 @@ pub fn VoiceSettingsView() -> impl IntoView {
                                         if !voices.is_empty() {
                                             view! {
                                                 <div>
-                                                    <label class="block text-sm font-medium text-[var(--text-secondary)] mb-2">"Voice Persona"</label>
+                                                    <label class="block text-sm font-medium text-theme-secondary mb-2">"Voice Persona"</label>
                                                     <SelectRw
                                                         value=selected_voice_id
                                                     >
@@ -644,7 +644,7 @@ pub fn VoiceSettingsView() -> impl IntoView {
                                     <div class="pt-2">
                                         <button
                                             type="button"
-                                            class="flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                                            class="flex items-center gap-2 text-sm text-theme-muted hover:text-theme-primary transition-colors"
                                             on:click=move |_| show_advanced.update(|v| *v = !*v)
                                         >
                                             <span class=move || if show_advanced.get() { "transform rotate-90 transition-transform" } else { "transition-transform" }>
@@ -656,95 +656,95 @@ pub fn VoiceSettingsView() -> impl IntoView {
 
                                     // Piper Advanced Settings
                                     <Show when=move || is_piper && show_advanced.get()>
-                                        <div class="space-y-4 p-4 rounded-lg bg-[var(--bg-deep)] border border-[var(--border-subtle)] animate-fade-in">
-                                            <h4 class="text-sm font-semibold text-[var(--accent-primary)]">"Piper Settings"</h4>
+                                        <div class="space-y-4 p-4 rounded-lg bg-theme-deep border border-theme-subtle animate-fade-in">
+                                            <h4 class="text-sm font-semibold text-theme-accent">"Piper Settings"</h4>
 
                                             <div>
                                                 <div class="flex justify-between mb-1">
-                                                    <label class="text-sm text-[var(--text-muted)]">"Speed (Length Scale)"</label>
-                                                    <span class="text-xs font-mono text-[var(--text-muted)]">{move || format!("{:.2}", piper_length_scale.get())}</span>
+                                                    <label class="text-sm text-theme-muted">"Speed (Length Scale)"</label>
+                                                    <span class="text-xs font-mono text-theme-muted">{move || format!("{:.2}", piper_length_scale.get())}</span>
                                                 </div>
                                                 <Slider value=piper_length_scale min=0.5 max=2.0 step=0.01 />
-                                                <p class="text-xs text-[var(--text-muted)] mt-1">"1.0 = normal, higher = slower"</p>
+                                                <p class="text-xs text-theme-muted mt-1">"1.0 = normal, higher = slower"</p>
                                             </div>
 
                                             <div>
                                                 <div class="flex justify-between mb-1">
-                                                    <label class="text-sm text-[var(--text-muted)]">"Noise Scale"</label>
-                                                    <span class="text-xs font-mono text-[var(--text-muted)]">{move || format!("{:.2}", piper_noise_scale.get())}</span>
+                                                    <label class="text-sm text-theme-muted">"Noise Scale"</label>
+                                                    <span class="text-xs font-mono text-theme-muted">{move || format!("{:.2}", piper_noise_scale.get())}</span>
                                                 </div>
                                                 <Slider value=piper_noise_scale min=0.0 max=1.0 step=0.01 />
-                                                <p class="text-xs text-[var(--text-muted)] mt-1">"Phoneme variability"</p>
+                                                <p class="text-xs text-theme-muted mt-1">"Phoneme variability"</p>
                                             </div>
 
                                             <div>
                                                 <div class="flex justify-between mb-1">
-                                                    <label class="text-sm text-[var(--text-muted)]">"Noise W"</label>
-                                                    <span class="text-xs font-mono text-[var(--text-muted)]">{move || format!("{:.2}", piper_noise_w.get())}</span>
+                                                    <label class="text-sm text-theme-muted">"Noise W"</label>
+                                                    <span class="text-xs font-mono text-theme-muted">{move || format!("{:.2}", piper_noise_w.get())}</span>
                                                 </div>
                                                 <Slider value=piper_noise_w min=0.0 max=1.0 step=0.01 />
-                                                <p class="text-xs text-[var(--text-muted)] mt-1">"Phoneme width variability"</p>
+                                                <p class="text-xs text-theme-muted mt-1">"Phoneme width variability"</p>
                                             </div>
 
                                             <div>
                                                 <div class="flex justify-between mb-1">
-                                                    <label class="text-sm text-[var(--text-muted)]">"Sentence Silence"</label>
-                                                    <span class="text-xs font-mono text-[var(--text-muted)]">{move || format!("{:.2}s", piper_sentence_silence.get())}</span>
+                                                    <label class="text-sm text-theme-muted">"Sentence Silence"</label>
+                                                    <span class="text-xs font-mono text-theme-muted">{move || format!("{:.2}s", piper_sentence_silence.get())}</span>
                                                 </div>
                                                 <Slider value=piper_sentence_silence min=0.0 max=2.0 step=0.01 />
-                                                <p class="text-xs text-[var(--text-muted)] mt-1">"Pause between sentences"</p>
+                                                <p class="text-xs text-theme-muted mt-1">"Pause between sentences"</p>
                                             </div>
                                         </div>
                                     </Show>
 
                                     // Coqui Advanced Settings
                                     <Show when=move || provider == "Coqui" && show_advanced.get()>
-                                        <div class="space-y-4 p-4 rounded-lg bg-[var(--bg-deep)] border border-[var(--border-subtle)] animate-fade-in">
-                                            <h4 class="text-sm font-semibold text-[var(--accent-primary)]">"Coqui Settings"</h4>
+                                        <div class="space-y-4 p-4 rounded-lg bg-theme-deep border border-theme-subtle animate-fade-in">
+                                            <h4 class="text-sm font-semibold text-theme-accent">"Coqui Settings"</h4>
 
                                             <div>
                                                 <div class="flex justify-between mb-1">
-                                                    <label class="text-sm text-[var(--text-muted)]">"Speed"</label>
-                                                    <span class="text-xs font-mono text-[var(--text-muted)]">{move || format!("{:.2}x", coqui_speed.get())}</span>
+                                                    <label class="text-sm text-theme-muted">"Speed"</label>
+                                                    <span class="text-xs font-mono text-theme-muted">{move || format!("{:.2}x", coqui_speed.get())}</span>
                                                 </div>
                                                 <Slider value=coqui_speed min=0.5 max=2.0 step=0.01 />
-                                                <p class="text-xs text-[var(--text-muted)] mt-1">"Playback speed multiplier"</p>
+                                                <p class="text-xs text-theme-muted mt-1">"Playback speed multiplier"</p>
                                             </div>
 
                                             <div>
                                                 <div class="flex justify-between mb-1">
-                                                    <label class="text-sm text-[var(--text-muted)]">"Temperature"</label>
-                                                    <span class="text-xs font-mono text-[var(--text-muted)]">{move || format!("{:.2}", coqui_temperature.get())}</span>
+                                                    <label class="text-sm text-theme-muted">"Temperature"</label>
+                                                    <span class="text-xs font-mono text-theme-muted">{move || format!("{:.2}", coqui_temperature.get())}</span>
                                                 </div>
                                                 <Slider value=coqui_temperature min=0.0 max=2.0 step=0.01 />
-                                                <p class="text-xs text-[var(--text-muted)] mt-1">"Generation randomness (XTTS)"</p>
+                                                <p class="text-xs text-theme-muted mt-1">"Generation randomness (XTTS)"</p>
                                             </div>
 
                                             <div>
                                                 <div class="flex justify-between mb-1">
-                                                    <label class="text-sm text-[var(--text-muted)]">"Top K"</label>
-                                                    <span class="text-xs font-mono text-[var(--text-muted)]">{move || format!("{}", coqui_top_k.get() as u32)}</span>
+                                                    <label class="text-sm text-theme-muted">"Top K"</label>
+                                                    <span class="text-xs font-mono text-theme-muted">{move || format!("{}", coqui_top_k.get() as u32)}</span>
                                                 </div>
                                                 <Slider value=coqui_top_k min=1.0 max=100.0 step=1.0 />
-                                                <p class="text-xs text-[var(--text-muted)] mt-1">"Limits token selection pool"</p>
+                                                <p class="text-xs text-theme-muted mt-1">"Limits token selection pool"</p>
                                             </div>
 
                                             <div>
                                                 <div class="flex justify-between mb-1">
-                                                    <label class="text-sm text-[var(--text-muted)]">"Top P"</label>
-                                                    <span class="text-xs font-mono text-[var(--text-muted)]">{move || format!("{:.2}", coqui_top_p.get())}</span>
+                                                    <label class="text-sm text-theme-muted">"Top P"</label>
+                                                    <span class="text-xs font-mono text-theme-muted">{move || format!("{:.2}", coqui_top_p.get())}</span>
                                                 </div>
                                                 <Slider value=coqui_top_p min=0.0 max=1.0 step=0.01 />
-                                                <p class="text-xs text-[var(--text-muted)] mt-1">"Nucleus sampling threshold"</p>
+                                                <p class="text-xs text-theme-muted mt-1">"Nucleus sampling threshold"</p>
                                             </div>
 
                                             <div>
                                                 <div class="flex justify-between mb-1">
-                                                    <label class="text-sm text-[var(--text-muted)]">"Repetition Penalty"</label>
-                                                    <span class="text-xs font-mono text-[var(--text-muted)]">{move || format!("{:.1}", coqui_repetition_penalty.get())}</span>
+                                                    <label class="text-sm text-theme-muted">"Repetition Penalty"</label>
+                                                    <span class="text-xs font-mono text-theme-muted">{move || format!("{:.1}", coqui_repetition_penalty.get())}</span>
                                                 </div>
                                                 <Slider value=coqui_repetition_penalty min=1.0 max=5.0 step=0.1 />
-                                                <p class="text-xs text-[var(--text-muted)] mt-1">"Reduces repetitive output"</p>
+                                                <p class="text-xs text-theme-muted mt-1">"Reduces repetitive output"</p>
                                             </div>
                                         </div>
                                     </Show>
@@ -779,8 +779,8 @@ pub fn VoiceSettingsView() -> impl IntoView {
                     <div class="space-y-4">
                         <div class="flex items-center justify-between">
                             <div>
-                                <h4 class="text-lg font-semibold text-[var(--text-primary)]">"Download Voices"</h4>
-                                <p class="text-sm text-[var(--text-muted)]">"Download high-quality Piper voices from Hugging Face"</p>
+                                <h4 class="text-lg font-semibold text-theme-primary">"Download Voices"</h4>
+                                <p class="text-sm text-theme-muted">"Download high-quality Piper voices from Hugging Face"</p>
                             </div>
                         </div>
 
@@ -802,7 +802,7 @@ pub fn VoiceSettingsView() -> impl IntoView {
 
                                 if voices.is_empty() {
                                     view! {
-                                        <div class="text-[var(--text-muted)] text-sm italic">
+                                        <div class="text-theme-muted text-sm italic">
                                             "Loading available voices..."
                                         </div>
                                     }.into_any()
@@ -817,10 +817,10 @@ pub fn VoiceSettingsView() -> impl IntoView {
                                                 let is_downloading = downloading_voice.get().as_ref() == Some(&key_clone);
 
                                                 view! {
-                                                    <div class="flex items-center justify-between p-3 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+                                                    <div class="flex items-center justify-between p-3 rounded-lg bg-theme-surface border border-theme-subtle">
                                                         <div class="flex-1 min-w-0">
-                                                            <div class="font-medium text-[var(--text-primary)]">{name}</div>
-                                                            <div class="text-xs text-[var(--text-muted)] truncate">{desc}</div>
+                                                            <div class="font-medium text-theme-primary">{name}</div>
+                                                            <div class="text-xs text-theme-muted truncate">{desc}</div>
                                                         </div>
                                                         <div class="ml-3 flex-shrink-0">
                                                             {if is_installed {

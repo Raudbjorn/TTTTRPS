@@ -258,13 +258,13 @@ pub fn CopilotAuth(
                 }}
             </div>
 
-            <p class="text-sm text-[var(--text-muted)]">
+            <p class="text-sm text-theme-muted">
                 "GitHub Copilot uses Device Code authentication with your GitHub account."
             </p>
 
             // Storage backend selector
             <div class="space-y-2">
-                <label class="text-xs text-[var(--text-muted)]">"Token Storage Backend"</label>
+                <label class="text-xs text-theme-muted">"Token Storage Backend"</label>
                 <div class="flex flex-col gap-2">
                     <Select
                         value=Signal::derive(move || status.get().storage_backend)
@@ -321,20 +321,20 @@ pub fn CopilotAuth(
             {move || {
                 if let Some(usage_info) = usage.get() {
                     view! {
-                        <div class="p-3 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] space-y-2">
+                        <div class="p-3 rounded-lg bg-theme-elevated border border-theme-subtle space-y-2">
                             <div class="flex items-center justify-between text-xs">
-                                <span class="text-[var(--text-muted)]">"Plan"</span>
-                                <span class="text-[var(--text-primary)] font-medium">{usage_info.copilot_plan.clone()}</span>
+                                <span class="text-theme-muted">"Plan"</span>
+                                <span class="text-theme-primary font-medium">{usage_info.copilot_plan.clone()}</span>
                             </div>
                             <div class="flex items-center justify-between text-xs">
-                                <span class="text-[var(--text-muted)]">"Quota Reset"</span>
-                                <span class="text-[var(--text-secondary)]">{usage_info.quota_reset_date.clone()}</span>
+                                <span class="text-theme-muted">"Quota Reset"</span>
+                                <span class="text-theme-secondary">{usage_info.quota_reset_date.clone()}</span>
                             </div>
                             {usage_info.premium_requests.map(|pr| {
                                 if pr.unlimited {
                                     view! {
                                         <div class="flex items-center justify-between text-xs">
-                                            <span class="text-[var(--text-muted)]">"Premium Requests"</span>
+                                            <span class="text-theme-muted">"Premium Requests"</span>
                                             <span class="text-green-400">"Unlimited"</span>
                                         </div>
                                     }.into_any()
@@ -342,8 +342,8 @@ pub fn CopilotAuth(
                                     let exhausted = pr.is_exhausted;
                                     view! {
                                         <div class="flex items-center justify-between text-xs">
-                                            <span class="text-[var(--text-muted)]">"Premium Requests"</span>
-                                            <span class=if exhausted { "text-red-400" } else { "text-[var(--text-secondary)]" }>
+                                            <span class="text-theme-muted">"Premium Requests"</span>
+                                            <span class=if exhausted { "text-red-400" } else { "text-theme-secondary" }>
                                                 {format!("{} / {}", pr.used, pr.limit)}
                                             </span>
                                         </div>
@@ -363,13 +363,13 @@ pub fn CopilotAuth(
                     let code = user_code.get();
                     let uri = verification_uri.get();
                     view! {
-                        <div class="flex flex-col gap-3 p-4 rounded-lg bg-[var(--bg-elevated)] border border-[#6e40c9]/30">
+                        <div class="flex flex-col gap-3 p-4 rounded-lg bg-theme-elevated border border-[#6e40c9]/30">
                             <div class="text-center space-y-2">
-                                <p class="text-sm text-[var(--text-secondary)]">
+                                <p class="text-sm text-theme-secondary">
                                     "Enter this code at GitHub:"
                                 </p>
                                 <div class="flex justify-center">
-                                    <code class="px-6 py-3 text-2xl font-mono font-bold tracking-widest bg-[var(--bg-deep)] rounded-lg text-[#6e40c9] select-all">
+                                    <code class="px-6 py-3 text-2xl font-mono font-bold tracking-widest bg-theme-deep rounded-lg text-[#6e40c9] select-all">
                                         {code.clone()}
                                     </code>
                                 </div>
@@ -398,13 +398,13 @@ pub fn CopilotAuth(
                                 </button>
                             </div>
 
-                            <div class="flex flex-col gap-1 pt-2 border-t border-[var(--border-subtle)]">
-                                <p class="text-xs text-[var(--text-muted)]">"Visit this URL if the browser didn't open:"</p>
+                            <div class="flex flex-col gap-1 pt-2 border-t border-theme-subtle">
+                                <p class="text-xs text-theme-muted">"Visit this URL if the browser didn't open:"</p>
                                 <div class="flex gap-2 items-center">
                                     <input
                                         type="text"
                                         readonly
-                                        class="flex-1 px-2 py-1 text-xs rounded bg-[var(--bg-deep)] border border-[var(--border-subtle)] text-[var(--text-muted)] font-mono truncate"
+                                        class="flex-1 px-2 py-1 text-xs rounded bg-theme-deep border border-theme-subtle text-theme-muted font-mono truncate"
                                         prop:value=uri.clone()
                                     />
                                     <button
@@ -425,11 +425,11 @@ pub fn CopilotAuth(
                                 </div>
                             </div>
 
-                            <div class="flex items-center justify-between text-xs text-[var(--text-muted)] pt-2">
+                            <div class="flex items-center justify-between text-xs text-theme-muted pt-2">
                                 <span>"Waiting for authorization..."</span>
                                 <button
                                     type="button"
-                                    class="px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--bg-surface)] text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] transition-colors"
+                                    class="px-3 py-1.5 text-xs font-medium rounded-lg bg-theme-surface text-theme-muted hover:bg-theme-elevated transition-colors"
                                     on:click=move |_| cancel_auth()
                                 >
                                     "Cancel"
@@ -477,7 +477,7 @@ pub fn CopilotAuth(
 
                 <button
                     type="button"
-                    class="px-4 py-2 text-sm font-medium rounded-lg bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] transition-colors disabled:opacity-50"
+                    class="px-4 py-2 text-sm font-medium rounded-lg bg-theme-elevated text-theme-secondary hover:bg-theme-surface transition-colors disabled:opacity-50"
                     disabled=move || is_loading.get()
                     on:click=move |_| refresh_status()
                 >
@@ -489,7 +489,7 @@ pub fn CopilotAuth(
 
     if show_card {
         view! {
-            <div class="p-6 rounded-xl bg-[var(--bg-surface)] border border-[#6e40c9]/30 space-y-4">
+            <div class="p-6 rounded-xl bg-theme-surface border border-[#6e40c9]/30 space-y-4">
                 {content}
             </div>
         }.into_any()

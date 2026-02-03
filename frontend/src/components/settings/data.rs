@@ -91,8 +91,8 @@ pub fn DataSettingsView() -> impl IntoView {
     view! {
          <div class="space-y-8 animate-fade-in">
             <div class="space-y-2">
-                <h3 class="text-xl font-bold text-[var(--text-primary)]">"Data & Storage"</h3>
-                <p class="text-[var(--text-muted)]">"Manage your local library, search index, and document extraction."</p>
+                <h3 class="text-xl font-bold text-theme-primary">"Data & Storage"</h3>
+                <p class="text-theme-muted">"Manage your local library, search index, and document extraction."</p>
             </div>
 
             // Search Index Card
@@ -100,8 +100,8 @@ pub fn DataSettingsView() -> impl IntoView {
                 <div class="flex justify-between items-center">
                     <div>
                         <h4 class="font-bold">"Search Index"</h4>
-                        <p class="text-sm text-[var(--text-muted)]">"Rebuild the Meilisearch index if search results are incorrect."</p>
-                         <p class="text-xs text-[var(--accent-primary)] mt-1">{move || reindex_status.get()}</p>
+                        <p class="text-sm text-theme-muted">"Rebuild the Meilisearch index if search results are incorrect."</p>
+                         <p class="text-xs text-theme-accent mt-1">{move || reindex_status.get()}</p>
                     </div>
                     <Button
                         variant=ButtonVariant::Outline
@@ -119,14 +119,14 @@ pub fn DataSettingsView() -> impl IntoView {
                 <div class="space-y-6">
                     <div class="flex justify-between items-start">
                         <div>
-                            <h4 class="text-lg font-bold text-[var(--text-primary)]">"Document Extraction"</h4>
-                            <p class="text-sm text-[var(--text-muted)]">"Configure how documents are processed during ingestion."</p>
+                            <h4 class="text-lg font-bold text-theme-primary">"Document Extraction"</h4>
+                            <p class="text-sm text-theme-muted">"Configure how documents are processed during ingestion."</p>
                         </div>
                         // Preset dropdown
                         <div class="flex items-center gap-2">
-                            <span class="text-sm text-[var(--text-muted)]">"Preset:"</span>
+                            <span class="text-sm text-theme-muted">"Preset:"</span>
                             <select
-                                class="px-3 py-1.5 rounded-lg bg-[var(--bg-deep)] border border-[var(--border-subtle)] text-[var(--text-primary)] text-sm outline-none focus:border-[var(--accent-primary)]"
+                                class="px-3 py-1.5 rounded-lg bg-theme-deep border border-theme-subtle text-theme-primary text-sm outline-none focus:border-theme-accent"
                                 style="color-scheme: dark;"
                                 on:change=move |ev| {
                                     let val = event_target_value(&ev);
@@ -150,7 +150,7 @@ pub fn DataSettingsView() -> impl IntoView {
                     // OCR Settings Section
                     <div class="space-y-4">
                         <div class="flex items-center gap-2">
-                            <h5 class="font-semibold text-[var(--text-primary)]">"OCR Settings"</h5>
+                            <h5 class="font-semibold text-theme-primary">"OCR Settings"</h5>
                             {move || {
                                 if let Some(ocr) = ocr_availability.get() {
                                     if ocr.external_ocr_ready {
@@ -173,7 +173,7 @@ pub fn DataSettingsView() -> impl IntoView {
                             <label class="flex items-center gap-3 cursor-pointer">
                                 <input
                                     type="checkbox"
-                                    class="w-4 h-4 rounded border-[var(--border-subtle)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)]"
+                                    class="w-4 h-4 rounded border-theme-subtle text-theme-accent focus:ring-theme-accent"
                                     prop:checked=move || extraction_settings.get().ocr_enabled
                                     on:change=move |ev| {
                                         let checked = event_target_checked(&ev);
@@ -181,14 +181,14 @@ pub fn DataSettingsView() -> impl IntoView {
                                         has_changes.set(true);
                                     }
                                 />
-                                <span class="text-sm text-[var(--text-secondary)]">"Enable OCR for scanned documents"</span>
+                                <span class="text-sm text-theme-secondary">"Enable OCR for scanned documents"</span>
                             </label>
 
                             // Force OCR toggle
                             <label class="flex items-center gap-3 cursor-pointer">
                                 <input
                                     type="checkbox"
-                                    class="w-4 h-4 rounded border-[var(--border-subtle)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)]"
+                                    class="w-4 h-4 rounded border-theme-subtle text-theme-accent focus:ring-theme-accent"
                                     prop:checked=move || extraction_settings.get().force_ocr
                                     on:change=move |ev| {
                                         let checked = event_target_checked(&ev);
@@ -196,16 +196,16 @@ pub fn DataSettingsView() -> impl IntoView {
                                         has_changes.set(true);
                                     }
                                 />
-                                <span class="text-sm text-[var(--text-secondary)]">"Force OCR (always use OCR)"</span>
+                                <span class="text-sm text-theme-secondary">"Force OCR (always use OCR)"</span>
                             </label>
                         </div>
 
                         <div class="grid grid-cols-2 gap-4">
                             // OCR Language
                             <div>
-                                <label class="block text-sm text-[var(--text-muted)] mb-1">"OCR Language"</label>
+                                <label class="block text-sm text-theme-muted mb-1">"OCR Language"</label>
                                 <select
-                                    class="w-full px-3 py-2 rounded-lg bg-[var(--bg-deep)] border border-[var(--border-subtle)] text-[var(--text-primary)] text-sm outline-none focus:border-[var(--accent-primary)]"
+                                    class="w-full px-3 py-2 rounded-lg bg-theme-deep border border-theme-subtle text-theme-primary text-sm outline-none focus:border-theme-accent"
                                     style="color-scheme: dark;"
                                     prop:value=move || extraction_settings.get().ocr_language.clone()
                                     on:change=move |ev| {
@@ -231,10 +231,10 @@ pub fn DataSettingsView() -> impl IntoView {
 
                             // Min text threshold
                             <div>
-                                <label class="block text-sm text-[var(--text-muted)] mb-1">"Min text threshold (chars)"</label>
+                                <label class="block text-sm text-theme-muted mb-1">"Min text threshold (chars)"</label>
                                 <input
                                     type="number"
-                                    class="w-full px-3 py-2 rounded-lg bg-[var(--bg-deep)] border border-[var(--border-subtle)] text-[var(--text-primary)] text-sm outline-none focus:border-[var(--accent-primary)]"
+                                    class="w-full px-3 py-2 rounded-lg bg-theme-deep border border-theme-subtle text-theme-primary text-sm outline-none focus:border-theme-accent"
                                     prop:value=move || extraction_settings.get().ocr_min_text_threshold.to_string()
                                     on:input=move |ev| {
                                         if let Ok(val) = event_target_value(&ev).parse::<usize>() {
@@ -248,15 +248,15 @@ pub fn DataSettingsView() -> impl IntoView {
                     </div>
 
                     // Quality Settings Section
-                    <div class="space-y-4 pt-4 border-t border-[var(--border-subtle)]">
-                        <h5 class="font-semibold text-[var(--text-primary)]">"Quality Processing"</h5>
+                    <div class="space-y-4 pt-4 border-t border-theme-subtle">
+                        <h5 class="font-semibold text-theme-primary">"Quality Processing"</h5>
 
                         <div class="grid grid-cols-2 gap-4">
                             // Quality processing toggle
                             <label class="flex items-center gap-3 cursor-pointer">
                                 <input
                                     type="checkbox"
-                                    class="w-4 h-4 rounded border-[var(--border-subtle)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)]"
+                                    class="w-4 h-4 rounded border-theme-subtle text-theme-accent focus:ring-theme-accent"
                                     prop:checked=move || extraction_settings.get().quality_processing
                                     on:change=move |ev| {
                                         let checked = event_target_checked(&ev);
@@ -264,14 +264,14 @@ pub fn DataSettingsView() -> impl IntoView {
                                         has_changes.set(true);
                                     }
                                 />
-                                <span class="text-sm text-[var(--text-secondary)]">"Enable text quality processing"</span>
+                                <span class="text-sm text-theme-secondary">"Enable text quality processing"</span>
                             </label>
 
                             // Language detection toggle
                             <label class="flex items-center gap-3 cursor-pointer">
                                 <input
                                     type="checkbox"
-                                    class="w-4 h-4 rounded border-[var(--border-subtle)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)]"
+                                    class="w-4 h-4 rounded border-theme-subtle text-theme-accent focus:ring-theme-accent"
                                     prop:checked=move || extraction_settings.get().language_detection
                                     on:change=move |ev| {
                                         let checked = event_target_checked(&ev);
@@ -279,15 +279,15 @@ pub fn DataSettingsView() -> impl IntoView {
                                         has_changes.set(true);
                                     }
                                 />
-                                <span class="text-sm text-[var(--text-secondary)]">"Auto-detect document language"</span>
+                                <span class="text-sm text-theme-secondary">"Auto-detect document language"</span>
                             </label>
                         </div>
 
                         // Token reduction dropdown
                         <div>
-                            <label class="block text-sm text-[var(--text-muted)] mb-1">"Token Reduction Level"</label>
+                            <label class="block text-sm text-theme-muted mb-1">"Token Reduction Level"</label>
                             <select
-                                class="w-full px-3 py-2 rounded-lg bg-[var(--bg-deep)] border border-[var(--border-subtle)] text-[var(--text-primary)] text-sm outline-none focus:border-[var(--accent-primary)]"
+                                class="w-full px-3 py-2 rounded-lg bg-theme-deep border border-theme-subtle text-theme-primary text-sm outline-none focus:border-theme-accent"
                                 style="color-scheme: dark;"
                                 on:change=move |ev| {
                                     let val = event_target_value(&ev);
@@ -308,23 +308,23 @@ pub fn DataSettingsView() -> impl IntoView {
                                 <option value="aggressive" selected=move || extraction_settings.get().token_reduction == TokenReductionLevel::Aggressive>"Aggressive - Prioritize size"</option>
                                 <option value="maximum" selected=move || extraction_settings.get().token_reduction == TokenReductionLevel::Maximum>"Maximum - Minimal output"</option>
                             </select>
-                            <p class="text-xs text-[var(--text-muted)] mt-1">"Reduce token count for LLM context optimization."</p>
+                            <p class="text-xs text-theme-muted mt-1">"Reduce token count for LLM context optimization."</p>
                         </div>
                     </div>
 
                     // Advanced Settings Section
-                    <div class="space-y-4 pt-4 border-t border-[var(--border-subtle)]">
-                        <h5 class="font-semibold text-[var(--text-primary)]">"Advanced Settings"</h5>
+                    <div class="space-y-4 pt-4 border-t border-theme-subtle">
+                        <h5 class="font-semibold text-theme-primary">"Advanced Settings"</h5>
 
                         <div class="grid grid-cols-2 gap-4">
                             // Image DPI
                             <div>
-                                <label class="block text-sm text-[var(--text-muted)] mb-1">"OCR Image DPI"</label>
+                                <label class="block text-sm text-theme-muted mb-1">"OCR Image DPI"</label>
                                 <input
                                     type="number"
                                     min="72"
                                     max="600"
-                                    class="w-full px-3 py-2 rounded-lg bg-[var(--bg-deep)] border border-[var(--border-subtle)] text-[var(--text-primary)] text-sm outline-none focus:border-[var(--accent-primary)]"
+                                    class="w-full px-3 py-2 rounded-lg bg-theme-deep border border-theme-subtle text-theme-primary text-sm outline-none focus:border-theme-accent"
                                     prop:value=move || extraction_settings.get().image_dpi.to_string()
                                     on:input=move |ev| {
                                         if let Ok(val) = event_target_value(&ev).parse::<u32>() {
@@ -337,12 +337,12 @@ pub fn DataSettingsView() -> impl IntoView {
 
                             // Max concurrent extractions
                             <div>
-                                <label class="block text-sm text-[var(--text-muted)] mb-1">"Max Concurrent Extractions"</label>
+                                <label class="block text-sm text-theme-muted mb-1">"Max Concurrent Extractions"</label>
                                 <input
                                     type="number"
                                     min="1"
                                     max="32"
-                                    class="w-full px-3 py-2 rounded-lg bg-[var(--bg-deep)] border border-[var(--border-subtle)] text-[var(--text-primary)] text-sm outline-none focus:border-[var(--accent-primary)]"
+                                    class="w-full px-3 py-2 rounded-lg bg-theme-deep border border-theme-subtle text-theme-primary text-sm outline-none focus:border-theme-accent"
                                     prop:value=move || extraction_settings.get().max_concurrent_extractions.to_string()
                                     on:input=move |ev| {
                                         if let Ok(val) = event_target_value(&ev).parse::<usize>() {
@@ -358,7 +358,7 @@ pub fn DataSettingsView() -> impl IntoView {
                         <label class="flex items-center gap-3 cursor-pointer">
                             <input
                                 type="checkbox"
-                                class="w-4 h-4 rounded border-[var(--border-subtle)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)]"
+                                class="w-4 h-4 rounded border-theme-subtle text-theme-accent focus:ring-theme-accent"
                                 prop:checked=move || extraction_settings.get().use_cache
                                 on:change=move |ev| {
                                     let checked = event_target_checked(&ev);
@@ -366,13 +366,13 @@ pub fn DataSettingsView() -> impl IntoView {
                                     has_changes.set(true);
                                 }
                             />
-                            <span class="text-sm text-[var(--text-secondary)]">"Cache extraction results"</span>
+                            <span class="text-sm text-theme-secondary">"Cache extraction results"</span>
                         </label>
                     </div>
 
                     // Save button
-                    <div class="flex items-center justify-between pt-4 border-t border-[var(--border-subtle)]">
-                        <span class="text-sm text-[var(--text-muted)]">{move || settings_status.get()}</span>
+                    <div class="flex items-center justify-between pt-4 border-t border-theme-subtle">
+                        <span class="text-sm text-theme-muted">{move || settings_status.get()}</span>
                         <Button
                             variant=ButtonVariant::Primary
                             on_click=handle_save_settings

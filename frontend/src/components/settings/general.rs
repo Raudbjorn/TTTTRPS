@@ -18,13 +18,13 @@ pub fn GeneralSettings() -> impl IntoView {
     view! {
         <div class="space-y-8 animate-fade-in pb-20">
             <div class="space-y-2">
-                <h3 class="text-xl font-bold text-[var(--text-primary)]">"Appearance"</h3>
-                <p class="text-[var(--text-muted)]">"Customize the look and feel of your assistant."</p>
+                <h3 class="text-xl font-bold text-theme-primary">"Appearance"</h3>
+                <p class="text-theme-muted">"Customize the look and feel of your assistant."</p>
             </div>
 
             // Theme Presets
             <Card class="p-6 space-y-6">
-                <h4 class="font-semibold text-[var(--text-secondary)]">"Theme Preset"</h4>
+                <h4 class="font-semibold text-theme-secondary">"Theme Preset"</h4>
 
                 <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
                     {presets.into_iter().map(|(id, bg, accent)| {
@@ -37,14 +37,14 @@ pub fn GeneralSettings() -> impl IntoView {
                                 class=move || format!(
                                     "relative p-4 rounded-xl border-2 text-left transition-all duration-300 hover:scale-[1.02] group {}",
                                     if is_active() {
-                                        "border-[var(--accent-primary)] bg-[var(--bg-elevated)] ring-2 ring-[var(--accent-primary)]/20 shadow-lg"
+                                        "border-theme-accent bg-theme-elevated ring-2 ring-[var(--accent-primary)]/20 shadow-lg"
                                     } else {
-                                        "border-[var(--border-subtle)] hover:border-[var(--border-strong)] bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)]"
+                                        "border-theme-subtle hover:border-theme-strong bg-theme-surface hover:bg-theme-elevated"
                                     }
                                 )
                                 on:click=move |_| theme_state.set_preset(&p_clone)
                             >
-                                <div class="font-medium capitalize mb-3 text-[var(--text-primary)] group-hover:text-[var(--accent-primary)] transition-colors">
+                                <div class="font-medium capitalize mb-3 text-theme-primary group-hover:text-theme-accent transition-colors">
                                     {p_text}
                                 </div>
 
@@ -52,20 +52,20 @@ pub fn GeneralSettings() -> impl IntoView {
                                 <div class="flex gap-2 mb-1">
                                     <div
                                         class="w-8 h-8 rounded-full border border-white/10 shadow-inner"
-                                        style=format!("background: {}", bg)
+                                        style=("background-color", bg)
                                         title="Background"
                                     ></div>
                                     <div
                                         class="w-8 h-8 rounded-full border border-white/10 shadow-inner -ml-4"
-                                        style=format!("background: {}", accent)
+                                        style=("background-color", accent)
                                         title="Accent"
-                                    ></div>
+                                        ></div>
                                 </div>
 
                                 // Active Indicator
                                 {move || if is_active() {
                                     view! {
-                                        <div class="absolute top-3 right-3 text-[var(--accent-primary)] animate-fade-in">
+                                        <div class="absolute top-3 right-3 text-theme-accent animate-fade-in">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check-circle-2">
                                                 <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/>
                                                 <path d="m9 12 2 2 4-4"/>
@@ -86,11 +86,11 @@ pub fn GeneralSettings() -> impl IntoView {
                  // Motion Toggle (Placeholder)
                  <div class="flex items-center justify-between opacity-50 cursor-not-allowed mb-6" title="Coming soon">
                     <div>
-                        <h4 class="font-semibold text-[var(--text-secondary)]">"Reduce Motion"</h4>
-                        <p class="text-sm text-[var(--text-muted)]">"Disable advanced animations (film grain, scanlines)."</p>
+                        <h4 class="font-semibold text-theme-secondary">"Reduce Motion"</h4>
+                        <p class="text-sm text-theme-muted">"Disable advanced animations (film grain, scanlines)."</p>
                     </div>
-                    <div class="h-6 w-11 bg-[var(--bg-surface)] rounded-full border border-[var(--border-subtle)] relative">
-                         <div class="absolute left-1 top-1 h-4 w-4 bg-[var(--text-muted)] rounded-full"></div>
+                    <div class="h-6 w-11 bg-theme-surface rounded-full border border-theme-subtle relative">
+                         <div class="absolute left-1 top-1 h-4 w-4 bg-theme-muted rounded-full"></div>
                     </div>
                  </div>
 
@@ -102,16 +102,16 @@ pub fn GeneralSettings() -> impl IntoView {
                     view! {
                         <div class="flex items-center justify-between">
                             <div>
-                                <h4 class="font-semibold text-[var(--text-secondary)]">"Text Navigation"</h4>
-                                <p class="text-sm text-[var(--text-muted)]">"Show text labels instead of icons in the navigation bar."</p>
+                                <h4 class="font-semibold text-theme-secondary">"Text Navigation"</h4>
+                                <p class="text-sm text-theme-muted">"Show text labels instead of icons in the navigation bar."</p>
                             </div>
                             <button
                                 class=move || format!(
-                                    "h-6 w-11 rounded-full border transition-colors duration-200 relative focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)] {}",
+                                    "h-6 w-11 rounded-full border transition-colors duration-200 relative focus:outline-none focus:ring-2 focus:ring-theme-accent {}",
                                     if is_text_mode.get() {
-                                        "bg-[var(--accent-primary)] border-[var(--accent-primary)]"
+                                        "bg-theme-accent border-theme-accent"
                                     } else {
-                                        "bg-[var(--bg-surface)] border-[var(--border-subtle)]"
+                                        "bg-theme-surface border-theme-subtle"
                                     }
                                 )
                                 on:click=move |_| is_text_mode.update(|v| *v = !*v)

@@ -56,13 +56,13 @@ pub fn ExtractionSettingsView() -> impl IntoView {
     view! {
         <div class="space-y-8 animate-fade-in pb-20">
             <div class="space-y-2">
-                <h3 class="text-xl font-bold text-[var(--text-primary)]">"Text Extraction"</h3>
-                <p class="text-[var(--text-muted)]">"Configure how documents are extracted and processed."</p>
+                <h3 class="text-xl font-bold text-theme-primary">"Text Extraction"</h3>
+                <p class="text-theme-muted">"Configure how documents are extracted and processed."</p>
             </div>
 
             // Provider Selection
             <Card class="p-6 space-y-6">
-                <h4 class="font-semibold text-[var(--text-secondary)]">"Extraction Provider"</h4>
+                <h4 class="font-semibold text-theme-secondary">"Extraction Provider"</h4>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     // Kreuzberg Option
@@ -70,9 +70,9 @@ pub fn ExtractionSettingsView() -> impl IntoView {
                         class=move || format!(
                             "relative p-4 rounded-xl border-2 text-left transition-all duration-300 hover:scale-[1.02] group {}",
                             if selected_provider.get() == TextExtractionProvider::Kreuzberg {
-                                "border-[var(--accent-primary)] bg-[var(--bg-elevated)] ring-2 ring-[var(--accent-primary)]/20 shadow-lg"
+                                "border-theme-accent bg-theme-elevated ring-2 ring-[var(--accent-primary)]/20 shadow-lg"
                             } else {
-                                "border-[var(--border-subtle)] hover:border-[var(--border-strong)] bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)]"
+                                "border-theme-subtle hover:border-theme-strong bg-theme-surface hover:bg-theme-elevated"
                             }
                         )
                         on:click=move |_| {
@@ -81,12 +81,12 @@ pub fn ExtractionSettingsView() -> impl IntoView {
                         }
                     >
                         <div class="flex items-center justify-between mb-2">
-                            <span class="font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-primary)] transition-colors">
+                            <span class="font-medium text-theme-primary group-hover:text-theme-accent transition-colors">
                                 "Kreuzberg"
                             </span>
                             <Badge variant=BadgeVariant::Info>"Default"</Badge>
                         </div>
-                        <p class="text-sm text-[var(--text-muted)]">
+                        <p class="text-sm text-theme-muted">
                             "Local extraction using bundled pdfium. Fast, private, no API costs."
                         </p>
                         <div class="mt-3 flex flex-wrap gap-2">
@@ -99,7 +99,7 @@ pub fn ExtractionSettingsView() -> impl IntoView {
                         // Active indicator
                         {move || if selected_provider.get() == TextExtractionProvider::Kreuzberg {
                             view! {
-                                <div class="absolute top-3 right-3 text-[var(--accent-primary)] animate-fade-in">
+                                <div class="absolute top-3 right-3 text-theme-accent animate-fade-in">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                         <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/>
                                         <path d="m9 12 2 2 4-4"/>
@@ -116,9 +116,9 @@ pub fn ExtractionSettingsView() -> impl IntoView {
                         class=move || format!(
                             "relative p-4 rounded-xl border-2 text-left transition-all duration-300 hover:scale-[1.02] group {}",
                             if selected_provider.get() == TextExtractionProvider::Claude {
-                                "border-orange-400 bg-[var(--bg-elevated)] ring-2 ring-orange-400/20 shadow-lg"
+                                "border-orange-400 bg-theme-elevated ring-2 ring-orange-400/20 shadow-lg"
                             } else {
-                                "border-[var(--border-subtle)] hover:border-[var(--border-strong)] bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)]"
+                                "border-theme-subtle hover:border-theme-strong bg-theme-surface hover:bg-theme-elevated"
                             }
                         )
                         on:click=move |_| {
@@ -127,7 +127,7 @@ pub fn ExtractionSettingsView() -> impl IntoView {
                         }
                     >
                         <div class="flex items-center justify-between mb-2">
-                            <span class="font-medium text-[var(--text-primary)] group-hover:text-orange-400 transition-colors">
+                            <span class="font-medium text-theme-primary group-hover:text-orange-400 transition-colors">
                                 "Claude API"
                             </span>
                             {move || if claude_status.get().authenticated {
@@ -136,7 +136,7 @@ pub fn ExtractionSettingsView() -> impl IntoView {
                                 view! { <Badge variant=BadgeVariant::Warning>"Not Authenticated"</Badge> }.into_any()
                             }}
                         </div>
-                        <p class="text-sm text-[var(--text-muted)]">
+                        <p class="text-sm text-theme-muted">
                             "Uses Claude API for intelligent extraction. Better for complex layouts."
                         </p>
                         <div class="mt-3 flex flex-wrap gap-2">
@@ -186,8 +186,8 @@ pub fn ExtractionSettingsView() -> impl IntoView {
                         </svg>
                     </div>
                     <div>
-                        <h4 class="font-semibold text-[var(--text-secondary)]">"OCR Settings"</h4>
-                        <p class="text-sm text-[var(--text-muted)]">
+                        <h4 class="font-semibold text-theme-secondary">"OCR Settings"</h4>
+                        <p class="text-sm text-theme-muted">
                             "For scanned documents and images, OCR settings can be configured in the Data & Library section. "
                             "Both providers support OCR fallback for documents without extractable text."
                         </p>
