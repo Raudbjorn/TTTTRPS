@@ -1,24 +1,24 @@
-pub mod general;
-pub mod llm;
-pub mod voice;
-pub mod data;
-pub mod model_selection;
-pub mod extraction;
-pub mod embedding;
 pub mod claude_auth;
 pub mod copilot_auth;
+pub mod data;
+pub mod embedding;
+pub mod extraction;
 pub mod gemini_auth;
+pub mod general;
+pub mod llm;
+pub mod model_selection;
+pub mod voice;
 
 pub use claude_auth::{ClaudeAuth, ClaudeStatusBadge};
 pub use copilot_auth::{CopilotAuth, CopilotStatusBadge};
 pub use gemini_auth::{GeminiAuth, GeminiStatusBadge};
 
+pub use crate::bindings::TextExtractionProvider;
+pub use embedding::{EmbeddingProvider, EmbeddingSettingsView, SemanticAnalysisProvider};
+pub use extraction::ExtractionSettingsView;
 use leptos::prelude::*;
 pub use llm::LLMProvider;
 pub use model_selection::ModelSelectionDashboard;
-pub use extraction::ExtractionSettingsView;
-pub use crate::bindings::TextExtractionProvider;
-pub use embedding::{EmbeddingSettingsView, EmbeddingProvider, SemanticAnalysisProvider};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SettingsTab {

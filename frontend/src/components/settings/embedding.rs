@@ -3,8 +3,8 @@
 //! This module provides UI for configuring embedding providers
 //! and semantic analysis options.
 
+use crate::components::design_system::{Badge, BadgeVariant, Card};
 use leptos::prelude::*;
-use crate::components::design_system::{Card, Badge, BadgeVariant};
 
 /// Embedding provider options
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]

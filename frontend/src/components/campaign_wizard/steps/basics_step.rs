@@ -8,16 +8,48 @@ use crate::services::wizard_state::{use_wizard_context, BasicsData, StepData};
 
 /// Game system options
 const GAME_SYSTEMS: &[(&str, &str, &str)] = &[
-    ("dnd5e", "D&D 5th Edition", "High fantasy adventure with iconic classes and monsters"),
-    ("pf2e", "Pathfinder 2e", "Tactical fantasy with deep character customization"),
-    ("coc7e", "Call of Cthulhu 7e", "Cosmic horror investigation and sanity mechanics"),
+    (
+        "dnd5e",
+        "D&D 5th Edition",
+        "High fantasy adventure with iconic classes and monsters",
+    ),
+    (
+        "pf2e",
+        "Pathfinder 2e",
+        "Tactical fantasy with deep character customization",
+    ),
+    (
+        "coc7e",
+        "Call of Cthulhu 7e",
+        "Cosmic horror investigation and sanity mechanics",
+    ),
     ("delta_green", "Delta Green", "Modern-day conspiracy horror"),
-    ("mothership", "Mothership", "Sci-fi horror with panic mechanics"),
-    ("cyberpunk_red", "Cyberpunk Red", "Dystopian future with style over substance"),
-    ("shadowrun6e", "Shadowrun 6e", "Cyberpunk meets fantasy in a corporate dystopia"),
-    ("vtm5e", "Vampire: The Masquerade", "Personal horror in the World of Darkness"),
+    (
+        "mothership",
+        "Mothership",
+        "Sci-fi horror with panic mechanics",
+    ),
+    (
+        "cyberpunk_red",
+        "Cyberpunk Red",
+        "Dystopian future with style over substance",
+    ),
+    (
+        "shadowrun6e",
+        "Shadowrun 6e",
+        "Cyberpunk meets fantasy in a corporate dystopia",
+    ),
+    (
+        "vtm5e",
+        "Vampire: The Masquerade",
+        "Personal horror in the World of Darkness",
+    ),
     ("bitd", "Blades in the Dark", "Heist-focused narrative play"),
-    ("fate_core", "Fate Core", "Narrative-driven with aspects and fate points"),
+    (
+        "fate_core",
+        "Fate Core",
+        "Narrative-driven with aspects and fate points",
+    ),
     ("other", "Custom System", "Define your own game system"),
 ];
 

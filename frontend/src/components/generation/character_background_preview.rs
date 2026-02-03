@@ -111,7 +111,11 @@ fn TraitList(
 ) -> impl IntoView {
     // Local state with IDs for safe removal
     let local_traits: RwSignal<Vec<TraitEntry>> = RwSignal::new(
-        traits.get_untracked().into_iter().map(TraitEntry::new).collect()
+        traits
+            .get_untracked()
+            .into_iter()
+            .map(TraitEntry::new)
+            .collect(),
     );
 
     // Sync local -> parent when local changes
@@ -274,7 +278,12 @@ pub fn CharacterBackgroundPreview(
     let flaws = RwSignal::new(background.get().flaws);
     let backstory = RwSignal::new(background.get().backstory_summary);
     let events: RwSignal<Vec<RwSignal<BackgroundEvent>>> = RwSignal::new(
-        background.get().key_events.into_iter().map(RwSignal::new).collect()
+        background
+            .get()
+            .key_events
+            .into_iter()
+            .map(RwSignal::new)
+            .collect(),
     );
 
     let is_editing_signal = Signal::derive(move || is_editing.get());

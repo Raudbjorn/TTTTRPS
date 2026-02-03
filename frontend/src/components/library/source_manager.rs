@@ -7,20 +7,18 @@
 //! - Source deletion with confirmation
 //! - Reindexing options
 
-use leptos::prelude::*;
 use leptos::ev;
+use leptos::prelude::*;
 use leptos::task::spawn_local;
 
+use super::{use_library_state, DocumentStatus, SourceDocument, SourceType};
 use crate::bindings::{
-    pick_document_file, ingest_document_two_phase, reindex_library, delete_library_document,
-    rebuild_library_metadata, list_library_documents, clear_and_reingest_document,
+    clear_and_reingest_document, delete_library_document, ingest_document_two_phase,
+    list_library_documents, pick_document_file, rebuild_library_metadata, reindex_library,
     update_library_document, UpdateLibraryDocumentRequest,
 };
 use crate::components::design_system::{
-    Button, ButtonVariant, Card, CardHeader, CardBody, Input, Modal,
-};
-use super::{
-    use_library_state, SourceType, SourceDocument, DocumentStatus,
+    Button, ButtonVariant, Card, CardBody, CardHeader, Input, Modal,
 };
 
 /// Source manager panel for document ingestion and management
@@ -85,7 +83,8 @@ pub fn SourceManager() -> impl IntoView {
                         d.name = editing_name.get();
                         d.description = Some(editing_description.get()).filter(|s| !s.is_empty());
                         d.source_type = editing_type.get();
-                        d.tags = editing_tags.get()
+                        d.tags = editing_tags
+                            .get()
                             .split(',')
                             .map(|s| s.trim().to_string())
                             .filter(|s| !s.is_empty())
@@ -262,7 +261,8 @@ pub fn SourceManager() -> impl IntoView {
             spawn_local(async move {
                 match rebuild_library_metadata().await {
                     Ok(count) => {
-                        ingestion_status.set(format!("Found {} documents, refreshing list...", count));
+                        ingestion_status
+                            .set(format!("Found {} documents, refreshing list...", count));
                         // Reload the document list
                         match list_library_documents().await {
                             Ok(docs) => {
@@ -294,10 +294,14 @@ pub fn SourceManager() -> impl IntoView {
                                 let chunks: usize = source_docs.iter().map(|d| d.chunk_count).sum();
                                 documents.set(source_docs);
                                 total_chunks.set(chunks);
-                                ingestion_status.set(format!("Library repaired: {} documents recovered", count));
+                                ingestion_status.set(format!(
+                                    "Library repaired: {} documents recovered",
+                                    count
+                                ));
                             }
                             Err(e) => {
-                                ingestion_status.set(format!("Repaired but failed to refresh: {}", e));
+                                ingestion_status
+                                    .set(format!("Repaired but failed to refresh: {}", e));
                             }
                         }
                     }
@@ -332,10 +336,8 @@ pub fn SourceManager() -> impl IntoView {
                     match ingest_document_two_phase(path.clone(), None).await {
                         Ok(result) => {
                             ingestion_progress.set(0.5);
-                            ingestion_status.set(format!(
-                                "Chunking {} pages...",
-                                result.page_count
-                            ));
+                            ingestion_status
+                                .set(format!("Chunking {} pages...", result.page_count));
 
                             let doc = SourceDocument {
                                 id: result.slug.clone(),

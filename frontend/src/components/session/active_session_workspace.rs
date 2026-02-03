@@ -2,17 +2,17 @@
 //!
 //! Displays the main workspace for an active game session including combat tracking
 
-use leptos::prelude::*;
 use leptos::ev;
+use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
 use crate::bindings::{
-    end_session, start_combat, end_combat, get_combat,
-    add_combatant, remove_combatant, next_turn,
-    damage_combatant, heal_combatant, add_condition,
-    GameSession, CombatState, Combatant,
+    add_combatant, add_condition, damage_combatant, end_combat, end_session, get_combat,
+    heal_combatant, next_turn, remove_combatant, start_combat, CombatState, Combatant, GameSession,
 };
-use crate::components::design_system::{Button, ButtonVariant, Input, Card, CardHeader, CardBody, Badge, BadgeVariant};
+use crate::components::design_system::{
+    Badge, BadgeVariant, Button, ButtonVariant, Card, CardBody, CardHeader, Input,
+};
 use crate::components::session::SessionChatPanel;
 
 /// Active session workspace component
@@ -468,9 +468,21 @@ fn ConditionModal(
 ) -> impl IntoView {
     // Common conditions for quick selection
     let common_conditions: &'static [&'static str] = &[
-        "Blinded", "Charmed", "Deafened", "Frightened", "Grappled",
-        "Incapacitated", "Invisible", "Paralyzed", "Petrified", "Poisoned",
-        "Prone", "Restrained", "Stunned", "Unconscious", "Exhaustion",
+        "Blinded",
+        "Charmed",
+        "Deafened",
+        "Frightened",
+        "Grappled",
+        "Incapacitated",
+        "Invisible",
+        "Paralyzed",
+        "Petrified",
+        "Poisoned",
+        "Prone",
+        "Restrained",
+        "Stunned",
+        "Unconscious",
+        "Exhaustion",
     ];
 
     view! {

@@ -2,15 +2,15 @@
 //!
 //! Session management components
 
-mod session_list;
-mod npc_list;
 mod active_session_workspace;
+mod npc_list;
+mod session_list;
 
 // TASK-016: Combat Tracker UI components
 pub mod combat_tracker;
 pub mod combatant_card;
-pub mod initiative_list;
 pub mod condition_manager;
+pub mod initiative_list;
 
 // TASK-014: Timeline View
 pub mod timeline_view;
@@ -25,76 +25,74 @@ pub mod control_panel;
 pub mod recap_viewer;
 
 // Phase 9: Quick Reference Cards & Cheat Sheets
-pub mod entity_card;
 pub mod card_tray;
 pub mod cheat_sheet_viewer;
+pub mod entity_card;
 
 // Phase 8: Conversation Thread Tabs & Session Chat
-pub mod thread_tabs;
 pub mod session_chat_panel;
+pub mod thread_tabs;
 
 // Phase 10: Conversation List
 pub mod conversation_list;
 
-use leptos::prelude::*;
 use leptos::ev;
+use leptos::prelude::*;
 use leptos_router::hooks::use_params;
 use leptos_router::params::Params;
 use wasm_bindgen_futures::spawn_local;
 
 use crate::bindings::{
-    get_campaign, get_active_session, list_sessions, start_session,
-    Campaign, GameSession, SessionSummary, ConversationThread,
+    get_active_session, get_campaign, list_sessions, start_session, Campaign, ConversationThread,
+    GameSession, SessionSummary,
 };
-use crate::components::design_system::{Button, ButtonVariant};
 use crate::components::campaign_details::NpcConversation;
+use crate::components::design_system::{Button, ButtonVariant};
 use crate::services::chat_context::use_chat_context;
 
-use session_list::SessionList;
-use npc_list::{NpcList, NpcSelection};
 use active_session_workspace::ActiveSessionWorkspace;
+use npc_list::{NpcList, NpcSelection};
+use session_list::SessionList;
 
-pub use session_list::SessionList as SessionListComponent;
-pub use npc_list::NpcList as NpcListComponent;
 pub use active_session_workspace::ActiveSessionWorkspace as ActiveSessionWorkspaceComponent;
+pub use npc_list::NpcList as NpcListComponent;
+pub use session_list::SessionList as SessionListComponent;
 
 // TASK-016: Combat Tracker exports
-pub use combat_tracker::{CombatTracker, CombatStatsBar};
+pub use combat_tracker::{CombatStatsBar, CombatTracker};
 pub use combatant_card::{CombatantCard, CombatantRowCompact};
+pub use condition_manager::{ActiveConditionsList, ConditionBadge, ConditionModal};
 pub use initiative_list::{InitiativeList, InitiativeOrderSummary};
-pub use condition_manager::{ConditionModal, ConditionBadge, ActiveConditionsList};
 
 // TASK-014: Timeline exports
 pub use timeline_view::{
-    TimelineView, TimelineCompact,
-    TimelineEvent, TimelineEventType, EventSeverity,
-    TimelineEventTypeExt, EventSeverityExt,
+    EventSeverity, EventSeverityExt, TimelineCompact, TimelineEvent, TimelineEventType,
+    TimelineEventTypeExt, TimelineView,
 };
 
 // TASK-017: Notes exports
-pub use notes_panel::{NotesPanel, SessionNote, NoteCategory};
+pub use notes_panel::{NoteCategory, NotesPanel, SessionNote};
 
 // Phase 6: Control Panel exports
-pub use control_panel::{ControlPanel, ReadAloudBox, StoryBeat, BeatType, QuickRule, PinnedTable};
+pub use control_panel::{BeatType, ControlPanel, PinnedTable, QuickRule, ReadAloudBox, StoryBeat};
 
 // Phase 8: Recap exports
-pub use recap_viewer::{RecapViewer, SessionRecap, RecapStatus, PCFilter};
+pub use recap_viewer::{PCFilter, RecapStatus, RecapViewer, SessionRecap};
 
 // Phase 9: Quick Reference Cards & Cheat Sheets exports
-pub use entity_card::{
-    EntityCard, EntityCardCompact, EntityHoverPreview,
-    NpcCard, LocationCard, ItemCard, PlotCard,
-    CardEntityType, DisclosureLevel, RenderedCard, HoverPreview, PinnedCard, QuickStat,
-};
-pub use card_tray::{CardTrayPanel, FloatingCardTray, MiniCardTray, CardTray, MAX_PINNED_CARDS};
+pub use card_tray::{CardTray, CardTrayPanel, FloatingCardTray, MiniCardTray, MAX_PINNED_CARDS};
 pub use cheat_sheet_viewer::{
-    CheatSheetViewer, FloatingCheatSheet,
-    CheatSheet, CheatSheetSection, CheatSheetItem, SectionType, TruncationWarning,
+    CheatSheet, CheatSheetItem, CheatSheetSection, CheatSheetViewer, FloatingCheatSheet,
+    SectionType, TruncationWarning,
+};
+pub use entity_card::{
+    CardEntityType, DisclosureLevel, EntityCard, EntityCardCompact, EntityHoverPreview,
+    HoverPreview, ItemCard, LocationCard, NpcCard, PinnedCard, PlotCard, QuickStat, RenderedCard,
 };
 
 // Phase 8: Thread Tabs & Session Chat exports
-pub use thread_tabs::{ThreadTabs, ThreadIndicator};
 pub use session_chat_panel::SessionChatPanel;
+pub use thread_tabs::{ThreadIndicator, ThreadTabs};
 
 // Phase 10: Conversation List exports
 pub use conversation_list::ConversationList;
@@ -119,7 +117,8 @@ pub fn Session() -> impl IntoView {
     // Get campaign_id from route params
     let params = use_params::<SessionParams>();
     let campaign_id_memo = Memo::new(move |_| {
-        params.get()
+        params
+            .get()
             .ok()
             .and_then(|p| p.campaign_id)
             .unwrap_or_default()
@@ -211,7 +210,9 @@ pub fn Session() -> impl IntoView {
                     s if s.contains("mothership") => "theme-terminal",
                     s if s.contains("alien") && s.contains("rpg") => "theme-terminal",
                     s if s.contains("traveller") => "theme-terminal",
-                    s if s.contains("stars without number") || s.contains("swn") => "theme-terminal",
+                    s if s.contains("stars without number") || s.contains("swn") => {
+                        "theme-terminal"
+                    }
 
                     // Neon/Cyberpunk themes
                     s if s.contains("cyberpunk") => "theme-neon",
@@ -219,16 +220,19 @@ pub fn Session() -> impl IntoView {
                     s if s.contains("the sprawl") => "theme-neon",
 
                     // Fantasy (default)
-                    s if s.contains("d&d") || s.contains("dnd") || s.contains("5e") => "theme-fantasy",
+                    s if s.contains("d&d") || s.contains("dnd") || s.contains("5e") => {
+                        "theme-fantasy"
+                    }
                     s if s.contains("pathfinder") => "theme-fantasy",
                     s if s.contains("warhammer fantasy") => "theme-fantasy",
 
                     // Default to fantasy for unknown systems
-                    _ => "theme-fantasy"
+                    _ => "theme-fantasy",
                 }
-            },
-            None => "theme-fantasy"
-        }.to_string()
+            }
+            None => "theme-fantasy",
+        }
+        .to_string()
     });
 
     view! {

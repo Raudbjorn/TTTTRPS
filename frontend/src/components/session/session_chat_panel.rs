@@ -3,21 +3,20 @@
 //! Phase 8: Campaign-aware chat panel for session workspace.
 //! Integrates thread tabs with streaming chat, campaign context, and purpose-driven prompts.
 
-use leptos::prelude::*;
 use leptos::ev;
+use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
 use crate::bindings::{
-    ConversationThread, ConversationPurpose,
-    stream_chat, cancel_stream, listen_chat_chunks_async,
-    ChatChunk, StreamingChatMessage,
-    get_or_create_chat_session, get_chat_messages, add_chat_message, update_chat_message,
+    add_chat_message, cancel_stream, get_chat_messages, get_or_create_chat_session,
+    listen_chat_chunks_async, stream_chat, update_chat_message, ChatChunk, ConversationPurpose,
+    ConversationThread, StreamingChatMessage,
 };
-use crate::components::design_system::{Button, ButtonVariant, Input};
 use crate::components::chat::ChatMessage;
+use crate::components::design_system::{Button, ButtonVariant, Input};
 use crate::components::session::thread_tabs::ThreadTabs;
-use crate::services::notification_service::show_error;
 use crate::services::chat_context::try_use_chat_context;
+use crate::services::notification_service::show_error;
 
 /// Message in the chat history (mirrors main Chat component)
 #[derive(Clone, PartialEq)]
@@ -124,7 +123,11 @@ pub fn SessionChatPanel(
 
             // Log thread context for debugging
             if let Some(t) = thread {
-                log::info!("Loaded chat for thread: {} ({:?})", t.display_title(), t.purpose);
+                log::info!(
+                    "Loaded chat for thread: {} ({:?})",
+                    t.display_title(),
+                    t.purpose
+                );
             }
         });
     });
@@ -262,7 +265,10 @@ pub fn SessionChatPanel(
     // Build system prompt based on thread purpose
     let build_system_prompt = move || {
         let thread = selected_thread.get();
-        let purpose = thread.as_ref().map(|t| t.purpose).unwrap_or(ConversationPurpose::General);
+        let purpose = thread
+            .as_ref()
+            .map(|t| t.purpose)
+            .unwrap_or(ConversationPurpose::General);
 
         let base_prompt = match purpose {
             ConversationPurpose::SessionPlanning => {
@@ -346,7 +352,11 @@ pub fn SessionChatPanel(
         let session_id = match chat_session_id.get() {
             Some(id) => id,
             None => {
-                show_error("Chat Not Ready", Some("Please wait for the session to load."), None);
+                show_error(
+                    "Chat Not Ready",
+                    Some("Please wait for the session to load."),
+                    None,
+                );
                 return;
             }
         };
@@ -423,7 +433,9 @@ pub fn SessionChatPanel(
         });
 
         // Build history
-        let history: Vec<StreamingChatMessage> = messages.get().iter()
+        let history: Vec<StreamingChatMessage> = messages
+            .get()
+            .iter()
             .filter(|m| m.role == "user" || m.role == "assistant")
             .filter(|m| m.id != assistant_msg_id)
             .map(|m| StreamingChatMessage {

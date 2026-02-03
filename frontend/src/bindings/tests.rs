@@ -1,11 +1,13 @@
 #[cfg(test)]
 mod tests {
     use crate::bindings::ai::ChatRequestPayload;
+    use crate::bindings::audio::{ElevenLabsConfig, VoiceConfig, VoiceProviderType};
     use crate::bindings::campaign::Campaign;
-    use crate::bindings::mechanics::{GenerationOptions, CombatState, Combatant, Character, CharacterAttributeValue};
-    use crate::bindings::audio::{VoiceConfig, ElevenLabsConfig, VoiceProviderType};
-    use crate::bindings::world::{WorldState, InGameDate};
     use crate::bindings::library::IngestOptions;
+    use crate::bindings::mechanics::{
+        Character, CharacterAttributeValue, CombatState, Combatant, GenerationOptions,
+    };
+    use crate::bindings::world::{InGameDate, WorldState};
     use serde_json::json;
     use std::collections::HashMap;
 
@@ -69,7 +71,7 @@ mod tests {
             conditions: vec!["prone".to_string()],
             is_active: true,
         };
-        
+
         let state = CombatState {
             id: "combat1".to_string(),
             round: 1,
@@ -82,14 +84,21 @@ mod tests {
         assert_eq!(json["id"], "combat1");
         assert_eq!(json["combatants"][0]["name"], "Goblin");
         // Serialization uses struct field names
-        assert_eq!(json["combatants"][0]["hp_current"], 5); 
+        assert_eq!(json["combatants"][0]["hp_current"], 5);
         assert_eq!(json["combatants"][0]["ac"], 12);
     }
 
     #[test]
     fn test_character_structure() {
         let mut attrs = HashMap::new();
-        attrs.insert("str".to_string(), CharacterAttributeValue { base: 10, modifier: 0, temp_bonus: 0 });
+        attrs.insert(
+            "str".to_string(),
+            CharacterAttributeValue {
+                base: 10,
+                modifier: 0,
+                temp_bonus: 0,
+            },
+        );
 
         let char = Character {
             id: "ch1".to_string(),
@@ -111,7 +120,7 @@ mod tests {
 
         let json = serde_json::to_value(&char).unwrap();
         // Verify 'class' rename
-        assert_eq!(json["class"], "Fighter"); 
+        assert_eq!(json["class"], "Fighter");
         assert_eq!(json["attributes"]["str"]["base"], 10);
     }
 
@@ -171,7 +180,7 @@ mod tests {
             calendar: "harptos".to_string(),
             time: None,
         };
-        
+
         let state = WorldState {
             campaign_id: "c1".to_string(),
             current_date: date,

@@ -2,15 +2,15 @@
 //!
 //! Displays security audit logs with filtering, search, and export functionality.
 
-use leptos::prelude::*;
 use leptos::ev;
+use leptos::prelude::*;
+use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
-use std::collections::HashMap;
 
 use crate::bindings::{
-    query_audit_logs, export_audit_logs, clear_old_logs,
-    get_audit_summary, get_security_events, SecurityAuditEvent,
+    clear_old_logs, export_audit_logs, get_audit_summary, get_security_events, query_audit_logs,
+    SecurityAuditEvent,
 };
 use crate::components::design_system::{
     Badge, BadgeVariant, Button, ButtonVariant, Card, CardBody, CardHeader, Input, Select,
@@ -124,8 +124,11 @@ pub fn AuditLogViewer() -> impl IntoView {
                                 "jsonl" => "jsonl",
                                 _ => "json",
                             };
-                            let filename = format!("audit_logs_{}.{}",
-                                chrono::Utc::now().format("%Y%m%d_%H%M%S"), extension);
+                            let filename = format!(
+                                "audit_logs_{}.{}",
+                                chrono::Utc::now().format("%Y%m%d_%H%M%S"),
+                                extension
+                            );
 
                             // Create blob and download
                             let mime = match format.as_str() {
@@ -147,7 +150,9 @@ pub fn AuditLogViewer() -> impl IntoView {
                                         a.set_text_content(Some(""));
                                         if let Some(body) = document.body() {
                                             let _ = body.append_child(&a);
-                                            if let Some(html_a) = a.dyn_ref::<web_sys::HtmlElement>() {
+                                            if let Some(html_a) =
+                                                a.dyn_ref::<web_sys::HtmlElement>()
+                                            {
                                                 html_a.click();
                                             }
                                             let _ = body.remove_child(&a);
@@ -156,7 +161,8 @@ pub fn AuditLogViewer() -> impl IntoView {
                                     }
                                 }
                             }
-                            success_message.set(Some(format!("Exported {} logs", audit_events.get().len())));
+                            success_message
+                                .set(Some(format!("Exported {} logs", audit_events.get().len())));
                         }
                     }
                 }
@@ -198,7 +204,10 @@ pub fn AuditLogViewer() -> impl IntoView {
     // Helper to format event type for display
     let format_event_type = |event_type: &serde_json::Value| -> String {
         if let Some(obj) = event_type.as_object() {
-            obj.keys().next().cloned().unwrap_or_else(|| "Unknown".to_string())
+            obj.keys()
+                .next()
+                .cloned()
+                .unwrap_or_else(|| "Unknown".to_string())
         } else if let Some(s) = event_type.as_str() {
             s.to_string()
         } else {
@@ -215,7 +224,8 @@ pub fn AuditLogViewer() -> impl IntoView {
 
             if let Some(detail_val) = details {
                 if let Some(detail_obj) = detail_val.as_object() {
-                    let parts: Vec<String> = detail_obj.iter()
+                    let parts: Vec<String> = detail_obj
+                        .iter()
                         .take(3)
                         .map(|(k, v)| {
                             let val_str = if let Some(s) = v.as_str() {

@@ -2,13 +2,15 @@
 //!
 //! Tests for CampaignDashboard, CampaignCard, and campaign selection state.
 
-use wasm_bindgen_test::*;
 use leptos::prelude::*;
-use ttrpg_assistant_frontend::components::campaign::campaign_card::{CampaignCard, CampaignGenre, CampaignCardCompact};
-use ttrpg_assistant_frontend::components::campaign::campaign_dashboard::DashboardTab;
-use ttrpg_assistant_frontend::bindings::{Campaign, CampaignSettings};
-use ttrpg_assistant_frontend::services::layout_service::provide_layout_state;
 use leptos_router::components::Router;
+use ttrpg_assistant_frontend::bindings::{Campaign, CampaignSettings};
+use ttrpg_assistant_frontend::components::campaign::campaign_card::{
+    CampaignCard, CampaignCardCompact, CampaignGenre,
+};
+use ttrpg_assistant_frontend::components::campaign::campaign_dashboard::DashboardTab;
+use ttrpg_assistant_frontend::services::layout_service::provide_layout_state;
+use wasm_bindgen_test::*;
 
 /// Helper function to create a test campaign with default settings
 fn create_test_campaign(id: &str, name: &str, system: &str, description: Option<&str>) -> Campaign {
@@ -32,43 +34,106 @@ wasm_bindgen_test_configure!(run_in_browser);
 #[wasm_bindgen_test]
 fn test_campaign_genre_from_system_fantasy() {
     // Use pattern matching since CampaignGenre doesn't implement Debug
-    assert!(matches!(CampaignGenre::from_system("D&D 5e"), CampaignGenre::Fantasy));
-    assert!(matches!(CampaignGenre::from_system("Pathfinder 2e"), CampaignGenre::Fantasy));
-    assert!(matches!(CampaignGenre::from_system("5E"), CampaignGenre::Fantasy));
-    assert!(matches!(CampaignGenre::from_system("Warhammer Fantasy"), CampaignGenre::Fantasy));
+    assert!(matches!(
+        CampaignGenre::from_system("D&D 5e"),
+        CampaignGenre::Fantasy
+    ));
+    assert!(matches!(
+        CampaignGenre::from_system("Pathfinder 2e"),
+        CampaignGenre::Fantasy
+    ));
+    assert!(matches!(
+        CampaignGenre::from_system("5E"),
+        CampaignGenre::Fantasy
+    ));
+    assert!(matches!(
+        CampaignGenre::from_system("Warhammer Fantasy"),
+        CampaignGenre::Fantasy
+    ));
 }
 
 #[wasm_bindgen_test]
 fn test_campaign_genre_from_system_horror() {
-    assert!(matches!(CampaignGenre::from_system("Call of Cthulhu"), CampaignGenre::Horror));
-    assert!(matches!(CampaignGenre::from_system("Vampire: The Masquerade"), CampaignGenre::Horror));
-    assert!(matches!(CampaignGenre::from_system("Delta Green"), CampaignGenre::Horror));
-    assert!(matches!(CampaignGenre::from_system("Kult"), CampaignGenre::Horror));
-    assert!(matches!(CampaignGenre::from_system("Vaesen"), CampaignGenre::Horror));
+    assert!(matches!(
+        CampaignGenre::from_system("Call of Cthulhu"),
+        CampaignGenre::Horror
+    ));
+    assert!(matches!(
+        CampaignGenre::from_system("Vampire: The Masquerade"),
+        CampaignGenre::Horror
+    ));
+    assert!(matches!(
+        CampaignGenre::from_system("Delta Green"),
+        CampaignGenre::Horror
+    ));
+    assert!(matches!(
+        CampaignGenre::from_system("Kult"),
+        CampaignGenre::Horror
+    ));
+    assert!(matches!(
+        CampaignGenre::from_system("Vaesen"),
+        CampaignGenre::Horror
+    ));
 }
 
 #[wasm_bindgen_test]
 fn test_campaign_genre_from_system_cyberpunk() {
-    assert!(matches!(CampaignGenre::from_system("Cyberpunk Red"), CampaignGenre::Cyberpunk));
-    assert!(matches!(CampaignGenre::from_system("Shadowrun"), CampaignGenre::Cyberpunk));
-    assert!(matches!(CampaignGenre::from_system("The Sprawl"), CampaignGenre::Cyberpunk));
-    assert!(matches!(CampaignGenre::from_system("Neon City"), CampaignGenre::Cyberpunk));
+    assert!(matches!(
+        CampaignGenre::from_system("Cyberpunk Red"),
+        CampaignGenre::Cyberpunk
+    ));
+    assert!(matches!(
+        CampaignGenre::from_system("Shadowrun"),
+        CampaignGenre::Cyberpunk
+    ));
+    assert!(matches!(
+        CampaignGenre::from_system("The Sprawl"),
+        CampaignGenre::Cyberpunk
+    ));
+    assert!(matches!(
+        CampaignGenre::from_system("Neon City"),
+        CampaignGenre::Cyberpunk
+    ));
 }
 
 #[wasm_bindgen_test]
 fn test_campaign_genre_from_system_scifi() {
-    assert!(matches!(CampaignGenre::from_system("Traveller"), CampaignGenre::SciFi));
-    assert!(matches!(CampaignGenre::from_system("Mothership"), CampaignGenre::SciFi));
-    assert!(matches!(CampaignGenre::from_system("Stars Without Number"), CampaignGenre::SciFi));
-    assert!(matches!(CampaignGenre::from_system("Alien RPG"), CampaignGenre::SciFi));
-    assert!(matches!(CampaignGenre::from_system("Space Opera"), CampaignGenre::SciFi));
+    assert!(matches!(
+        CampaignGenre::from_system("Traveller"),
+        CampaignGenre::SciFi
+    ));
+    assert!(matches!(
+        CampaignGenre::from_system("Mothership"),
+        CampaignGenre::SciFi
+    ));
+    assert!(matches!(
+        CampaignGenre::from_system("Stars Without Number"),
+        CampaignGenre::SciFi
+    ));
+    assert!(matches!(
+        CampaignGenre::from_system("Alien RPG"),
+        CampaignGenre::SciFi
+    ));
+    assert!(matches!(
+        CampaignGenre::from_system("Space Opera"),
+        CampaignGenre::SciFi
+    ));
 }
 
 #[wasm_bindgen_test]
 fn test_campaign_genre_from_system_unknown() {
-    assert!(matches!(CampaignGenre::from_system(""), CampaignGenre::Unknown));
-    assert!(matches!(CampaignGenre::from_system("Custom System"), CampaignGenre::Unknown));
-    assert!(matches!(CampaignGenre::from_system("My Homebrew"), CampaignGenre::Unknown));
+    assert!(matches!(
+        CampaignGenre::from_system(""),
+        CampaignGenre::Unknown
+    ));
+    assert!(matches!(
+        CampaignGenre::from_system("Custom System"),
+        CampaignGenre::Unknown
+    ));
+    assert!(matches!(
+        CampaignGenre::from_system("My Homebrew"),
+        CampaignGenre::Unknown
+    ));
 }
 
 #[wasm_bindgen_test]
@@ -161,12 +226,8 @@ fn test_campaign_card_with_session_count() {
     leptos::mount::mount_to_body(|| {
         provide_layout_state();
 
-        let campaign = create_test_campaign(
-            "test-id-456",
-            "Sessions Campaign",
-            "Pathfinder 2e",
-            None,
-        );
+        let campaign =
+            create_test_campaign("test-id-456", "Sessions Campaign", "Pathfinder 2e", None);
 
         let on_click = Callback::new(|_id: String| {});
 
@@ -295,12 +356,7 @@ fn test_campaign_card_compact_active_state() {
     leptos::mount::mount_to_body(|| {
         provide_layout_state();
 
-        let campaign = create_test_campaign(
-            "active-compact",
-            "Active Compact",
-            "Vampire",
-            None,
-        );
+        let campaign = create_test_campaign("active-compact", "Active Compact", "Vampire", None);
 
         let on_click = Callback::new(|_id: String| {});
 
@@ -376,7 +432,10 @@ fn test_active_campaign_state() {
 
     // Start a session - campaign becomes active
     active_campaign_id.set(Some("playing-campaign".to_string()));
-    assert_eq!(active_campaign_id.get(), Some("playing-campaign".to_string()));
+    assert_eq!(
+        active_campaign_id.get(),
+        Some("playing-campaign".to_string())
+    );
 
     // End session - no active campaign
     active_campaign_id.set(None);
@@ -389,24 +448,54 @@ fn test_active_campaign_state() {
 
 #[wasm_bindgen_test]
 fn test_campaign_genre_from_system_modern() {
-    assert!(matches!(CampaignGenre::from_system("Modern Setting"), CampaignGenre::Modern));
-    assert!(matches!(CampaignGenre::from_system("Fate Core"), CampaignGenre::Modern));
-    assert!(matches!(CampaignGenre::from_system("GURPS"), CampaignGenre::Modern));
+    assert!(matches!(
+        CampaignGenre::from_system("Modern Setting"),
+        CampaignGenre::Modern
+    ));
+    assert!(matches!(
+        CampaignGenre::from_system("Fate Core"),
+        CampaignGenre::Modern
+    ));
+    assert!(matches!(
+        CampaignGenre::from_system("GURPS"),
+        CampaignGenre::Modern
+    ));
 }
 
 #[wasm_bindgen_test]
 fn test_campaign_genre_from_system_historical() {
-    assert!(matches!(CampaignGenre::from_system("Historical Campaign"), CampaignGenre::Historical));
-    assert!(matches!(CampaignGenre::from_system("Pendragon"), CampaignGenre::Historical));
-    assert!(matches!(CampaignGenre::from_system("Ars Magica"), CampaignGenre::Historical));
+    assert!(matches!(
+        CampaignGenre::from_system("Historical Campaign"),
+        CampaignGenre::Historical
+    ));
+    assert!(matches!(
+        CampaignGenre::from_system("Pendragon"),
+        CampaignGenre::Historical
+    ));
+    assert!(matches!(
+        CampaignGenre::from_system("Ars Magica"),
+        CampaignGenre::Historical
+    ));
 }
 
 #[wasm_bindgen_test]
 fn test_campaign_genre_case_insensitive() {
-    assert!(matches!(CampaignGenre::from_system("D&D 5E"), CampaignGenre::Fantasy));
-    assert!(matches!(CampaignGenre::from_system("d&d 5e"), CampaignGenre::Fantasy));
-    assert!(matches!(CampaignGenre::from_system("CALL OF CTHULHU"), CampaignGenre::Horror));
-    assert!(matches!(CampaignGenre::from_system("call of cthulhu"), CampaignGenre::Horror));
+    assert!(matches!(
+        CampaignGenre::from_system("D&D 5E"),
+        CampaignGenre::Fantasy
+    ));
+    assert!(matches!(
+        CampaignGenre::from_system("d&d 5e"),
+        CampaignGenre::Fantasy
+    ));
+    assert!(matches!(
+        CampaignGenre::from_system("CALL OF CTHULHU"),
+        CampaignGenre::Horror
+    ));
+    assert!(matches!(
+        CampaignGenre::from_system("call of cthulhu"),
+        CampaignGenre::Horror
+    ));
 }
 
 #[wasm_bindgen_test]
@@ -423,10 +512,26 @@ fn test_campaign_genre_all_styles_return_tuples() {
 
     for genre in genres {
         let (bg_class, text_class) = genre.style();
-        assert!(!bg_class.is_empty(), "Genre {:?} should have bg class", genre);
-        assert!(!text_class.is_empty(), "Genre {:?} should have text class", genre);
-        assert!(bg_class.contains("bg-gradient"), "Genre {:?} bg should be gradient", genre);
-        assert!(text_class.starts_with("text-"), "Genre {:?} text class format", genre);
+        assert!(
+            !bg_class.is_empty(),
+            "Genre {:?} should have bg class",
+            genre
+        );
+        assert!(
+            !text_class.is_empty(),
+            "Genre {:?} should have text class",
+            genre
+        );
+        assert!(
+            bg_class.contains("bg-gradient"),
+            "Genre {:?} bg should be gradient",
+            genre
+        );
+        assert!(
+            text_class.starts_with("text-"),
+            "Genre {:?} text class format",
+            genre
+        );
     }
 }
 
@@ -488,19 +593,17 @@ fn test_create_test_campaign_with_all_fields() {
     assert_eq!(campaign.id, "full-campaign");
     assert_eq!(campaign.name, "Full Campaign");
     assert_eq!(campaign.system, "D&D 5e");
-    assert_eq!(campaign.description, Some("A complete campaign with description".to_string()));
+    assert_eq!(
+        campaign.description,
+        Some("A complete campaign with description".to_string())
+    );
     assert!(!campaign.created_at.is_empty());
     assert!(!campaign.updated_at.is_empty());
 }
 
 #[wasm_bindgen_test]
 fn test_create_test_campaign_without_description() {
-    let campaign = create_test_campaign(
-        "minimal-campaign",
-        "Minimal Campaign",
-        "Pathfinder",
-        None,
-    );
+    let campaign = create_test_campaign("minimal-campaign", "Minimal Campaign", "Pathfinder", None);
 
     assert_eq!(campaign.id, "minimal-campaign");
     assert!(campaign.description.is_none());
@@ -533,12 +636,8 @@ fn test_campaign_card_empty_description_renders_fallback() {
     leptos::mount::mount_to_body(|| {
         provide_layout_state();
 
-        let campaign = create_test_campaign(
-            "no-desc",
-            "No Description Campaign",
-            "Unknown System",
-            None,
-        );
+        let campaign =
+            create_test_campaign("no-desc", "No Description Campaign", "Unknown System", None);
 
         let on_click = Callback::new(|_id: String| {});
 
@@ -559,9 +658,14 @@ fn test_campaign_card_empty_description_renders_fallback() {
     // if !campaign_desc.is_empty() { Some(...) } else { None }
     // So if description is None/empty, the <p> is NOT rendered.
     // We should assert that the element does NOT exist.
-    
-    let description_el = document.query_selector("[data-testid='campaign-description']").unwrap();
-    assert!(description_el.is_none(), "description element should NOT be rendered when description is missing");
+
+    let description_el = document
+        .query_selector("[data-testid='campaign-description']")
+        .unwrap();
+    assert!(
+        description_el.is_none(),
+        "description element should NOT be rendered when description is missing"
+    );
 }
 
 #[wasm_bindgen_test]
@@ -645,7 +749,11 @@ fn test_campaign_card_zero_sessions_text_is_correct() {
         .query_selector("[data-testid='campaign-session-count']")
         .unwrap()
         .expect("campaign session count element should exist");
-    let sessions_text = sessions_el.text_content().unwrap_or_default().trim().to_string();
+    let sessions_text = sessions_el
+        .text_content()
+        .unwrap_or_default()
+        .trim()
+        .to_string();
 
     // In CampaignCard.rs: <span>{session_count}</span> <span ...>"tracks"</span>
     // So text should be "0 tracks"
@@ -697,7 +805,9 @@ fn test_campaign_card_special_characters_are_escaped() {
         "campaign card should not render <script> tags from user input"
     );
     assert!(
-        inner_html.contains("&lt;script&gt;") || inner_html.contains("&amp;") || inner_html.contains("&lt;b&gt;"),
+        inner_html.contains("&lt;script&gt;")
+            || inner_html.contains("&amp;")
+            || inner_html.contains("&lt;b&gt;"),
         "special characters should be HTML-escaped in the rendered output"
     );
 }

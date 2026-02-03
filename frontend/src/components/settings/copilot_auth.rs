@@ -3,17 +3,17 @@
 //! This component provides a complete Device Code OAuth authentication flow UI for GitHub Copilot,
 //! including status display, device code entry, login/logout buttons, and polling.
 
+use gloo_timers::future::TimeoutFuture;
 use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;
-use gloo_timers::future::TimeoutFuture;
 
 use crate::bindings::{
-    check_copilot_auth, start_copilot_auth, poll_copilot_auth, logout_copilot,
-    get_copilot_usage, open_url_in_browser, copilot_set_storage_backend,
-    CopilotAuthStatus, CopilotUsageInfo, CopilotStorageBackend,
+    check_copilot_auth, copilot_set_storage_backend, get_copilot_usage, logout_copilot,
+    open_url_in_browser, poll_copilot_auth, start_copilot_auth, CopilotAuthStatus,
+    CopilotStorageBackend, CopilotUsageInfo,
 };
-use crate::components::design_system::{Select, SelectOption};
 use crate::components::design_system::{Badge, BadgeVariant};
+use crate::components::design_system::{Select, SelectOption};
 use crate::services::notification_service::{show_error, show_success};
 
 /// Reusable Copilot OAuth authentication component.
@@ -129,7 +129,10 @@ pub fn CopilotAuth(
                         consecutive_errors = 0; // Reset on success
                         match result.status.as_str() {
                             "success" => {
-                                show_success("Login Complete", Some("Successfully authenticated with GitHub Copilot"));
+                                show_success(
+                                    "Login Complete",
+                                    Some("Successfully authenticated with GitHub Copilot"),
+                                );
                                 awaiting_auth.set(false);
                                 user_code.set(String::new());
                                 verification_uri.set(String::new());
@@ -159,7 +162,14 @@ pub fn CopilotAuth(
                         }
                         consecutive_errors += 1;
                         if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
-                            show_error("Poll Failed", Some(&format!("{} (giving up after {} attempts)", e, MAX_CONSECUTIVE_ERRORS)), None);
+                            show_error(
+                                "Poll Failed",
+                                Some(&format!(
+                                    "{} (giving up after {} attempts)",
+                                    e, MAX_CONSECUTIVE_ERRORS
+                                )),
+                                None,
+                            );
                             awaiting_auth.set(false);
                             user_code.set(String::new());
                             verification_uri.set(String::new());
@@ -178,11 +188,19 @@ pub fn CopilotAuth(
     let start_auth = move || {
         web_sys::console::log_1(&"[CopilotAuth] start_auth called".into());
         spawn_local(async move {
-            web_sys::console::log_1(&"[CopilotAuth] spawn_local started, calling start_copilot_auth".into());
+            web_sys::console::log_1(
+                &"[CopilotAuth] spawn_local started, calling start_copilot_auth".into(),
+            );
             is_loading.set(true);
             match start_copilot_auth().await {
                 Ok(response) => {
-                    web_sys::console::log_1(&format!("[CopilotAuth] Got response: user_code={}, uri={}", response.user_code, response.verification_uri).into());
+                    web_sys::console::log_1(
+                        &format!(
+                            "[CopilotAuth] Got response: user_code={}, uri={}",
+                            response.user_code, response.verification_uri
+                        )
+                        .into(),
+                    );
                     user_code.set(response.user_code.clone());
                     verification_uri.set(response.verification_uri.clone());
                     device_code.set(response.device_code.clone());
@@ -194,11 +212,15 @@ pub fn CopilotAuth(
                         Ok(_) => {
                             show_success(
                                 "Login Started",
-                                Some(&format!("Enter code {} at GitHub", response.user_code))
+                                Some(&format!("Enter code {} at GitHub", response.user_code)),
                             );
                         }
                         Err(e) => {
-                            show_error("Browser Open Failed", Some(&format!("{}. Please open the URL manually.", e)), None);
+                            show_error(
+                                "Browser Open Failed",
+                                Some(&format!("{}. Please open the URL manually.", e)),
+                                None,
+                            );
                         }
                     }
                 }
@@ -492,7 +514,8 @@ pub fn CopilotAuth(
             <div class="p-6 rounded-xl bg-theme-surface border border-[#6e40c9]/30 space-y-4">
                 {content}
             </div>
-        }.into_any()
+        }
+        .into_any()
     } else {
         view! { <div>{content}</div> }.into_any()
     }

@@ -12,13 +12,11 @@ use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
 use crate::bindings::{
-    list_personalities, preview_personality, set_active_personality,
-    get_active_personality, PersonalityPreview, SetActivePersonalityRequest,
-    set_personality_settings, PersonalitySettingsRequest,
+    get_active_personality, list_personalities, preview_personality, set_active_personality,
+    set_personality_settings, PersonalityPreview, PersonalitySettingsRequest,
+    SetActivePersonalityRequest,
 };
 use crate::components::design_system::{Button, ButtonVariant};
-
-
 
 /// Personality Selector component for the chat interface
 #[component]

@@ -3,35 +3,94 @@
 //! Advanced condition management with duration tracking, stacking rules,
 //! and full D&D 5e condition support.
 
-use leptos::prelude::*;
 use leptos::ev;
+use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
 use crate::bindings::{
-    add_condition, remove_condition, add_condition_advanced, remove_condition_by_id,
-    get_combatant_conditions, AddConditionRequest,
-    AdvancedCondition, ConditionDurationType,
+    add_condition, add_condition_advanced, get_combatant_conditions, remove_condition,
+    remove_condition_by_id, AddConditionRequest, AdvancedCondition, ConditionDurationType,
 };
 use crate::components::design_system::{Button, ButtonVariant};
 
 /// Common D&D 5e conditions with descriptions and colors
 const COMMON_CONDITIONS: &[(&str, &str, &str)] = &[
-    ("Blinded", "Can't see. Auto-fails sight checks. Disadvantage on attacks.", "#6b7280"),
-    ("Charmed", "Can't attack charmer. Charmer has advantage on social checks.", "#ec4899"),
-    ("Deafened", "Can't hear. Auto-fails hearing checks.", "#78716c"),
-    ("Frightened", "Disadvantage while source visible. Can't approach source.", "#eab308"),
+    (
+        "Blinded",
+        "Can't see. Auto-fails sight checks. Disadvantage on attacks.",
+        "#6b7280",
+    ),
+    (
+        "Charmed",
+        "Can't attack charmer. Charmer has advantage on social checks.",
+        "#ec4899",
+    ),
+    (
+        "Deafened",
+        "Can't hear. Auto-fails hearing checks.",
+        "#78716c",
+    ),
+    (
+        "Frightened",
+        "Disadvantage while source visible. Can't approach source.",
+        "#eab308",
+    ),
     ("Grappled", "Speed becomes 0.", "#78716c"),
-    ("Incapacitated", "Can't take actions or reactions.", "#dc2626"),
-    ("Invisible", "Can't be seen. Advantage on attacks. Attacks against have disadvantage.", "#a855f7"),
-    ("Paralyzed", "Incapacitated. Auto-fails STR/DEX saves. Attacks have advantage.", "#7c3aed"),
-    ("Petrified", "Turned to stone. Weight x10. Resistant to all damage.", "#78716c"),
-    ("Poisoned", "Disadvantage on attacks and ability checks.", "#22c55e"),
-    ("Prone", "Can only crawl. Disadvantage on attacks.", "#78716c"),
-    ("Restrained", "Speed 0. Disadvantage on attacks and DEX saves.", "#ea580c"),
-    ("Stunned", "Incapacitated. Auto-fails STR/DEX saves.", "#fbbf24"),
-    ("Unconscious", "Incapacitated, prone, unaware. Attacks within 5ft are crits.", "#1e3a8a"),
-    ("Exhaustion", "Various effects based on level (1-6).", "#4b5563"),
-    ("Concentrating", "Maintaining a spell. CON save on damage.", "#3b82f6"),
+    (
+        "Incapacitated",
+        "Can't take actions or reactions.",
+        "#dc2626",
+    ),
+    (
+        "Invisible",
+        "Can't be seen. Advantage on attacks. Attacks against have disadvantage.",
+        "#a855f7",
+    ),
+    (
+        "Paralyzed",
+        "Incapacitated. Auto-fails STR/DEX saves. Attacks have advantage.",
+        "#7c3aed",
+    ),
+    (
+        "Petrified",
+        "Turned to stone. Weight x10. Resistant to all damage.",
+        "#78716c",
+    ),
+    (
+        "Poisoned",
+        "Disadvantage on attacks and ability checks.",
+        "#22c55e",
+    ),
+    (
+        "Prone",
+        "Can only crawl. Disadvantage on attacks.",
+        "#78716c",
+    ),
+    (
+        "Restrained",
+        "Speed 0. Disadvantage on attacks and DEX saves.",
+        "#ea580c",
+    ),
+    (
+        "Stunned",
+        "Incapacitated. Auto-fails STR/DEX saves.",
+        "#fbbf24",
+    ),
+    (
+        "Unconscious",
+        "Incapacitated, prone, unaware. Attacks within 5ft are crits.",
+        "#1e3a8a",
+    ),
+    (
+        "Exhaustion",
+        "Various effects based on level (1-6).",
+        "#4b5563",
+    ),
+    (
+        "Concentrating",
+        "Maintaining a spell. CON save on damage.",
+        "#3b82f6",
+    ),
 ];
 
 /// Saving throw types
@@ -80,8 +139,16 @@ pub fn AdvancedConditionModal(
             duration_value: Some(dur_val),
             source_id: None,
             source_name: None,
-            save_type: if dur_type == ConditionDurationType::UntilSave { Some(s_type) } else { None },
-            save_dc: if dur_type == ConditionDurationType::UntilSave { Some(s_dc) } else { None },
+            save_type: if dur_type == ConditionDurationType::UntilSave {
+                Some(s_type)
+            } else {
+                None
+            },
+            save_dc: if dur_type == ConditionDurationType::UntilSave {
+                Some(s_dc)
+            } else {
+                None
+            },
         };
 
         spawn_local(async move {
@@ -565,7 +632,10 @@ pub fn AdvancedConditionsList(
         let cond_id = condition_id.clone();
 
         spawn_local(async move {
-            if remove_condition_by_id(sid.clone(), combatant.clone(), cond_id).await.is_ok() {
+            if remove_condition_by_id(sid.clone(), combatant.clone(), cond_id)
+                .await
+                .is_ok()
+            {
                 // Refresh conditions
                 if let Ok(conds) = get_combatant_conditions(sid, combatant).await {
                     conditions.set(conds);

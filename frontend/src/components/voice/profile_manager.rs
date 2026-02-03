@@ -7,10 +7,9 @@ use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
 use crate::bindings::{
-    list_voice_presets, list_voice_presets_by_tag, search_voice_profiles,
-    get_voice_profiles_by_gender, get_voice_profiles_by_age,
-    get_npc_voice_profile, link_voice_profile_to_npc,
-    VoiceProfile, AgeRange, Gender,
+    get_npc_voice_profile, get_voice_profiles_by_age, get_voice_profiles_by_gender,
+    link_voice_profile_to_npc, list_voice_presets, list_voice_presets_by_tag,
+    search_voice_profiles, AgeRange, Gender, VoiceProfile,
 };
 use crate::components::design_system::{Badge, BadgeVariant, Input};
 

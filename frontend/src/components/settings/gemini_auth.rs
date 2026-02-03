@@ -8,10 +8,9 @@ use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
 use crate::bindings::{
-    gemini_get_status, gemini_start_oauth, gemini_complete_oauth,
-    gemini_logout, gemini_set_storage_backend, open_url_in_browser,
-    gemini_oauth_with_callback,
-    GeminiStatus, GeminiStorageBackend,
+    gemini_complete_oauth, gemini_get_status, gemini_logout, gemini_oauth_with_callback,
+    gemini_set_storage_backend, gemini_start_oauth, open_url_in_browser, GeminiStatus,
+    GeminiStorageBackend,
 };
 use crate::components::design_system::{Badge, BadgeVariant, Select, SelectOption};
 use crate::services::notification_service::{show_error, show_success};
@@ -76,7 +75,10 @@ pub fn GeminiAuth(
             match gemini_oauth_with_callback(Some(300), Some(true)).await {
                 Ok(response) => {
                     if response.success {
-                        show_success("Login Complete", Some("Successfully authenticated with Gemini"));
+                        show_success(
+                            "Login Complete",
+                            Some("Successfully authenticated with Gemini"),
+                        );
                         refresh_status();
                     } else {
                         // If automatic callback failed, offer manual fallback
@@ -112,7 +114,11 @@ pub fn GeminiAuth(
                             awaiting_code.set(true);
                         }
                         Err(e) => {
-                            show_error("Browser Open Failed", Some(&format!("{}. Copy the URL shown below.", e)), None);
+                            show_error(
+                                "Browser Open Failed",
+                                Some(&format!("{}. Copy the URL shown below.", e)),
+                                None,
+                            );
                             awaiting_code.set(true);
                         }
                     }
@@ -135,7 +141,10 @@ pub fn GeminiAuth(
             match gemini_complete_oauth(code, csrf_state).await {
                 Ok(result) => {
                     if result.success {
-                        show_success("Login Complete", Some("Successfully authenticated with Gemini"));
+                        show_success(
+                            "Login Complete",
+                            Some("Successfully authenticated with Gemini"),
+                        );
                         awaiting_code.set(false);
                         auth_code.set(String::new());
                         oauth_url.set(None);
@@ -385,7 +394,8 @@ pub fn GeminiAuth(
             <div class="p-6 rounded-xl bg-theme-surface border border-blue-400/30 space-y-4">
                 {content}
             </div>
-        }.into_any()
+        }
+        .into_any()
     } else {
         view! { <div>{content}</div> }.into_any()
     }

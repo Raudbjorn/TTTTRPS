@@ -1,14 +1,13 @@
-use leptos::prelude::*;
-use leptos::ev;
-use crate::components::design_system::{Card, Button, ButtonVariant};
-use wasm_bindgen_futures::spawn_local;
 use crate::bindings::{
-    reindex_library,
-    get_extraction_settings, save_extraction_settings, get_extraction_presets,
-    check_ocr_availability,
-    ExtractionSettings, ExtractionPreset, TokenReductionLevel, OcrAvailability,
+    check_ocr_availability, get_extraction_presets, get_extraction_settings, reindex_library,
+    save_extraction_settings, ExtractionPreset, ExtractionSettings, OcrAvailability,
+    TokenReductionLevel,
 };
-use crate::services::notification_service::{show_success, show_error};
+use crate::components::design_system::{Button, ButtonVariant, Card};
+use crate::services::notification_service::{show_error, show_success};
+use leptos::ev;
+use leptos::prelude::*;
+use wasm_bindgen_futures::spawn_local;
 
 #[component]
 pub fn DataSettingsView() -> impl IntoView {

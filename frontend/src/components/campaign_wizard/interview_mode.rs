@@ -436,11 +436,7 @@ fn StuckHelper(
 
 /// Progress indicator for interview
 #[component]
-fn InterviewProgress(
-    current: usize,
-    total: usize,
-    category: QuestionCategory,
-) -> impl IntoView {
+fn InterviewProgress(current: usize, total: usize, category: QuestionCategory) -> impl IntoView {
     // Guard against division by zero when total is 0
     let percentage = if total == 0 {
         0
@@ -486,7 +482,8 @@ fn InterviewQuestionDisplay(
 
     // Initialize multi_selected from current_answer if it contains comma-separated values
     if is_multi_select && !current_answer.get_untracked().is_empty() {
-        let initial: std::collections::HashSet<String> = current_answer.get_untracked()
+        let initial: std::collections::HashSet<String> = current_answer
+            .get_untracked()
             .split(',')
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
@@ -904,7 +901,8 @@ pub fn InterviewMode(
             current_index.set(index - 1);
             // Restore previous answer
             let q_id = &questions_for_back[index - 1].id;
-            let prev_answer = answers.get()
+            let prev_answer = answers
+                .get()
                 .iter()
                 .find(|a| &a.question_id == q_id)
                 .map(|a| a.value.clone())
@@ -919,7 +917,8 @@ pub fn InterviewMode(
         show_summary.set(false);
         // Restore answer
         let q_id = &questions_for_edit[index].id;
-        let prev_answer = answers.get()
+        let prev_answer = answers
+            .get()
             .iter()
             .find(|a| &a.question_id == q_id)
             .map(|a| a.value.clone())

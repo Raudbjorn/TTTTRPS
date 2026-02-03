@@ -1,16 +1,18 @@
-use leptos::prelude::*;
-use leptos::ev;
-use wasm_bindgen_futures::spawn_local;
-use gloo_timers::callback::Timeout;
 use crate::bindings::{
-    configure_voice, get_voice_config, list_elevenlabs_voices, list_openai_tts_models,
-    list_openai_voices, list_all_voices, get_popular_piper_voices, download_piper_voice,
-    check_voice_provider_status, install_voice_provider,
-    ElevenLabsConfig, OllamaConfig, OpenAIVoiceConfig, Voice, VoiceConfig,
-    PiperConfig, CoquiConfig, PopularPiperVoice, InstallStatus, VoiceProviderType,
+    check_voice_provider_status, configure_voice, download_piper_voice, get_popular_piper_voices,
+    get_voice_config, install_voice_provider, list_all_voices, list_elevenlabs_voices,
+    list_openai_tts_models, list_openai_voices, CoquiConfig, ElevenLabsConfig, InstallStatus,
+    OllamaConfig, OpenAIVoiceConfig, PiperConfig, PopularPiperVoice, Voice, VoiceConfig,
+    VoiceProviderType,
 };
-use crate::components::design_system::{Card, Input, SelectRw, SelectOption, Button, ButtonVariant, Slider};
+use crate::components::design_system::{
+    Button, ButtonVariant, Card, Input, SelectOption, SelectRw, Slider,
+};
 use crate::services::notification_service::{show_error, show_success};
+use gloo_timers::callback::Timeout;
+use leptos::ev;
+use leptos::prelude::*;
+use wasm_bindgen_futures::spawn_local;
 
 #[component]
 pub fn VoiceSettingsView() -> impl IntoView {
@@ -80,7 +82,8 @@ pub fn VoiceSettingsView() -> impl IntoView {
                 }
                 "Piper" | "Coqui" => {
                     if let Ok(voices) = list_all_voices().await {
-                        let filtered: Vec<Voice> = voices.into_iter()
+                        let filtered: Vec<Voice> = voices
+                            .into_iter()
                             .filter(|v| v.provider.eq_ignore_ascii_case(provider.as_str()))
                             .collect();
                         available_voices.set(filtered);
@@ -226,7 +229,11 @@ pub fn VoiceSettingsView() -> impl IntoView {
         }
 
         // Cancel any pending save
-        timeout_handle.update_value(|h| { if let Some(t) = h.take() { t.cancel(); } });
+        timeout_handle.update_value(|h| {
+            if let Some(t) = h.take() {
+                t.cancel();
+            }
+        });
 
         let perform_save = move || {
             is_saving.set(true);
@@ -249,7 +256,11 @@ pub fn VoiceSettingsView() -> impl IntoView {
                     let mut base = VoiceConfig {
                         provider: provider.clone(),
                         cache_dir: None,
-                        default_voice_id: if !voice.is_empty() { Some(voice.clone()) } else { None },
+                        default_voice_id: if !voice.is_empty() {
+                            Some(voice.clone())
+                        } else {
+                            None
+                        },
                         elevenlabs: None,
                         fish_audio: None,
                         ollama: None,
@@ -280,7 +291,11 @@ pub fn VoiceSettingsView() -> impl IntoView {
                         }
                         "Piper" => {
                             base.piper = Some(PiperConfig {
-                                models_dir: if piper_dir.is_empty() { None } else { Some(piper_dir.clone()) },
+                                models_dir: if piper_dir.is_empty() {
+                                    None
+                                } else {
+                                    Some(piper_dir.clone())
+                                },
                                 length_scale,
                                 noise_scale,
                                 noise_w,
@@ -292,7 +307,11 @@ pub fn VoiceSettingsView() -> impl IntoView {
                             let port: u16 = val.parse().unwrap_or(5002);
                             base.coqui = Some(CoquiConfig {
                                 port,
-                                model: if model.is_empty() { "tts_models/en/ljspeech/vits".to_string() } else { model.clone() },
+                                model: if model.is_empty() {
+                                    "tts_models/en/ljspeech/vits".to_string()
+                                } else {
+                                    model.clone()
+                                },
                                 speaker: None,
                                 language: None,
                                 speed: coqui_spd,
@@ -330,7 +349,11 @@ pub fn VoiceSettingsView() -> impl IntoView {
     });
 
     on_cleanup(move || {
-        timeout_handle.update_value(|h| { if let Some(t) = h.take() { t.cancel(); } });
+        timeout_handle.update_value(|h| {
+            if let Some(t) = h.take() {
+                t.cancel();
+            }
+        });
     });
 
     // Provider change handler
@@ -377,7 +400,14 @@ pub fn VoiceSettingsView() -> impl IntoView {
         }
     };
 
-    let providers = vec!["Disabled", "Ollama", "ElevenLabs", "OpenAI", "Piper", "Coqui"];
+    let providers = vec![
+        "Disabled",
+        "Ollama",
+        "ElevenLabs",
+        "OpenAI",
+        "Piper",
+        "Coqui",
+    ];
 
     view! {
         <div class="space-y-8 animate-fade-in pb-20">

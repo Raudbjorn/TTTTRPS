@@ -7,8 +7,7 @@ use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
 use crate::bindings::{
-    ConversationThread, ConversationPurpose, ThreadListOptions,
-    list_conversation_threads,
+    list_conversation_threads, ConversationPurpose, ConversationThread, ThreadListOptions,
 };
 
 /// Conversation list for the session sidebar
@@ -182,8 +181,7 @@ pub fn ConversationList(
 #[component]
 fn ConversationRow(
     thread: ConversationThread,
-    #[prop(into)]
-    is_selected: Signal<bool>,
+    #[prop(into)] is_selected: Signal<bool>,
     on_click: Callback<()>,
 ) -> impl IntoView {
     let title = thread.display_title();

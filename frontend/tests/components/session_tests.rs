@@ -3,11 +3,11 @@
 //! Tests for ActiveSession rendering, CombatTracker, InitiativeList ordering,
 //! and Condition badge rendering.
 
-use wasm_bindgen_test::*;
 use leptos::prelude::*;
-use ttrpg_assistant_frontend::services::layout_service::provide_layout_state;
-use ttrpg_assistant_frontend::components::design_system::{Badge, BadgeVariant};
 use leptos_router::components::Router;
+use ttrpg_assistant_frontend::components::design_system::{Badge, BadgeVariant};
+use ttrpg_assistant_frontend::services::layout_service::provide_layout_state;
+use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
 
@@ -161,11 +161,7 @@ fn test_initiative_ordering_basic() {
 #[wasm_bindgen_test]
 fn test_initiative_ordering_ties() {
     // Test initiative tie handling - original order preserved (stable sort)
-    let mut combatants = vec![
-        ("Goblin 1", 15),
-        ("Fighter", 15),
-        ("Goblin 2", 15),
-    ];
+    let mut combatants = vec![("Goblin 1", 15), ("Fighter", 15), ("Goblin 2", 15)];
 
     // Stable sort by initiative descending
     combatants.sort_by(|a, b| b.1.cmp(&a.1));
@@ -338,7 +334,7 @@ fn test_current_combatant_highlight() {
     let combatants = vec![
         ("Fighter", 0),
         ("Wizard", 1),
-        ("Rogue", 2),  // Current turn
+        ("Rogue", 2), // Current turn
         ("Cleric", 3),
     ];
 

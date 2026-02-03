@@ -8,11 +8,7 @@ use crate::services::wizard_state::{use_wizard_context, WizardStep};
 
 /// Section display component
 #[component]
-fn ReviewSection(
-    title: &'static str,
-    step: WizardStep,
-    children: Children,
-) -> impl IntoView {
+fn ReviewSection(title: &'static str, step: WizardStep, children: Children) -> impl IntoView {
     let ctx = use_wizard_context();
     let is_completed = Signal::derive(move || ctx.is_step_completed(step));
 
@@ -43,10 +39,7 @@ fn ReviewSection(
 
 /// Data row display
 #[component]
-fn DataRow(
-    label: &'static str,
-    value: Signal<String>,
-) -> impl IntoView {
+fn DataRow(label: &'static str, value: Signal<String>) -> impl IntoView {
     view! {
         <div class="flex justify-between py-1">
             <span class="text-zinc-500">{label}</span>
@@ -57,9 +50,7 @@ fn DataRow(
 
 /// Tag list display
 #[component]
-fn TagList(
-    tags: Signal<Vec<String>>,
-) -> impl IntoView {
+fn TagList(tags: Signal<Vec<String>>) -> impl IntoView {
     view! {
         <div class="flex flex-wrap gap-1">
             {move || {
@@ -80,9 +71,7 @@ fn TagList(
 
 /// Review step component
 #[component]
-pub fn ReviewStep(
-    form_valid: RwSignal<bool>,
-) -> impl IntoView {
+pub fn ReviewStep(form_valid: RwSignal<bool>) -> impl IntoView {
     let ctx = use_wizard_context();
     let draft = Signal::derive(move || ctx.draft());
 
@@ -112,78 +101,119 @@ pub fn ReviewStep(
 
     // Derived display values
     let campaign_name = Signal::derive(move || {
-        draft.get().name.unwrap_or_else(|| "Untitled Campaign".to_string())
+        draft
+            .get()
+            .name
+            .unwrap_or_else(|| "Untitled Campaign".to_string())
     });
 
     let game_system = Signal::derive(move || {
-        draft.get().system.unwrap_or_else(|| "Not selected".to_string())
+        draft
+            .get()
+            .system
+            .unwrap_or_else(|| "Not selected".to_string())
     });
 
     let description = Signal::derive(move || {
-        draft.get().description.unwrap_or_else(|| "No description".to_string())
+        draft
+            .get()
+            .description
+            .unwrap_or_else(|| "No description".to_string())
     });
 
     let player_count = Signal::derive(move || {
-        draft.get().player_count.map(|c| c.to_string()).unwrap_or_else(|| "Not set".to_string())
+        draft
+            .get()
+            .player_count
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| "Not set".to_string())
     });
 
     let experience_level = Signal::derive(move || {
-        draft.get().experience_level.map(|e| e.label().to_string()).unwrap_or_else(|| "Not set".to_string())
+        draft
+            .get()
+            .experience_level
+            .map(|e| e.label().to_string())
+            .unwrap_or_else(|| "Not set".to_string())
     });
 
     let session_count = Signal::derive(move || {
-        draft.get().session_scope
+        draft
+            .get()
+            .session_scope
             .and_then(|s| s.session_count)
             .map(|c| format!("{} sessions", c))
             .unwrap_or_else(|| "Ongoing".to_string())
     });
 
     let pacing = Signal::derive(move || {
-        draft.get().session_scope
+        draft
+            .get()
+            .session_scope
             .and_then(|s| s.pacing)
             .map(|p| p.label().to_string())
             .unwrap_or_else(|| "Not set".to_string())
     });
 
-    let themes = Signal::derive(move || {
-        draft.get().intent.map(|i| i.themes).unwrap_or_default()
-    });
+    let themes = Signal::derive(move || draft.get().intent.map(|i| i.themes).unwrap_or_default());
 
     let tones = Signal::derive(move || {
-        draft.get().intent.map(|i| i.tone_keywords).unwrap_or_default()
+        draft
+            .get()
+            .intent
+            .map(|i| i.tone_keywords)
+            .unwrap_or_default()
     });
 
     let arc_template = Signal::derive(move || {
-        draft.get().arc_structure
+        draft
+            .get()
+            .arc_structure
             .and_then(|a| a.template)
             .map(|t| t.label().to_string())
             .unwrap_or_else(|| "Not selected".to_string())
     });
 
     let party_size = Signal::derive(move || {
-        draft.get().party_composition
+        draft
+            .get()
+            .party_composition
             .and_then(|p| p.party_size)
             .map(|s| format!("{} characters defined", s))
             .unwrap_or_else(|| "Not defined".to_string())
     });
 
     let level_range = Signal::derive(move || {
-        draft.get().party_composition
+        draft
+            .get()
+            .party_composition
             .and_then(|p| p.level_range)
             .map(|r| format!("Level {} to {}", r.start_level, r.end_level))
             .unwrap_or_else(|| "Not set".to_string())
     });
 
     let location_count = Signal::derive(move || {
-        draft.get().initial_content.map(|c| c.locations.len()).unwrap_or(0)
+        draft
+            .get()
+            .initial_content
+            .map(|c| c.locations.len())
+            .unwrap_or(0)
     });
 
     let npc_count = Signal::derive(move || {
-        draft.get().initial_content.map(|c| c.npcs.len()).unwrap_or(0)
+        draft
+            .get()
+            .initial_content
+            .map(|c| c.npcs.len())
+            .unwrap_or(0)
     });
 
     let hook_count = Signal::derive(move || {
-        draft.get().initial_content.map(|c| c.plot_hooks.len()).unwrap_or(0)
+        draft
+            .get()
+            .initial_content
+            .map(|c| c.plot_hooks.len())
+            .unwrap_or(0)
     });
 
     view! {

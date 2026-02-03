@@ -178,12 +178,10 @@ pub fn NpcList(
             let presence_b = NpcPresence::from_str(&b.status);
 
             match presence_a.sort_order().cmp(&presence_b.sort_order()) {
-                std::cmp::Ordering::Equal => {
-                    match b.unread_count.cmp(&a.unread_count) {
-                        std::cmp::Ordering::Equal => a.name.cmp(&b.name),
-                        other => other,
-                    }
-                }
+                std::cmp::Ordering::Equal => match b.unread_count.cmp(&a.unread_count) {
+                    std::cmp::Ordering::Equal => a.name.cmp(&b.name),
+                    other => other,
+                },
                 other => other,
             }
         });
@@ -207,9 +205,7 @@ pub fn NpcList(
     });
 
     // Total unread count
-    let total_unread = Memo::new(move |_| {
-        npcs.get().iter().map(|n| n.unread_count).sum::<u32>()
-    });
+    let total_unread = Memo::new(move |_| npcs.get().iter().map(|n| n.unread_count).sum::<u32>());
 
     view! {
         <div class="flex flex-col h-full bg-zinc-950 border-l border-zinc-900 w-72 flex-shrink-0">

@@ -1,5 +1,5 @@
+use super::core::{invoke, invoke_no_args, invoke_void};
 use serde::{Deserialize, Serialize};
-use super::core::{invoke, invoke_void, invoke_no_args};
 
 // ============================================================================
 // Meilisearch
@@ -44,7 +44,10 @@ pub struct OllamaEmbeddingModel {
 }
 
 /// Setup Ollama embeddings on all content indexes
-pub async fn setup_ollama_embeddings(host: String, model: String) -> Result<SetupEmbeddingsResult, String> {
+pub async fn setup_ollama_embeddings(
+    host: String,
+    model: String,
+) -> Result<SetupEmbeddingsResult, String> {
     #[derive(Serialize)]
     struct Args {
         host: String,
@@ -85,7 +88,9 @@ pub async fn get_embedder_status(index_name: String) -> Result<Option<serde_json
 }
 
 /// List available Ollama embedding models
-pub async fn list_ollama_embedding_models(host: String) -> Result<Vec<OllamaEmbeddingModel>, String> {
+pub async fn list_ollama_embedding_models(
+    host: String,
+) -> Result<Vec<OllamaEmbeddingModel>, String> {
     #[derive(Serialize)]
     struct Args {
         host: String,
@@ -142,7 +147,10 @@ pub struct SearchResultPayload {
     pub index: String,
 }
 
-pub async fn search(query: String, options: Option<SearchOptions>) -> Result<Vec<SearchResultPayload>, String> {
+pub async fn search(
+    query: String,
+    options: Option<SearchOptions>,
+) -> Result<Vec<SearchResultPayload>, String> {
     #[derive(Serialize)]
     struct Args {
         query: String,
@@ -151,7 +159,10 @@ pub async fn search(query: String, options: Option<SearchOptions>) -> Result<Vec
     invoke("search", &Args { query, options }).await
 }
 
-pub async fn semantic_search(query: String, limit: usize) -> Result<Vec<SearchResultPayload>, String> {
+pub async fn semantic_search(
+    query: String,
+    limit: usize,
+) -> Result<Vec<SearchResultPayload>, String> {
     #[derive(Serialize)]
     struct Args {
         query: String,
@@ -160,7 +171,10 @@ pub async fn semantic_search(query: String, limit: usize) -> Result<Vec<SearchRe
     invoke("semantic_search", &Args { query, limit }).await
 }
 
-pub async fn keyword_search(query: String, limit: usize) -> Result<Vec<SearchResultPayload>, String> {
+pub async fn keyword_search(
+    query: String,
+    limit: usize,
+) -> Result<Vec<SearchResultPayload>, String> {
     #[derive(Serialize)]
     struct Args {
         query: String,
@@ -247,7 +261,10 @@ pub struct SpellingSuggestion {
 }
 
 /// Perform hybrid search with RRF fusion
-pub async fn hybrid_search(query: String, options: Option<HybridSearchOptions>) -> Result<HybridSearchResponse, String> {
+pub async fn hybrid_search(
+    query: String,
+    options: Option<HybridSearchOptions>,
+) -> Result<HybridSearchResponse, String> {
     #[derive(Serialize)]
     struct Args {
         query: String,
@@ -334,13 +351,17 @@ pub struct CacheStats {
 
 pub async fn get_search_analytics(hours: i64) -> Result<SearchAnalyticsSummary, String> {
     #[derive(Serialize)]
-    struct Args { hours: i64 }
+    struct Args {
+        hours: i64,
+    }
     invoke("get_search_analytics", &Args { hours }).await
 }
 
 pub async fn get_popular_queries(limit: usize) -> Result<Vec<PopularQuery>, String> {
     #[derive(Serialize)]
-    struct Args { limit: usize }
+    struct Args {
+        limit: usize,
+    }
     invoke("get_popular_queries", &Args { limit }).await
 }
 
@@ -350,13 +371,17 @@ pub async fn get_cache_stats() -> Result<CacheStats, String> {
 
 pub async fn get_trending_queries(limit: usize) -> Result<Vec<String>, String> {
     #[derive(Serialize)]
-    struct Args { limit: usize }
+    struct Args {
+        limit: usize,
+    }
     invoke("get_trending_queries", &Args { limit }).await
 }
 
 pub async fn get_zero_result_queries(hours: i64) -> Result<Vec<String>, String> {
     #[derive(Serialize)]
-    struct Args { hours: i64 }
+    struct Args {
+        hours: i64,
+    }
     invoke("get_zero_result_queries", &Args { hours }).await
 }
 
@@ -379,22 +404,34 @@ pub async fn record_search_selection(
         source: String,
         selection_delay_ms: u64,
     }
-    invoke_void("record_search_selection", &Args {
-        search_id, query, result_index, source, selection_delay_ms
-    }).await
+    invoke_void(
+        "record_search_selection",
+        &Args {
+            search_id,
+            query,
+            result_index,
+            source,
+            selection_delay_ms,
+        },
+    )
+    .await
 }
 
 // --- Database-Backed Analytics (Persistent) ---
 
 pub async fn get_search_analytics_db(hours: i64) -> Result<SearchAnalyticsSummary, String> {
     #[derive(Serialize)]
-    struct Args { hours: i64 }
+    struct Args {
+        hours: i64,
+    }
     invoke("get_search_analytics_db", &Args { hours }).await
 }
 
 pub async fn get_popular_queries_db(limit: usize) -> Result<Vec<PopularQuery>, String> {
     #[derive(Serialize)]
-    struct Args { limit: usize }
+    struct Args {
+        limit: usize,
+    }
     invoke("get_popular_queries_db", &Args { limit }).await
 }
 
@@ -404,13 +441,17 @@ pub async fn get_cache_stats_db() -> Result<CacheStats, String> {
 
 pub async fn get_trending_queries_db(limit: usize) -> Result<Vec<String>, String> {
     #[derive(Serialize)]
-    struct Args { limit: usize }
+    struct Args {
+        limit: usize,
+    }
     invoke("get_trending_queries_db", &Args { limit }).await
 }
 
 pub async fn get_zero_result_queries_db(hours: i64) -> Result<Vec<String>, String> {
     #[derive(Serialize)]
-    struct Args { hours: i64 }
+    struct Args {
+        hours: i64,
+    }
     invoke("get_zero_result_queries_db", &Args { hours }).await
 }
 
@@ -437,9 +478,19 @@ pub async fn record_search_event(
         source_filter: Option<String>,
         campaign_id: Option<String>,
     }
-    invoke("record_search_event", &Args {
-        query, result_count, execution_time_ms, search_type, from_cache, source_filter, campaign_id
-    }).await
+    invoke(
+        "record_search_event",
+        &Args {
+            query,
+            result_count,
+            execution_time_ms,
+            search_type,
+            from_cache,
+            source_filter,
+            campaign_id,
+        },
+    )
+    .await
 }
 
 pub async fn record_search_selection_db(
@@ -459,13 +510,24 @@ pub async fn record_search_selection_db(
         selection_delay_ms: u64,
         was_helpful: Option<bool>,
     }
-    invoke_void("record_search_selection_db", &Args {
-        search_id, query, result_index, source, selection_delay_ms, was_helpful
-    }).await
+    invoke_void(
+        "record_search_selection_db",
+        &Args {
+            search_id,
+            query,
+            result_index,
+            source,
+            selection_delay_ms,
+            was_helpful,
+        },
+    )
+    .await
 }
 
 pub async fn cleanup_search_analytics(days: i64) -> Result<u64, String> {
     #[derive(Serialize)]
-    struct Args { days: i64 }
+    struct Args {
+        days: i64,
+    }
     invoke("cleanup_search_analytics", &Args { days }).await
 }

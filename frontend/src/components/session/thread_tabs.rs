@@ -4,13 +4,13 @@
 //! Displays tabs for different conversation purposes (session planning, NPC gen, etc.)
 //! with a persistent "General" tab and ability to create new purpose-driven threads.
 
-use leptos::prelude::*;
 use leptos::ev;
+use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
 use crate::bindings::{
-    ConversationThread, ConversationPurpose, ThreadListOptions,
-    list_conversation_threads, create_conversation_thread,
+    create_conversation_thread, list_conversation_threads, ConversationPurpose, ConversationThread,
+    ThreadListOptions,
 };
 use crate::services::notification_service::show_error;
 
@@ -61,11 +61,7 @@ pub fn ThreadTabs(
         show_new_thread_menu.set(false);
 
         spawn_local(async move {
-            match create_conversation_thread(
-                cid,
-                purpose.as_str().to_string(),
-                None,
-            ).await {
+            match create_conversation_thread(cid, purpose.as_str().to_string(), None).await {
                 Ok(new_thread) => {
                     // Add to list and select it
                     threads.update(|t| t.insert(0, new_thread.clone()));

@@ -7,13 +7,13 @@
 //! - Empty state handling
 //! - Drag-and-drop zone for ingestion
 
-use leptos::prelude::*;
 use leptos::ev;
+use leptos::prelude::*;
 use leptos::task::spawn_local;
 
-use crate::bindings::{pick_document_file, ingest_document_two_phase};
+use super::{use_library_state, DocumentStatus, SearchResult, SourceDocument, ViewMode};
+use crate::bindings::{ingest_document_two_phase, pick_document_file};
 use crate::components::design_system::{Badge, BadgeVariant, LoadingSpinner};
-use super::{use_library_state, SearchResult, ViewMode, SourceDocument, DocumentStatus};
 
 /// Document list/grid component displaying search results or all documents
 #[component]

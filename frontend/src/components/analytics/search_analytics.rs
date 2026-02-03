@@ -3,18 +3,24 @@
 //! Displays search query analytics, popular searches, and cache statistics.
 //! Supports both in-memory (session) and database-backed (historical) data sources.
 
-use leptos::prelude::*;
 use leptos::ev;
+use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
 use crate::bindings::{
+    get_cache_stats,
+    get_cache_stats_db,
+    get_popular_queries,
+    get_popular_queries_db,
     // In-memory (session) analytics
-    get_search_analytics, get_popular_queries, get_cache_stats,
-    get_trending_queries,
+    get_search_analytics,
     // Database-backed (historical) analytics
-    get_search_analytics_db, get_popular_queries_db, get_cache_stats_db,
+    get_search_analytics_db,
+    get_trending_queries,
     get_trending_queries_db,
-    SearchAnalyticsSummary, PopularQuery, CacheStats,
+    CacheStats,
+    PopularQuery,
+    SearchAnalyticsSummary,
 };
 use crate::components::design_system::{Card, CardBody, CardHeader, Select};
 

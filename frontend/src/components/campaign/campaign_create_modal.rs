@@ -3,10 +3,10 @@
 //! Multi-step wizard for creating new campaigns with system selection,
 //! theme configuration, and initial settings.
 
+use crate::bindings::{create_campaign, Campaign};
 use leptos::ev;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use crate::bindings::{create_campaign, Campaign};
 
 /// Wizard step
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,73 +40,147 @@ impl WizardStep {
     }
 
     fn all() -> Vec<Self> {
-        vec![Self::Basics, Self::System, Self::Theme, Self::Settings, Self::Review]
+        vec![
+            Self::Basics,
+            Self::System,
+            Self::Theme,
+            Self::Settings,
+            Self::Review,
+        ]
     }
 }
 
 /// Game system options
 const GAME_SYSTEMS: &[(&str, &str, &str)] = &[
-    ("D&D 5e", "Dungeons & Dragons 5th Edition", "High fantasy adventure with iconic classes and monsters"),
-    ("Pathfinder 2e", "Pathfinder Second Edition", "Tactical fantasy with deep character customization"),
-    ("Call of Cthulhu", "Call of Cthulhu 7e", "Cosmic horror investigation and sanity mechanics"),
+    (
+        "D&D 5e",
+        "Dungeons & Dragons 5th Edition",
+        "High fantasy adventure with iconic classes and monsters",
+    ),
+    (
+        "Pathfinder 2e",
+        "Pathfinder Second Edition",
+        "Tactical fantasy with deep character customization",
+    ),
+    (
+        "Call of Cthulhu",
+        "Call of Cthulhu 7e",
+        "Cosmic horror investigation and sanity mechanics",
+    ),
     ("Delta Green", "Delta Green", "Modern-day conspiracy horror"),
-    ("Mothership", "Mothership 1e", "Sci-fi horror with panic mechanics"),
-    ("Cyberpunk Red", "Cyberpunk Red", "Dystopian future with style over substance"),
-    ("Shadowrun", "Shadowrun 6e", "Cyberpunk meets fantasy in a corporate dystopia"),
-    ("Vampire: The Masquerade", "VtM 5th Edition", "Personal horror in the World of Darkness"),
-    ("Blades in the Dark", "Blades in the Dark", "Heist-focused narrative play"),
-    ("Fate Core", "Fate Core", "Narrative-driven with aspects and fate points"),
+    (
+        "Mothership",
+        "Mothership 1e",
+        "Sci-fi horror with panic mechanics",
+    ),
+    (
+        "Cyberpunk Red",
+        "Cyberpunk Red",
+        "Dystopian future with style over substance",
+    ),
+    (
+        "Shadowrun",
+        "Shadowrun 6e",
+        "Cyberpunk meets fantasy in a corporate dystopia",
+    ),
+    (
+        "Vampire: The Masquerade",
+        "VtM 5th Edition",
+        "Personal horror in the World of Darkness",
+    ),
+    (
+        "Blades in the Dark",
+        "Blades in the Dark",
+        "Heist-focused narrative play",
+    ),
+    (
+        "Fate Core",
+        "Fate Core",
+        "Narrative-driven with aspects and fate points",
+    ),
     ("Other", "Custom System", "Define your own game system"),
 ];
 
 /// Theme presets
 const THEME_PRESETS: &[(&str, &str, &str)] = &[
-    ("epic", "Epic Adventure", "Grand quests, heroic deeds, and world-changing events"),
-    ("dark", "Dark & Gritty", "Moral ambiguity, hard choices, and survival"),
-    ("mystery", "Mystery & Intrigue", "Secrets, investigation, and plot twists"),
+    (
+        "epic",
+        "Epic Adventure",
+        "Grand quests, heroic deeds, and world-changing events",
+    ),
+    (
+        "dark",
+        "Dark & Gritty",
+        "Moral ambiguity, hard choices, and survival",
+    ),
+    (
+        "mystery",
+        "Mystery & Intrigue",
+        "Secrets, investigation, and plot twists",
+    ),
     ("horror", "Horror", "Fear, dread, and the unknown"),
     ("comedy", "Comedy", "Humor, wit, and lighthearted moments"),
-    ("sandbox", "Sandbox", "Player-driven exploration and freedom"),
-    ("political", "Political Intrigue", "Power struggles, factions, and diplomacy"),
-    ("exploration", "Exploration", "Discovery, travel, and new frontiers"),
+    (
+        "sandbox",
+        "Sandbox",
+        "Player-driven exploration and freedom",
+    ),
+    (
+        "political",
+        "Political Intrigue",
+        "Power struggles, factions, and diplomacy",
+    ),
+    (
+        "exploration",
+        "Exploration",
+        "Discovery, travel, and new frontiers",
+    ),
 ];
 
 /// Step progress indicator
 #[component]
-fn StepIndicator(
-    steps: Vec<WizardStep>,
-    current_step: WizardStep,
-) -> impl IntoView {
+fn StepIndicator(steps: Vec<WizardStep>, current_step: RwSignal<WizardStep>) -> impl IntoView {
     view! {
         <div class="flex items-center justify-center gap-2 mb-8">
             {steps.iter().enumerate().map(|(i, step)| {
-                let is_current = *step == current_step;
-                let is_complete = step.index() < current_step.index();
+                let step = *step;
+                let step_index = step.index();
 
-                let circle_class = if is_current {
-                    "bg-purple-600 text-white"
-                } else if is_complete {
-                    "bg-purple-900 text-purple-300"
-                } else {
-                    "bg-zinc-800 text-zinc-500"
+                let circle_class = move || {
+                    let current = current_step.get();
+                    let is_current = step == current;
+                    let is_complete = step_index < current.index();
+
+                    if is_current {
+                        "bg-purple-600 text-white"
+                    } else if is_complete {
+                        "bg-purple-900 text-purple-300"
+                    } else {
+                        "bg-zinc-800 text-zinc-500"
+                    }
                 };
 
-                let line_class = if step.index() < current_step.index() {
-                    "bg-purple-600"
-                } else {
-                    "bg-zinc-700"
+                let line_class = move || {
+                    if step_index < current_step.get().index() {
+                        "bg-purple-600"
+                    } else {
+                        "bg-zinc-700"
+                    }
                 };
+
+                let is_complete = move || step_index < current_step.get().index();
+                let is_current = move || step == current_step.get();
 
                 view! {
                     <>
                         {(i > 0).then(|| view! {
-                            <div class=format!("w-12 h-0.5 {}", line_class)></div>
+                            <div class=move || format!("w-12 h-0.5 {}", line_class())></div>
                         })}
                         <div class="flex flex-col items-center gap-1">
-                            <div class=format!("w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium {}", circle_class)>
-                                {if is_complete { "v".to_string() } else { (i + 1).to_string() }}
+                            <div class=move || format!("w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium {}", circle_class())>
+                                {move || if is_complete() { "✓".to_string() } else { (i + 1).to_string() }}
                             </div>
-                            <span class=format!("text-xs {}", if is_current { "text-white" } else { "text-zinc-500" })>
+                            <span class=move || format!("text-xs {}", if is_current() { "text-white" } else { "text-zinc-500" })>
                                 {step.label()}
                             </span>
                         </div>
@@ -119,10 +193,7 @@ fn StepIndicator(
 
 /// Basics step - name and description
 #[component]
-fn StepBasics(
-    name: RwSignal<String>,
-    description: RwSignal<String>,
-) -> impl IntoView {
+fn StepBasics(name: RwSignal<String>, description: RwSignal<String>) -> impl IntoView {
     view! {
         <div class="space-y-6">
             <div class="text-center mb-8">
@@ -162,10 +233,7 @@ fn StepBasics(
 
 /// System selection step
 #[component]
-fn StepSystem(
-    selected_system: RwSignal<String>,
-    custom_system: RwSignal<String>,
-) -> impl IntoView {
+fn StepSystem(selected_system: RwSignal<String>, custom_system: RwSignal<String>) -> impl IntoView {
     view! {
         <div class="space-y-6">
             <div class="text-center mb-8">
@@ -219,9 +287,7 @@ fn StepSystem(
 
 /// Theme configuration step
 #[component]
-fn StepTheme(
-    selected_themes: RwSignal<Vec<String>>,
-) -> impl IntoView {
+fn StepTheme(selected_themes: RwSignal<Vec<String>>) -> impl IntoView {
     let toggle_theme = move |theme: String| {
         selected_themes.update(|themes| {
             if themes.contains(&theme) {
@@ -279,10 +345,7 @@ fn StepTheme(
 
 /// Settings step
 #[component]
-fn StepSettings(
-    voice_enabled: RwSignal<bool>,
-    auto_transcribe: RwSignal<bool>,
-) -> impl IntoView {
+fn StepSettings(voice_enabled: RwSignal<bool>, auto_transcribe: RwSignal<bool>) -> impl IntoView {
     view! {
         <div class="space-y-6">
             <div class="text-center mb-8">
@@ -450,7 +513,7 @@ pub fn CampaignCreateModal(
             WizardStep::System => {
                 let sys = selected_system.get();
                 sys != "Other" || !custom_system.get().trim().is_empty()
-            },
+            }
             WizardStep::Theme => true, // Optional
             WizardStep::Settings => true,
             WizardStep::Review => true,
@@ -500,14 +563,12 @@ pub fn CampaignCreateModal(
         }
     };
 
-    let handle_back = move |_: ev::MouseEvent| {
-        match current_step.get() {
-            WizardStep::Basics => {},
-            WizardStep::System => current_step.set(WizardStep::Basics),
-            WizardStep::Theme => current_step.set(WizardStep::System),
-            WizardStep::Settings => current_step.set(WizardStep::Theme),
-            WizardStep::Review => current_step.set(WizardStep::Settings),
-        }
+    let handle_back = move |_: ev::MouseEvent| match current_step.get() {
+        WizardStep::Basics => {}
+        WizardStep::System => current_step.set(WizardStep::Basics),
+        WizardStep::Theme => current_step.set(WizardStep::System),
+        WizardStep::Settings => current_step.set(WizardStep::Theme),
+        WizardStep::Review => current_step.set(WizardStep::Settings),
     };
 
     let handle_close = move |_: ev::MouseEvent| {
@@ -544,7 +605,7 @@ pub fn CampaignCreateModal(
                     <div class="px-6 pt-6 shrink-0">
                         <StepIndicator
                             steps=WizardStep::all()
-                            current_step=current_step.get()
+                            current_step=current_step
                         />
                     </div>
 

@@ -653,7 +653,14 @@ pub async fn advance_wizard_step(
         wizard_id: String,
         step_data: StepData,
     }
-    invoke("advance_wizard_step", &Args { wizard_id, step_data }).await
+    invoke(
+        "advance_wizard_step",
+        &Args {
+            wizard_id,
+            step_data,
+        },
+    )
+    .await
 }
 
 /// Go back to previous step
@@ -708,7 +715,14 @@ pub async fn cancel_wizard(wizard_id: String, save_draft: bool) -> Result<(), St
         wizard_id: String,
         save_draft: bool,
     }
-    crate::bindings::invoke_void("cancel_wizard", &Args { wizard_id, save_draft }).await
+    crate::bindings::invoke_void(
+        "cancel_wizard",
+        &Args {
+            wizard_id,
+            save_draft,
+        },
+    )
+    .await
 }
 
 /// Auto-save wizard state
@@ -722,7 +736,14 @@ pub async fn auto_save_wizard(
         wizard_id: String,
         partial_data: Option<PartialCampaign>,
     }
-    crate::bindings::invoke_void("auto_save_wizard", &Args { wizard_id, partial_data }).await
+    crate::bindings::invoke_void(
+        "auto_save_wizard",
+        &Args {
+            wizard_id,
+            partial_data,
+        },
+    )
+    .await
 }
 
 // ============================================================================

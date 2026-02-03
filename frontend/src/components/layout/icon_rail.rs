@@ -8,10 +8,10 @@
 //!   - Keyboard accessible with focus indicators
 //!   - Collapsible toggle buttons for sidebar/info panel
 
-use leptos::prelude::*;
-use leptos_router::hooks::{use_navigate, use_location};
-use leptos_router::NavigateOptions;
 use crate::services::layout_service::{LayoutState, ViewType};
+use leptos::prelude::*;
+use leptos_router::hooks::{use_location, use_navigate};
+use leptos_router::NavigateOptions;
 
 /// Icon definitions with metadata
 struct NavIcon {

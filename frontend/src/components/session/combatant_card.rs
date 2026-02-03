@@ -2,13 +2,12 @@
 //!
 //! Individual combatant display with HP bar, AC, conditions, and quick actions.
 
-use leptos::prelude::*;
 use leptos::ev;
+use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
 use crate::bindings::{
-    Combatant, damage_combatant, heal_combatant, remove_combatant,
-    remove_condition,
+    damage_combatant, heal_combatant, remove_combatant, remove_condition, Combatant,
 };
 
 /// Combatant card component
@@ -61,14 +60,12 @@ pub fn CombatantCard(
     };
 
     // Combatant type icon and color
-    let type_info = move || {
-        match combatant_type.as_str() {
-            "player" => ("P", "bg-blue-600", "text-blue-100"),
-            "monster" => ("M", "bg-red-600", "text-red-100"),
-            "npc" => ("N", "bg-purple-600", "text-purple-100"),
-            "ally" => ("A", "bg-green-600", "text-green-100"),
-            _ => ("?", "bg-zinc-600", "text-zinc-100"),
-        }
+    let type_info = move || match combatant_type.as_str() {
+        "player" => ("P", "bg-blue-600", "text-blue-100"),
+        "monster" => ("M", "bg-red-600", "text-red-100"),
+        "npc" => ("N", "bg-purple-600", "text-purple-100"),
+        "ally" => ("A", "bg-green-600", "text-green-100"),
+        _ => ("?", "bg-zinc-600", "text-zinc-100"),
     };
 
     // Quick damage/heal handlers
@@ -141,14 +138,9 @@ pub fn CombatantCard(
                 "shadow-purple-900/20",
             ]);
         } else if !is_active {
-            classes.extend([
-                "opacity-50",
-                "bg-zinc-900/50",
-            ]);
+            classes.extend(["opacity-50", "bg-zinc-900/50"]);
         } else {
-            classes.extend([
-                "hover:bg-zinc-700/30",
-            ]);
+            classes.extend(["hover:bg-zinc-700/30"]);
         }
 
         classes.join(" ")

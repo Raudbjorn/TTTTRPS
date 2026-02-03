@@ -129,6 +129,21 @@ impl ChatSessionService {
         });
 
         // 2. Initialize Stream Listener
+        // The `_unlisten` JsValue returned by listen_chat_chunks_async is intentionally
+        // not stored. This is SAFE because:
+        //
+        // 1. **Dropping unlisten does NOT unregister the callback**: The callback is
+        //    captured by a JavaScript closure in Tauri's event system. The unlisten
+        //    handle only provides the *ability* to explicitly unregister - dropping
+        //    it does nothing.
+        //
+        // 2. **Tauri manages the listener lifecycle**: The callback remains active
+        //    for the app lifetime. Stream ID filtering ensures only relevant chunks
+        //    are processed for each stream.
+        //
+        // 3. **try_update handles disposed signals**: When the component unmounts,
+        //    signals may be disposed. try_update returns None/false in this case,
+        //    safely no-oping the callback.
         spawn_local(async move {
             let _unlisten = listen_chat_chunks_async(move |chunk: ChatChunk| {
                 let result = service.messages.try_update(|msgs| {

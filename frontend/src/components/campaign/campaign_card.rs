@@ -4,11 +4,11 @@
 //! Design metaphor: Campaigns as "Albums" with cover art, genre (system),
 //! player count, last played date, and "Now Playing" pulse animation.
 
+use crate::bindings::Campaign;
+use crate::utils::formatting::format_last_played;
 use leptos::ev;
 use leptos::prelude::*;
-use crate::bindings::Campaign;
-use phosphor_leptos::{Icon, TRASH, DISC, USERS, USER, PLAY_CIRCLE};
-use crate::utils::formatting::format_last_played;
+use phosphor_leptos::{Icon, DISC, PLAY_CIRCLE, TRASH, USER, USERS};
 
 /// Genre/system category for styling
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -26,20 +26,33 @@ impl CampaignGenre {
     /// Detect genre from system string
     pub fn from_system(system: &str) -> Self {
         let s = system.to_lowercase();
-        if s.contains("d&d") || s.contains("5e") || s.contains("pathfinder")
-            || s.contains("fantasy") || s.contains("warhammer fantasy")
+        if s.contains("d&d")
+            || s.contains("5e")
+            || s.contains("pathfinder")
+            || s.contains("fantasy")
+            || s.contains("warhammer fantasy")
         {
             CampaignGenre::Fantasy
-        } else if s.contains("cthulhu") || s.contains("horror") || s.contains("vampire")
-            || s.contains("kult") || s.contains("vaesen") || s.contains("delta green")
+        } else if s.contains("cthulhu")
+            || s.contains("horror")
+            || s.contains("vampire")
+            || s.contains("kult")
+            || s.contains("vaesen")
+            || s.contains("delta green")
         {
             CampaignGenre::Horror
-        } else if s.contains("cyber") || s.contains("shadow") || s.contains("neon")
+        } else if s.contains("cyber")
+            || s.contains("shadow")
+            || s.contains("neon")
             || s.contains("sprawl")
         {
             CampaignGenre::Cyberpunk
-        } else if s.contains("space") || s.contains("alien") || s.contains("scifi")
-            || s.contains("traveller") || s.contains("mothership") || s.contains("stars without")
+        } else if s.contains("space")
+            || s.contains("alien")
+            || s.contains("scifi")
+            || s.contains("traveller")
+            || s.contains("mothership")
+            || s.contains("stars without")
         {
             CampaignGenre::SciFi
         } else if s.contains("modern") || s.contains("fate") || s.contains("gurps") {
@@ -185,7 +198,8 @@ pub fn CampaignCard(
     let (bg_class, text_class) = genre.style();
 
     // Get first two letters for better initials
-    let initials: String = campaign.name
+    let initials: String = campaign
+        .name
         .split_whitespace()
         .take(2)
         .filter_map(|word| word.chars().next())
@@ -431,7 +445,8 @@ pub fn CampaignCardCompact(
     let (bg_class, text_class) = genre.style();
 
     // Get initials
-    let initials: String = campaign.name
+    let initials: String = campaign
+        .name
         .split_whitespace()
         .take(2)
         .filter_map(|word| word.chars().next())
@@ -539,7 +554,8 @@ pub fn CampaignCardMini(
     let genre = CampaignGenre::from_system(&campaign.system);
     let (bg_class, text_class) = genre.style();
 
-    let initials: String = campaign.name
+    let initials: String = campaign
+        .name
         .split_whitespace()
         .take(2)
         .filter_map(|word| word.chars().next())

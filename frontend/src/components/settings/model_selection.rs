@@ -6,9 +6,9 @@
 //! - Usage meters (5h and 7d windows)
 //! - Selection reason
 
-use leptos::prelude::*;
 use crate::bindings::get_model_selection;
 use crate::components::design_system::{Badge, BadgeVariant, Card};
+use leptos::prelude::*;
 
 /// A progress bar for displaying usage utilization
 #[component]
@@ -54,8 +54,8 @@ fn UsageMeter(
 /// Get badge variant for subscription plan
 fn plan_badge_variant(plan: &str) -> BadgeVariant {
     match plan {
-        "max_20" => BadgeVariant::Success,  // Max 20x - premium
-        "max" => BadgeVariant::Success,     // Max 5x
+        "max_20" => BadgeVariant::Success, // Max 20x - premium
+        "max" => BadgeVariant::Success,    // Max 5x
         "pro" => BadgeVariant::Info,
         "team" | "enterprise" => BadgeVariant::Info,
         "api" => BadgeVariant::Default,
@@ -82,9 +82,7 @@ fn plan_display(plan: &str) -> &'static str {
 #[component]
 pub fn ModelSelectionDashboard() -> impl IntoView {
     // Fetch model selection on mount using LocalResource for WASM compatibility
-    let selection = LocalResource::new(move || async move {
-        get_model_selection().await.ok()
-    });
+    let selection = LocalResource::new(move || async move { get_model_selection().await.ok() });
 
     view! {
         <Card class="p-4">

@@ -8,13 +8,13 @@
 use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
-use crate::bindings::{
-    claude_get_status, ClaudeStatus,
-    get_extraction_settings, save_extraction_settings, TextExtractionProvider,
-};
-use crate::components::design_system::{Card, Badge, BadgeVariant};
-use crate::services::notification_service::show_error;
 use super::ClaudeAuth;
+use crate::bindings::{
+    claude_get_status, get_extraction_settings, save_extraction_settings, ClaudeStatus,
+    TextExtractionProvider,
+};
+use crate::components::design_system::{Badge, BadgeVariant, Card};
+use crate::services::notification_service::show_error;
 
 /// Settings view for text extraction providers.
 #[component]

@@ -1,6 +1,6 @@
+use super::core::{invoke, invoke_no_args, invoke_void};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use super::core::{invoke, invoke_void, invoke_no_args};
 
 // ============================================================================
 // Campaign Types
@@ -95,7 +95,14 @@ pub async fn set_campaign_theme(campaign_id: String, weights: ThemeWeights) -> R
         campaign_id: String,
         weights: ThemeWeights,
     }
-    invoke_void("set_campaign_theme", &Args { campaign_id, weights }).await
+    invoke_void(
+        "set_campaign_theme",
+        &Args {
+            campaign_id,
+            weights,
+        },
+    )
+    .await
 }
 
 pub async fn get_theme_preset(system: String) -> Result<ThemeWeights, String> {
@@ -120,7 +127,14 @@ pub async fn create_snapshot(campaign_id: String, description: String) -> Result
         campaign_id: String,
         description: String,
     }
-    invoke("create_snapshot", &Args { campaign_id, description }).await
+    invoke(
+        "create_snapshot",
+        &Args {
+            campaign_id,
+            description,
+        },
+    )
+    .await
 }
 
 pub async fn restore_snapshot(campaign_id: String, snapshot_id: String) -> Result<(), String> {
@@ -129,7 +143,14 @@ pub async fn restore_snapshot(campaign_id: String, snapshot_id: String) -> Resul
         campaign_id: String,
         snapshot_id: String,
     }
-    invoke_void("restore_snapshot", &Args { campaign_id, snapshot_id }).await
+    invoke_void(
+        "restore_snapshot",
+        &Args {
+            campaign_id,
+            snapshot_id,
+        },
+    )
+    .await
 }
 
 pub async fn get_campaign_stats(campaign_id: String) -> Result<CampaignStats, String> {
@@ -181,13 +202,23 @@ pub struct SessionSummary {
 // Session Commands
 // ============================================================================
 
-pub async fn start_session(campaign_id: String, session_number: u32) -> Result<GameSession, String> {
+pub async fn start_session(
+    campaign_id: String,
+    session_number: u32,
+) -> Result<GameSession, String> {
     #[derive(Serialize)]
     struct Args {
         campaign_id: String,
         session_number: u32,
     }
-    invoke("start_session", &Args { campaign_id, session_number }).await
+    invoke(
+        "start_session",
+        &Args {
+            campaign_id,
+            session_number,
+        },
+    )
+    .await
 }
 
 pub async fn get_session(session_id: String) -> Result<Option<GameSession>, String> {
@@ -228,7 +259,14 @@ pub async fn reorder_session(session_id: String, new_order: i32) -> Result<(), S
         session_id: String,
         new_order: i32,
     }
-    invoke_void("reorder_session", &Args { session_id, new_order }).await
+    invoke_void(
+        "reorder_session",
+        &Args {
+            session_id,
+            new_order,
+        },
+    )
+    .await
 }
 
 // ============================================================================
@@ -399,7 +437,14 @@ pub async fn get_timeline_events_by_type(
         session_id: String,
         event_type: String,
     }
-    invoke("get_timeline_events_by_type", &Args { session_id, event_type }).await
+    invoke(
+        "get_timeline_events_by_type",
+        &Args {
+            session_id,
+            event_type,
+        },
+    )
+    .await
 }
 
 pub async fn generate_session_summary(session_id: String) -> Result<String, String> {
@@ -414,8 +459,10 @@ pub async fn generate_session_summary(session_id: String) -> Result<String, Stri
     ));
 
     if !summary.key_moments.is_empty() {
-        narrative.push_str("KEY MOMENTS:
-");
+        narrative.push_str(
+            "KEY MOMENTS:
+",
+        );
         for moment in &summary.key_moments {
             narrative.push_str(&format!(
                 "- [{:?}] {} - {}
@@ -440,35 +487,51 @@ pub async fn generate_session_summary(session_id: String) -> Result<String, Stri
         if summary.combat.deaths > 0 {
             narrative.push_str(&format!(", {} death(s)", summary.combat.deaths));
         }
-        narrative.push_str("
+        narrative.push_str(
+            "
 
-");
+",
+        );
     }
 
     if !summary.npcs_encountered.is_empty() {
         narrative.push_str("NPCs ENCOUNTERED: ");
-        let names: Vec<&str> = summary.npcs_encountered.iter().map(|n| n.name.as_str()).collect();
+        let names: Vec<&str> = summary
+            .npcs_encountered
+            .iter()
+            .map(|n| n.name.as_str())
+            .collect();
         narrative.push_str(&names.join(", "));
-        narrative.push_str("
+        narrative.push_str(
+            "
 
-");
+",
+        );
     }
 
     if !summary.locations_visited.is_empty() {
         narrative.push_str("LOCATIONS VISITED: ");
-        let names: Vec<&str> = summary.locations_visited.iter().map(|l| l.name.as_str()).collect();
+        let names: Vec<&str> = summary
+            .locations_visited
+            .iter()
+            .map(|l| l.name.as_str())
+            .collect();
         narrative.push_str(&names.join(", "));
-        narrative.push_str("
+        narrative.push_str(
+            "
 
-");
+",
+        );
     }
 
     if !summary.items_acquired.is_empty() {
         narrative.push_str("ITEMS ACQUIRED: ");
         narrative.push_str(&summary.items_acquired.join(", "));
-        narrative.push_str("
+        narrative.push_str(
+            "
 
-");
+",
+        );
     }
 
     Ok(narrative)
@@ -579,16 +642,20 @@ pub async fn create_session_note(
         is_pinned: Option<bool>,
         is_private: Option<bool>,
     }
-    invoke("create_session_note", &Args {
-        session_id,
-        campaign_id,
-        title,
-        content,
-        category,
-        tags,
-        is_pinned,
-        is_private,
-    }).await
+    invoke(
+        "create_session_note",
+        &Args {
+            session_id,
+            campaign_id,
+            title,
+            content,
+            category,
+            tags,
+            is_pinned,
+            is_private,
+        },
+    )
+    .await
 }
 
 pub async fn get_session_note(note_id: String) -> Result<Option<SessionNote>, String> {
@@ -644,7 +711,14 @@ pub async fn get_notes_by_category(
         category: String,
         session_id: Option<String>,
     }
-    invoke("get_notes_by_category", &Args { category, session_id }).await
+    invoke(
+        "get_notes_by_category",
+        &Args {
+            category,
+            session_id,
+        },
+    )
+    .await
 }
 
 pub async fn get_notes_by_tag(tag: String) -> Result<Vec<SessionNote>, String> {
@@ -680,18 +754,19 @@ pub async fn link_entity_to_note(
         entity_id: String,
         entity_name: String,
     }
-    invoke_void("link_entity_to_note", &Args {
-        note_id,
-        entity_type,
-        entity_id,
-        entity_name,
-    }).await
+    invoke_void(
+        "link_entity_to_note",
+        &Args {
+            note_id,
+            entity_type,
+            entity_id,
+            entity_name,
+        },
+    )
+    .await
 }
 
-pub async fn unlink_entity_from_note(
-    note_id: String,
-    entity_id: String,
-) -> Result<(), String> {
+pub async fn unlink_entity_from_note(note_id: String, entity_id: String) -> Result<(), String> {
     #[derive(Serialize)]
     struct Args {
         note_id: String,
@@ -770,19 +845,42 @@ pub async fn create_campaign_version(
         description: String,
         version_type: String,
     }
-    invoke("create_campaign_version", &Args { campaign_id, description, version_type }).await
+    invoke(
+        "create_campaign_version",
+        &Args {
+            campaign_id,
+            description,
+            version_type,
+        },
+    )
+    .await
 }
 
 pub async fn list_campaign_versions(campaign_id: String) -> Result<Vec<VersionSummary>, String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String }
+    struct Args {
+        campaign_id: String,
+    }
     invoke("list_campaign_versions", &Args { campaign_id }).await
 }
 
-pub async fn get_campaign_version(campaign_id: String, version_id: String) -> Result<CampaignVersion, String> {
+pub async fn get_campaign_version(
+    campaign_id: String,
+    version_id: String,
+) -> Result<CampaignVersion, String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String, version_id: String }
-    invoke("get_campaign_version", &Args { campaign_id, version_id }).await
+    struct Args {
+        campaign_id: String,
+        version_id: String,
+    }
+    invoke(
+        "get_campaign_version",
+        &Args {
+            campaign_id,
+            version_id,
+        },
+    )
+    .await
 }
 
 pub async fn compare_campaign_versions(
@@ -791,32 +889,96 @@ pub async fn compare_campaign_versions(
     to_version_id: String,
 ) -> Result<CampaignDiff, String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String, from_version_id: String, to_version_id: String }
-    invoke("compare_campaign_versions", &Args { campaign_id, from_version_id, to_version_id }).await
+    struct Args {
+        campaign_id: String,
+        from_version_id: String,
+        to_version_id: String,
+    }
+    invoke(
+        "compare_campaign_versions",
+        &Args {
+            campaign_id,
+            from_version_id,
+            to_version_id,
+        },
+    )
+    .await
 }
 
-pub async fn rollback_campaign(campaign_id: String, version_id: String) -> Result<Campaign, String> {
+pub async fn rollback_campaign(
+    campaign_id: String,
+    version_id: String,
+) -> Result<Campaign, String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String, version_id: String }
-    invoke("rollback_campaign", &Args { campaign_id, version_id }).await
+    struct Args {
+        campaign_id: String,
+        version_id: String,
+    }
+    invoke(
+        "rollback_campaign",
+        &Args {
+            campaign_id,
+            version_id,
+        },
+    )
+    .await
 }
 
-pub async fn delete_campaign_version(campaign_id: String, version_id: String) -> Result<(), String> {
+pub async fn delete_campaign_version(
+    campaign_id: String,
+    version_id: String,
+) -> Result<(), String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String, version_id: String }
-    invoke_void("delete_campaign_version", &Args { campaign_id, version_id }).await
+    struct Args {
+        campaign_id: String,
+        version_id: String,
+    }
+    invoke_void(
+        "delete_campaign_version",
+        &Args {
+            campaign_id,
+            version_id,
+        },
+    )
+    .await
 }
 
-pub async fn add_version_tag(campaign_id: String, version_id: String, tag: String) -> Result<(), String> {
+pub async fn add_version_tag(
+    campaign_id: String,
+    version_id: String,
+    tag: String,
+) -> Result<(), String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String, version_id: String, tag: String }
-    invoke_void("add_version_tag", &Args { campaign_id, version_id, tag }).await
+    struct Args {
+        campaign_id: String,
+        version_id: String,
+        tag: String,
+    }
+    invoke_void(
+        "add_version_tag",
+        &Args {
+            campaign_id,
+            version_id,
+            tag,
+        },
+    )
+    .await
 }
 
 pub async fn mark_version_milestone(campaign_id: String, version_id: String) -> Result<(), String> {
     #[derive(Serialize)]
-    struct Args { campaign_id: String, version_id: String }
-    invoke_void("mark_version_milestone", &Args { campaign_id, version_id }).await
+    struct Args {
+        campaign_id: String,
+        version_id: String,
+    }
+    invoke_void(
+        "mark_version_milestone",
+        &Args {
+            campaign_id,
+            version_id,
+        },
+    )
+    .await
 }
 
 // ============================================================================
@@ -898,9 +1060,9 @@ impl ConversationThread {
     }
 
     pub fn display_title(&self) -> String {
-        self.title.clone().unwrap_or_else(|| {
-            format!("{} Thread", self.purpose.display_name())
-        })
+        self.title
+            .clone()
+            .unwrap_or_else(|| format!("{} Thread", self.purpose.display_name()))
     }
 }
 
@@ -936,33 +1098,54 @@ pub async fn create_conversation_thread(
         purpose: String,
         title: Option<String>,
     }
-    invoke("create_conversation_thread", &Args { campaign_id, purpose, title }).await
+    invoke(
+        "create_conversation_thread",
+        &Args {
+            campaign_id,
+            purpose,
+            title,
+        },
+    )
+    .await
 }
 
 /// Get a conversation thread by ID
-pub async fn get_conversation_thread(thread_id: String) -> Result<Option<ConversationThread>, String> {
+pub async fn get_conversation_thread(
+    thread_id: String,
+) -> Result<Option<ConversationThread>, String> {
     #[derive(Serialize)]
-    struct Args { thread_id: String }
+    struct Args {
+        thread_id: String,
+    }
     invoke("get_conversation_thread", &Args { thread_id }).await
 }
 
 /// List conversation threads with optional filters
-pub async fn list_conversation_threads(options: ThreadListOptions) -> Result<Vec<ConversationThread>, String> {
+pub async fn list_conversation_threads(
+    options: ThreadListOptions,
+) -> Result<Vec<ConversationThread>, String> {
     #[derive(Serialize)]
-    struct Args { options: ThreadListOptions }
+    struct Args {
+        options: ThreadListOptions,
+    }
     invoke("list_conversation_threads", &Args { options }).await
 }
 
 /// Archive a conversation thread
 pub async fn archive_conversation_thread(thread_id: String) -> Result<(), String> {
     #[derive(Serialize)]
-    struct Args { thread_id: String }
+    struct Args {
+        thread_id: String,
+    }
     invoke_void("archive_conversation_thread", &Args { thread_id }).await
 }
 
 /// Update a conversation thread's title
 pub async fn update_thread_title(thread_id: String, title: String) -> Result<(), String> {
     #[derive(Serialize)]
-    struct Args { thread_id: String, title: String }
+    struct Args {
+        thread_id: String,
+        title: String,
+    }
     invoke_void("update_thread_title", &Args { thread_id, title }).await
 }

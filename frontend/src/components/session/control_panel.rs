@@ -300,10 +300,7 @@ fn InitiativeSummary(
 
 /// Quick rules reference
 #[component]
-fn QuickRules(
-    rules: RwSignal<Vec<QuickRule>>,
-    on_toggle_pin: Callback<usize>,
-) -> impl IntoView {
+fn QuickRules(rules: RwSignal<Vec<QuickRule>>, on_toggle_pin: Callback<usize>) -> impl IntoView {
     view! {
         <div class="space-y-2">
             <h3 class="text-sm font-semibold text-zinc-300 uppercase tracking-wider">"Quick Rules"</h3>

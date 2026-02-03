@@ -2,14 +2,16 @@
 //!
 //! Browse and manage campaign entities (NPCs, locations, factions, etc.)
 
+use crate::bindings::{
+    get_npc_conversation, list_locations, list_npcs, ConversationMessage, LocationState,
+    NpcConversation, NPC,
+};
+use crate::components::campaign_details::{
+    NpcChatSelection, NpcConversation as NpcConversationPanel,
+};
 use leptos::ev;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use crate::bindings::{
-    list_npcs, list_locations, get_npc_conversation,
-    NPC, LocationState, NpcConversation, ConversationMessage,
-};
-use crate::components::campaign_details::{NpcConversation as NpcConversationPanel, NpcChatSelection};
 
 /// Entity type filter
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
@@ -56,11 +58,7 @@ fn FilterChip(
 
 /// Entity card for NPCs
 #[component]
-fn NpcEntityCard(
-    npc: NPC,
-    #[prop(optional)]
-    on_select: Option<Callback<String>>,
-) -> impl IntoView {
+fn NpcEntityCard(npc: NPC, #[prop(optional)] on_select: Option<Callback<String>>) -> impl IntoView {
     let npc_id = npc.id.clone();
     let initials = npc.name.chars().next().unwrap_or('?');
 
@@ -104,8 +102,7 @@ fn NpcEntityCard(
 #[component]
 fn LocationEntityCard(
     location: LocationState,
-    #[prop(optional)]
-    on_select: Option<Callback<String>>,
+    #[prop(optional)] on_select: Option<Callback<String>>,
 ) -> impl IntoView {
     let location_id = location.location_id.clone();
 
@@ -394,16 +391,17 @@ fn NpcDetailPanel(
 
     // Parse messages from conversation
     let messages = Memo::new(move |_| {
-        conversation.get()
-            .map(|c| {
-                match serde_json::from_str::<Vec<ConversationMessage>>(&c.messages_json) {
+        conversation
+            .get()
+            .map(
+                |c| match serde_json::from_str::<Vec<ConversationMessage>>(&c.messages_json) {
                     Ok(msgs) => msgs,
                     Err(e) => {
                         log::error!("Failed to parse NPC conversation messages: {}", e);
                         Vec::new()
                     }
-                }
-            })
+                },
+            )
             .unwrap_or_default()
     });
 

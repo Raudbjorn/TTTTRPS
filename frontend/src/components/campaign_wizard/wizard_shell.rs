@@ -3,22 +3,22 @@
 //! Main container for the campaign creation wizard.
 //! Manages step navigation, auto-save, and layout.
 
-use leptos::prelude::*;
 use leptos::ev;
+use leptos::prelude::*;
 
 use crate::bindings::Campaign;
 use crate::services::wizard_state::{
-    advance_step_action, cancel_wizard_action, complete_wizard_action,
-    go_back_action, provide_wizard_context, skip_step_action,
-    start_wizard_action, use_wizard_context, StepData, WizardStep,
+    advance_step_action, cancel_wizard_action, complete_wizard_action, go_back_action,
+    provide_wizard_context, skip_step_action, start_wizard_action, use_wizard_context, StepData,
+    WizardStep,
 };
 
+use super::conversation_panel::ConversationPanel;
 use super::step_progress::StepProgress;
 use super::steps::{
-    BasicsStep, IntentStep, ScopeStep, PlayersStep,
-    PartyCompositionStep, ArcStructureStep, InitialContentStep, ReviewStep,
+    ArcStructureStep, BasicsStep, InitialContentStep, IntentStep, PartyCompositionStep,
+    PlayersStep, ReviewStep, ScopeStep,
 };
-use super::conversation_panel::ConversationPanel;
 
 /// Navigation footer with back/next/skip buttons
 #[component]
@@ -140,10 +140,7 @@ fn WizardNavigation(
 
 /// Error display component
 #[component]
-fn ErrorBanner(
-    message: Signal<Option<String>>,
-    on_dismiss: Callback<()>,
-) -> impl IntoView {
+fn ErrorBanner(message: Signal<Option<String>>, on_dismiss: Callback<()>) -> impl IntoView {
     view! {
         <Show when=move || message.get().is_some()>
             <div class="mx-6 mb-4 p-4 bg-red-900/30 border border-red-800 rounded-lg flex items-center justify-between">

@@ -7,11 +7,10 @@ use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
 use crate::bindings::{
-    get_session_timeline,
-    TimelineEventData, TimelineEventType as BindingEventType,
-    TimelineEventSeverity,
+    get_session_timeline, TimelineEventData, TimelineEventSeverity,
+    TimelineEventType as BindingEventType,
 };
-use crate::components::design_system::{Card, CardHeader, CardBody, Badge, BadgeVariant};
+use crate::components::design_system::{Badge, BadgeVariant, Card, CardBody, CardHeader};
 
 // ============================================================================
 // Timeline Types (Frontend display versions with helper methods)
@@ -19,8 +18,7 @@ use crate::components::design_system::{Card, CardHeader, CardBody, Badge, BadgeV
 
 // Re-export the binding types for external use
 pub use crate::bindings::{
-    TimelineEventType, TimelineEventSeverity as EventSeverity,
-    TimelineEventData as TimelineEvent,
+    TimelineEventData as TimelineEvent, TimelineEventSeverity as EventSeverity, TimelineEventType,
 };
 
 /// Extension trait for TimelineEventType to provide display helpers
@@ -186,7 +184,9 @@ pub fn TimelineView(
 
     // Use provided events or fetched events
     let all_events = Memo::new(move |_| {
-        events.map(|e| e.get()).unwrap_or_else(|| fetched_events.get())
+        events
+            .map(|e| e.get())
+            .unwrap_or_else(|| fetched_events.get())
     });
 
     // Filter state
@@ -198,7 +198,9 @@ pub fn TimelineView(
     // Filtered events
     let filtered_events = Memo::new(move |_| {
         let events_list = all_events.get();
-        let min_sev = min_severity.map(|s| s.get()).unwrap_or(TimelineEventSeverity::Trace);
+        let min_sev = min_severity
+            .map(|s| s.get())
+            .unwrap_or(TimelineEventSeverity::Trace);
 
         events_list
             .into_iter()
@@ -208,19 +210,19 @@ pub fn TimelineView(
                     return true;
                 }
                 match &e.event_type {
-                    TimelineEventType::CombatStart |
-                    TimelineEventType::CombatEnd |
-                    TimelineEventType::CombatRoundStart |
-                    TimelineEventType::CombatTurnStart |
-                    TimelineEventType::CombatDamage |
-                    TimelineEventType::CombatHealing |
-                    TimelineEventType::CombatDeath => show_combat.get(),
-                    TimelineEventType::NoteAdded |
-                    TimelineEventType::NoteEdited |
-                    TimelineEventType::NoteDeleted => show_notes.get(),
-                    TimelineEventType::NPCInteraction |
-                    TimelineEventType::NPCDialogue |
-                    TimelineEventType::NPCMood => show_npc.get(),
+                    TimelineEventType::CombatStart
+                    | TimelineEventType::CombatEnd
+                    | TimelineEventType::CombatRoundStart
+                    | TimelineEventType::CombatTurnStart
+                    | TimelineEventType::CombatDamage
+                    | TimelineEventType::CombatHealing
+                    | TimelineEventType::CombatDeath => show_combat.get(),
+                    TimelineEventType::NoteAdded
+                    | TimelineEventType::NoteEdited
+                    | TimelineEventType::NoteDeleted => show_notes.get(),
+                    TimelineEventType::NPCInteraction
+                    | TimelineEventType::NPCDialogue
+                    | TimelineEventType::NPCMood => show_npc.get(),
                     _ => true,
                 }
             })
@@ -440,7 +442,9 @@ pub fn TimelineCompact(
 
     // Use provided events or fetched events
     let all_events = Memo::new(move |_| {
-        events.map(|e| e.get()).unwrap_or_else(|| fetched_events.get())
+        events
+            .map(|e| e.get())
+            .unwrap_or_else(|| fetched_events.get())
     });
 
     let recent_events = Memo::new(move |_| {

@@ -3,13 +3,13 @@
 //! Interactive SVG-based graph visualization for entity relationships.
 //! Supports pan, zoom, node selection, and ego-graph filtering.
 
+use crate::bindings::{
+    get_ego_graph, get_entity_graph, EntityGraph, GraphEdge, GraphNode, GraphStats,
+};
 use leptos::ev;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::collections::HashMap;
-use crate::bindings::{
-    get_entity_graph, get_ego_graph, EntityGraph, GraphNode, GraphEdge, GraphStats,
-};
 
 /// Graph layout configuration
 #[derive(Debug, Clone)]
@@ -234,11 +234,7 @@ fn GraphToolbar(
 
 /// Node tooltip component
 #[component]
-fn NodeTooltip(
-    node: GraphNode,
-    x: f64,
-    y: f64,
-) -> impl IntoView {
+fn NodeTooltip(node: GraphNode, x: f64, y: f64) -> impl IntoView {
     view! {
         <div
             class="absolute bg-zinc-900 border border-zinc-700 rounded-lg p-3 shadow-xl pointer-events-none z-20"
@@ -263,7 +259,11 @@ fn NodeTooltip(
 }
 
 /// Calculate simple force-directed layout
-fn calculate_layout(nodes: &[GraphNode], edges: &[GraphEdge], config: &LayoutConfig) -> Vec<PositionedNode> {
+fn calculate_layout(
+    nodes: &[GraphNode],
+    edges: &[GraphEdge],
+    config: &LayoutConfig,
+) -> Vec<PositionedNode> {
     let mut positioned: Vec<PositionedNode> = nodes
         .iter()
         .enumerate()
@@ -321,16 +321,24 @@ fn calculate_layout(nodes: &[GraphNode], edges: &[GraphEdge], config: &LayoutCon
         }
 
         // Center constraint
-        let center_x: f64 = positioned.iter().map(|n| n.x).sum::<f64>() / positioned.len().max(1) as f64;
-        let center_y: f64 = positioned.iter().map(|n| n.y).sum::<f64>() / positioned.len().max(1) as f64;
+        let center_x: f64 =
+            positioned.iter().map(|n| n.x).sum::<f64>() / positioned.len().max(1) as f64;
+        let center_y: f64 =
+            positioned.iter().map(|n| n.y).sum::<f64>() / positioned.len().max(1) as f64;
 
         for node in &mut positioned {
             node.x += (config.width / 2.0 - center_x) * 0.1;
             node.y += (config.height / 2.0 - center_y) * 0.1;
 
             // Keep within bounds
-            node.x = node.x.max(config.node_radius * 2.0).min(config.width - config.node_radius * 2.0);
-            node.y = node.y.max(config.node_radius * 2.0).min(config.height - config.node_radius * 2.0);
+            node.x = node
+                .x
+                .max(config.node_radius * 2.0)
+                .min(config.width - config.node_radius * 2.0);
+            node.y = node
+                .y
+                .max(config.node_radius * 2.0)
+                .min(config.height - config.node_radius * 2.0);
         }
     }
 

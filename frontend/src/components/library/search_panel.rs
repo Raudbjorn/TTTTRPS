@@ -7,15 +7,13 @@
 //! - Search suggestions and query hints
 //! - Search history
 
-use leptos::prelude::*;
 use leptos::ev;
+use leptos::prelude::*;
 use leptos::task::spawn_local;
 
-use crate::bindings::{
-    hybrid_search, HybridSearchOptions, get_search_suggestions,
-};
+use super::{use_library_state, SearchMeta, SearchResult, SourceType};
+use crate::bindings::{get_search_suggestions, hybrid_search, HybridSearchOptions};
 use crate::components::design_system::{Button, ButtonVariant};
-use super::{use_library_state, SourceType, SearchResult, SearchMeta};
 
 /// Advanced search panel with filters and suggestions
 #[component]
@@ -135,37 +133,35 @@ pub fn SearchPanel() -> impl IntoView {
     let on_keydown = {
         let search_query = state.search_query;
         let perform_search = perform_search.clone();
-        move |evt: ev::KeyboardEvent| {
-            match evt.key().as_str() {
-                "Enter" => {
-                    evt.prevent_default();
-                    if show_suggestions.get() && !suggestions.get().is_empty() {
-                        let idx = suggestion_index.get() as usize;
-                        if let Some(suggestion) = suggestions.get().get(idx) {
-                            search_query.set(suggestion.clone());
-                        }
-                    }
-                    show_suggestions.set(false);
-                    perform_search();
-                }
-                "ArrowDown" => {
-                    if show_suggestions.get() {
-                        evt.prevent_default();
-                        let max = suggestions.get().len().saturating_sub(1) as i32;
-                        suggestion_index.update(|i| *i = (*i + 1).min(max));
+        move |evt: ev::KeyboardEvent| match evt.key().as_str() {
+            "Enter" => {
+                evt.prevent_default();
+                if show_suggestions.get() && !suggestions.get().is_empty() {
+                    let idx = suggestion_index.get() as usize;
+                    if let Some(suggestion) = suggestions.get().get(idx) {
+                        search_query.set(suggestion.clone());
                     }
                 }
-                "ArrowUp" => {
-                    if show_suggestions.get() {
-                        evt.prevent_default();
-                        suggestion_index.update(|i| *i = (*i - 1).max(0));
-                    }
-                }
-                "Escape" => {
-                    show_suggestions.set(false);
-                }
-                _ => {}
+                show_suggestions.set(false);
+                perform_search();
             }
+            "ArrowDown" => {
+                if show_suggestions.get() {
+                    evt.prevent_default();
+                    let max = suggestions.get().len().saturating_sub(1) as i32;
+                    suggestion_index.update(|i| *i = (*i + 1).min(max));
+                }
+            }
+            "ArrowUp" => {
+                if show_suggestions.get() {
+                    evt.prevent_default();
+                    suggestion_index.update(|i| *i = (*i - 1).max(0));
+                }
+            }
+            "Escape" => {
+                show_suggestions.set(false);
+            }
+            _ => {}
         }
     };
 

@@ -141,7 +141,8 @@ pub fn use_auto_save() -> (AutoSaveState, Callback<Option<PartialCampaign>>) {
 
                             // Update context
                             ctx.auto_save_pending.set(false);
-                            ctx.last_auto_save.set(Some(chrono::Utc::now().to_rfc3339()));
+                            ctx.last_auto_save
+                                .set(Some(chrono::Utc::now().to_rfc3339()));
                         }
                         Err(e) => {
                             state.status.set(AutoSaveStatus::Failed);
@@ -182,7 +183,8 @@ pub fn use_auto_save() -> (AutoSaveState, Callback<Option<PartialCampaign>>) {
                             has_pending.set(false);
                             pending_data.set(None);
                             ctx.auto_save_pending.set(false);
-                            ctx.last_auto_save.set(Some(chrono::Utc::now().to_rfc3339()));
+                            ctx.last_auto_save
+                                .set(Some(chrono::Utc::now().to_rfc3339()));
                         }
                         Err(e) => {
                             state.status.set(AutoSaveStatus::Failed);

@@ -2,14 +2,13 @@
 //!
 //! Modal/panel for creating and editing entity relationships.
 
+use crate::bindings::{
+    create_entity_relationship, delete_entity_relationship, get_relationships_for_entity,
+    list_entity_relationships, update_entity_relationship, EntityRelationship, RelationshipSummary,
+};
 use leptos::ev;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use crate::bindings::{
-    create_entity_relationship, update_entity_relationship, delete_entity_relationship,
-    get_relationships_for_entity, list_entity_relationships,
-    EntityRelationship, RelationshipSummary,
-};
 
 /// Relationship type options
 const RELATIONSHIP_TYPES: &[(&str, &str)] = &[
@@ -60,10 +59,8 @@ const STRENGTH_OPTIONS: &[(&str, &str)] = &[
 /// Form field component
 #[component]
 fn FormField(
-    #[prop(into)]
-    label: String,
-    #[prop(optional)]
-    help: Option<String>,
+    #[prop(into)] label: String,
+    #[prop(optional)] help: Option<String>,
     children: Children,
 ) -> impl IntoView {
     view! {
@@ -80,13 +77,11 @@ fn FormField(
 /// Entity picker component
 #[component]
 fn EntityPicker(
-    #[prop(into)]
-    label: String,
+    #[prop(into)] label: String,
     entity_id: RwSignal<String>,
     entity_type: RwSignal<String>,
     entity_name: RwSignal<String>,
-    #[prop(optional)]
-    available_entities: Option<Vec<(String, String, String)>>, // (id, name, type)
+    #[prop(optional)] available_entities: Option<Vec<(String, String, String)>>, // (id, name, type)
 ) -> impl IntoView {
     let handle_type_change = move |evt: ev::Event| {
         let target = event_target::<web_sys::HtmlSelectElement>(&evt);
@@ -251,20 +246,69 @@ fn RelationshipModal(
     on_cancel: Callback<()>,
 ) -> impl IntoView {
     let is_edit = existing.is_some();
-    let title = if is_edit { "Edit Relationship" } else { "Create Relationship" };
+    let title = if is_edit {
+        "Edit Relationship"
+    } else {
+        "Create Relationship"
+    };
 
     // Form state
-    let source_id = RwSignal::new(existing.as_ref().map(|e| e.source_id.clone()).unwrap_or_default());
-    let source_type = RwSignal::new(existing.as_ref().map(|e| e.source_type.clone()).unwrap_or_else(|| "npc".to_string()));
-    let source_name = RwSignal::new(existing.as_ref().map(|e| e.source_name.clone()).unwrap_or_default());
+    let source_id = RwSignal::new(
+        existing
+            .as_ref()
+            .map(|e| e.source_id.clone())
+            .unwrap_or_default(),
+    );
+    let source_type = RwSignal::new(
+        existing
+            .as_ref()
+            .map(|e| e.source_type.clone())
+            .unwrap_or_else(|| "npc".to_string()),
+    );
+    let source_name = RwSignal::new(
+        existing
+            .as_ref()
+            .map(|e| e.source_name.clone())
+            .unwrap_or_default(),
+    );
 
-    let target_id = RwSignal::new(existing.as_ref().map(|e| e.target_id.clone()).unwrap_or_default());
-    let target_type = RwSignal::new(existing.as_ref().map(|e| e.target_type.clone()).unwrap_or_else(|| "npc".to_string()));
-    let target_name = RwSignal::new(existing.as_ref().map(|e| e.target_name.clone()).unwrap_or_default());
+    let target_id = RwSignal::new(
+        existing
+            .as_ref()
+            .map(|e| e.target_id.clone())
+            .unwrap_or_default(),
+    );
+    let target_type = RwSignal::new(
+        existing
+            .as_ref()
+            .map(|e| e.target_type.clone())
+            .unwrap_or_else(|| "npc".to_string()),
+    );
+    let target_name = RwSignal::new(
+        existing
+            .as_ref()
+            .map(|e| e.target_name.clone())
+            .unwrap_or_default(),
+    );
 
-    let relationship_type = RwSignal::new(existing.as_ref().map(|e| e.relationship_type.clone()).unwrap_or_else(|| "ally".to_string()));
-    let strength = RwSignal::new(existing.as_ref().map(|e| e.strength.clone()).unwrap_or_else(|| "moderate".to_string()));
-    let description = RwSignal::new(existing.as_ref().map(|e| e.description.clone()).unwrap_or_default());
+    let relationship_type = RwSignal::new(
+        existing
+            .as_ref()
+            .map(|e| e.relationship_type.clone())
+            .unwrap_or_else(|| "ally".to_string()),
+    );
+    let strength = RwSignal::new(
+        existing
+            .as_ref()
+            .map(|e| e.strength.clone())
+            .unwrap_or_else(|| "moderate".to_string()),
+    );
+    let description = RwSignal::new(
+        existing
+            .as_ref()
+            .map(|e| e.description.clone())
+            .unwrap_or_default(),
+    );
     let is_active = RwSignal::new(existing.as_ref().map(|e| e.is_active).unwrap_or(true));
     let is_known = RwSignal::new(existing.as_ref().map(|e| e.is_known).unwrap_or(true));
 
@@ -327,7 +371,8 @@ fn RelationshipModal(
                         relationship_type.get(),
                         Some(strength.get()),
                         Some(description.get()),
-                    ).await
+                    )
+                    .await
                 };
 
                 match result {
@@ -520,20 +565,24 @@ pub fn RelationshipEditor(
             is_loading.set(true);
 
             let result = if let Some(entity_id) = eid {
-                get_relationships_for_entity(cid, entity_id).await.map(|rels| {
-                    rels.into_iter().map(|r| RelationshipSummary {
-                        id: r.id,
-                        source_id: r.source_id,
-                        source_name: r.source_name,
-                        source_type: r.source_type,
-                        target_id: r.target_id,
-                        target_name: r.target_name,
-                        target_type: r.target_type,
-                        relationship_type: r.relationship_type,
-                        strength: r.strength,
-                        is_active: r.is_active,
-                    }).collect()
-                })
+                get_relationships_for_entity(cid, entity_id)
+                    .await
+                    .map(|rels| {
+                        rels.into_iter()
+                            .map(|r| RelationshipSummary {
+                                id: r.id,
+                                source_id: r.source_id,
+                                source_name: r.source_name,
+                                source_type: r.source_type,
+                                target_id: r.target_id,
+                                target_name: r.target_name,
+                                target_type: r.target_type,
+                                relationship_type: r.relationship_type,
+                                strength: r.strength,
+                                is_active: r.is_active,
+                            })
+                            .collect()
+                    })
             } else {
                 list_entity_relationships(cid).await
             };

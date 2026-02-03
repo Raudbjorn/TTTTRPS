@@ -2,13 +2,13 @@
 //!
 //! View and manage campaign versions with diff comparison and rollback.
 
+use crate::bindings::{
+    compare_campaign_versions, create_campaign_version, list_campaign_versions, CampaignDiff,
+    VersionSummary,
+};
 use leptos::ev;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use crate::bindings::{
-    list_campaign_versions, create_campaign_version, compare_campaign_versions,
-    VersionSummary, CampaignDiff,
-};
 
 /// Version list item component
 #[component]
@@ -16,8 +16,7 @@ fn VersionListItem(
     version: VersionSummary,
     is_selected: bool,
     on_select: Callback<String>,
-    #[prop(optional)]
-    on_compare: Option<Callback<String>>,
+    #[prop(optional)] on_compare: Option<Callback<String>>,
 ) -> impl IntoView {
     let version_id = version.id.clone();
     let version_id_compare = version.id.clone();

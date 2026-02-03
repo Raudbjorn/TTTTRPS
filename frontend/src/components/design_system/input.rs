@@ -31,7 +31,11 @@ pub fn Input(
 ) -> impl IntoView {
     let input_type = Signal::derive(move || {
         let t = r#type.get();
-        if t.is_empty() { "text".to_string() } else { t }
+        if t.is_empty() {
+            "text".to_string()
+        } else {
+            t
+        }
     });
 
     let base_class = "w-full p-2 rounded bg-gray-900 text-white border border-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors placeholder-gray-500 disabled:opacity-50 disabled:cursor-not-allowed";
@@ -65,4 +69,3 @@ pub fn Input(
         />
     }
 }
-

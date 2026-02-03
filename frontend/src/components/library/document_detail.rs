@@ -7,13 +7,15 @@
 //! - Action buttons (copy, cite, bookmark)
 //! - Content navigation for long results
 
-use leptos::prelude::*;
 use leptos::ev;
+use leptos::prelude::*;
 use leptos::task::spawn_local;
 
-use crate::bindings::{hybrid_search, HybridSearchOptions, copy_to_clipboard};
-use crate::components::design_system::{Badge, BadgeVariant, Button, ButtonVariant, Card, CardHeader, CardBody};
 use super::{use_library_state, SearchResult};
+use crate::bindings::{copy_to_clipboard, hybrid_search, HybridSearchOptions};
+use crate::components::design_system::{
+    Badge, BadgeVariant, Button, ButtonVariant, Card, CardBody, CardHeader,
+};
 
 /// Document detail panel showing selected search result
 #[component]
@@ -97,7 +99,9 @@ pub fn DocumentDetail() -> impl IntoView {
                 let citation = format!(
                     "{}{} ({})",
                     doc.source,
-                    doc.page_number.map(|p| format!(", p.{}", p)).unwrap_or_default(),
+                    doc.page_number
+                        .map(|p| format!(", p.{}", p))
+                        .unwrap_or_default(),
                     doc.source_type.label()
                 );
                 spawn_local(async move {

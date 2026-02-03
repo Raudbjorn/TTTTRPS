@@ -1,6 +1,6 @@
-use leptos::prelude::*;
-use leptos::ev;
 use super::loading::LoadingSpinner;
+use leptos::ev;
+use leptos::prelude::*;
 
 /// Button variant styles
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
@@ -103,13 +103,12 @@ where
 
     let is_disabled = move || disabled.get() || loading.get();
 
-    let full_class = move || format!(
-        "{} {} {} {}", 
-        BUTTON_BASE_CLASS, 
-        variant_class, 
-        size_class,
-        class
-    );
+    let full_class = move || {
+        format!(
+            "{} {} {} {}",
+            BUTTON_BASE_CLASS, variant_class, size_class, class
+        )
+    };
 
     let handle_click = move |evt: ev::MouseEvent| {
         if !is_disabled() {

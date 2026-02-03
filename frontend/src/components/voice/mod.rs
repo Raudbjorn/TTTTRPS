@@ -5,9 +5,6 @@
 mod profile_manager;
 
 pub use profile_manager::{
-    VoiceProfileManager,
-    VoiceProfileCard,
-    VoiceProfileGrid,
-    VoiceProfileFilters,
+    VoiceProfileCard, VoiceProfileFilters, VoiceProfileGrid, VoiceProfileManager,
     VoiceProfileSelector,
 };

@@ -4,12 +4,7 @@
 use leptos::prelude::*;
 
 #[component]
-pub fn ContextMenu(
-    x: f64,
-    y: f64,
-    on_close: Callback<()>,
-    children: Children,
-) -> impl IntoView {
+pub fn ContextMenu(x: f64, y: f64, on_close: Callback<()>, children: Children) -> impl IntoView {
     view! {
         // Backdrop
         <div
@@ -28,12 +23,10 @@ pub fn ContextMenu(
 
 #[component]
 pub fn ContextMenuItem(
-    #[prop(optional)]
-    icon: Option<&'static str>,
+    #[prop(optional)] icon: Option<&'static str>,
     label: String,
     on_click: Callback<()>,
-    #[prop(optional)]
-    danger: Option<bool>,
+    #[prop(optional)] danger: Option<bool>,
 ) -> impl IntoView {
     let base_class = "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors";
     let color_class = if danger.unwrap_or(false) {

@@ -359,7 +359,11 @@ pub fn SessionPlanPreview(
     let is_editing_signal = Signal::derive(move || is_editing.get());
 
     let total_minutes = Signal::derive(move || {
-        plan.get().scenes.iter().map(|s| s.estimated_minutes).sum::<u32>()
+        plan.get()
+            .scenes
+            .iter()
+            .map(|s| s.estimated_minutes)
+            .sum::<u32>()
     });
 
     let on_scene_update = Callback::new(move |(idx, scene): (usize, PlannedScene)| {

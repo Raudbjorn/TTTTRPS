@@ -2,10 +2,10 @@
 //!
 //! Tests for D&D 5e standard conditions and their descriptions.
 
-use wasm_bindgen_test::*;
 use ttrpg_assistant_frontend::services::game_mechanics::{
-    STANDARD_CONDITIONS, get_condition_description
+    get_condition_description, STANDARD_CONDITIONS,
 };
+use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
 
@@ -22,9 +22,21 @@ fn test_standard_conditions_count() {
 #[wasm_bindgen_test]
 fn test_standard_conditions_contains_all_dnd_conditions() {
     let expected = vec![
-        "Blinded", "Charmed", "Deafened", "Exhaustion", "Frightened",
-        "Grappled", "Incapacitated", "Invisible", "Paralyzed", "Petrified",
-        "Poisoned", "Prone", "Restrained", "Stunned", "Unconscious",
+        "Blinded",
+        "Charmed",
+        "Deafened",
+        "Exhaustion",
+        "Frightened",
+        "Grappled",
+        "Incapacitated",
+        "Invisible",
+        "Paralyzed",
+        "Petrified",
+        "Poisoned",
+        "Prone",
+        "Restrained",
+        "Stunned",
+        "Unconscious",
     ];
 
     for condition in expected {
@@ -40,7 +52,11 @@ fn test_standard_conditions_contains_all_dnd_conditions() {
 fn test_standard_conditions_alphabetical_order() {
     let mut sorted = STANDARD_CONDITIONS.to_vec();
     sorted.sort();
-    assert_eq!(STANDARD_CONDITIONS.to_vec(), sorted, "Conditions should be alphabetically sorted");
+    assert_eq!(
+        STANDARD_CONDITIONS.to_vec(),
+        sorted,
+        "Conditions should be alphabetically sorted"
+    );
 }
 
 // ============================================================================

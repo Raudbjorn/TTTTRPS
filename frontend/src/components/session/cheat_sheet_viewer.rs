@@ -135,9 +135,7 @@ pub struct CheatSheet {
 
 /// Truncation warning banner
 #[component]
-fn TruncationBanner(
-    warnings: Vec<TruncationWarning>,
-) -> impl IntoView {
+fn TruncationBanner(warnings: Vec<TruncationWarning>) -> impl IntoView {
     let has_warnings = !warnings.is_empty();
     let colon_space = ": ";
     let items_hidden_text = " items hidden, ";
@@ -221,8 +219,7 @@ fn SectionHeader(
 #[component]
 fn SectionItem(
     item: CheatSheetItem,
-    #[prop(optional)]
-    on_click: Option<Callback<CheatSheetItem>>,
+    #[prop(optional)] on_click: Option<Callback<CheatSheetItem>>,
 ) -> impl IntoView {
     let item_for_click = item.clone();
 
@@ -264,8 +261,7 @@ fn SectionItem(
 #[component]
 fn CheatSheetSectionDisplay(
     section: CheatSheetSection,
-    #[prop(optional)]
-    on_item_click: Option<Callback<CheatSheetItem>>,
+    #[prop(optional)] on_item_click: Option<Callback<CheatSheetItem>>,
 ) -> impl IntoView {
     let is_collapsed = RwSignal::new(section.collapsed);
 

@@ -1,6 +1,6 @@
-use leptos::prelude::*;
-use crate::services::theme_service::ThemeState;
 use crate::components::design_system::Card;
+use crate::services::theme_service::ThemeState;
+use leptos::prelude::*;
 
 #[component]
 pub fn GeneralSettings() -> impl IntoView {

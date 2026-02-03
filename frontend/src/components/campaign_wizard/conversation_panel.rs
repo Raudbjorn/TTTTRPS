@@ -171,10 +171,7 @@ fn MessageBubble(
 
 /// Input area component
 #[component]
-fn MessageInput(
-    on_send: Callback<String>,
-    is_sending: Signal<bool>,
-) -> impl IntoView {
+fn MessageInput(on_send: Callback<String>, is_sending: Signal<bool>) -> impl IntoView {
     let input_value = RwSignal::new(String::new());
 
     let handle_send = move |_: leptos::ev::MouseEvent| {
@@ -241,7 +238,12 @@ fn MessageInput(
 /// Quick prompt buttons
 #[component]
 fn QuickPrompts(input_value: RwSignal<String>) -> impl IntoView {
-    let prompts = ["Suggest themes", "Help with NPCs", "Story ideas", "Encounter tips"];
+    let prompts = [
+        "Suggest themes",
+        "Help with NPCs",
+        "Story ideas",
+        "Encounter tips",
+    ];
 
     view! {
         <div class="flex flex-wrap gap-1 mt-2">

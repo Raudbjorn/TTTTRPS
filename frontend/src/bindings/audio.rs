@@ -1,5 +1,5 @@
+use super::core::{invoke, invoke_no_args, invoke_void, invoke_void_no_args};
 use serde::{Deserialize, Serialize};
-use super::core::{invoke, invoke_void, invoke_no_args, invoke_void_no_args};
 
 // ============================================================================
 // Voice Configuration & Types
@@ -176,7 +176,10 @@ pub async fn get_popular_piper_voices() -> Result<Vec<PopularPiperVoice>, String
     invoke_no_args("get_popular_piper_voices").await
 }
 
-pub async fn download_piper_voice(voice_key: String, quality: Option<String>) -> Result<String, String> {
+pub async fn download_piper_voice(
+    voice_key: String,
+    quality: Option<String>,
+) -> Result<String, String> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
     struct Args {
@@ -219,7 +222,9 @@ pub enum InstallMethod {
     AppManaged,
 }
 
-pub async fn check_voice_provider_status(provider: VoiceProviderType) -> Result<InstallStatus, String> {
+pub async fn check_voice_provider_status(
+    provider: VoiceProviderType,
+) -> Result<InstallStatus, String> {
     #[derive(Serialize)]
     struct Args {
         provider: VoiceProviderType,
@@ -504,7 +509,16 @@ pub async fn create_voice_profile(
         voice_id: String,
         metadata: Option<ProfileMetadata>,
     }
-    invoke("create_voice_profile", &Args { name, provider, voice_id, metadata }).await
+    invoke(
+        "create_voice_profile",
+        &Args {
+            name,
+            provider,
+            voice_id,
+            metadata,
+        },
+    )
+    .await
 }
 
 pub async fn link_voice_profile_to_npc(profile_id: String, npc_id: String) -> Result<(), String> {

@@ -625,9 +625,7 @@ fn copy_to_clipboard(text: &str) {
         spawn_local(async move {
             if let Some(window) = web_sys::window() {
                 let clipboard = window.navigator().clipboard();
-                let _ = wasm_bindgen_futures::JsFuture::from(
-                    clipboard.write_text(&text)
-                ).await;
+                let _ = wasm_bindgen_futures::JsFuture::from(clipboard.write_text(&text)).await;
             }
         });
     }

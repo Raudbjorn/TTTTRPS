@@ -8,9 +8,8 @@ use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
 use crate::bindings::{
-    claude_get_status, claude_start_oauth, claude_complete_oauth,
-    claude_logout, claude_set_storage_backend, open_url_in_browser,
-    ClaudeStatus, ClaudeStorageBackend,
+    claude_complete_oauth, claude_get_status, claude_logout, claude_set_storage_backend,
+    claude_start_oauth, open_url_in_browser, ClaudeStatus, ClaudeStorageBackend,
 };
 use crate::components::design_system::{Badge, BadgeVariant, Select, SelectOption};
 use crate::services::notification_service::{show_error, show_success};
@@ -80,7 +79,11 @@ pub fn ClaudeAuth(
                             awaiting_code.set(true);
                         }
                         Err(e) => {
-                            show_error("Browser Open Failed", Some(&format!("{}. Copy the URL shown below.", e)), None);
+                            show_error(
+                                "Browser Open Failed",
+                                Some(&format!("{}. Copy the URL shown below.", e)),
+                                None,
+                            );
                             awaiting_code.set(true);
                         }
                     }
@@ -100,7 +103,10 @@ pub fn ClaudeAuth(
             match claude_complete_oauth(code, csrf_state).await {
                 Ok(result) => {
                     if result.success {
-                        show_success("Login Complete", Some("Successfully authenticated with Claude"));
+                        show_success(
+                            "Login Complete",
+                            Some("Successfully authenticated with Claude"),
+                        );
                         awaiting_code.set(false);
                         auth_code.set(String::new());
                         oauth_url.set(None);
@@ -357,7 +363,8 @@ pub fn ClaudeAuth(
             <div class="p-6 rounded-xl bg-theme-surface border border-orange-400/30 space-y-4">
                 {content}
             </div>
-        }.into_any()
+        }
+        .into_any()
     } else {
         view! { <div>{content}</div> }.into_any()
     }

@@ -9,8 +9,8 @@
 //!   - Drag-drop support for personality assignment
 //!   - Keyboard accessible
 
-use leptos::prelude::*;
 use crate::bindings::{list_npc_summaries, NpcSummary};
+use leptos::prelude::*;
 
 /// Selection with both ID and name for NPC chat
 #[derive(Clone, Debug)]

@@ -3,17 +3,13 @@
 //! Session notes panel with CRUD, tagging, search, and AI categorization.
 //! Now integrated with Tauri backend for persistence and real AI categorization.
 
-use leptos::prelude::*;
 use leptos::ev;
+use leptos::prelude::*;
+use log::{error, info};
 use wasm_bindgen_futures::spawn_local;
-use log::{info, error};
 
-use crate::components::design_system::{Button, ButtonVariant, Card, CardHeader, CardBody};
-use crate::bindings::{
-    self,
-    SessionNote as BackendNote,
-    NoteCategory as BackendCategory,
-};
+use crate::bindings::{self, NoteCategory as BackendCategory, SessionNote as BackendNote};
+use crate::components::design_system::{Button, ButtonVariant, Card, CardBody, CardHeader};
 
 // ============================================================================
 // Note Types (Frontend versions)
@@ -395,7 +391,8 @@ pub fn NotesPanel(
             return;
         }
 
-        let tags: Vec<String> = editor_tags.get()
+        let tags: Vec<String> = editor_tags
+            .get()
             .split(',')
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
@@ -422,7 +419,9 @@ pub fn NotesPanel(
                     Some(tags.clone()),
                     Some(is_pinned),
                     Some(is_private),
-                ).await {
+                )
+                .await
+                {
                     Ok(backend_note) => {
                         let frontend_note = SessionNote::from_backend(backend_note);
                         notes.update(|all| all.push(frontend_note.clone()));
@@ -514,25 +513,38 @@ pub fn NotesPanel(
         spawn_local(async move {
             match bindings::categorize_note_ai(title, content_ai).await {
                 Ok(response) => {
-                    let suggested_category = NoteCategory::from_string(&response.suggested_category);
+                    let suggested_category =
+                        NoteCategory::from_string(&response.suggested_category);
                     let suggested_tags = response.suggested_tags;
                     ai_suggestions.set(Some((suggested_category, suggested_tags)));
-                    info!("AI categorization complete: {} (confidence: {:.0}%)",
-                        response.suggested_category, response.confidence * 100.0);
+                    info!(
+                        "AI categorization complete: {} (confidence: {:.0}%)",
+                        response.suggested_category,
+                        response.confidence * 100.0
+                    );
                 }
                 Err(e) => {
                     // Fall back to simple keyword-based categorization
                     error!("AI categorization failed, using fallback: {}", e);
                     let content_lower = content.to_lowercase();
-                    let suggested_category = if content_lower.contains("combat") || content_lower.contains("fight") || content_lower.contains("attack") {
+                    let suggested_category = if content_lower.contains("combat")
+                        || content_lower.contains("fight")
+                        || content_lower.contains("attack")
+                    {
                         NoteCategory::Combat
                     } else if content_lower.contains("npc") || content_lower.contains("character") {
                         NoteCategory::Character
-                    } else if content_lower.contains("location") || content_lower.contains("place") || content_lower.contains("tavern") {
+                    } else if content_lower.contains("location")
+                        || content_lower.contains("place")
+                        || content_lower.contains("tavern")
+                    {
                         NoteCategory::Location
                     } else if content_lower.contains("quest") || content_lower.contains("mission") {
                         NoteCategory::Quest
-                    } else if content_lower.contains("loot") || content_lower.contains("treasure") || content_lower.contains("gold") {
+                    } else if content_lower.contains("loot")
+                        || content_lower.contains("treasure")
+                        || content_lower.contains("gold")
+                    {
                         NoteCategory::Loot
                     } else if content_lower.contains("plot") || content_lower.contains("story") {
                         NoteCategory::Plot
@@ -541,9 +553,15 @@ pub fn NotesPanel(
                     };
 
                     let mut suggested_tags = Vec::new();
-                    if content_lower.contains("dragon") { suggested_tags.push("dragon".to_string()); }
-                    if content_lower.contains("magic") { suggested_tags.push("magic".to_string()); }
-                    if content_lower.contains("sword") { suggested_tags.push("weapon".to_string()); }
+                    if content_lower.contains("dragon") {
+                        suggested_tags.push("dragon".to_string());
+                    }
+                    if content_lower.contains("magic") {
+                        suggested_tags.push("magic".to_string());
+                    }
+                    if content_lower.contains("sword") {
+                        suggested_tags.push("weapon".to_string());
+                    }
 
                     ai_suggestions.set(Some((suggested_category, suggested_tags)));
                 }
@@ -933,11 +951,7 @@ pub fn NotesPanel(
 
 /// Individual note card
 #[component]
-fn NoteCard(
-    note: SessionNote,
-    on_edit: Callback<()>,
-    on_delete: Callback<()>,
-) -> impl IntoView {
+fn NoteCard(note: SessionNote, on_edit: Callback<()>, on_delete: Callback<()>) -> impl IntoView {
     let category_color = note.category.color();
     let is_expanded = RwSignal::new(false);
 

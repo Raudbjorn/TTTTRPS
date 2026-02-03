@@ -2,13 +2,13 @@ pub mod chat_message;
 pub mod personality_selector;
 
 pub use chat_message::ChatMessage;
-pub use personality_selector::{PersonalitySelector, PersonalityIndicator};
+pub use personality_selector::{PersonalityIndicator, PersonalitySelector};
 
+use crate::components::design_system::{Button, ButtonVariant, Input};
+use crate::services::chat_session_service::use_chat_session_service;
 use leptos::ev;
 use leptos::prelude::*;
 use leptos_router::components::A;
-use crate::services::chat_session_service::use_chat_session_service;
-use crate::components::design_system::{Button, ButtonVariant, Input};
 
 /// Main Chat component - the primary DM interface with streaming support
 #[component]
@@ -303,11 +303,7 @@ fn SettingsIcon() -> impl IntoView {
 
 // Navigation Link component with tooltip (dynamic text/icon mode)
 #[component]
-pub fn HeaderLink(
-    href: &'static str,
-    label: &'static str,
-    children: Children,
-) -> impl IntoView {
+pub fn HeaderLink(href: &'static str, label: &'static str, children: Children) -> impl IntoView {
     let layout_state = crate::services::layout_service::use_layout_state();
     let text_mode = layout_state.text_navigation;
     let icon_children = children();

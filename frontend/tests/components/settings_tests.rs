@@ -4,9 +4,9 @@
 //! Note: Most LLMProvider methods are private (internal implementation),
 //! so we test the public interface (Display, PartialEq, Clone) and utility functions.
 
-use wasm_bindgen_test::*;
 use leptos::prelude::*;
 use ttrpg_assistant_frontend::components::settings::llm::LLMProvider;
+use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
 
@@ -86,7 +86,7 @@ fn test_api_key_masking_basic() {
             "*".repeat(key.len())
         } else {
             let visible_start = &key[..4];
-            let visible_end = &key[key.len()-4..];
+            let visible_end = &key[key.len() - 4..];
             format!("{}...{}", visible_start, visible_end)
         }
     }
@@ -115,7 +115,7 @@ fn test_api_key_visibility_toggle() {
     let display = if show_key.get() {
         api_key.to_string()
     } else {
-        format!("{}...{}", &api_key[..4], &api_key[api_key.len()-4..])
+        format!("{}...{}", &api_key[..4], &api_key[api_key.len() - 4..])
     };
 
     assert_eq!(display, api_key);
@@ -125,7 +125,7 @@ fn test_api_key_visibility_toggle() {
     let masked_display = if show_key.get() {
         api_key.to_string()
     } else {
-        format!("{}...{}", &api_key[..4], &api_key[api_key.len()-4..])
+        format!("{}...{}", &api_key[..4], &api_key[api_key.len() - 4..])
     };
 
     assert_eq!(masked_display, "sk-a...2345");
