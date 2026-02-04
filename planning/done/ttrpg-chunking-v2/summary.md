@@ -53,7 +53,7 @@ This feature enhances the existing document ingestion pipeline with TTRPG-specif
 ## Novel Approaches from Research
 
 ### 1. LLM Semantic Boundary Detection
-**Source**: `/home/svnbjrn/dev/knowledgebase/rapydocs/mbed-unified/.../semantic_chunker.py`
+**Source**: mbed-unified semantic chunker reference implementation
 
 Uses Ollama to detect topic shifts with confidence scores at text positions. Not standard in RAG pipelines. Fallback when regex-based boundary detection fails.
 
@@ -64,7 +64,7 @@ boundaries = ollama.generate(prompt)  # Returns line numbers
 ```
 
 ### 2. Hierarchical Chunk Relationships
-**Source**: `/home/svnbjrn/dev/knowledgebase/rapydocs/mbed-unified/.../hierarchical_chunker.py`
+**Source**: mbed-unified hierarchical chunker reference implementation
 
 Maintains parent→child bidirectional references. Chunks can traverse hierarchy for context. Useful for TTRPG where a "Fireball" spell needs "Evocation School" context.
 
@@ -77,7 +77,7 @@ struct HierarchicalChunk {
 ```
 
 ### 3. Entity Header Augmentation
-**Source**: `/home/svnbjrn/dev/knowledgebase/rapydocs/src/embeddings/enhanced_chunking.py`
+**Source**: rapydocs enhanced chunking reference implementation
 
 Prepends extracted entities (locations, types, qualifiers) to chunks before embedding. Improves retrieval precision.
 

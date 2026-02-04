@@ -666,23 +666,4 @@ mod tests {
         let _category = LoreCategory::History;
         assert_eq!(LoreCategory::History.keywords().len(), 7);
     }
-
-    // Integration tests would require a mock SearchClient
-    #[test]
-    #[ignore]
-    fn test_search_setting_lore_integration() {
-        // Would need async runtime and mock SearchClient
-    }
-
-    #[test]
-    #[ignore]
-    fn test_search_names_integration() {
-        // Would need async runtime and mock SearchClient
-    }
-
-    #[test]
-    #[ignore]
-    fn test_search_locations_integration() {
-        // Would need async runtime and mock SearchClient
-    }
 }

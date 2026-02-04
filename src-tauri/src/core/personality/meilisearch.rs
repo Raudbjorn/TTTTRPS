@@ -712,11 +712,9 @@ mod tests {
         assert_eq!(parsed.rule_count, 5);
     }
 
-    // Integration tests would require a running Meilisearch instance
-    // They should be marked with #[ignore] and run separately
     #[test]
-    #[ignore]
     fn test_index_manager_creation() {
+        // This test only creates the manager object (no network calls)
         let manager = PersonalityIndexManager::new("http://localhost:7700", None);
         assert_eq!(manager.host(), "http://localhost:7700");
     }

@@ -1,9 +1,9 @@
 # Design Insights: TTRPG Document Processing
 
 Extracted from research materials:
-- `/home/svnbjrn/dev/AI-RPG/embeddings/planning/embeddings/The-Design-Language-of-Tabletop-Roleplaying-Game-Books.md`
-- `/home/svnbjrn/dev/knowledgebase/embeddings/Unique-Features-of-TTRPG-Rulebooks-and-Sourcebooks.pdf`
-- `/home/svnbjrn/dev/knowledgebase/embeddings/MDMAI` (original codebase)
+- The Design Language of Tabletop Roleplaying Game Books (analysis document)
+- Unique Features of TTRPG Rulebooks and Sourcebooks (PDF research)
+- MDMAI original codebase reference implementation
 
 ## Core Insight: The Triple Mandate
 

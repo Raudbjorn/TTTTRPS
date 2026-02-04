@@ -79,7 +79,7 @@ Add to Claude Desktop's `claude_desktop_config.json`:
   "mcpServers": {
     "gemini": {
       "command": "npx",
-      "args": ["@svnbjrn/gemini-cli-mcp"]
+      "args": ["@google/gemini-cli"]
     }
   }
 }

@@ -57,27 +57,65 @@ fn test_pro_convenience_constructor() {
 }
 
 // =============================================================================
+// API Key Format Validation Tests (pure, no network calls)
+// =============================================================================
+
+#[test]
+fn test_api_key_format_accepts_valid_keys() {
+    // Keys starting with "AIza" should be considered valid format
+    assert!(GoogleProvider::is_valid_api_key_format("AIzaValidApiKey12345"));
+    assert!(GoogleProvider::is_valid_api_key_format("AIzaSyD_abcdefghijklmnop"));
+    assert!(GoogleProvider::is_valid_api_key_format("AIza"));  // Minimum valid
+}
+
+#[test]
+fn test_api_key_format_rejects_invalid_keys() {
+    // Empty and non-matching prefixes should be rejected
+    assert!(!GoogleProvider::is_valid_api_key_format(""));
+    assert!(!GoogleProvider::is_valid_api_key_format("   "));
+    assert!(!GoogleProvider::is_valid_api_key_format("BOGUS-KEY"));
+    assert!(!GoogleProvider::is_valid_api_key_format("AXzaSomething"));
+    assert!(!GoogleProvider::is_valid_api_key_format("aiza-lowercase"));
+    assert!(!GoogleProvider::is_valid_api_key_format("sk-openai-key"));
+}
+
+#[test]
+fn test_api_key_format_trims_whitespace() {
+    // Keys with leading/trailing whitespace should work if core is valid
+    assert!(GoogleProvider::is_valid_api_key_format("  AIzaValidKey  "));
+    assert!(!GoogleProvider::is_valid_api_key_format("  invalid  "));
+}
+
+// =============================================================================
 // Health Check Tests
 // =============================================================================
 
 #[tokio::test]
-async fn test_health_check_valid_key() {
-    let provider = GoogleProvider::new(
-        "AIzaValidApiKey12345".to_string(),
-        "gemini-2.0-flash-exp".to_string(),
-    );
-    // Health check validates key format (starts with "AIza")
-    assert!(provider.health_check().await);
-}
-
-#[tokio::test]
-async fn test_health_check_invalid_key() {
+async fn test_health_check_invalid_key_format() {
     let provider = GoogleProvider::new(
         "invalid-key".to_string(),
         "gemini-2.0-flash-exp".to_string(),
     );
-    // Invalid key format should fail health check
+    // Invalid key format should fail health check immediately (no API call)
     assert!(!provider.health_check().await);
+}
+
+// Integration-style test: exercises real health_check(), including network call.
+// This is ignored by default to keep CI deterministic.
+// Run explicitly with: GOOGLE_API_KEY=your-key cargo test test_health_check_valid_key -- --ignored
+#[tokio::test]
+#[ignore = "Requires GOOGLE_API_KEY env var with valid Google API key"]
+async fn test_health_check_valid_key() {
+    let api_key = match std::env::var("GOOGLE_API_KEY") {
+        Ok(key) => key,
+        Err(_) => {
+            println!("GOOGLE_API_KEY not set, skipping test");
+            return;
+        }
+    };
+    let provider = GoogleProvider::new(api_key, "gemini-2.0-flash-exp".to_string());
+    // Note: health_check() validates key format AND makes an API call
+    assert!(provider.health_check().await);
 }
 
 // =============================================================================

@@ -1048,11 +1048,18 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore] // Run with: cargo test test_extract_real_pdf -- --ignored
+    #[ignore = "Requires TEST_PDF_PATH environment variable pointing to a PDF file"]
     async fn test_extract_real_pdf() {
-        let pdf_path = Path::new("/home/svnbjrn/Delta-Green-Agents-Handbook.pdf");
+        let pdf_path_str = match std::env::var("TEST_PDF_PATH") {
+            Ok(path) => path,
+            Err(_) => {
+                println!("TEST_PDF_PATH not set, skipping test");
+                return;
+            }
+        };
+        let pdf_path = Path::new(&pdf_path_str);
         if !pdf_path.exists() {
-            println!("Test PDF not found, skipping");
+            println!("Test PDF not found at {:?}, skipping", pdf_path);
             return;
         }
 

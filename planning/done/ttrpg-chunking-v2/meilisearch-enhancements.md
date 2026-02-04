@@ -1,6 +1,6 @@
 # Meilisearch Enhancements for TTRPG Search
 
-Based on review of `/home/svnbjrn/dev/knowledgebase/embeddings/meilisearch_docs/meilisearch_docs_optimized.md`
+Based on review of Meilisearch official documentation
 
 ## Faceted Search
 

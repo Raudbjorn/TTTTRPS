@@ -426,17 +426,4 @@ mod tests {
         assert_eq!(SourceType::CampaignEntity.as_str(), "campaign_entity");
         assert_eq!(SourceType::UserInput.as_str(), "user_input");
     }
-
-    // Integration tests would require a test database
-    #[test]
-    #[ignore]
-    fn test_mark_content_used_integration() {
-        // Would need async runtime and test database
-    }
-
-    #[test]
-    #[ignore]
-    fn test_get_used_content_integration() {
-        // Would need async runtime and test database
-    }
 }

@@ -30,8 +30,9 @@ impl GoogleProvider {
             .build()
             .expect("Failed to create HTTP client");
 
+        // Trim the API key at construction to ensure consistency with validation
         Self {
-            api_key,
+            api_key: api_key.trim().to_string(),
             model,
             client,
         }
@@ -43,6 +44,23 @@ impl GoogleProvider {
 
     pub fn pro(api_key: String) -> Self {
         Self::new(api_key, "gemini-1.5-pro".to_string())
+    }
+
+    /// Check if an API key has valid Google API key format.
+    ///
+    /// Google API keys typically start with "AIza". This is a pure format check
+    /// and does not verify the key is actually valid with Google's API.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// assert!(GoogleProvider::is_valid_api_key_format("AIzaSyD12345abcdef"));
+    /// assert!(!GoogleProvider::is_valid_api_key_format("invalid-key"));
+    /// assert!(!GoogleProvider::is_valid_api_key_format(""));
+    /// ```
+    pub fn is_valid_api_key_format(key: &str) -> bool {
+        let trimmed = key.trim();
+        !trimmed.is_empty() && trimmed.starts_with("AIza")
     }
 
     fn build_contents(&self, request: &ChatRequest) -> Vec<serde_json::Value> {
@@ -79,7 +97,8 @@ impl LLMProvider for GoogleProvider {
     }
 
     async fn health_check(&self) -> bool {
-        if !self.api_key.starts_with("AIza") {
+        // Early return on obviously invalid key format
+        if !Self::is_valid_api_key_format(&self.api_key) {
             return false;
         }
 

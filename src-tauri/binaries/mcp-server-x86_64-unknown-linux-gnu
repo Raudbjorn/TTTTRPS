@@ -2,11 +2,18 @@
 # MCP Server wrapper for development
 # This script launches the Python MCP server
 
-# Use absolute path for development - this is the MDMAI project root
-PROJECT_ROOT="/home/svnbjrn/dev/MDMAI"
+# Use MCP_PROJECT_ROOT env var if set, otherwise try to find it relative to this script
+if [ -n "$MCP_PROJECT_ROOT" ]; then
+    PROJECT_ROOT="$MCP_PROJECT_ROOT"
+else
+    # Try to derive from script location (script is in src-tauri/binaries/)
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../../mcp-server" 2>/dev/null && pwd)" || PROJECT_ROOT=""
+fi
 
-if [ ! -d "$PROJECT_ROOT/src" ]; then
-    echo "[SIDECAR] ERROR: src/ directory not found at $PROJECT_ROOT" >&2
+if [ -z "$PROJECT_ROOT" ] || [ ! -d "$PROJECT_ROOT/src" ]; then
+    echo "[SIDECAR] ERROR: MCP server src/ directory not found." >&2
+    echo "[SIDECAR] Set MCP_PROJECT_ROOT environment variable to the MCP server root directory." >&2
     exit 1
 fi
 

@@ -3,9 +3,9 @@
 ## Reference Material
 
 Source code for novel chunking strategies:
-- `/home/svnbjrn/dev/knowledgebase/rapydocs/mbed-unified/src/mbed/pipeline/strategies/` - Chunking strategies
-- `/home/svnbjrn/dev/knowledgebase/rapydocs/src/embeddings/` - Enhanced chunking with entity extraction
-- `/home/svnbjrn/dev/knowledgebase/rapydocs/src/search/` - 9-step retrieval pipeline
+- mbed-unified chunking strategies (pipeline/strategies module)
+- rapydocs enhanced chunking with entity extraction
+- rapydocs 9-step retrieval pipeline
 
 ## Current Architecture
 

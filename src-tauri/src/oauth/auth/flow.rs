@@ -437,7 +437,8 @@ mod tests {
         let provider = ClaudeProvider::new();
         let flow = OAuthFlow::new(storage, provider);
 
-        assert_eq!(flow.provider().provider_id(), "anthropic");
+        // Note: "claude" is used for OAuth-based auth; "anthropic" is for API key auth
+        assert_eq!(flow.provider().provider_id(), "claude");
     }
 
     #[tokio::test]

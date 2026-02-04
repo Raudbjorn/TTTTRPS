@@ -1,14 +1,24 @@
 //! Integration test for PDF ingestion with kreuzberg + OCR fallback
+//!
+//! Run with: TEST_PDF_PATH=/path/to/test.pdf cargo test --test ingest_pdf_test -- --ignored
 
 use std::path::Path;
 
 #[tokio::test]
-#[ignore] // Run with: cargo test --test ingest_pdf_test -- --ignored --nocapture
-async fn test_ingest_delta_green_pdf() {
+#[ignore = "Requires TEST_PDF_PATH environment variable pointing to a PDF file"]
+async fn test_ingest_pdf() {
     // Initialize logger
     let _ = env_logger::builder().is_test(true).try_init();
 
-    let pdf_path = Path::new("/home/svnbjrn/Delta-Green-Agents-Handbook.pdf");
+    let pdf_path_str = match std::env::var("TEST_PDF_PATH") {
+        Ok(path) => path,
+        Err(_) => {
+            println!("TEST_PDF_PATH not set, skipping test");
+            println!("Run with: TEST_PDF_PATH=/path/to/test.pdf cargo test --test ingest_pdf_test -- --ignored");
+            return;
+        }
+    };
+    let pdf_path = Path::new(&pdf_path_str);
     if !pdf_path.exists() {
         println!("Test PDF not found at {:?}", pdf_path);
         return;

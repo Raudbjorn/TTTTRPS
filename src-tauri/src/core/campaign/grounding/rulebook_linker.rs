@@ -699,14 +699,6 @@ mod tests {
         assert_ne!(ReferenceType::PageReference, ReferenceType::Spell);
     }
 
-    // Integration tests would require a mock SearchClient
-    // These are marked as ignored since they need actual infrastructure
-    #[test]
-    #[ignore]
-    fn test_link_to_rulebook_integration() {
-        // Would need async runtime and mock SearchClient
-    }
-
     #[test]
     fn test_build_search_query() {
         // Test query building logic without SearchClient

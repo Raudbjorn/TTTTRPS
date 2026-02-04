@@ -1,15 +1,26 @@
 //! Full ingestion test - extract PDF and index to Meilisearch using two-phase pipeline
+//!
+//! Run with:
+//!   TEST_PDF_PATH=/path/to/test.pdf MEILI_MASTER_KEY=your-key \
+//!   cargo test --test full_ingest_test -- --ignored
 
 use std::path::Path;
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore] // Run with: cargo test --test full_ingest_test -- --ignored --nocapture
+#[ignore = "Requires TEST_PDF_PATH env var and running Meilisearch instance"]
 async fn test_full_ingest() {
     let _ = env_logger::builder().is_test(true).try_init();
 
-    let pdf_path = Path::new("/home/svnbjrn/Delta-Green-Agents-Handbook.pdf");
+    let pdf_path_str = match std::env::var("TEST_PDF_PATH") {
+        Ok(path) => path,
+        Err(_) => {
+            println!("TEST_PDF_PATH not set, skipping test");
+            return;
+        }
+    };
+    let pdf_path = Path::new(&pdf_path_str);
     if !pdf_path.exists() {
-        println!("Test PDF not found");
+        println!("Test PDF not found at {:?}", pdf_path);
         return;
     }
 
@@ -19,14 +30,8 @@ async fn test_full_ingest() {
     println!("[1/3] Connecting to Meilisearch...");
     use ttrpg_assistant::core::search::SearchClient;
 
-    let meili_key = std::fs::read_to_string("/etc/meilisearch.conf")
-        .ok()
-        .and_then(|content| {
-            content.lines()
-                .find(|l| l.starts_with("MEILI_MASTER_KEY="))
-                .map(|l| l.trim_start_matches("MEILI_MASTER_KEY=").trim_matches('"').to_string())
-        })
-        .unwrap_or_else(|| "ttrpg-assistant-dev-key".to_string());
+    let meili_key = std::env::var("MEILI_MASTER_KEY")
+        .unwrap_or_else(|_| "ttrpg-assistant-dev-key".to_string());
 
     let search_client = SearchClient::new("http://127.0.0.1:7700", Some(&meili_key))
         .expect("Failed to create search client");

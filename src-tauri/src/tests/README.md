@@ -5,7 +5,7 @@ This directory contains comprehensive unit tests for all the major Rust modules 
 ## Test Files Created
 
 ### 1. `mcp_bridge_tests.rs` - MCP Bridge Module Tests
-**File Path**: `desktop/frontend/src-tauri/src/tests/mcp_bridge_tests.rs`
+**File Path**: `src-tauri/src/tests/mcp_bridge_tests.rs`
 
 **Key Test Cases**:
 - Bridge creation and initialization
@@ -28,7 +28,7 @@ This directory contains comprehensive unit tests for all the major Rust modules 
 - Process lifecycle management integration
 
 ### 2. `process_manager_comprehensive_tests.rs` - Process Manager Module Tests
-**File Path**: `desktop/frontend/src-tauri/src/tests/process_manager_comprehensive_tests.rs`
+**File Path**: `src-tauri/src/tests/process_manager_comprehensive_tests.rs`
 
 **Key Test Cases**:
 - Process lifecycle management (start/stop/crash)
@@ -53,7 +53,7 @@ This directory contains comprehensive unit tests for all the major Rust modules 
 - Resource monitoring and statistics
 
 ### 3. `data_manager_commands_tests.rs` - Data Manager Commands Tests
-**File Path**: `/home/svnbjrn/code/cl1/MDMAI/desktop/frontend/src-tauri/src/tests/data_manager_commands_tests.rs`
+**File Path**: `src-tauri/src/tests/data_manager_commands_tests.rs`
 
 **Key Test Cases**:
 - Data manager initialization (with/without encryption)
@@ -78,7 +78,7 @@ This directory contains comprehensive unit tests for all the major Rust modules 
 - Thread-safe data access
 
 ### 4. `error_handling_tests.rs` - Error Handling Module Tests
-**File Path**: `/home/svnbjrn/code/cl1/MDMAI/desktop/frontend/src-tauri/src/tests/error_handling_tests.rs`
+**File Path**: `src-tauri/src/tests/error_handling_tests.rs`
 
 **Key Test Cases**:
 - Comprehensive error type creation and display
@@ -102,7 +102,7 @@ This directory contains comprehensive unit tests for all the major Rust modules 
 - Structured error information
 
 ### 5. `resource_manager_comprehensive_tests.rs` - Resource Manager Tests
-**File Path**: `/home/svnbjrn/code/cl1/MDMAI/desktop/frontend/src-tauri/src/tests/resource_manager_comprehensive_tests.rs`
+**File Path**: `src-tauri/src/tests/resource_manager_comprehensive_tests.rs`
 
 **Key Test Cases**:
 - Resource registration and unregistration
@@ -128,7 +128,7 @@ This directory contains comprehensive unit tests for all the major Rust modules 
 - Cleanup strategy implementation
 
 ### 6. `security_commands_tests.rs` - Security Commands Tests
-**File Path**: `/home/svnbjrn/code/cl1/MDMAI/desktop/frontend/src-tauri/src/tests/security_commands_tests.rs`
+**File Path**: `src-tauri/src/tests/security_commands_tests.rs`
 
 **Key Test Cases**:
 - Security manager initialization
@@ -154,7 +154,7 @@ This directory contains comprehensive unit tests for all the major Rust modules 
 - Permission-based access control
 
 ### 7. `performance_commands_tests.rs` - Performance Commands Tests
-**File Path**: `/home/svnbjrn/code/cl1/MDMAI/desktop/frontend/src-tauri/src/tests/performance_commands_tests.rs`
+**File Path**: `src-tauri/src/tests/performance_commands_tests.rs`
 
 **Key Test Cases**:
 - Performance manager initialization
@@ -210,7 +210,7 @@ Each test module includes comprehensive mock implementations that:
 
 To run all tests:
 ```bash
-cd /home/svnbjrn/code/cl1/MDMAI/desktop/frontend/src-tauri
+cd src-tauri
 cargo test
 ```
 

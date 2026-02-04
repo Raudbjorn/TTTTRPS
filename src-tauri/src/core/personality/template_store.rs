@@ -812,11 +812,8 @@ mod tests {
         assert!(json.contains("\"deleted\":3"));
     }
 
-    // Integration tests would require a running Meilisearch instance
-    // They should be marked with #[ignore] and run separately
-
     #[tokio::test]
-    #[ignore]
+    #[ignore = "Requires running Meilisearch instance"]
     async fn test_store_crud_operations() {
         let store = SettingTemplateStore::new("http://localhost:7700", None)
             .await
@@ -841,7 +838,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore]
+    #[ignore = "Requires running Meilisearch instance"]
     async fn test_store_cache_behavior() {
         let store = SettingTemplateStore::with_capacity("http://localhost:7700", None, 10)
             .await
@@ -867,7 +864,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore]
+    #[ignore = "Requires running Meilisearch instance"]
     async fn test_store_search() {
         let store = SettingTemplateStore::new("http://localhost:7700", None)
             .await
@@ -896,7 +893,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore]
+    #[ignore = "Requires running Meilisearch instance"]
     async fn test_store_filter_by_game_system() {
         let store = SettingTemplateStore::new("http://localhost:7700", None)
             .await

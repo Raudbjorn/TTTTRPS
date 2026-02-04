@@ -276,9 +276,14 @@ impl BudgetEnforcer {
         let spending = self.spending.read().unwrap();
         let now = Utc::now();
 
-        let today_start = now - Duration::hours(now.hour() as i64);
-        let week_start = now - Duration::days(now.weekday().num_days_from_monday() as i64);
-        let month_start = now - Duration::days(now.day() as i64 - 1);
+        // Truncate to start of each period (midnight UTC)
+        let today_start = truncate_to_midnight_utc(now);
+        let week_start = truncate_to_midnight_utc(
+            now - Duration::days(now.weekday().num_days_from_monday() as i64),
+        );
+        let month_start = truncate_to_midnight_utc(
+            now - Duration::days(now.day() as i64 - 1),
+        );
 
         let today: f64 = spending
             .iter()
@@ -331,6 +336,28 @@ pub struct SpendingSummary {
 // Helper Functions
 // ============================================================================
 
+/// Truncate a DateTime to midnight (00:00:00.000) of the same day.
+///
+/// This is used for calculating budget period boundaries. Uses `expect` rather
+/// than silent fallback to surface any unexpected failures in time construction.
+fn truncate_to_midnight_utc(dt: DateTime<Utc>) -> DateTime<Utc> {
+    dt.with_hour(0)
+        .and_then(|t| t.with_minute(0))
+        .and_then(|t| t.with_second(0))
+        .and_then(|t| t.with_nanosecond(0))
+        .expect("truncating to midnight should always produce valid DateTime")
+}
+
+/// Truncate a DateTime to the start of the current hour (XX:00:00.000).
+///
+/// This is used for hourly budget period boundaries.
+fn truncate_to_hour_start_utc(dt: DateTime<Utc>) -> DateTime<Utc> {
+    dt.with_minute(0)
+        .and_then(|t| t.with_second(0))
+        .and_then(|t| t.with_nanosecond(0))
+        .expect("truncating to hour start should always produce valid DateTime")
+}
+
 fn action_severity(action: BudgetAction) -> u8 {
     match action {
         BudgetAction::Allow => 0,
@@ -346,23 +373,23 @@ fn get_period_bounds(period: BudgetPeriod) -> (DateTime<Utc>, DateTime<Utc>) {
 
     match period {
         BudgetPeriod::Hourly => {
-            let start = now - Duration::minutes(now.minute() as i64);
+            let start = truncate_to_hour_start_utc(now);
             let end = start + Duration::hours(1);
             (start, end)
         }
         BudgetPeriod::Daily => {
-            let start = now - Duration::hours(now.hour() as i64);
+            let start = truncate_to_midnight_utc(now);
             let end = start + Duration::days(1);
             (start, end)
         }
         BudgetPeriod::Weekly => {
             let days_since_monday = now.weekday().num_days_from_monday() as i64;
-            let start = now - Duration::days(days_since_monday);
+            let start = truncate_to_midnight_utc(now - Duration::days(days_since_monday));
             let end = start + Duration::weeks(1);
             (start, end)
         }
         BudgetPeriod::Monthly => {
-            let start = now - Duration::days(now.day() as i64 - 1);
+            let start = truncate_to_midnight_utc(now - Duration::days(now.day() as i64 - 1));
             let end = start + Duration::days(30); // Approximation
             (start, end)
         }
