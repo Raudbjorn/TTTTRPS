@@ -30,9 +30,13 @@ pub struct CampaignStats {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CampaignSettings {
+    #[serde(default)]
     pub theme: String,
+    #[serde(default)]
     pub theme_weights: std::collections::HashMap<String, f32>,
+    #[serde(default)]
     pub voice_enabled: bool,
+    #[serde(default)]
     pub auto_transcribe: bool,
 }
 

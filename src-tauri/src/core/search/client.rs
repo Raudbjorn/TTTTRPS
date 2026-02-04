@@ -680,22 +680,97 @@ impl SearchClient {
     // Statistics
     // ========================================================================
 
-    /// Get statistics for all indexes
+    /// Get statistics for all indexes (including dynamic per-document indexes)
     pub async fn get_all_stats(&self) -> Result<HashMap<String, u64>> {
         let mut stats = HashMap::new();
 
-        for index_name in Self::all_indexes() {
-            match self.document_count(index_name).await {
+        // Get all indexes from Meilisearch with pagination to ensure we don't miss any
+        let all_meili_indexes: Vec<String> = match self.list_all_index_names().await {
+            Ok(indexes) => indexes,
+            Err(e) => {
+                log::warn!("Failed to list all indexes: {}, falling back to static list", e);
+                Self::all_indexes().iter().map(|s| s.to_string()).collect()
+            }
+        };
+
+        for index_name in all_meili_indexes {
+            // Skip internal indexes that shouldn't be shown in stats
+            if index_name.ends_with("-raw") || index_name == "library_metadata" {
+                continue;
+            }
+            match self.document_count(&index_name).await {
                 Ok(count) => {
-                    stats.insert(index_name.to_string(), count);
+                    stats.insert(index_name, count);
                 }
                 Err(_) => {
-                    stats.insert(index_name.to_string(), 0);
+                    stats.insert(index_name, 0);
                 }
             }
         }
 
         Ok(stats)
+    }
+
+    /// List all index names with proper pagination handling
+    async fn list_all_index_names(&self) -> Result<Vec<String>> {
+        let client = reqwest::Client::new();
+        let mut all_names = Vec::new();
+        let mut offset = 0u32;
+        const PAGE_SIZE: u32 = 100;
+
+        loop {
+            let url = format!("{}/indexes?limit={}&offset={}", self.host, PAGE_SIZE, offset);
+            let mut request = client.get(&url);
+
+            if let Some(key) = &self.api_key {
+                request = request.header("Authorization", format!("Bearer {}", key));
+            }
+
+            let response = request
+                .send()
+                .await
+                .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
+
+            if !response.status().is_success() {
+                return Err(SearchError::MeilisearchError(format!(
+                    "Failed to list indexes: HTTP {}",
+                    response.status()
+                )));
+            }
+
+            #[derive(Deserialize)]
+            struct IndexInfo {
+                uid: String,
+            }
+
+            #[derive(Deserialize)]
+            struct IndexesResponse {
+                results: Vec<IndexInfo>,
+            }
+
+            let data: IndexesResponse = response
+                .json()
+                .await
+                .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
+
+            let count = data.results.len();
+            all_names.extend(data.results.into_iter().map(|idx| idx.uid));
+
+            // If we got fewer than PAGE_SIZE, we've reached the end
+            if (count as u32) < PAGE_SIZE {
+                break;
+            }
+
+            offset += PAGE_SIZE;
+
+            // Safety limit to prevent infinite loops (unlikely but defensive)
+            if offset > 10000 {
+                log::warn!("Hit safety limit while paginating indexes");
+                break;
+            }
+        }
+
+        Ok(all_names)
     }
 
     // ========================================================================

@@ -236,11 +236,8 @@ impl CopilotState {
             }
             CopilotStorageBackend::Keyring => {
                 // Keyring support for Copilot is not yet implemented
-                // Fall back to file storage
-                log::warn!(
-                    "Keyring storage for Copilot is not yet implemented, using file storage"
-                );
-                Self::create_client(CopilotStorageBackend::File)
+                // Return an error so the frontend can show a message
+                Err("Keyring storage for Copilot is not yet implemented. Please use File storage or Auto.".to_string())
             }
             CopilotStorageBackend::Auto => {
                 // Smart Auto: Check for existing tokens before selecting backend
