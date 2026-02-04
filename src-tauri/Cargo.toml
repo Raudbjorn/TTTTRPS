@@ -43,7 +43,7 @@ walkdir = "2.0"
 blake3 = "1.0"
 futures = "0.3"
 tokio-stream = "0.1"
-bytes = "1.5"
+bytes = "1.11"
 thiserror = "1.0"
 tempfile = "3.8"
 # Security Dependencies
