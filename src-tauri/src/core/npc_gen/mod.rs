@@ -196,7 +196,7 @@ impl NPCVoiceConfig {
 /// Should be called during application startup.
 ///
 /// # Arguments
-/// * `meilisearch_client` - Meilisearch client instance
+/// * `meili` - Embedded MeilisearchLib instance
 ///
 /// # Returns
 /// * `Ok(())` - Initialization successful

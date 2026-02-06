@@ -30,11 +30,8 @@ pub enum NpcIndexError {
     #[error("Failed to update settings for '{index}': {source}")]
     Settings { index: String, source: String },
 
-    #[error("Task timeout for index '{index}'")]
-    Timeout { index: String },
-
-    #[error("Failed to get stats for '{index}': {source}")]
-    Stats { index: String, source: String },
+    #[error("Task failed for index '{index}': {source}")]
+    TaskFailed { index: String, source: String },
 
     #[error("Failed to clear index '{index}': {source}")]
     Clear { index: String, source: String },
@@ -139,7 +136,7 @@ pub struct ExclamationTemplateDocument {
 
 /// Build settings for the vocabulary banks index.
 fn vocabulary_settings() -> Settings<Unchecked> {
-    let filterable: Vec<FilterableAttributesRule> = vec![
+    let filterable = vec![
         FilterableAttributesRule::Field("culture".to_string()),
         FilterableAttributesRule::Field("role".to_string()),
         FilterableAttributesRule::Field("race".to_string()),
@@ -148,9 +145,6 @@ fn vocabulary_settings() -> Settings<Unchecked> {
         FilterableAttributesRule::Field("bank_id".to_string()),
         FilterableAttributesRule::Field("tags".to_string()),
     ];
-
-    let mut sortable: BTreeSet<String> = BTreeSet::new();
-    sortable.insert("frequency".to_string());
 
     Settings {
         searchable_attributes: Setting::Set(vec![
@@ -161,22 +155,19 @@ fn vocabulary_settings() -> Settings<Unchecked> {
         ])
         .into(),
         filterable_attributes: Setting::Set(filterable),
-        sortable_attributes: Setting::Set(sortable),
+        sortable_attributes: Setting::Set(BTreeSet::from(["frequency".to_string()])),
         ..Default::default()
     }
 }
 
 /// Build settings for the name components index.
 fn name_components_settings() -> Settings<Unchecked> {
-    let filterable: Vec<FilterableAttributesRule> = vec![
+    let filterable = vec![
         FilterableAttributesRule::Field("culture".to_string()),
         FilterableAttributesRule::Field("component_type".to_string()),
         FilterableAttributesRule::Field("gender".to_string()),
         FilterableAttributesRule::Field("phonetic_tags".to_string()),
     ];
-
-    let mut sortable: BTreeSet<String> = BTreeSet::new();
-    sortable.insert("frequency".to_string());
 
     Settings {
         searchable_attributes: Setting::Set(vec![
@@ -186,22 +177,19 @@ fn name_components_settings() -> Settings<Unchecked> {
         ])
         .into(),
         filterable_attributes: Setting::Set(filterable),
-        sortable_attributes: Setting::Set(sortable),
+        sortable_attributes: Setting::Set(BTreeSet::from(["frequency".to_string()])),
         ..Default::default()
     }
 }
 
 /// Build settings for the exclamation templates index.
 fn exclamation_settings() -> Settings<Unchecked> {
-    let filterable: Vec<FilterableAttributesRule> = vec![
+    let filterable = vec![
         FilterableAttributesRule::Field("culture".to_string()),
         FilterableAttributesRule::Field("intensity".to_string()),
         FilterableAttributesRule::Field("emotion".to_string()),
         FilterableAttributesRule::Field("religious".to_string()),
     ];
-
-    let mut sortable: BTreeSet<String> = BTreeSet::new();
-    sortable.insert("frequency".to_string());
 
     Settings {
         searchable_attributes: Setting::Set(vec![
@@ -210,7 +198,7 @@ fn exclamation_settings() -> Settings<Unchecked> {
         ])
         .into(),
         filterable_attributes: Setting::Set(filterable),
-        sortable_attributes: Setting::Set(sortable),
+        sortable_attributes: Setting::Set(BTreeSet::from(["frequency".to_string()])),
         ..Default::default()
     }
 }
@@ -245,8 +233,9 @@ fn ensure_single_index(
             })?;
         meili
             .wait_for_task(task.uid, Some(INDEX_TIMEOUT))
-            .map_err(|_| NpcIndexError::Timeout {
+            .map_err(|e| NpcIndexError::TaskFailed {
                 index: uid.to_string(),
+                source: e.to_string(),
             })?;
     }
 
@@ -258,8 +247,9 @@ fn ensure_single_index(
         })?;
     meili
         .wait_for_task(task.uid, Some(INDEX_TIMEOUT))
-        .map_err(|_| NpcIndexError::Timeout {
+        .map_err(|e| NpcIndexError::TaskFailed {
             index: uid.to_string(),
+            source: e.to_string(),
         })?;
 
     log::debug!("Configured index '{}'", uid);
@@ -293,8 +283,7 @@ pub fn ensure_npc_indexes(meili: &MeilisearchLib) -> Result<(), NpcIndexError> {
 // ============================================================================
 
 /// Statistics about NPC generation indexes.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NpcIndexStats {
     /// Number of vocabulary phrases indexed
     pub vocabulary_phrase_count: u64,
@@ -390,8 +379,9 @@ pub fn clear_npc_indexes(meili: &MeilisearchLib) -> Result<(), NpcIndexError> {
 
             meili
                 .wait_for_task(task.uid, Some(INDEX_TIMEOUT))
-                .map_err(|_| NpcIndexError::Timeout {
+                .map_err(|e| NpcIndexError::TaskFailed {
                     index: index_name.to_string(),
+                    source: e.to_string(),
                 })?;
 
             log::info!("Cleared index '{}'", index_name);
