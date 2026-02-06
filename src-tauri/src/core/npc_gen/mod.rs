@@ -101,7 +101,7 @@ pub use file_utils::{
 // Index types
 pub use indexes::{
     ensure_npc_indexes, get_npc_index_stats, clear_npc_indexes,
-    ExclamationTemplateDocument, NameComponentDocument, NpcIndexStats,
+    ExclamationTemplateDocument, NameComponentDocument, NpcIndexError, NpcIndexStats,
     VocabularyPhraseDocument, INDEX_EXCLAMATION_TEMPLATES, INDEX_NAME_COMPONENTS,
     INDEX_VOCABULARY_BANKS,
 };
@@ -201,23 +201,23 @@ impl NPCVoiceConfig {
 /// # Returns
 /// * `Ok(())` - Initialization successful
 /// * `Err(String)` - If index creation fails
-pub async fn initialize_npc_system(
-    meilisearch_client: &meilisearch_sdk::client::Client,
+pub fn initialize_npc_system(
+    meili: &meilisearch_lib::MeilisearchLib,
 ) -> std::result::Result<(), String> {
     log::info!("Initializing NPC generation system...");
 
     // Ensure indexes exist
-    ensure_npc_indexes(meilisearch_client).await?;
+    ensure_npc_indexes(meili)?;
 
     log::info!("NPC generation system initialized successfully");
     Ok(())
 }
 
 /// Get statistics about the NPC generation data.
-pub async fn get_system_stats(
-    meilisearch_client: &meilisearch_sdk::client::Client,
+pub fn get_system_stats(
+    meili: &meilisearch_lib::MeilisearchLib,
 ) -> std::result::Result<NpcIndexStats, String> {
-    get_npc_index_stats(meilisearch_client).await
+    get_npc_index_stats(meili).map_err(|e| e.to_string())
 }
 
 // ============================================================================
