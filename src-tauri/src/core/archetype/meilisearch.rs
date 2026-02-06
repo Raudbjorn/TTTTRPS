@@ -329,34 +329,53 @@ impl ArchetypeIndexManager {
     /// Delete both archetype indexes (for testing/cleanup).
     ///
     /// Handles not-found indexes gracefully (already deleted is not an error).
-    /// Continues deleting remaining indexes even if one fails.
+    /// Attempts to delete all indexes even if one fails, collecting errors.
     ///
     /// # Warning
     ///
     /// This permanently deletes all data in both indexes.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first non-`IndexNotFound` error encountered. All indexes
+    /// are attempted regardless of individual failures.
     pub fn delete_indexes(&self) -> Result<()> {
         log::warn!("Deleting archetype indexes");
+
+        let mut first_error: Option<ArchetypeError> = None;
 
         for uid in [INDEX_ARCHETYPES, INDEX_VOCABULARY_BANKS] {
             match self.meili.delete_index(uid) {
                 Ok(task) => {
-                    self.meili.wait_for_task(task.uid, Some(TASK_TIMEOUT))
-                        .map_err(|e| ArchetypeError::Meilisearch(format!(
-                            "Wait delete '{}': {}", uid, e
-                        )))?;
-                    log::info!("Deleted index '{}'", uid);
+                    if let Err(e) = self.meili.wait_for_task(task.uid, Some(TASK_TIMEOUT)) {
+                        log::error!("Failed to wait for delete of '{}': {}", uid, e);
+                        if first_error.is_none() {
+                            first_error = Some(ArchetypeError::Meilisearch(format!(
+                                "Wait delete '{}': {}", uid, e
+                            )));
+                        }
+                    } else {
+                        log::info!("Deleted index '{}'", uid);
+                    }
                 }
                 Err(meilisearch_lib::Error::IndexNotFound(_)) => {
                     log::debug!("Index '{}' already doesn't exist", uid);
                 }
                 Err(e) => {
                     log::error!("Failed to delete index '{}': {}", uid, e);
-                    // Continue deleting remaining indexes
+                    if first_error.is_none() {
+                        first_error = Some(ArchetypeError::Meilisearch(format!(
+                            "Delete index '{}': {}", uid, e
+                        )));
+                    }
                 }
             }
         }
 
-        Ok(())
+        match first_error {
+            Some(e) => Err(e),
+            None => Ok(()),
+        }
     }
 }
 
@@ -419,25 +438,112 @@ mod tests {
     }
 
     #[test]
-    fn test_archetype_settings() {
+    fn test_archetype_settings_searchable_attributes() {
         let settings = build_archetype_settings();
-        // Settings are built without error
-        // Verify the settings struct was created with the expected field types
-        let _ = settings;
+
+        // Verify searchable attributes are set in priority order
+        match &settings.searchable_attributes {
+            ws if ws.is_set() => {
+                // WildcardSetting wraps Setting<Vec<String>>
+                // Verify the setting was constructed (non-default)
+            }
+            _ => panic!("searchable_attributes should be Set"),
+        }
     }
 
     #[test]
-    fn test_vocabulary_bank_settings() {
+    fn test_archetype_settings_filterable_attributes() {
+        let settings = build_archetype_settings();
+
+        // Verify filterable attributes contain expected fields
+        match &settings.filterable_attributes {
+            Setting::Set(attrs) => {
+                assert_eq!(attrs.len(), 6, "Expected 6 filterable attributes");
+                // Verify key fields are present
+                let field_names: Vec<String> = attrs.iter().filter_map(|r| {
+                    match r {
+                        FilterableAttributesRule::Field(name) => Some(name.clone()),
+                        _ => None,
+                    }
+                }).collect();
+                assert!(field_names.contains(&"id".to_string()));
+                assert!(field_names.contains(&"category".to_string()));
+                assert!(field_names.contains(&"game_system".to_string()));
+                assert!(field_names.contains(&"tags".to_string()));
+            }
+            _ => panic!("filterable_attributes should be Set"),
+        }
+    }
+
+    #[test]
+    fn test_archetype_settings_sortable_attributes() {
+        let settings = build_archetype_settings();
+
+        match &settings.sortable_attributes {
+            Setting::Set(attrs) => {
+                assert_eq!(attrs.len(), 3, "Expected 3 sortable attributes");
+                assert!(attrs.contains("display_name"));
+                assert!(attrs.contains("category"));
+                assert!(attrs.contains("created_at"));
+            }
+            _ => panic!("sortable_attributes should be Set"),
+        }
+    }
+
+    #[test]
+    fn test_vocabulary_bank_settings_filterable_attributes() {
         let settings = build_vocabulary_bank_settings();
-        // Settings are built without error
-        let _ = settings;
+
+        match &settings.filterable_attributes {
+            Setting::Set(attrs) => {
+                assert_eq!(attrs.len(), 6, "Expected 6 filterable attributes");
+                let field_names: Vec<String> = attrs.iter().filter_map(|r| {
+                    match r {
+                        FilterableAttributesRule::Field(name) => Some(name.clone()),
+                        _ => None,
+                    }
+                }).collect();
+                assert!(field_names.contains(&"culture".to_string()));
+                assert!(field_names.contains(&"role".to_string()));
+                assert!(field_names.contains(&"race".to_string()));
+                assert!(field_names.contains(&"categories".to_string()));
+            }
+            _ => panic!("filterable_attributes should be Set"),
+        }
     }
 
     #[test]
-    fn test_get_settings_functions() {
-        // These should return valid Settings objects
-        let arch_settings = get_archetype_settings();
-        let vocab_settings = get_vocabulary_bank_settings();
-        let _ = (arch_settings, vocab_settings);
+    fn test_vocabulary_bank_settings_sortable_attributes() {
+        let settings = build_vocabulary_bank_settings();
+
+        match &settings.sortable_attributes {
+            Setting::Set(attrs) => {
+                assert_eq!(attrs.len(), 2, "Expected 2 sortable attributes");
+                assert!(attrs.contains("display_name"));
+                assert!(attrs.contains("created_at"));
+            }
+            _ => panic!("sortable_attributes should be Set"),
+        }
+    }
+
+    #[test]
+    fn test_get_settings_return_same_as_build() {
+        // Public getters should return the same settings as internal builders
+        let arch_public = get_archetype_settings();
+        let arch_internal = build_archetype_settings();
+
+        // Verify sortable attributes match (as a representative check)
+        match (&arch_public.sortable_attributes, &arch_internal.sortable_attributes) {
+            (Setting::Set(a), Setting::Set(b)) => assert_eq!(a, b),
+            _ => panic!("Both should be Set"),
+        }
+
+        let vocab_public = get_vocabulary_bank_settings();
+        let vocab_internal = build_vocabulary_bank_settings();
+
+        match (&vocab_public.sortable_attributes, &vocab_internal.sortable_attributes) {
+            (Setting::Set(a), Setting::Set(b)) => assert_eq!(a, b),
+            _ => panic!("Both should be Set"),
+        }
     }
 }

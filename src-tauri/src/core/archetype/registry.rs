@@ -13,6 +13,14 @@
 //! All mutable state is protected by `tokio::sync::RwLock` for async-safe access.
 //! This is critical for proper operation in the Tauri async command context.
 //!
+//! # Dual-Client Architecture
+//!
+//! The registry uses two Meilisearch access paths:
+//! - **`MeilisearchLib` (embedded)**: For index management (create, configure, delete)
+//!   via [`ArchetypeIndexManager`]. No HTTP overhead.
+//! - **`meilisearch_sdk::Client`**: For document CRUD operations (add, search, delete
+//!   documents). Connects to the embedded instance's HTTP interface.
+//!
 //! # Usage
 //!
 //! ```rust,ignore
@@ -151,7 +159,6 @@ pub struct ArchetypeRegistry {
     meilisearch_client: Client,
 
     /// Event listeners (stub for future event system).
-
     event_listeners: Arc<RwLock<Vec<Box<dyn Fn(ArchetypeEvent) + Send + Sync>>>>,
 }
 
@@ -807,19 +814,16 @@ impl ArchetypeRegistry {
     ///
     /// This is used by `ArchetypeResolver` to access archetypes without
     /// going through the registry's public API.
-
     pub(crate) fn archetypes(&self) -> Arc<RwLock<HashMap<String, Archetype>>> {
         self.archetypes.clone()
     }
 
     /// Get a reference to the setting packs map for the resolver.
-
     pub(crate) fn setting_packs(&self) -> Arc<RwLock<HashMap<String, SettingPack>>> {
         self.setting_packs.clone()
     }
 
     /// Get a reference to the active packs map for the resolver.
-
     pub(crate) fn active_packs(&self) -> Arc<RwLock<HashMap<String, String>>> {
         self.active_packs.clone()
     }
