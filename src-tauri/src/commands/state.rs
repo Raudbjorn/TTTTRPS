@@ -15,8 +15,7 @@ use crate::core::campaign_manager::CampaignManager;
 use crate::core::session_manager::SessionManager;
 use crate::core::npc_gen::NPCStore;
 use crate::core::credentials::CredentialManager;
-use crate::core::sidecar_manager::{SidecarManager, MeilisearchConfig};
-use crate::core::search::SearchClient;
+use crate::core::search::EmbeddedSearch;
 use crate::core::meilisearch_pipeline::MeilisearchPipeline;
 use crate::core::campaign::versioning::VersionManager;
 use crate::core::campaign::world_state::WorldStateManager;
@@ -27,6 +26,8 @@ use crate::core::personality::{
     ContextualPersonalityManager, PersonalityIndexManager,
 };
 use crate::core::archetype::{ArchetypeRegistry, VocabularyBankManager, SettingPackLoader};
+use crate::core::preprocess::{QueryPipeline, PreprocessConfig, DictionaryRebuildService};
+use crate::core::storage::SurrealStorage;
 use crate::database::Database;
 
 // Re-export OAuth state types
@@ -50,8 +51,7 @@ pub struct AppState {
     pub npc_store: NPCStore,
     pub credentials: CredentialManager,
     pub voice_manager: Arc<AsyncRwLock<VoiceManager>>,
-    pub sidecar_manager: Arc<SidecarManager>,
-    pub search_client: Arc<SearchClient>,
+    pub embedded_search: Arc<EmbeddedSearch>,
     pub personality_store: Arc<PersonalityStore>,
     pub personality_manager: Arc<PersonalityApplicationManager>,
     pub ingestion_pipeline: Arc<MeilisearchPipeline>,
@@ -78,18 +78,30 @@ pub struct AppState {
     pub blend_rule_store: Arc<BlendRuleStore>,
     pub personality_blender: Arc<PersonalityBlender>,
     pub contextual_personality_manager: Arc<ContextualPersonalityManager>,
+    // SurrealDB Storage (migration from Meilisearch)
+    // Optional during migration period - will be required after Phase 7
+    pub surreal_storage: Option<Arc<SurrealStorage>>,
+    // Query preprocessing pipeline (typo correction + synonym expansion)
+    // Uses AsyncRwLock to allow dictionary reloading after ingestion
+    pub query_pipeline: Option<Arc<AsyncRwLock<QueryPipeline>>>,
+    // Dictionary rebuild service for post-ingestion dictionary generation
+    pub dictionary_rebuild_service: Arc<DictionaryRebuildService>,
 }
 
 impl AppState {
     /// Initialize all default state components
+    ///
+    /// NOTE: This function does NOT initialize `embedded_search` - that requires async
+    /// initialization and must be done in main.rs. This function is kept for backward
+    /// compatibility but the embedded_search field must be passed separately when
+    /// constructing AppState.
+    #[allow(clippy::type_complexity)]
     pub fn init_defaults() -> (
         CampaignManager,
         SessionManager,
         NPCStore,
         CredentialManager,
         Arc<AsyncRwLock<VoiceManager>>,
-        Arc<SidecarManager>,
-        Arc<SearchClient>,
         Arc<PersonalityStore>,
         Arc<PersonalityApplicationManager>,
         Arc<MeilisearchPipeline>,
@@ -107,12 +119,9 @@ impl AppState {
         Arc<BlendRuleStore>,
         Arc<PersonalityBlender>,
         Arc<ContextualPersonalityManager>,
+        Arc<AsyncRwLock<QueryPipeline>>,
+        Arc<DictionaryRebuildService>,
     ) {
-        let sidecar_config = MeilisearchConfig::default();
-        let search_client = SearchClient::new(
-            &sidecar_config.url(),
-            Some(&sidecar_config.master_key),
-        ).expect("Failed to create SearchClient");
         let personality_store = Arc::new(PersonalityStore::new());
         let personality_manager = Arc::new(PersonalityApplicationManager::new(personality_store.clone()));
 
@@ -147,12 +156,19 @@ impl AppState {
         };
 
         // Personality Extension components
-        let meilisearch_url = sidecar_config.url();
-        let meilisearch_key = sidecar_config.master_key.clone();
-
+        // TODO: PersonalityIndexManager needs to be updated to work with EmbeddedSearch.
+        // Currently using placeholder values. Once EmbeddedSearch exposes an HTTP endpoint
+        // or we refactor PersonalityIndexManager to use the embedded client directly,
+        // this should be updated. For now, these stores will not have search capabilities
+        // until the embedded_search is properly integrated.
+        //
+        // Options for future integration:
+        // 1. Pass EmbeddedSearch to PersonalityIndexManager and use its internal client
+        // 2. If MeilisearchLib exposes an HTTP server, use that URL
+        // 3. Refactor PersonalityIndexManager to accept Arc<MeilisearchLib> directly
         let personality_index_manager = Arc::new(PersonalityIndexManager::new(
-            &meilisearch_url,
-            Some(&meilisearch_key),
+            "http://placeholder:7700", // Placeholder - will be updated when EmbeddedSearch integration is complete
+            None,
         ));
 
         let template_store = Arc::new(SettingTemplateStore::from_manager(
@@ -170,6 +186,26 @@ impl AppState {
             personality_store.clone(),
         ));
 
+        // Initialize query preprocessing pipeline
+        // Attempt to load with full dictionaries, fall back to minimal if unavailable
+        // Uses AsyncRwLock to allow dictionary reloading after ingestion
+        let query_pipeline = match QueryPipeline::new(PreprocessConfig::default()) {
+            Ok(pipeline) => {
+                log::info!("Query preprocessing pipeline initialized with full dictionaries");
+                Arc::new(AsyncRwLock::new(pipeline))
+            }
+            Err(e) => {
+                log::warn!(
+                    "Failed to initialize query pipeline with dictionaries: {}. Using minimal pipeline.",
+                    e
+                );
+                Arc::new(AsyncRwLock::new(QueryPipeline::new_minimal()))
+            }
+        };
+
+        // Initialize dictionary rebuild service for post-ingestion dictionary regeneration
+        let dictionary_rebuild_service = Arc::new(DictionaryRebuildService::new());
+
         (
             CampaignManager::new(),
             SessionManager::new(),
@@ -179,8 +215,6 @@ impl AppState {
                 cache_dir: Some(PathBuf::from("./voice_cache")),
                 ..Default::default()
             }))),
-            Arc::new(SidecarManager::with_config(sidecar_config)),
-            Arc::new(search_client),
             personality_store,
             personality_manager,
             Arc::new(MeilisearchPipeline::with_defaults()),
@@ -198,6 +232,8 @@ impl AppState {
             blend_rule_store,
             personality_blender,
             contextual_personality_manager,
+            query_pipeline,
+            dictionary_rebuild_service,
         )
     }
 }

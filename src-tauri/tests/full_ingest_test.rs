@@ -1,13 +1,13 @@
-//! Full ingestion test - extract PDF and index to Meilisearch using two-phase pipeline
+//! Full ingestion test - extract PDF and index to embedded Meilisearch using two-phase pipeline
 //!
 //! Run with:
-//!   TEST_PDF_PATH=/path/to/test.pdf MEILI_MASTER_KEY=your-key \
-//!   cargo test --test full_ingest_test -- --ignored
+//!   TEST_PDF_PATH=/path/to/test.pdf cargo test --test full_ingest_test -- --ignored
 
 use std::path::Path;
+use tempfile::TempDir;
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "Requires TEST_PDF_PATH env var and running Meilisearch instance"]
+#[ignore = "Requires TEST_PDF_PATH env var"]
 async fn test_full_ingest() {
     let _ = env_logger::builder().is_test(true).try_init();
 
@@ -26,15 +26,15 @@ async fn test_full_ingest() {
 
     println!("=== Full Ingestion Test (Two-Phase Pipeline) ===\n");
 
-    // 1. Connect to Meilisearch
-    println!("[1/3] Connecting to Meilisearch...");
-    use ttrpg_assistant::core::search::SearchClient;
+    // 1. Create temporary embedded Meilisearch instance
+    println!("[1/3] Creating embedded Meilisearch instance...");
 
-    let meili_key = std::env::var("MEILI_MASTER_KEY")
-        .unwrap_or_else(|_| "ttrpg-assistant-dev-key".to_string());
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let db_path = temp_dir.path().join("meilisearch");
 
-    let search_client = SearchClient::new("http://127.0.0.1:7700", Some(&meili_key))
-        .expect("Failed to create search client");
+    use ttrpg_assistant::core::search::EmbeddedSearch;
+    let search = EmbeddedSearch::new(db_path).expect("Failed to create embedded search");
+    let meili = search.inner();
 
     // 2. Ingest using two-phase pipeline (extract → raw index → chunk index)
     println!("\n[2/3] Ingesting with two-phase pipeline...");
@@ -42,7 +42,7 @@ async fn test_full_ingest() {
 
     let pipeline = MeilisearchPipeline::with_defaults();
     let (extraction, chunking) = pipeline.ingest_two_phase(
-        &search_client,
+        meili,
         pdf_path,
         Some("Delta Green Agent's Handbook"),
     ).await.expect("Two-phase ingestion failed");
@@ -61,18 +61,28 @@ async fn test_full_ingest() {
 
     // 3. Verify with search
     println!("\n[3/3] Verifying with search...");
-    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await; // Let Meilisearch index
+
+    // Give embedded Meilisearch time to process
+    std::thread::sleep(std::time::Duration::from_secs(1));
 
     // Search the chunks index
-    let results = search_client.search(&chunking.chunks_index, "sanity points willpower", 5, None)
-        .await
+    use meilisearch_lib::SearchQuery;
+    let query = SearchQuery::new("sanity points willpower")
+        .with_pagination(0, 5);
+
+    let results = meili.search(&chunking.chunks_index, query)
         .expect("Search failed");
 
-    println!("Search returned {} results:", results.len());
-    for (i, r) in results.iter().take(3).enumerate() {
-        let preview: String = r.document.content.chars().take(150).collect();
-        println!("  [{}] {}...", i + 1, preview);
+    println!("Search returned {} results:", results.hits.len());
+    for (i, hit) in results.hits.iter().take(3).enumerate() {
+        if let Some(content) = hit.document.get("content").and_then(|v| v.as_str()) {
+            let preview: String = content.chars().take(150).collect();
+            println!("  [{}] {}...", i + 1, preview);
+        }
     }
+
+    // Cleanup
+    search.shutdown().expect("Shutdown should succeed");
 
     println!("\n=== Test Complete ===");
 }

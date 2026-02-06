@@ -8,7 +8,8 @@ use tauri::Manager;
 
 use crate::commands::state::AppState;
 use crate::core::llm::{LLMConfig, LLMClient};
-use crate::core::meilisearch_chat::ChatProviderConfig;
+// TODO: Re-enable when Phase 4 RAG integration is implemented
+// use crate::core::meilisearch_chat::ChatProviderConfig;
 use crate::core::voice::VoiceConfig;
 
 use super::types::{LLMSettings, HealthStatus};
@@ -197,28 +198,21 @@ pub async fn configure_llm(
         router.add_provider(provider).await;
     }
 
-    // Sync Meilisearch chat workspace with the new provider
-    // LLMConfig is a type alias for ProviderConfig, so we can convert directly
-    if let Ok(chat_provider) = ChatProviderConfig::try_from(&config) {
-        // Clone needed values before acquiring lock to minimize lock duration
-        let search_host = state.search_client.host().to_string();
-        let master_key = state.sidecar_manager.config().master_key.clone();
-
-        // Use write lock since set_chat_client and configure_chat_workspace modify internal state
-        let manager = state.llm_manager.clone();
-        let manager_guard = manager.write().await;
-
-        // Ensure chat client is configured
-        manager_guard.set_chat_client(&search_host, Some(&master_key)).await;
-
-        // Configure the dm-assistant workspace with the new provider
-        if let Err(e) = manager_guard.configure_chat_workspace("dm-assistant", chat_provider, None).await {
-            log::warn!("Failed to sync Meilisearch chat workspace: {}", e);
-            // Don't fail the whole operation, just log the warning
-        } else {
-            log::info!("Synced Meilisearch chat workspace with {} provider", provider_name);
-        }
-    }
+    // TODO: set_chat_client was for HTTP-based Meilisearch.
+    // With embedded MeilisearchLib, chat completion goes through embedded_search.inner() directly.
+    // This will be replaced with RAG commands in Phase 4.
+    //
+    // Previously this code synced Meilisearch chat workspace with the new provider:
+    // if let Ok(chat_provider) = ChatProviderConfig::try_from(&config) {
+    //     let search_host = state.search_client.host().to_string();
+    //     let master_key = state.sidecar_manager.config().master_key.clone();
+    //     let manager = state.llm_manager.clone();
+    //     let manager_guard = manager.write().await;
+    //     manager_guard.set_chat_client(&search_host, Some(&master_key)).await;
+    //     manager_guard.configure_chat_workspace("dm-assistant", chat_provider, None).await;
+    // }
+    let _ = &config; // Suppress unused warning for chat_provider conversion
+    log::info!("Configured {} provider (Meilisearch chat sync disabled during migration)", provider_name);
 
     Ok(format!("Configured {} provider successfully", provider_name))
 }

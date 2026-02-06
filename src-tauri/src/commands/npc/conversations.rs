@@ -375,10 +375,13 @@ pub async fn stream_npc_chat(
 
     // 8. Get manager and start stream
     let manager = state.llm_manager.clone();
-    {
-        let manager_guard = manager.write().await;
-        manager_guard.set_chat_client(state.search_client.host(), Some(&state.sidecar_manager.config().master_key)).await;
-    }
+    // TODO: set_chat_client was for HTTP-based Meilisearch.
+    // With embedded MeilisearchLib, chat goes through embedded_search.inner() directly.
+    // This needs to be migrated to use the embedded search API instead of HTTP client.
+    // {
+    //     let manager_guard = manager.write().await;
+    //     manager_guard.set_chat_client(host, Some(api_key)).await;
+    // }
 
     let manager_guard = manager.read().await;
     let mut rx = manager_guard.chat_stream(llm_messages, &model, Some(0.8), Some(500)).await

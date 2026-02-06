@@ -1,6 +1,9 @@
 //! Meilisearch Configuration Commands
 //!
 //! Commands for Meilisearch health checks, reindexing, and chat configuration.
+//!
+//! TODO: Phase 3 Migration - These commands need to be updated to use EmbeddedSearch/MeilisearchLib.
+//! The embedded search is always healthy since there's no network layer.
 
 use tauri::State;
 
@@ -17,42 +20,52 @@ use super::types::MeilisearchStatus;
 
 /// Get Meilisearch health status
 #[tauri::command]
+#[allow(unused_variables)]
 pub async fn check_meilisearch_health(
     state: State<'_, AppState>,
 ) -> Result<MeilisearchStatus, String> {
-    let healthy = state.search_client.health_check().await;
-    let stats = if healthy {
-        state.search_client.get_all_stats().await.ok()
-    } else {
-        None
-    };
+    // With embedded Meilisearch, it's always healthy since there's no network layer
+    let meili = state.embedded_search.inner();
+    let health = meili.health();
+    let healthy = health.status == "available";
 
+    // TODO: Get actual stats from MeilisearchLib when implemented
+    // For now, return None for document_counts
     Ok(MeilisearchStatus {
         healthy,
-        host: state.search_client.host().to_string(),
-        document_counts: stats,
+        host: "embedded".to_string(),
+        document_counts: None,
     })
 }
 
 /// Reindex all documents (clear and re-ingest)
+///
+/// TODO: Phase 3 Migration - Update to use MeilisearchLib delete_all_documents
 #[tauri::command]
+#[allow(unused_variables)]
 pub async fn reindex_library(
     index_name: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    if let Some(name) = index_name {
-        state.search_client
-            .clear_index(&name)
-            .await
-            .map_err(|e| format!("Failed to clear index: {}", e))?;
-        Ok(format!("Cleared index '{}'", name))
+    // TODO: Migrate to embedded MeilisearchLib
+    // The old SearchClient had clear_index() method.
+    // The new MeilisearchLib uses:
+    //   meili.delete_all_documents(uid) to clear an index
+    //
+    // Access via: state.embedded_search.inner()
+    let _meili = state.embedded_search.inner();
+
+    if let Some(name) = &index_name {
+        log::warn!(
+            "reindex_library() called but not yet migrated to embedded MeilisearchLib. Index: {}",
+            name
+        );
     } else {
-        // Clear all indexes
-        for idx in crate::core::search::SearchClient::all_indexes() {
-            let _ = state.search_client.clear_index(idx).await;
-        }
-        Ok("Cleared all indexes".to_string())
+        log::warn!("reindex_library() called but not yet migrated to embedded MeilisearchLib. All indexes.");
     }
+
+    // Return error for now - full migration in Phase 3 Task 5
+    Err("Reindexing not yet available - migration in progress".to_string())
 }
 
 // ============================================================================
@@ -71,48 +84,61 @@ pub fn list_chat_providers() -> Vec<ChatProviderInfo> {
 /// 1. Starts the LLM proxy if needed (for non-native providers)
 /// 2. Registers the provider with the proxy
 /// 3. Configures the Meilisearch chat workspace
+///
+/// TODO: Phase 4 Migration - Update to use MeilisearchLib chat configuration
+/// With embedded Meilisearch, we can use MeilisearchLib's chat config API directly
 #[tauri::command]
+#[allow(unused_variables)]
 pub async fn configure_chat_workspace(
     workspace_id: String,
     provider: ChatProviderConfig,
     custom_prompts: Option<ChatPrompts>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    // Get the unified LLM manager from state
-    let manager = state.llm_manager.clone();
+    // TODO: Migrate to embedded MeilisearchLib
+    // The old implementation used SearchClient and SidecarManager.
+    // The new MeilisearchLib has chat configuration via:
+    //   meili.set_chat_config(ChatConfig) for LLM provider setup
+    //
+    // Access via: state.embedded_search.inner()
+    let _meili = state.embedded_search.inner();
 
-    // Ensure Meilisearch client is configured
-    {
-        let _manager_guard = manager.read().await;
-        // We can't access chat_client easily to check if it's set without lock,
-        // but set_chat_client handles it.
-    }
+    log::warn!(
+        "configure_chat_workspace() called but not yet migrated to embedded MeilisearchLib. Workspace: {}",
+        workspace_id
+    );
 
-    // Configure with Meilisearch host from search client
-    // TODO: Get API key from credentials if needed
-    {
-        let manager_guard = manager.write().await;
-        // Re-configure chat client to ensure it has latest host/key
-        manager_guard.set_chat_client(state.search_client.host(), Some(&state.sidecar_manager.config().master_key)).await;
-    }
-
-    // Configure the workspace
-    let manager_guard = manager.read().await;
-    manager_guard
-        .configure_chat_workspace(&workspace_id, provider, custom_prompts)
-        .await
+    // Return error for now - full migration in Phase 4
+    Err(format!(
+        "Chat workspace configuration not yet available - migration in progress. Workspace: {}",
+        workspace_id
+    ))
 }
 
 /// Get the current settings for a Meilisearch chat workspace.
+///
+/// TODO: Phase 4 Migration - Update to use MeilisearchLib chat configuration
 #[tauri::command]
+#[allow(unused_variables)]
 pub async fn get_chat_workspace_settings(
     workspace_id: String,
     state: State<'_, AppState>,
 ) -> Result<Option<ChatWorkspaceSettings>, String> {
-    use crate::core::meilisearch_chat::MeilisearchChatClient;
+    // TODO: Migrate to embedded MeilisearchLib
+    // The old implementation used MeilisearchChatClient with HTTP.
+    // The new MeilisearchLib has:
+    //   meili.get_chat_config() for retrieving chat configuration
+    //
+    // Access via: state.embedded_search.inner()
+    let _meili = state.embedded_search.inner();
 
-    let client = MeilisearchChatClient::new(state.search_client.host(), Some(&state.sidecar_manager.config().master_key));
-    client.get_workspace_settings(&workspace_id).await
+    log::warn!(
+        "get_chat_workspace_settings() called but not yet migrated to embedded MeilisearchLib. Workspace: {}",
+        workspace_id
+    );
+
+    // Return None for now - full migration in Phase 4
+    Ok(None)
 }
 
 /// Configure Meilisearch chat workspace with individual parameters.
@@ -127,7 +153,10 @@ pub async fn get_chat_workspace_settings(
 /// * `model` - Model to use (optional, uses provider default if not specified)
 /// * `custom_system_prompt` - Custom system prompt (optional)
 /// * `host` - Host URL for ollama (optional, defaults to localhost:11434)
+///
+/// TODO: Phase 4 Migration - Update to use MeilisearchLib chat configuration
 #[tauri::command]
+#[allow(unused_variables)]
 pub async fn configure_meilisearch_chat(
     provider: String,
     api_key: Option<String>,
@@ -136,74 +165,25 @@ pub async fn configure_meilisearch_chat(
     host: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    // Build ChatProviderConfig from individual parameters
-    let provider_config = match provider.to_lowercase().as_str() {
-        "openai" => ChatProviderConfig::OpenAI {
-            api_key: api_key.ok_or("OpenAI requires an API key")?,
-            model,
-            organization_id: None,
-        },
-        "claude" => ChatProviderConfig::Claude {
-            api_key: api_key.ok_or("Claude requires an API key")?,
-            model,
-            max_tokens: Some(4096),
-        },
-        "mistral" => ChatProviderConfig::Mistral {
-            api_key: api_key.ok_or("Mistral requires an API key")?,
-            model,
-        },
-        "gemini" => ChatProviderConfig::Google {
-            api_key: api_key.ok_or("Gemini requires an API key")?,
-            model,
-        },
-        "ollama" => ChatProviderConfig::Ollama {
-            host: host.unwrap_or_else(|| "http://localhost:11434".to_string()),
-            model: model.unwrap_or_else(|| "llama3.2".to_string()),
-        },
-        "openrouter" => ChatProviderConfig::OpenRouter {
-            api_key: api_key.ok_or("OpenRouter requires an API key")?,
-            model: model.unwrap_or_else(|| "openai/gpt-4o".to_string()),
-        },
-        "groq" => ChatProviderConfig::Groq {
-            api_key: api_key.ok_or("Groq requires an API key")?,
-            model: model.unwrap_or_else(|| "llama-3.1-70b-versatile".to_string()),
-        },
-        "together" => ChatProviderConfig::Together {
-            api_key: api_key.ok_or("Together AI requires an API key")?,
-            model: model.unwrap_or_else(|| "meta-llama/Llama-3-70b-chat-hf".to_string()),
-        },
-        "cohere" => ChatProviderConfig::Cohere {
-            api_key: api_key.ok_or("Cohere requires an API key")?,
-            model: model.unwrap_or_else(|| "command-r-plus".to_string()),
-        },
-        "deepseek" => ChatProviderConfig::DeepSeek {
-            api_key: api_key.ok_or("DeepSeek requires an API key")?,
-            model: model.unwrap_or_else(|| "deepseek-chat".to_string()),
-        },
-        other => return Err(format!("Unknown provider: {}. Supported: openai, claude, mistral, gemini, ollama, openrouter, groq, together, cohere, deepseek", other)),
-    };
+    // TODO: Migrate to embedded MeilisearchLib
+    // The old implementation used SearchClient and SidecarManager.
+    // The new MeilisearchLib has chat configuration via:
+    //   meili.set_chat_config(ChatConfig) for LLM provider setup
+    //
+    // The provider config building logic is still valid, but needs to be
+    // translated to MeilisearchLib's ChatConfig format.
+    //
+    // Access via: state.embedded_search.inner()
+    let _meili = state.embedded_search.inner();
 
-    // Build custom prompts if system prompt provided
-    let custom_prompts = custom_system_prompt.map(|prompt| ChatPrompts {
-        system: Some(prompt),
-        ..Default::default()
-    });
+    log::warn!(
+        "configure_meilisearch_chat() called but not yet migrated to embedded MeilisearchLib. Provider: {}",
+        provider
+    );
 
-    // Get the unified LLM manager from state
-    let manager = state.llm_manager.clone();
-
-    // Configure with Meilisearch host from search client
-    {
-        let manager_guard = manager.write().await;
-        manager_guard.set_chat_client(state.search_client.host(), Some(&state.sidecar_manager.config().master_key)).await;
-    }
-
-    // Configure the workspace
-    let manager_guard = manager.read().await;
-    manager_guard
-        .configure_chat_workspace("dm-assistant", provider_config, custom_prompts)
-        .await?;
-
-    log::info!("Meilisearch chat configured with provider: {}", provider);
-    Ok(())
+    // Return error for now - full migration in Phase 4
+    Err(format!(
+        "Meilisearch chat configuration not yet available - migration in progress. Provider: {}",
+        provider
+    ))
 }

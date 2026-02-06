@@ -41,11 +41,20 @@ fn main() {
                 });
             }
 
-            // Initialize managers (Meilisearch-based)
-            let (cm, sm, ns, creds, vm, sidecar_manager, search_client, personality_store, personality_manager, pipeline, _llm_router, version_manager, world_state_manager, relationship_manager, location_manager, llm_manager, claude, gemini, copilot, setting_pack_loader,
+            // Initialize managers
+            let (
+                cm, sm, ns, creds, vm,
+                personality_store, personality_manager, pipeline,
+                _llm_router, version_manager, world_state_manager,
+                relationship_manager, location_manager, llm_manager,
+                claude, gemini, copilot, setting_pack_loader,
                 // Phase 4: Personality Extensions
-                template_store, blend_rule_store, personality_blender, contextual_personality_manager) =
-                commands::AppState::init_defaults();
+                template_store, blend_rule_store, personality_blender, contextual_personality_manager,
+                // Query Preprocessing Pipeline (typo correction + synonyms)
+                query_pipeline,
+                // Dictionary rebuild service for post-ingestion dictionary regeneration
+                dictionary_rebuild_service
+            ) = commands::AppState::init_defaults();
 
             // Initialize Database
             let app_handle = app.handle();
@@ -63,28 +72,13 @@ fn main() {
             });
             log::info!("Database initialized at {:?}", database.path());
 
-            // Start Meilisearch Sidecar (checks existing/PATH/downloads as needed)
-            let sm_clone = sidecar_manager.clone();
-            tauri::async_runtime::spawn(async move {
-                if let Err(e) = sm_clone.start().await {
-                    log::error!("Failed to start Meilisearch: {}", e);
-                }
-            });
-
-            // Initialize Meilisearch indexes after sidecar starts
-            let sc = search_client.clone();
-            tauri::async_runtime::spawn(async move {
-                // Wait for Meilisearch to be ready
-                if sc.wait_for_health(10).await {
-                    if let Err(e) = sc.initialize_indexes().await {
-                        log::error!("Failed to initialize Meilisearch indexes: {}", e);
-                    } else {
-                        log::info!("Meilisearch indexes initialized successfully");
-                    }
-                } else {
-                    log::warn!("Meilisearch not ready after 10 seconds - indexes not initialized");
-                }
-            });
+            // Initialize Embedded Meilisearch
+            let meili_db_path = app_dir.join("meilisearch");
+            let embedded_search = std::sync::Arc::new(
+                ttrpg_assistant::core::search::EmbeddedSearch::new(meili_db_path)
+                    .expect("Failed to initialize embedded Meilisearch")
+            );
+            log::info!("Embedded Meilisearch initialized");
 
             // Load persisted voice config or use default
             let voice_manager = if let Some(voice_config) = commands::load_voice_config_disk(app.handle()) {
@@ -105,8 +99,7 @@ fn main() {
                 npc_store: ns,
                 credentials: creds,
                 voice_manager,
-                sidecar_manager: sidecar_manager.clone(),
-                search_client: search_client.clone(),
+                embedded_search: embedded_search.clone(),
                 personality_store,
                 personality_manager,
                 ingestion_pipeline: pipeline,
@@ -123,84 +116,39 @@ fn main() {
                 claude,
                 gemini,
                 copilot,
-                // Archetype Registry fields - initialized lazily after Meilisearch starts
-                archetype_registry: tokio::sync::RwLock::new(None), // Initialized after Meilisearch is ready
-                vocabulary_manager: tokio::sync::RwLock::new(None), // Initialized after Meilisearch is ready
+                // Archetype Registry fields - TODO: Refactor to use embedded MeilisearchLib directly
+                // The archetype registry used the meilisearch-sdk HTTP client which is incompatible
+                // with embedded MeilisearchLib. Needs refactoring to use the Rust API directly.
+                archetype_registry: tokio::sync::RwLock::new(None),
+                vocabulary_manager: tokio::sync::RwLock::new(None),
                 setting_pack_loader,
                 // Phase 4: Personality Extensions
                 template_store,
                 blend_rule_store,
                 personality_blender,
                 contextual_personality_manager,
+                // SurrealDB storage (initialized on first use during migration)
+                surreal_storage: None,
+                // Query preprocessing pipeline (typo correction + synonym expansion)
+                query_pipeline: Some(query_pipeline),
+                // Dictionary rebuild service for post-ingestion dictionary regeneration
+                dictionary_rebuild_service,
             });
 
-            // Initialize Archetype Registry after Meilisearch starts
-            let sc_for_archetype = search_client;
-            let app_handle_for_archetype = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                // Wait for Meilisearch to be ready
-                if sc_for_archetype.wait_for_health(15).await {
-                    // Get the Meilisearch config to create the client
-                    let config = ttrpg_assistant::core::sidecar_manager::MeilisearchConfig::default();
-                    let meili_client = match meilisearch_sdk::client::Client::new(
-                        config.url(),
-                        Some(&config.master_key),
-                    ) {
-                        Ok(client) => client,
-                        Err(e) => {
-                            log::error!("Failed to create Meilisearch client for archetypes: {}", e);
-                            return;
-                        }
-                    };
-
-                    // Initialize the archetype registry
-                    match ttrpg_assistant::core::archetype::ArchetypeRegistry::new(meili_client.clone()).await {
-                        Ok(registry) => {
-                            log::info!("Archetype registry initialized");
-                            // Update the AppState with the registry
-                            if let Some(app_state) = app_handle_for_archetype.try_state::<commands::AppState>() {
-                                *app_state.archetype_registry.write().await = Some(std::sync::Arc::new(registry));
-                                log::info!("Archetype registry stored in AppState");
-                            }
-                        }
-                        Err(e) => {
-                            log::error!("Failed to initialize archetype registry: {}", e);
-                        }
-                    }
-
-                    // Initialize the vocabulary manager (not async)
-                    let manager = ttrpg_assistant::core::archetype::VocabularyBankManager::with_meilisearch(meili_client);
-                    let count = manager.count().await;
-                    log::info!("Vocabulary manager initialized with {} banks", count);
-                    // Update the AppState with the manager
-                    if let Some(app_state) = app_handle_for_archetype.try_state::<commands::AppState>() {
-                        *app_state.vocabulary_manager.write().await = Some(std::sync::Arc::new(manager));
-                        log::info!("Vocabulary manager stored in AppState");
-                    }
-                } else {
-                    log::warn!("Meilisearch not ready after 15 seconds - archetype registry not initialized");
-                }
-            });
+            // TODO: Initialize Archetype Registry using embedded MeilisearchLib
+            // The archetype registry currently depends on meilisearch-sdk's HTTP client.
+            // This needs to be refactored to use the embedded MeilisearchLib Rust API directly.
+            // For now, archetype_registry and vocabulary_manager remain None in AppState.
+            // See: planning/meilisearch-lib-integration/ for migration details.
+            log::info!("Archetype registry initialization deferred - pending embedded MeilisearchLib integration");
 
 
-            // Initialize Meilisearch Chat Client (fixes "Meilisearch chat client not configured" error)
-            let sidecar_config = sidecar_manager.config().clone();
-            let llm_manager_clone = llm_manager.clone();
-            tauri::async_runtime::spawn(async move {
-                // Wait for Meilisearch to start by polling health endpoint
-                // Wait up to 30 seconds
-                for _ in 0..30 {
-                    if sidecar_manager.health_check().await {
-                        break;
-                    }
-                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                }
-
-                llm_manager_clone.write().await.set_chat_client(
-                    &sidecar_config.url(),
-                    Some(&sidecar_config.master_key),
-                ).await;
-            });
+            // TODO: Initialize Meilisearch Chat Client using embedded MeilisearchLib
+            // The chat client previously used HTTP endpoints from the sidecar process.
+            // With embedded MeilisearchLib, we need to refactor LLMManager to work with
+            // the in-process Rust API instead of HTTP requests.
+            // For now, chat-specific Meilisearch features are disabled.
+            log::info!("Meilisearch chat client initialization deferred - pending embedded integration");
 
             // Auto-configure Ollama if no providers are present (User Request)
             let handle_clone = handle.clone();
@@ -219,7 +167,7 @@ fn main() {
                         let provider = config.create_provider();
                         app_state.llm_router.write().await.add_provider(provider).await;
 
-                        // Configure Meilisearch (retry loop to wait for Sidecar/Client init)
+                        // Configure Meilisearch chat (retry loop - TODO: refactor for embedded)
                         let manager = app_state.llm_manager.clone();
                         let config_clone = config.clone();
                         tokio::spawn(async move {
@@ -741,6 +689,17 @@ fn main() {
             commands::list_card_entity_types,
             commands::list_disclosure_levels,
             commands::list_cheat_sheet_sections,
+
+            // RAG Commands (Phase 4 - Meilisearch-lib Integration)
+            commands::configure_rag,
+            commands::get_rag_config,
+            commands::clear_rag_config,
+            commands::rag_query,
+            commands::rag_query_stream,
+
+            // Query Preprocessing Commands (REQ-QP-003)
+            commands::search_with_preprocessing,
+            commands::rebuild_dictionaries,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

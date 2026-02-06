@@ -16,7 +16,10 @@ use super::types::{IngestOptions, TwoPhaseIngestResult, IngestResult, IngestProg
 ///
 /// This is a convenience wrapper around `ingest_document_two_phase` that
 /// uses the two-phase workflow (extract → raw index → chunk index).
+///
+/// TODO: Phase 3 Migration - Update to use EmbeddedSearch/MeilisearchLib
 #[tauri::command]
+#[allow(unused_variables)]
 pub async fn ingest_document(
     path: String,
     options: Option<IngestOptions>,
@@ -27,25 +30,28 @@ pub async fn ingest_document(
         return Err(format!("File not found or is a directory: {}", path));
     }
 
-    let opts = options.unwrap_or_default();
+    let _opts = options.unwrap_or_default();
 
-    // Use two-phase pipeline for ingestion
-    let (extraction, chunking) = state.ingestion_pipeline
-        .ingest_two_phase(
-            &state.search_client,
-            path_obj,
-            opts.title_override.as_deref(),
-        )
-        .await
-        .map_err(|e| format!("Ingestion failed: {}", e))?;
+    // TODO: Migrate to embedded MeilisearchLib
+    // The old implementation used:
+    //   state.ingestion_pipeline.ingest_two_phase(&state.search_client, ...)
+    //
+    // The new implementation should use:
+    //   state.embedded_search.inner() -> &MeilisearchLib
+    //   Update MeilisearchPipeline to work with MeilisearchLib
+    //
+    // Access via: state.embedded_search.inner()
+    let _meili = state.embedded_search.inner();
 
-    Ok(format!(
-        "Ingested '{}': {} pages → {} chunks (indexes: {}, {})",
-        extraction.source_name,
-        extraction.page_count,
-        chunking.chunk_count,
-        extraction.raw_index,
-        chunking.chunks_index
+    log::warn!(
+        "ingest_document() called but not yet migrated to embedded MeilisearchLib. Path: {}",
+        path
+    );
+
+    // Return error for now - full migration in Phase 3 Task 5
+    Err(format!(
+        "Document ingestion not yet available - migration in progress. Path: {}",
+        path
     ))
 }
 
@@ -56,7 +62,10 @@ pub async fn ingest_document(
 ///
 /// This enables page number attribution in search results by tracking
 /// which raw pages each chunk was derived from.
+///
+/// TODO: Phase 3 Migration - Update MeilisearchPipeline to work with EmbeddedSearch/MeilisearchLib
 #[tauri::command]
+#[allow(unused_variables)]
 pub async fn ingest_document_two_phase(
     app: tauri::AppHandle,
     path: String,
@@ -64,7 +73,7 @@ pub async fn ingest_document_two_phase(
     state: State<'_, AppState>,
 ) -> Result<TwoPhaseIngestResult, String> {
     use tauri::Emitter;
-    use crate::core::meilisearch_pipeline::{MeilisearchPipeline, generate_source_slug};
+    use crate::core::meilisearch_pipeline::generate_source_slug;
 
     let path_buf = std::path::PathBuf::from(&path);
     if !path_buf.is_file() {
@@ -90,87 +99,46 @@ pub async fn ingest_document_two_phase(
         source_name: source_name.clone(),
     });
 
-    let pipeline = MeilisearchPipeline::with_defaults();
+    // TODO: Migrate to embedded MeilisearchLib
+    // The old implementation used:
+    //   pipeline.extract_to_raw(&state.search_client, ...) -> Phase 1
+    //   pipeline.chunk_from_raw(&state.search_client, &extraction) -> Phase 2
+    //
+    // The new implementation should update MeilisearchPipeline to accept &MeilisearchLib:
+    //   state.embedded_search.inner() -> &MeilisearchLib
+    //   meili.add_documents(uid, docs, primary_key) for indexing
+    //
+    // Access via: state.embedded_search.inner()
+    let _meili = state.embedded_search.inner();
 
-    // Phase 1: Extract to raw pages
-    let _ = app.emit("ingest-progress", IngestProgress {
-        stage: "extracting".to_string(),
-        progress: 0.1,
-        message: format!("Phase 1: Extracting pages from {}...", source_name),
-        source_name: source_name.clone(),
-    });
-
-    let extraction = pipeline
-        .extract_to_raw(&state.search_client, &path_buf, title_override.as_deref())
-        .await
-        .map_err(|e| format!("Extraction failed: {}", e))?;
-
-    log::info!(
-        "Phase 1 complete: {} pages extracted to '{}' (system: {:?})",
-        extraction.page_count,
-        extraction.raw_index,
-        extraction.ttrpg_metadata.game_system
+    log::warn!(
+        "ingest_document_two_phase() called but not yet migrated to embedded MeilisearchLib. Path: {}",
+        path
     );
 
+    // Emit error progress
     let _ = app.emit("ingest-progress", IngestProgress {
-        stage: "extracted".to_string(),
-        progress: 0.5,
-        message: format!("Extracted {} pages, creating semantic chunks...", extraction.page_count),
+        stage: "error".to_string(),
+        progress: 0.0,
+        message: "Two-phase ingestion not yet available - migration in progress".to_string(),
         source_name: source_name.clone(),
     });
 
-    // Phase 2: Create semantic chunks
-    let _ = app.emit("ingest-progress", IngestProgress {
-        stage: "chunking".to_string(),
-        progress: 0.6,
-        message: format!("Phase 2: Creating semantic chunks for {}...", source_name),
-        source_name: source_name.clone(),
-    });
-
-    let chunking = pipeline
-        .chunk_from_raw(&state.search_client, &extraction)
-        .await
-        .map_err(|e| format!("Chunking failed: {}", e))?;
-
-    log::info!(
-        "Phase 2 complete: {} chunks created in '{}' from {} pages",
-        chunking.chunk_count,
-        chunking.chunks_index,
-        chunking.pages_consumed
-    );
-
-    // Done!
-    let _ = app.emit("ingest-progress", IngestProgress {
-        stage: "complete".to_string(),
-        progress: 1.0,
-        message: format!(
-            "Ingested {} pages -> {} chunks (indexes: {}, {})",
-            extraction.page_count,
-            chunking.chunk_count,
-            extraction.raw_index,
-            chunking.chunks_index
-        ),
-        source_name: source_name.clone(),
-    });
-
-    Ok(TwoPhaseIngestResult {
-        slug: extraction.slug,
-        source_name: extraction.source_name,
-        raw_index: extraction.raw_index,
-        chunks_index: chunking.chunks_index,
-        page_count: extraction.page_count,
-        chunk_count: chunking.chunk_count,
-        total_chars: extraction.total_chars,
-        game_system: extraction.ttrpg_metadata.game_system,
-        content_category: extraction.ttrpg_metadata.content_category,
-    })
+    // Return error for now - full migration in Phase 3 Task 5
+    Err(format!(
+        "Two-phase ingestion not yet available - migration in progress. Path: {}",
+        path
+    ))
 }
 
 /// Import a pre-extracted layout JSON file (Anthropic format).
 ///
 /// This command imports JSON files that contain pre-extracted document layout
 /// with pages and elements, bypassing the extraction step.
+///
+/// TODO: Phase 3 Migration - Update to use EmbeddedSearch/MeilisearchLib
 #[tauri::command]
+#[allow(unused_variables)]
 pub async fn import_layout_json(
     app: tauri::AppHandle,
     path: String,
@@ -206,67 +174,42 @@ pub async fn import_layout_json(
         source_name: source_name.clone(),
     });
 
-    // Import using the pipeline method
-    let extraction = state.ingestion_pipeline
-        .import_layout_json(
-            &state.search_client,
-            &path_buf,
-            title_override.as_deref(),
-        )
-        .await
-        .map_err(|e| format!("Layout JSON import failed: {}", e))?;
+    // TODO: Migrate to embedded MeilisearchLib
+    // The old implementation used:
+    //   state.ingestion_pipeline.import_layout_json(&state.search_client, ...)
+    //   state.ingestion_pipeline.chunk_from_raw(&state.search_client, &extraction)
+    //
+    // The new implementation should update MeilisearchPipeline to accept &MeilisearchLib:
+    //   state.embedded_search.inner() -> &MeilisearchLib
+    //
+    // Access via: state.embedded_search.inner()
+    let _meili = state.embedded_search.inner();
 
-    // Emit progress for chunking
-    let _ = app.emit("ingest-progress", IngestProgress {
-        stage: "chunking".to_string(),
-        progress: 0.5,
-        message: format!("Chunking {} pages...", extraction.page_count),
-        source_name: source_name.clone(),
-    });
-
-    // Process raw pages into semantic chunks (same as two-phase)
-    let chunking = state.ingestion_pipeline
-        .chunk_from_raw(
-            &state.search_client,
-            &extraction,
-        )
-        .await
-        .map_err(|e| format!("Chunking failed: {}", e))?;
-
-    log::info!(
-        "Layout JSON import complete: {} -> {} pages -> {} chunks",
-        source_name, extraction.page_count, chunking.chunk_count
+    log::warn!(
+        "import_layout_json() called but not yet migrated to embedded MeilisearchLib. Path: {}",
+        path
     );
 
-    // Emit completion
+    // Emit error progress
     let _ = app.emit("ingest-progress", IngestProgress {
-        stage: "complete".to_string(),
-        progress: 1.0,
-        message: format!(
-            "Imported {} pages -> {} chunks (indexes: {}, {})",
-            extraction.page_count,
-            chunking.chunk_count,
-            extraction.raw_index,
-            chunking.chunks_index
-        ),
+        stage: "error".to_string(),
+        progress: 0.0,
+        message: "Layout JSON import not yet available - migration in progress".to_string(),
         source_name: source_name.clone(),
     });
 
-    Ok(TwoPhaseIngestResult {
-        slug: extraction.slug,
-        source_name: extraction.source_name,
-        raw_index: extraction.raw_index,
-        chunks_index: chunking.chunks_index,
-        page_count: extraction.page_count,
-        chunk_count: chunking.chunk_count,
-        total_chars: extraction.total_chars,
-        game_system: extraction.ttrpg_metadata.game_system,
-        content_category: extraction.ttrpg_metadata.content_category,
-    })
+    // Return error for now - full migration in Phase 3 Task 5
+    Err(format!(
+        "Layout JSON import not yet available - migration in progress. Path: {}",
+        path
+    ))
 }
 
 /// Ingest a PDF document using two-phase pipeline.
+///
+/// TODO: Phase 3 Migration - Update to use EmbeddedSearch/MeilisearchLib
 #[tauri::command]
+#[allow(unused_variables)]
 pub async fn ingest_pdf(
     path: String,
     state: State<'_, AppState>,
@@ -276,19 +219,21 @@ pub async fn ingest_pdf(
         return Err(format!("File not found or is a directory: {}", path));
     }
 
-    // Use two-phase pipeline for ingestion
-    let (extraction, _chunking) = state.ingestion_pipeline
-        .ingest_two_phase(
-            &state.search_client,
-            &path_buf,
-            None, // No title override
-        )
-        .await
-        .map_err(|e| e.to_string())?;
+    // TODO: Migrate to embedded MeilisearchLib
+    // The old implementation used:
+    //   state.ingestion_pipeline.ingest_two_phase(&state.search_client, ...)
+    //
+    // Access via: state.embedded_search.inner()
+    let _meili = state.embedded_search.inner();
 
-    Ok(IngestResult {
-        page_count: extraction.page_count,
-        character_count: extraction.total_chars,
-        source_name: extraction.source_name,
-    })
+    log::warn!(
+        "ingest_pdf() called but not yet migrated to embedded MeilisearchLib. Path: {}",
+        path
+    );
+
+    // Return error for now - full migration in Phase 3 Task 5
+    Err(format!(
+        "PDF ingestion not yet available - migration in progress. Path: {}",
+        path
+    ))
 }

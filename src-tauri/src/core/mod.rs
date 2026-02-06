@@ -19,7 +19,6 @@ pub mod location_gen;
 
 // Meilisearch-based search (replaces vector_store, keyword_search, hybrid_search, embedding_pipeline)
 // search_client.rs refactored into search/ module
-pub mod sidecar_manager;
 pub mod meilisearch_pipeline;
 pub mod meilisearch_chat;
 
@@ -28,6 +27,9 @@ pub mod search;
 
 // TTRPG-specific search enhancement (query parsing, ranking, filtering)
 pub mod ttrpg_search;
+
+// RAG (Retrieval-Augmented Generation) configuration
+pub mod rag;
 
 // Extended feature modules
 pub mod streaming;
@@ -53,4 +55,10 @@ pub mod security;
 
 // Session submodules (TASK-014, TASK-015, TASK-017)
 pub mod session;
+
+// SurrealDB-based unified storage (Phase 1 of SurrealDB migration)
+pub mod storage;
+
+// Query preprocessing: typo correction + synonym expansion
+pub mod preprocess;
 

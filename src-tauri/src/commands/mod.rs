@@ -31,6 +31,7 @@ pub mod location;
 pub mod session;
 pub mod llm;
 pub mod personality;
+pub mod rag;
 pub mod search;
 
 pub mod state;
@@ -115,6 +116,9 @@ pub use llm::*;
 
 // Re-export personality commands - using glob to include Tauri __cmd__ macros
 pub use personality::*;
+
+// Re-export RAG commands - using glob to include Tauri __cmd__ macros
+pub use rag::*;
 
 // Re-export search commands - using glob to include Tauri __cmd__ macros
 pub use search::*;

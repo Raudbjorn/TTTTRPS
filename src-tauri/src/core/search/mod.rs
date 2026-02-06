@@ -47,6 +47,7 @@
 
 mod client;
 mod config;
+pub mod embedded;
 mod error;
 mod library;
 mod models;
@@ -69,6 +70,9 @@ pub mod synonyms;
 
 // Core client
 pub use client::SearchClient;
+
+// Embedded search (meilisearch-lib wrapper)
+pub use embedded::EmbeddedSearch;
 
 // Error handling
 pub use error::{Result, SearchError};
