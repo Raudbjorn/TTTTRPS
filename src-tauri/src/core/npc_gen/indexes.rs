@@ -297,12 +297,12 @@ pub struct NpcIndexStats {
 
 /// Get statistics about NPC generation indexes.
 ///
+/// Returns zero counts for indexes that don't exist or are inaccessible,
+/// so this function always succeeds. Use `ensure_npc_indexes()` first if
+/// you need to guarantee the indexes exist.
+///
 /// # Arguments
 /// * `meili` - Embedded MeilisearchLib instance
-///
-/// # Returns
-/// * `Ok(NpcIndexStats)` - Statistics about indexed data
-/// * `Err(NpcIndexError)` - If statistics cannot be retrieved
 pub fn get_npc_index_stats(meili: &MeilisearchLib) -> Result<NpcIndexStats, NpcIndexError> {
     let mut stats = NpcIndexStats::default();
 
