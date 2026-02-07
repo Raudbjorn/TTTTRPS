@@ -31,6 +31,11 @@ use meilisearch_lib::{FilterableAttributesRule, MeilisearchLib, Setting, Setting
 
 use super::error::{ArchetypeError, Result};
 
+/// Convert a meilisearch-lib error into an `ArchetypeError::Meilisearch` with context.
+fn meili_err(context: &str, uid: &str, e: meilisearch_lib::Error) -> ArchetypeError {
+    ArchetypeError::Meilisearch(format!("{} '{}': {}", context, uid, e))
+}
+
 // ============================================================================
 // Index Constants
 // ============================================================================
@@ -59,6 +64,8 @@ pub const INDEX_ARCHETYPES: &str = "ttrpg_archetypes";
 pub const INDEX_VOCABULARY_BANKS: &str = "ttrpg_npc_vocabulary_banks";
 
 /// Default timeout for index operations (30 seconds).
+// NOTE: Duplicated across archetype, campaign, and personality modules.
+// Consider consolidating into a shared constant when unifying index management.
 const TASK_TIMEOUT: Duration = Duration::from_secs(30);
 
 // ============================================================================
@@ -232,35 +239,38 @@ impl ArchetypeIndexManager {
 
     /// Ensure a single index exists with the specified settings.
     ///
-    /// Creates the index if it doesn't exist, then applies settings.
-    /// All operations are synchronous (embedded meilisearch-lib).
+    /// Creates the index if it doesn't exist, then applies settings
+    /// unconditionally (idempotent — safe to call on every startup).
     ///
     /// # Arguments
     ///
     /// * `uid` - Name of the index to create or update
     /// * `settings` - Index settings to apply
+    // NOTE: check-then-create has a theoretical TOCTOU race if two
+    // ArchetypeIndexManager instances run concurrently. In practice this
+    // is a single-process Tauri app with one manager, so the risk is nil.
     fn ensure_index(
         &self,
         uid: &str,
         settings: Settings<Unchecked>,
     ) -> Result<()> {
         let exists = self.meili.index_exists(uid)
-            .map_err(|e| ArchetypeError::Meilisearch(format!("Check index '{}': {}", uid, e)))?;
+            .map_err(|e| meili_err("Check index", uid, e))?;
 
         if !exists {
             log::info!("Creating index '{}' with primary key 'id'", uid);
             let task = self.meili.create_index(uid, Some("id".to_string()))
-                .map_err(|e| ArchetypeError::Meilisearch(format!("Create index '{}': {}", uid, e)))?;
+                .map_err(|e| meili_err("Create index", uid, e))?;
             self.meili.wait_for_task(task.uid, Some(TASK_TIMEOUT))
-                .map_err(|e| ArchetypeError::Meilisearch(format!("Wait create '{}': {}", uid, e)))?;
+                .map_err(|e| meili_err("Wait create", uid, e))?;
         } else {
-            log::debug!("Index '{}' exists, updating settings", uid);
+            log::debug!("Index '{}' exists, reapplying settings", uid);
         }
 
         let task = self.meili.update_settings(uid, settings)
-            .map_err(|e| ArchetypeError::Meilisearch(format!("Settings '{}': {}", uid, e)))?;
+            .map_err(|e| meili_err("Settings", uid, e))?;
         self.meili.wait_for_task(task.uid, Some(TASK_TIMEOUT))
-            .map_err(|e| ArchetypeError::Meilisearch(format!("Wait settings '{}': {}", uid, e)))?;
+            .map_err(|e| meili_err("Wait settings", uid, e))?;
 
         Ok(())
     }
@@ -290,9 +300,7 @@ impl ArchetypeIndexManager {
     /// Check if a specific index exists.
     fn index_exists(&self, uid: &str) -> Result<bool> {
         self.meili.index_exists(uid)
-            .map_err(|e| ArchetypeError::Meilisearch(format!(
-                "Failed to check index '{}': {}", uid, e
-            )))
+            .map_err(|e| meili_err("Check index", uid, e))
     }
 
     /// Get document count for the archetypes index.
@@ -320,9 +328,7 @@ impl ArchetypeIndexManager {
         match self.meili.index_stats(uid) {
             Ok(stats) => Ok(stats.number_of_documents),
             Err(meilisearch_lib::Error::IndexNotFound(_)) => Ok(0),
-            Err(e) => Err(ArchetypeError::Meilisearch(format!(
-                "Failed to get stats for index '{}': {}", uid, e
-            ))),
+            Err(e) => Err(meili_err("Get stats", uid, e)),
         }
     }
 
@@ -343,17 +349,18 @@ impl ArchetypeIndexManager {
         log::warn!("Deleting archetype indexes");
 
         let mut first_error: Option<ArchetypeError> = None;
+        let mut set_error = |err: ArchetypeError| {
+            if first_error.is_none() {
+                first_error = Some(err);
+            }
+        };
 
         for uid in [INDEX_ARCHETYPES, INDEX_VOCABULARY_BANKS] {
             match self.meili.delete_index(uid) {
                 Ok(task) => {
                     if let Err(e) = self.meili.wait_for_task(task.uid, Some(TASK_TIMEOUT)) {
                         log::error!("Failed to wait for delete of '{}': {}", uid, e);
-                        if first_error.is_none() {
-                            first_error = Some(ArchetypeError::Meilisearch(format!(
-                                "Wait delete '{}': {}", uid, e
-                            )));
-                        }
+                        set_error(meili_err("Wait delete", uid, e));
                     } else {
                         log::info!("Deleted index '{}'", uid);
                     }
@@ -363,18 +370,15 @@ impl ArchetypeIndexManager {
                 }
                 Err(e) => {
                     log::error!("Failed to delete index '{}': {}", uid, e);
-                    if first_error.is_none() {
-                        first_error = Some(ArchetypeError::Meilisearch(format!(
-                            "Delete index '{}': {}", uid, e
-                        )));
-                    }
+                    set_error(meili_err("Delete index", uid, e));
                 }
             }
         }
 
-        match first_error {
-            Some(e) => Err(e),
-            None => Ok(()),
+        if let Some(e) = first_error {
+            Err(e)
+        } else {
+            Ok(())
         }
     }
 }
@@ -409,14 +413,16 @@ pub fn vocabulary_banks_index_name() -> &'static str {
 
 /// Get the archetype index settings.
 ///
-/// Useful for tests or manual index configuration.
+/// Public wrapper over [`build_archetype_settings`] for tests and
+/// external callers that shouldn't depend on the private builder.
 pub fn get_archetype_settings() -> Settings<Unchecked> {
     build_archetype_settings()
 }
 
 /// Get the vocabulary banks index settings.
 ///
-/// Useful for tests or manual index configuration.
+/// Public wrapper over [`build_vocabulary_bank_settings`] for tests and
+/// external callers that shouldn't depend on the private builder.
 pub fn get_vocabulary_bank_settings() -> Settings<Unchecked> {
     build_vocabulary_bank_settings()
 }
@@ -441,14 +447,11 @@ mod tests {
     fn test_archetype_settings_searchable_attributes() {
         let settings = build_archetype_settings();
 
-        // Verify searchable attributes are set in priority order
-        match &settings.searchable_attributes {
-            ws if ws.is_set() => {
-                // WildcardSetting wraps Setting<Vec<String>>
-                // Verify the setting was constructed (non-default)
-            }
-            _ => panic!("searchable_attributes should be Set"),
-        }
+        // WildcardSetting — verify it's been set (not left at default/reset)
+        assert!(
+            !settings.searchable_attributes.is_reset(),
+            "searchable_attributes should be Set, not Reset"
+        );
     }
 
     #[test]
@@ -528,14 +531,19 @@ mod tests {
 
     #[test]
     fn test_get_settings_return_same_as_build() {
-        // Public getters should return the same settings as internal builders
+        // Public getters delegate to internal builders — verify all comparable fields match.
         let arch_public = get_archetype_settings();
         let arch_internal = build_archetype_settings();
 
-        // Verify sortable attributes match (as a representative check)
+        // Sortable
         match (&arch_public.sortable_attributes, &arch_internal.sortable_attributes) {
             (Setting::Set(a), Setting::Set(b)) => assert_eq!(a, b),
-            _ => panic!("Both should be Set"),
+            _ => panic!("sortable_attributes: both should be Set"),
+        }
+        // Filterable
+        match (&arch_public.filterable_attributes, &arch_internal.filterable_attributes) {
+            (Setting::Set(a), Setting::Set(b)) => assert_eq!(a.len(), b.len()),
+            _ => panic!("filterable_attributes: both should be Set"),
         }
 
         let vocab_public = get_vocabulary_bank_settings();
@@ -543,7 +551,11 @@ mod tests {
 
         match (&vocab_public.sortable_attributes, &vocab_internal.sortable_attributes) {
             (Setting::Set(a), Setting::Set(b)) => assert_eq!(a, b),
-            _ => panic!("Both should be Set"),
+            _ => panic!("sortable_attributes: both should be Set"),
+        }
+        match (&vocab_public.filterable_attributes, &vocab_internal.filterable_attributes) {
+            (Setting::Set(a), Setting::Set(b)) => assert_eq!(a.len(), b.len()),
+            _ => panic!("filterable_attributes: both should be Set"),
         }
     }
 }

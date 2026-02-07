@@ -116,9 +116,9 @@ fn main() {
                 claude,
                 gemini,
                 copilot,
-                // Archetype Registry fields - TODO: Refactor to use embedded MeilisearchLib directly
+                // Archetype Registry fields - TODO: Refactor to use embedded Meilisearch directly
                 // The archetype registry used the meilisearch-sdk HTTP client which is incompatible
-                // with embedded MeilisearchLib. Needs refactoring to use the Rust API directly.
+                // with embedded Meilisearch. Needs refactoring to use the Rust API directly.
                 archetype_registry: tokio::sync::RwLock::new(None),
                 vocabulary_manager: tokio::sync::RwLock::new(None),
                 setting_pack_loader,
@@ -135,17 +135,17 @@ fn main() {
                 dictionary_rebuild_service,
             });
 
-            // TODO: Initialize Archetype Registry using embedded MeilisearchLib
+            // TODO: Initialize Archetype Registry using embedded Meilisearch
             // The archetype registry currently depends on meilisearch-sdk's HTTP client.
-            // This needs to be refactored to use the embedded MeilisearchLib Rust API directly.
+            // This needs to be refactored to use the embedded Meilisearch Rust API directly.
             // For now, archetype_registry and vocabulary_manager remain None in AppState.
             // See: planning/meilisearch-lib-integration/ for migration details.
-            log::info!("Archetype registry initialization deferred - pending embedded MeilisearchLib integration");
+            log::info!("Archetype registry initialization deferred - pending embedded Meilisearch integration");
 
 
-            // TODO: Initialize Meilisearch Chat Client using embedded MeilisearchLib
+            // TODO: Initialize Meilisearch Chat Client using embedded Meilisearch
             // The chat client previously used HTTP endpoints from the sidecar process.
-            // With embedded MeilisearchLib, we need to refactor LLMManager to work with
+            // With embedded Meilisearch, we need to refactor LLMManager to work with
             // the in-process Rust API instead of HTTP requests.
             // For now, chat-specific Meilisearch features are disabled.
             log::info!("Meilisearch chat client initialization deferred - pending embedded integration");
