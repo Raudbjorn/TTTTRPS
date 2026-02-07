@@ -1,13 +1,14 @@
 //! Meilisearch Campaign Client
 //!
-//! Typed client wrapper for Meilisearch operations specific to campaign generation.
-//! Provides clean API over raw Meilisearch SDK with retry logic and batch operations.
+//! Typed client wrapper for embedded Meilisearch operations specific to campaign generation.
+//! Provides clean API over meilisearch-lib with retry logic and batch operations.
 //!
-//! TASK-CAMP-004
+//! Migrated from `meilisearch_sdk` to embedded `meilisearch_lib` (TASK-CAMP-004).
 
-use meilisearch_sdk::client::Client;
-use meilisearch_sdk::search::SearchResults;
+use meilisearch_lib::{MeilisearchLib, SearchQuery, Settings, Unchecked};
 use serde::{de::DeserializeOwned, Serialize};
+use serde_json::Value;
+use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 
@@ -75,8 +76,8 @@ pub enum MeilisearchCampaignError {
     BatchOperationFailed(String),
 }
 
-impl From<meilisearch_sdk::errors::Error> for MeilisearchCampaignError {
-    fn from(e: meilisearch_sdk::errors::Error) -> Self {
+impl From<meilisearch_lib::Error> for MeilisearchCampaignError {
+    fn from(e: meilisearch_lib::Error) -> Self {
         MeilisearchCampaignError::OperationError(e.to_string())
     }
 }
@@ -93,59 +94,39 @@ pub type Result<T> = std::result::Result<T, MeilisearchCampaignError>;
 // Meilisearch Campaign Client
 // ============================================================================
 
-/// Client for campaign generation Meilisearch operations
+/// Client for campaign generation Meilisearch operations.
+///
+/// Uses embedded `MeilisearchLib` for direct Rust integration without HTTP.
+/// All operations are synchronous.
 pub struct MeilisearchCampaignClient {
-    client: Client,
-    #[allow(dead_code)]
-    host: String,
-    #[allow(dead_code)]
-    api_key: Option<String>,
+    meili: Arc<MeilisearchLib>,
 }
 
 impl MeilisearchCampaignClient {
-    /// Create a new campaign client
-    pub fn new(host: &str, api_key: Option<&str>) -> Result<Self> {
-        let client = Client::new(host, api_key)
-            .map_err(|e| MeilisearchCampaignError::ConnectionError(e.to_string()))?;
-
-        Ok(Self {
-            client,
-            host: host.to_string(),
-            api_key: api_key.map(|s| s.to_string()),
-        })
-    }
-
-    /// Get the host URL
-    pub fn host(&self) -> &str {
-        &self.host
+    /// Create a new campaign client wrapping an embedded MeilisearchLib instance
+    pub fn new(meili: Arc<MeilisearchLib>) -> Self {
+        Self { meili }
     }
 
     // ========================================================================
     // Health Check (REC-MEIL-003)
     // ========================================================================
 
-    /// Check if Meilisearch is healthy
-    pub async fn health_check(&self) -> bool {
-        let url = format!("{}/health", self.host);
-        let client = reqwest::Client::new();
-        match client.get(&url).send().await {
-            Ok(resp) => resp.status().is_success(),
-            Err(_) => false,
-        }
+    /// Check if Meilisearch is healthy.
+    ///
+    /// For embedded instances this should always be `true` once initialized,
+    /// but we check the reported status rather than assuming availability.
+    pub fn health_check(&self) -> bool {
+        let health = self.meili.health();
+        health.status == "available"
     }
 
-    /// Wait for Meilisearch to become healthy with timeout
-    pub async fn wait_for_health(&self, timeout_secs: u64) -> bool {
-        let start = std::time::Instant::now();
-        let duration = Duration::from_secs(timeout_secs);
-
-        while start.elapsed() < duration {
-            if self.health_check().await {
-                return true;
-            }
-            tokio::time::sleep(Duration::from_millis(500)).await;
-        }
-        false
+    /// Wait for Meilisearch to become healthy with timeout.
+    ///
+    /// For embedded instances this returns immediately since the engine is
+    /// always available once initialized.
+    pub fn wait_for_health(&self, _timeout_secs: u64) -> bool {
+        self.health_check()
     }
 
     // ========================================================================
@@ -153,10 +134,9 @@ impl MeilisearchCampaignClient {
     // ========================================================================
 
     /// Ensure all campaign generation indexes exist with correct settings
-    pub async fn ensure_indexes(&self) -> Result<()> {
+    pub fn ensure_indexes(&self) -> Result<()> {
         for config in get_index_configs() {
-            self.ensure_index(config.name, config.primary_key, config.settings)
-                .await?;
+            self.ensure_index(config.name, config.primary_key, config.settings)?;
         }
 
         log::info!(
@@ -170,69 +150,49 @@ impl MeilisearchCampaignClient {
     }
 
     /// Ensure a single index exists with the given settings
-    async fn ensure_index(
+    fn ensure_index(
         &self,
         name: &str,
         primary_key: &str,
-        settings: meilisearch_sdk::settings::Settings,
+        settings: Settings<Unchecked>,
     ) -> Result<()> {
-        // Try to get existing index first
-        match self.client.get_index(name).await {
-            Ok(index) => {
-                // Index exists, update settings
-                let task = index.set_settings(&settings).await?;
-                task.wait_for_completion(
-                    &self.client,
-                    Some(Duration::from_millis(100)),
-                    Some(Duration::from_secs(TASK_TIMEOUT_SHORT_SECS)),
-                )
-                .await?;
-                log::debug!("Updated settings for index '{}'", name);
-            }
-            Err(_) => {
-                // Create new index
-                let task = self.client.create_index(name, Some(primary_key)).await?;
-                task.wait_for_completion(
-                    &self.client,
-                    Some(Duration::from_millis(100)),
-                    Some(Duration::from_secs(TASK_TIMEOUT_SHORT_SECS)),
-                )
-                .await?;
+        let exists = self.meili.index_exists(name)?;
 
-                // Apply settings
-                let index = self.client.index(name);
-                let task = index.set_settings(&settings).await?;
-                task.wait_for_completion(
-                    &self.client,
-                    Some(Duration::from_millis(100)),
-                    Some(Duration::from_secs(TASK_TIMEOUT_SHORT_SECS)),
-                )
-                .await?;
+        if exists {
+            // Index exists, update settings
+            let task = self.meili.update_settings(name, settings)?;
+            self.meili
+                .wait_for_task(task.uid, Some(Duration::from_secs(TASK_TIMEOUT_SHORT_SECS)))?;
+            log::debug!("Updated settings for index '{}'", name);
+        } else {
+            // Create new index
+            let task = self
+                .meili
+                .create_index(name, Some(primary_key.to_string()))?;
+            self.meili
+                .wait_for_task(task.uid, Some(Duration::from_secs(TASK_TIMEOUT_SHORT_SECS)))?;
 
-                log::info!("Created index '{}' with settings", name);
-            }
+            // Apply settings
+            let task = self.meili.update_settings(name, settings)?;
+            self.meili
+                .wait_for_task(task.uid, Some(Duration::from_secs(TASK_TIMEOUT_SHORT_SECS)))?;
+
+            log::info!("Created index '{}' with settings", name);
         }
 
         Ok(())
     }
 
-    /// Delete an index
-    pub async fn delete_index(&self, name: &str) -> Result<()> {
-        match self.client.delete_index(name).await {
+    /// Delete an index (idempotent — treats `IndexNotFound` as success).
+    pub fn delete_index(&self, name: &str) -> Result<()> {
+        match self.meili.delete_index(name) {
             Ok(task) => {
-                task.wait_for_completion(
-                    &self.client,
-                    Some(Duration::from_millis(100)),
-                    Some(Duration::from_secs(TASK_TIMEOUT_SHORT_SECS)),
-                )
-                .await?;
+                self.meili
+                    .wait_for_task(task.uid, Some(Duration::from_secs(TASK_TIMEOUT_SHORT_SECS)))?;
                 log::info!("Deleted index '{}'", name);
                 Ok(())
             }
-            Err(meilisearch_sdk::errors::Error::Meilisearch(err))
-                if err.error_code == meilisearch_sdk::errors::ErrorCode::IndexNotFound =>
-            {
-                // Index doesn't exist - that's fine for deletion
+            Err(meilisearch_lib::Error::IndexNotFound(_)) => {
                 log::debug!("Index '{}' already doesn't exist", name);
                 Ok(())
             }
@@ -247,27 +207,24 @@ impl MeilisearchCampaignClient {
     /// Add or update a single document with retry.
     ///
     /// All campaign indexes use `"id"` as primary key (see [`IndexConfig::primary_key`]).
-    pub async fn upsert_document<T: Serialize + Send + Sync>(
+    pub fn upsert_document<T: Serialize>(
         &self,
         index_name: &str,
         document: &T,
     ) -> Result<()> {
-        self.with_retry(|| async {
-            let index = self.client.index(index_name);
-            let task = index.add_documents(&[document], Some("id")).await?;
-            task.wait_for_completion(
-                &self.client,
-                Some(Duration::from_millis(100)),
-                Some(Duration::from_secs(TASK_TIMEOUT_SHORT_SECS)),
-            )
-            .await?;
+        self.with_retry(|| {
+            let value = serde_json::to_value(document)?;
+            let task = self
+                .meili
+                .add_documents(index_name, vec![value], Some("id".to_string()))?;
+            self.meili
+                .wait_for_task(task.uid, Some(Duration::from_secs(TASK_TIMEOUT_SHORT_SECS)))?;
             Ok(())
         })
-        .await
     }
 
     /// Add or update multiple documents in batches (REC-MEIL-002)
-    pub async fn upsert_documents<T: Serialize + Clone + Send + Sync>(
+    pub fn upsert_documents<T: Serialize>(
         &self,
         index_name: &str,
         documents: &[T],
@@ -276,21 +233,21 @@ impl MeilisearchCampaignClient {
             return Ok(());
         }
 
-        let index = self.client.index(index_name);
-
         // Process in batches
         for chunk in documents.chunks(MEILISEARCH_BATCH_SIZE) {
-            self.with_retry(|| async {
-                let task = index.add_documents(chunk, Some("id")).await?;
-                task.wait_for_completion(
-                    &self.client,
-                    Some(Duration::from_millis(100)),
-                    Some(Duration::from_secs(TASK_TIMEOUT_LONG_SECS)),
-                )
-                .await?;
+            self.with_retry(|| {
+                let values: Vec<serde_json::Value> = chunk
+                    .iter()
+                    .map(|doc| serde_json::to_value(doc))
+                    .collect::<std::result::Result<Vec<_>, _>>()?;
+
+                let task = self
+                    .meili
+                    .add_documents(index_name, values, Some("id".to_string()))?;
+                self.meili
+                    .wait_for_task(task.uid, Some(Duration::from_secs(TASK_TIMEOUT_LONG_SECS)))?;
                 Ok(())
-            })
-            .await?;
+            })?;
         }
 
         log::info!(
@@ -302,91 +259,77 @@ impl MeilisearchCampaignClient {
     }
 
     /// Get a document by ID
-    pub async fn get_document<T: DeserializeOwned + Send + Sync + 'static>(
+    pub fn get_document<T: DeserializeOwned>(
         &self,
         index_name: &str,
         id: &str,
     ) -> Result<Option<T>> {
-        let index = self.client.index(index_name);
-
-        match index.get_document::<T>(id).await {
-            Ok(doc) => Ok(Some(doc)),
-            Err(meilisearch_sdk::errors::Error::Meilisearch(err))
-                if err.error_code == meilisearch_sdk::errors::ErrorCode::DocumentNotFound =>
-            {
-                Ok(None)
+        match self.meili.get_document(index_name, id) {
+            Ok(doc) => {
+                let deserialized: T = serde_json::from_value(doc)?;
+                Ok(Some(deserialized))
             }
-            Err(e) => Err(e.into()),
+            Err(meilisearch_lib::Error::DocumentNotFound(_)) => Ok(None),
+            Err(e) => Err(MeilisearchCampaignError::OperationError(e.to_string())),
         }
     }
 
     /// Delete a document by ID
-    pub async fn delete_document(&self, index_name: &str, id: &str) -> Result<()> {
-        self.with_retry(|| async {
-            let index = self.client.index(index_name);
-            let task = index.delete_document(id).await?;
-            task.wait_for_completion(
-                &self.client,
-                Some(Duration::from_millis(100)),
-                Some(Duration::from_secs(TASK_TIMEOUT_SHORT_SECS)),
-            )
-            .await?;
+    pub fn delete_document(&self, index_name: &str, id: &str) -> Result<()> {
+        self.with_retry(|| {
+            let task = self.meili.delete_document(index_name, id)?;
+            self.meili
+                .wait_for_task(task.uid, Some(Duration::from_secs(TASK_TIMEOUT_SHORT_SECS)))?;
             Ok(())
         })
-        .await
     }
 
     /// Delete multiple documents by IDs
-    pub async fn delete_documents(&self, index_name: &str, ids: &[&str]) -> Result<()> {
+    pub fn delete_documents(&self, index_name: &str, ids: &[&str]) -> Result<()> {
         if ids.is_empty() {
             return Ok(());
         }
 
-        self.with_retry(|| async {
-            let index = self.client.index(index_name);
-            let task = index.delete_documents(ids).await?;
-            task.wait_for_completion(
-                &self.client,
-                Some(Duration::from_millis(100)),
-                Some(Duration::from_secs(TASK_TIMEOUT_LONG_SECS)),
-            )
-            .await?;
+        self.with_retry(|| {
+            let id_strings: Vec<String> = ids.iter().map(|s| s.to_string()).collect();
+            let task = self
+                .meili
+                .delete_documents_batch(index_name, id_strings)?;
+            self.meili
+                .wait_for_task(task.uid, Some(Duration::from_secs(TASK_TIMEOUT_LONG_SECS)))?;
             Ok(())
         })
-        .await
     }
 
     /// Delete documents matching a filter
-    pub async fn delete_by_filter(&self, index_name: &str, filter: &str) -> Result<usize> {
-        let index = self.client.index(index_name);
+    pub fn delete_by_filter(&self, index_name: &str, filter: &str) -> Result<usize> {
         let mut total_deleted = 0;
 
         // Loop until no more matching documents
         loop {
             // Search for matching documents
-            let results: SearchResults<serde_json::Value> = index
-                .search()
-                .with_filter(filter)
-                .with_limit(MEILISEARCH_BATCH_SIZE)
-                .execute()
-                .await?;
+            let query = SearchQuery::empty()
+                .with_filter(Value::String(filter.to_string()))
+                .with_pagination(0, MEILISEARCH_BATCH_SIZE);
+
+            let results = self.meili.search(index_name, query)?;
 
             if results.hits.is_empty() {
                 break;
             }
 
-            // Extract IDs and delete
+            // Extract IDs by primary key ("id" — invariant for all campaign indexes)
             let ids: Vec<String> = results
                 .hits
                 .iter()
-                .filter_map(|hit| hit.result.get("id").and_then(|v| v.as_str()))
+                .filter_map(|hit| hit.document.get("id").and_then(|v| v.as_str()))
                 .map(|s| s.to_string())
                 .collect();
 
             let id_refs: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
             let count = id_refs.len();
 
-            self.delete_documents(index_name, &id_refs).await?;
+            self.delete_documents(index_name, &id_refs)?;
             total_deleted += count;
 
             // If we got fewer than batch size, we're done
@@ -410,7 +353,7 @@ impl MeilisearchCampaignClient {
     // ========================================================================
 
     /// Search documents with filter and sorting
-    pub async fn search<T: DeserializeOwned + Send + Sync + 'static>(
+    pub fn search<T: DeserializeOwned>(
         &self,
         index_name: &str,
         query: &str,
@@ -419,26 +362,34 @@ impl MeilisearchCampaignClient {
         limit: usize,
         offset: usize,
     ) -> Result<Vec<T>> {
-        let index = self.client.index(index_name);
+        let mut search_query = if query.is_empty() {
+            SearchQuery::empty()
+        } else {
+            SearchQuery::new(query)
+        };
 
-        let mut search = index.search();
-        search.with_query(query).with_limit(limit).with_offset(offset);
+        search_query = search_query.with_pagination(offset, limit);
 
         if let Some(f) = filter {
-            search.with_filter(f);
+            search_query = search_query.with_filter(Value::String(f.to_string()));
         }
 
         if let Some(s) = sort {
-            search.with_sort(s);
+            let sort_vec: Vec<String> = s.iter().map(|v| v.to_string()).collect();
+            search_query = search_query.with_sort(sort_vec);
         }
 
-        let results: SearchResults<T> = search.execute().await?;
+        let results = self.meili.search(index_name, search_query)?;
 
-        Ok(results.hits.into_iter().map(|h| h.result).collect())
+        results
+            .hits
+            .into_iter()
+            .map(|hit| serde_json::from_value(hit.document).map_err(Into::into))
+            .collect()
     }
 
     /// List all documents matching a filter (no text search)
-    pub async fn list<T: DeserializeOwned + Send + Sync + 'static>(
+    pub fn list<T: DeserializeOwned>(
         &self,
         index_name: &str,
         filter: Option<&str>,
@@ -447,27 +398,24 @@ impl MeilisearchCampaignClient {
         offset: usize,
     ) -> Result<Vec<T>> {
         self.search(index_name, "", filter, sort, limit, offset)
-            .await
     }
 
     /// Count documents matching a filter.
     ///
-    /// Uses `limit(0)` to return zero hits while still populating
-    /// `estimated_total_hits`, which gives the matching document count
-    /// without transferring document bodies.
-    pub async fn count(&self, index_name: &str, filter: Option<&str>) -> Result<usize> {
-        let index = self.client.index(index_name);
-
-        let mut search = index.search();
-        search.with_query("").with_limit(0);
+    /// Uses `with_pagination(0, 0)` (offset=0, limit=0) to request zero
+    /// document bodies, relying on `estimated_total_hits` for the count.
+    pub fn count(&self, index_name: &str, filter: Option<&str>) -> Result<usize> {
+        let mut search_query = SearchQuery::empty().with_pagination(0, 0);
 
         if let Some(f) = filter {
-            search.with_filter(f);
+            search_query = search_query.with_filter(Value::String(f.to_string()));
         }
 
-        let results: SearchResults<serde_json::Value> = search.execute().await?;
+        let results = self.meili.search(index_name, search_query)?;
 
-        Ok(results.estimated_total_hits.unwrap_or(0))
+        // Clamp to usize::MAX to avoid truncation on 32-bit targets
+        let estimated = results.estimated_total_hits.unwrap_or(0);
+        Ok(usize::try_from(estimated).unwrap_or(usize::MAX))
     }
 
     // ========================================================================
@@ -475,12 +423,12 @@ impl MeilisearchCampaignClient {
     // ========================================================================
 
     /// Get a campaign arc by ID
-    pub async fn get_arc<T: DeserializeOwned + Send + Sync + 'static>(&self, id: &str) -> Result<Option<T>> {
-        self.get_document(INDEX_CAMPAIGN_ARCS, id).await
+    pub fn get_arc<T: DeserializeOwned>(&self, id: &str) -> Result<Option<T>> {
+        self.get_document(INDEX_CAMPAIGN_ARCS, id)
     }
 
     /// List arcs for a campaign
-    pub async fn list_arcs<T: DeserializeOwned + Send + Sync + 'static>(
+    pub fn list_arcs<T: DeserializeOwned>(
         &self,
         campaign_id: &str,
     ) -> Result<Vec<T>> {
@@ -492,17 +440,16 @@ impl MeilisearchCampaignClient {
             1000,
             0,
         )
-        .await
     }
 
     /// Save a campaign arc
-    pub async fn save_arc<T: Serialize + Send + Sync>(&self, arc: &T) -> Result<()> {
-        self.upsert_document(INDEX_CAMPAIGN_ARCS, arc).await
+    pub fn save_arc<T: Serialize>(&self, arc: &T) -> Result<()> {
+        self.upsert_document(INDEX_CAMPAIGN_ARCS, arc)
     }
 
     /// Delete a campaign arc
-    pub async fn delete_arc(&self, id: &str) -> Result<()> {
-        self.delete_document(INDEX_CAMPAIGN_ARCS, id).await
+    pub fn delete_arc(&self, id: &str) -> Result<()> {
+        self.delete_document(INDEX_CAMPAIGN_ARCS, id)
     }
 
     // ========================================================================
@@ -510,24 +457,22 @@ impl MeilisearchCampaignClient {
     // ========================================================================
 
     /// Get a session plan by ID
-    pub async fn get_plan<T: DeserializeOwned + Send + Sync + 'static>(&self, id: &str) -> Result<Option<T>> {
-        self.get_document(INDEX_SESSION_PLANS, id).await
+    pub fn get_plan<T: DeserializeOwned>(&self, id: &str) -> Result<Option<T>> {
+        self.get_document(INDEX_SESSION_PLANS, id)
     }
 
     /// Get session plan for a specific session
-    pub async fn get_plan_for_session<T: DeserializeOwned + Send + Sync + 'static>(
+    pub fn get_plan_for_session<T: DeserializeOwned>(
         &self,
         session_id: &str,
     ) -> Result<Option<T>> {
         let filter = format!("session_id = \"{}\"", escape_filter_value(session_id));
-        let results: Vec<T> = self
-            .list(INDEX_SESSION_PLANS, Some(&filter), None, 1, 0)
-            .await?;
+        let results: Vec<T> = self.list(INDEX_SESSION_PLANS, Some(&filter), None, 1, 0)?;
         Ok(results.into_iter().next())
     }
 
     /// List plans for a campaign
-    pub async fn list_plans<T: DeserializeOwned + Send + Sync + 'static>(
+    pub fn list_plans<T: DeserializeOwned>(
         &self,
         campaign_id: &str,
         include_templates: bool,
@@ -545,15 +490,17 @@ impl MeilisearchCampaignClient {
             1000,
             0,
         )
-        .await
     }
 
     /// List plan templates for a campaign
-    pub async fn list_plan_templates<T: DeserializeOwned + Send + Sync + 'static>(
+    pub fn list_plan_templates<T: DeserializeOwned>(
         &self,
         campaign_id: &str,
     ) -> Result<Vec<T>> {
-        let filter = format!("campaign_id = \"{}\" AND is_template = true", escape_filter_value(campaign_id));
+        let filter = format!(
+            "campaign_id = \"{}\" AND is_template = true",
+            escape_filter_value(campaign_id)
+        );
         self.list(
             INDEX_SESSION_PLANS,
             Some(&filter),
@@ -561,17 +508,16 @@ impl MeilisearchCampaignClient {
             1000,
             0,
         )
-        .await
     }
 
     /// Save a session plan
-    pub async fn save_plan<T: Serialize + Send + Sync>(&self, plan: &T) -> Result<()> {
-        self.upsert_document(INDEX_SESSION_PLANS, plan).await
+    pub fn save_plan<T: Serialize>(&self, plan: &T) -> Result<()> {
+        self.upsert_document(INDEX_SESSION_PLANS, plan)
     }
 
     /// Delete a session plan
-    pub async fn delete_plan(&self, id: &str) -> Result<()> {
-        self.delete_document(INDEX_SESSION_PLANS, id).await
+    pub fn delete_plan(&self, id: &str) -> Result<()> {
+        self.delete_document(INDEX_SESSION_PLANS, id)
     }
 
     // ========================================================================
@@ -579,12 +525,12 @@ impl MeilisearchCampaignClient {
     // ========================================================================
 
     /// Get a plot point by ID
-    pub async fn get_plot_point<T: DeserializeOwned + Send + Sync + 'static>(&self, id: &str) -> Result<Option<T>> {
-        self.get_document(INDEX_PLOT_POINTS, id).await
+    pub fn get_plot_point<T: DeserializeOwned>(&self, id: &str) -> Result<Option<T>> {
+        self.get_document(INDEX_PLOT_POINTS, id)
     }
 
     /// List plot points for a campaign
-    pub async fn list_plot_points<T: DeserializeOwned + Send + Sync + 'static>(
+    pub fn list_plot_points<T: DeserializeOwned>(
         &self,
         campaign_id: &str,
     ) -> Result<Vec<T>> {
@@ -596,11 +542,10 @@ impl MeilisearchCampaignClient {
             1000,
             0,
         )
-        .await
     }
 
     /// List plot points by activation state
-    pub async fn list_plot_points_by_state<T: DeserializeOwned + Send + Sync + 'static>(
+    pub fn list_plot_points_by_state<T: DeserializeOwned>(
         &self,
         campaign_id: &str,
         activation_state: &str,
@@ -617,11 +562,10 @@ impl MeilisearchCampaignClient {
             1000,
             0,
         )
-        .await
     }
 
     /// List plot points by arc
-    pub async fn list_plot_points_by_arc<T: DeserializeOwned + Send + Sync + 'static>(
+    pub fn list_plot_points_by_arc<T: DeserializeOwned>(
         &self,
         arc_id: &str,
     ) -> Result<Vec<T>> {
@@ -633,34 +577,36 @@ impl MeilisearchCampaignClient {
             1000,
             0,
         )
-        .await
     }
 
     /// Save a plot point
-    pub async fn save_plot_point<T: Serialize + Send + Sync>(&self, plot_point: &T) -> Result<()> {
-        self.upsert_document(INDEX_PLOT_POINTS, plot_point).await
+    pub fn save_plot_point<T: Serialize>(&self, plot_point: &T) -> Result<()> {
+        self.upsert_document(INDEX_PLOT_POINTS, plot_point)
     }
 
     /// Delete a plot point
-    pub async fn delete_plot_point(&self, id: &str) -> Result<()> {
-        self.delete_document(INDEX_PLOT_POINTS, id).await
+    pub fn delete_plot_point(&self, id: &str) -> Result<()> {
+        self.delete_document(INDEX_PLOT_POINTS, id)
     }
 
     // ========================================================================
     // Retry Logic (REC-MEIL-001)
     // ========================================================================
 
-    /// Execute an operation with exponential backoff retry
-    async fn with_retry<F, Fut, T>(&self, operation: F) -> Result<T>
+    /// Execute an operation with exponential backoff retry.
+    ///
+    /// **Blocking**: uses `std::thread::sleep` for backoff delays. In async
+    /// contexts (e.g. Tauri command handlers), call via `spawn_blocking` to
+    /// avoid stalling the runtime thread pool.
+    fn with_retry<F, T>(&self, operation: F) -> Result<T>
     where
-        F: Fn() -> Fut,
-        Fut: std::future::Future<Output = Result<T>>,
+        F: Fn() -> Result<T>,
     {
         let mut attempt = 0;
         let mut last_error = None;
 
         while attempt < MAX_RETRY_ATTEMPTS {
-            match operation().await {
+            match operation() {
                 Ok(result) => return Ok(result),
                 Err(e) => {
                     // Only retry on transient errors
@@ -675,7 +621,7 @@ impl MeilisearchCampaignClient {
                                 delay,
                                 e
                             );
-                            tokio::time::sleep(Duration::from_millis(delay)).await;
+                            std::thread::sleep(Duration::from_millis(delay));
                         }
                         last_error = Some(e);
                     } else {
@@ -744,5 +690,16 @@ mod tests {
         };
         assert!(err.to_string().contains("arcs"));
         assert!(err.to_string().contains("abc123"));
+    }
+
+    #[test]
+    fn test_escape_filter_value() {
+        assert_eq!(escape_filter_value("simple"), "simple");
+        assert_eq!(escape_filter_value("has\"quotes"), "has\\\"quotes");
+        assert_eq!(escape_filter_value("has\\backslash"), "has\\\\backslash");
+        assert_eq!(
+            escape_filter_value("both\"and\\here"),
+            "both\\\"and\\\\here"
+        );
     }
 }

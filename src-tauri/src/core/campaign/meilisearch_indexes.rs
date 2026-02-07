@@ -7,8 +7,8 @@
 //!
 //! TASK-CAMP-001, TASK-CAMP-002, TASK-CAMP-003
 
-use meilisearch_sdk::settings::Settings;
-use serde::{Deserialize, Serialize};
+use meilisearch_lib::{FilterableAttributesRule, Setting, Settings, Unchecked};
+use std::collections::BTreeSet;
 
 // ============================================================================
 // Index Names
@@ -44,12 +44,29 @@ pub trait IndexConfig {
     /// Get the sortable attributes
     fn sortable_attributes() -> Vec<&'static str>;
 
-    /// Build Meilisearch settings from configuration
-    fn build_settings() -> Settings {
-        Settings::new()
-            .with_searchable_attributes(Self::searchable_attributes())
-            .with_filterable_attributes(Self::filterable_attributes())
-            .with_sortable_attributes(Self::sortable_attributes())
+    /// Build meilisearch-lib Settings from configuration
+    fn build_settings() -> Settings<Unchecked> {
+        let searchable: Vec<String> = Self::searchable_attributes()
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect();
+
+        let filterable: Vec<FilterableAttributesRule> = Self::filterable_attributes()
+            .into_iter()
+            .map(|s| FilterableAttributesRule::Field(s.to_string()))
+            .collect();
+
+        let sortable: BTreeSet<String> = Self::sortable_attributes()
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect();
+
+        Settings {
+            searchable_attributes: Setting::Set(searchable).into(),
+            filterable_attributes: Setting::Set(filterable),
+            sortable_attributes: Setting::Set(sortable),
+            ..Default::default()
+        }
     }
 }
 
@@ -58,7 +75,7 @@ pub trait IndexConfig {
 // ============================================================================
 
 /// Index configuration for campaign arcs
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct CampaignArcsIndexConfig;
 
 impl IndexConfig for CampaignArcsIndexConfig {
@@ -94,7 +111,7 @@ impl IndexConfig for CampaignArcsIndexConfig {
 // ============================================================================
 
 /// Index configuration for session plans
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct SessionPlansIndexConfig;
 
 impl IndexConfig for SessionPlansIndexConfig {
@@ -132,7 +149,7 @@ impl IndexConfig for SessionPlansIndexConfig {
 // ============================================================================
 
 /// Index configuration for enhanced plot points
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct PlotPointsIndexConfig;
 
 impl IndexConfig for PlotPointsIndexConfig {
@@ -193,8 +210,8 @@ pub struct IndexInitConfig {
     pub name: &'static str,
     /// Primary key field
     pub primary_key: &'static str,
-    /// Settings to apply
-    pub settings: Settings,
+    /// Settings to apply (meilisearch-lib format)
+    pub settings: Settings<Unchecked>,
 }
 
 /// Get all index initialization configurations
@@ -270,5 +287,40 @@ mod tests {
         assert!(names.contains(&INDEX_CAMPAIGN_ARCS));
         assert!(names.contains(&INDEX_SESSION_PLANS));
         assert!(names.contains(&INDEX_PLOT_POINTS));
+    }
+
+    #[test]
+    fn test_build_settings_returns_valid_settings() {
+        let settings = CampaignArcsIndexConfig::build_settings();
+
+        // Verify filterable attributes are populated
+        match &settings.filterable_attributes {
+            Setting::Set(attrs) => {
+                assert_eq!(attrs.len(), 5, "Expected 5 filterable attributes for campaign arcs");
+            }
+            _ => panic!("filterable_attributes should be Set"),
+        }
+
+        // Verify sortable attributes are populated
+        match &settings.sortable_attributes {
+            Setting::Set(attrs) => {
+                assert_eq!(attrs.len(), 4, "Expected 4 sortable attributes for campaign arcs");
+                assert!(attrs.contains("created_at"));
+                assert!(attrs.contains("name"));
+            }
+            _ => panic!("sortable_attributes should be Set"),
+        }
+
+        // Verify searchable attributes contain expected values.
+        // WildcardSetting derefs to Setting<Vec<String>>.
+        match &*settings.searchable_attributes {
+            Setting::Set(attrs) => {
+                assert_eq!(attrs.len(), 3, "Expected 3 searchable attributes for campaign arcs");
+                assert!(attrs.contains(&"name".to_string()));
+                assert!(attrs.contains(&"description".to_string()));
+                assert!(attrs.contains(&"premise".to_string()));
+            }
+            _ => panic!("searchable_attributes should be Set with specific values"),
+        }
     }
 }

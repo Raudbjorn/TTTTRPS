@@ -639,8 +639,12 @@ pub async fn check_meilisearch_health(
     })
 }
 
-/// Indexes that must not be cleared via reindex_library (non-library system data).
-const PROTECTED_INDEXES: &[&str] = &["chat"];
+/// Indexes that may be cleared via reindex_library.
+///
+/// Uses an **allow-list** rather than a deny-list to prevent accidental clearing
+/// of system-critical indexes (campaigns, archetypes, personality templates, etc.).
+/// Only document library content indexes belong here.
+const REINDEXABLE_INDEXES: &[&str] = &["rules", "fiction", "documents", "library_metadata"];
 
 /// Reindex a library by clearing all documents from the specified index (or all indexes).
 ///
@@ -661,12 +665,13 @@ pub async fn reindex_library(
 
     match index_name {
         Some(ref name) => {
-            // Validate against protected indexes
-            if PROTECTED_INDEXES.contains(&name.as_str()) {
+            // Only allow clearing known library content indexes
+            if !REINDEXABLE_INDEXES.contains(&name.as_str()) {
                 return Err(format!(
-                    "Index '{}' is protected and cannot be cleared via reindex. \
-                     Only library content indexes may be reindexed.",
-                    name
+                    "Index '{}' is not a library content index and cannot be cleared via reindex. \
+                     Allowed indexes: {}",
+                    name,
+                    REINDEXABLE_INDEXES.join(", ")
                 ));
             }
 
@@ -734,10 +739,10 @@ pub async fn reindex_library(
                 offset += page_len;
             }
 
-            // Filter out protected indexes
+            // Only include known library content indexes (allow-list)
             let indexes: Vec<_> = all_indexes
                 .into_iter()
-                .filter(|idx| !PROTECTED_INDEXES.contains(&idx.uid.as_str()))
+                .filter(|idx| REINDEXABLE_INDEXES.contains(&idx.uid.as_str()))
                 .collect();
             let total = indexes.len();
 
