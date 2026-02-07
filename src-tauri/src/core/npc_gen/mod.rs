@@ -100,7 +100,7 @@ pub use file_utils::{
 
 // Index types
 pub use indexes::{
-    ensure_npc_indexes, get_npc_index_stats, clear_npc_indexes,
+    clear_npc_indexes, ensure_npc_indexes, get_npc_index_stats,
     ExclamationTemplateDocument, NameComponentDocument, NpcIndexError, NpcIndexStats,
     VocabularyPhraseDocument, INDEX_EXCLAMATION_TEMPLATES, INDEX_NAME_COMPONENTS,
     INDEX_VOCABULARY_BANKS,

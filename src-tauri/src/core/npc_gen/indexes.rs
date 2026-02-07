@@ -19,22 +19,25 @@ use serde::{Deserialize, Serialize};
 // ============================================================================
 
 /// Errors that can occur during NPC index operations.
+///
+/// Field is named `detail` (not `source`) to avoid thiserror's automatic
+/// `#[source]` inference, since the inner value is a `String`, not an `Error`.
 #[derive(Debug, thiserror::Error)]
 pub enum NpcIndexError {
-    #[error("Failed to check index '{index}': {source}")]
-    Check { index: String, source: String },
+    #[error("Failed to check index '{index}': {detail}")]
+    Check { index: String, detail: String },
 
-    #[error("Failed to create index '{index}': {source}")]
-    Create { index: String, source: String },
+    #[error("Failed to create index '{index}': {detail}")]
+    Create { index: String, detail: String },
 
-    #[error("Failed to update settings for '{index}': {source}")]
-    Settings { index: String, source: String },
+    #[error("Failed to update settings for '{index}': {detail}")]
+    Settings { index: String, detail: String },
 
-    #[error("Task failed for index '{index}': {source}")]
-    TaskFailed { index: String, source: String },
+    #[error("Task wait failed for index '{index}': {detail}")]
+    TaskFailed { index: String, detail: String },
 
-    #[error("Failed to clear index '{index}': {source}")]
-    Clear { index: String, source: String },
+    #[error("Failed to clear index '{index}': {detail}")]
+    Clear { index: String, detail: String },
 }
 
 impl From<NpcIndexError> for String {
@@ -220,7 +223,7 @@ fn ensure_single_index(
         .index_exists(uid)
         .map_err(|e| NpcIndexError::Check {
             index: uid.to_string(),
-            source: e.to_string(),
+            detail: e.to_string(),
         })?;
 
     if !exists {
@@ -229,13 +232,13 @@ fn ensure_single_index(
             .create_index(uid, Some("id".to_string()))
             .map_err(|e| NpcIndexError::Create {
                 index: uid.to_string(),
-                source: e.to_string(),
+                detail: e.to_string(),
             })?;
         meili
             .wait_for_task(task.uid, Some(INDEX_TIMEOUT))
             .map_err(|e| NpcIndexError::TaskFailed {
                 index: uid.to_string(),
-                source: e.to_string(),
+                detail: e.to_string(),
             })?;
     }
 
@@ -243,13 +246,13 @@ fn ensure_single_index(
         .update_settings(uid, settings)
         .map_err(|e| NpcIndexError::Settings {
             index: uid.to_string(),
-            source: e.to_string(),
+            detail: e.to_string(),
         })?;
     meili
         .wait_for_task(task.uid, Some(INDEX_TIMEOUT))
         .map_err(|e| NpcIndexError::TaskFailed {
             index: uid.to_string(),
-            source: e.to_string(),
+            detail: e.to_string(),
         })?;
 
     log::debug!("Configured index '{}'", uid);
@@ -291,18 +294,24 @@ pub struct NpcIndexStats {
     pub name_component_count: u64,
     /// Number of exclamation templates indexed
     pub exclamation_template_count: u64,
-    /// List of cultures with indexed data
+    /// List of cultures with indexed data.
+    // TODO: Populate via faceted search once culture facets are configured.
     pub indexed_cultures: Vec<String>,
 }
 
 /// Get statistics about NPC generation indexes.
 ///
-/// Returns zero counts for indexes that don't exist or are inaccessible,
-/// so this function always succeeds. Use `ensure_npc_indexes()` first if
-/// you need to guarantee the indexes exist.
+/// Returns zero counts for indexes that don't exist or are inaccessible;
+/// errors from individual index lookups are logged and treated as missing
+/// data. Use `ensure_npc_indexes()` first if you need to guarantee the
+/// indexes exist.
+///
+/// Although this function currently always returns `Ok(NpcIndexStats)`,
+/// it is exposed as `Result` so that future implementations can surface
+/// hard Meilisearch failures. Callers should be prepared to handle errors.
 ///
 /// # Arguments
-/// * `meili` - Embedded MeilisearchLib instance
+/// * `meili` - Embedded Meilisearch instance
 pub fn get_npc_index_stats(meili: &MeilisearchLib) -> Result<NpcIndexStats, NpcIndexError> {
     let mut stats = NpcIndexStats::default();
 
@@ -363,10 +372,12 @@ pub fn clear_npc_indexes(meili: &MeilisearchLib) -> Result<(), NpcIndexError> {
         INDEX_NAME_COMPONENTS,
         INDEX_EXCLAMATION_TEMPLATES,
     ] {
+        log::info!("Clearing index '{}'...", index_name);
+
         // Only clear if the index exists
         let exists = meili.index_exists(index_name).map_err(|e| NpcIndexError::Check {
             index: index_name.to_string(),
-            source: e.to_string(),
+            detail: e.to_string(),
         })?;
 
         if exists {
@@ -374,17 +385,19 @@ pub fn clear_npc_indexes(meili: &MeilisearchLib) -> Result<(), NpcIndexError> {
                 .delete_all_documents(index_name)
                 .map_err(|e| NpcIndexError::Clear {
                     index: index_name.to_string(),
-                    source: e.to_string(),
+                    detail: e.to_string(),
                 })?;
 
             meili
                 .wait_for_task(task.uid, Some(INDEX_TIMEOUT))
                 .map_err(|e| NpcIndexError::TaskFailed {
                     index: index_name.to_string(),
-                    source: e.to_string(),
+                    detail: e.to_string(),
                 })?;
 
-            log::info!("Cleared index '{}'", index_name);
+            log::info!("Cleared index '{}' successfully", index_name);
+        } else {
+            log::debug!("Index '{}' doesn't exist, skipping", index_name);
         }
     }
 
