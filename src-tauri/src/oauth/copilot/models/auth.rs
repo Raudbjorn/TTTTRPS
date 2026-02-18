@@ -54,34 +54,46 @@ pub struct GitHubTokenResponse {
 // =============================================================================
 
 /// Response from the Copilot token exchange endpoint.
+///
+/// # Serde format
+///
+/// The GitHub Copilot API returns snake_case JSON (e.g. `expires_at`, not
+/// `expiresAt`).  We therefore use `rename_all = "snake_case"` here so the
+/// field names align directly with the wire format.  **Do not change this to
+/// `camelCase`** — that requires maintaining fragile per-field `alias`
+/// attributes and has caused multiple regressions.
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub struct CopilotTokenResponse {
     /// The Copilot API token.
     pub token: String,
 
     /// Unix timestamp when the token expires.
-    #[serde(alias = "expires_at")]
+    ///
+    /// **Regression guard**: This field is intentionally required (no `#[serde(default)]`).
+    /// If `rename_all` is ever changed back to `camelCase`, deserialization of the
+    /// snake_case wire format will fail here, caught by
+    /// `test_copilot_token_response_rejects_camel_case_expires_at`.
     pub expires_at: i64,
 
     /// Recommended refresh interval in seconds.
-    #[serde(default, alias = "refresh_in")]
+    #[serde(default)]
     pub refresh_in: u64,
 
     /// Additional token annotations (e.g., SKU info).
-    #[serde(default, alias = "annotations_enabled")]
+    #[serde(default)]
     pub annotations_enabled: bool,
 
     /// Chat-enabled flag.
-    #[serde(default, alias = "chat_enabled")]
+    #[serde(default)]
     pub chat_enabled: bool,
 
     /// Organization ID if using org-level access.
-    #[serde(default, alias = "organization_id")]
+    #[serde(default)]
     pub organization_id: Option<String>,
 
     /// Enterprise ID if using enterprise-level access.
-    #[serde(default, alias = "enterprise_id")]
+    #[serde(default)]
     pub enterprise_id: Option<String>,
 
     /// SKU (product tier).
@@ -93,7 +105,7 @@ pub struct CopilotTokenResponse {
     pub telemetry: Option<String>,
 
     /// Tracking ID for this token issuance.
-    #[serde(default, alias = "tracking_id")]
+    #[serde(default)]
     pub tracking_id: Option<String>,
 }
 
@@ -271,6 +283,7 @@ mod tests {
 
     #[test]
     fn test_copilot_token_response_deserialize() {
+        // GitHub Copilot API returns snake_case JSON — this is the canonical format.
         let json = r#"{
             "token": "tid=test;exp=12345;sku=pro;st=dotcom;ssc=1",
             "expires_at": 1700000000,
@@ -299,6 +312,61 @@ mod tests {
         assert_eq!(response.refresh_in, 0);
         assert!(!response.chat_enabled);
         assert!(response.sku.is_none());
+    }
+
+    /// Regression test: ensure all multi-word fields are accepted in snake_case.
+    ///
+    /// This test documents the exact wire format returned by the GitHub Copilot
+    /// API.  If this test fails after a struct change, the serde renaming is
+    /// wrong and will break the authentication flow at runtime.
+    #[test]
+    fn test_copilot_token_response_all_snake_case_fields() {
+        let json = r#"{
+            "token": "tid=test;exp=12345",
+            "expires_at": 1700000000,
+            "refresh_in": 1500,
+            "annotations_enabled": true,
+            "chat_enabled": true,
+            "organization_id": "org-123",
+            "enterprise_id": "ent-456",
+            "sku": "copilot_for_business",
+            "telemetry": "telemetry-id",
+            "tracking_id": "tracking-xyz"
+        }"#;
+
+        let response: CopilotTokenResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(response.expires_at, 1700000000);
+        assert_eq!(response.refresh_in, 1500);
+        assert!(response.annotations_enabled);
+        assert!(response.chat_enabled);
+        assert_eq!(response.organization_id.as_deref(), Some("org-123"));
+        assert_eq!(response.enterprise_id.as_deref(), Some("ent-456"));
+        assert_eq!(response.tracking_id.as_deref(), Some("tracking-xyz"));
+    }
+
+    /// Regression guard: camelCase keys must NOT silently succeed.
+    ///
+    /// The Copilot API uses snake_case.  If camelCase deserialization somehow
+    /// passed, it would mean `rename_all` was changed back to `camelCase` (which
+    /// broke auth in previous incidents).  `expires_at` has no default, so a
+    /// camelCase-only payload must fail to parse.
+    #[test]
+    fn test_copilot_token_response_rejects_camel_case_expires_at() {
+        // API never sends camelCase; if rename_all were set back to camelCase
+        // this snake_case payload would fail on `expires_at` (no default).
+        // Conversely, a camelCase-only payload should fail with snake_case rename.
+        let camel_only = r#"{
+            "token": "tid=test",
+            "expiresAt": 1700000000
+        }"#;
+
+        // With rename_all = "snake_case", "expiresAt" is an unknown field and
+        // "expires_at" is missing → deserialization must fail.
+        let result: Result<CopilotTokenResponse, _> = serde_json::from_str(camel_only);
+        assert!(
+            result.is_err(),
+            "camelCase `expiresAt` must not be accepted; the API uses snake_case"
+        );
     }
 
     #[test]

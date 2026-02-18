@@ -14,7 +14,7 @@ mod tests {
 
     /// Test helper to create a test client
     fn test_client() -> SearchClient {
-        SearchClient::new(TEST_HOST, Some(TEST_KEY)).expect("Failed to create SearchClient")
+        SearchClient::new(TEST_HOST, Some(TEST_KEY))
     }
 
     /// Helper to create a test document
