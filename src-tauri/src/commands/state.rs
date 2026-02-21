@@ -29,6 +29,7 @@ use crate::core::archetype::{ArchetypeRegistry, VocabularyBankManager, SettingPa
 use crate::core::preprocess::{QueryPipeline, PreprocessConfig, DictionaryRebuildService};
 use crate::core::storage::SurrealStorage;
 use crate::database::Database;
+use meilisearch_lib::MeilisearchLib;
 
 // Re-export OAuth state types
 pub use super::oauth::{
@@ -95,8 +96,11 @@ impl AppState {
     /// initialization and must be done in main.rs. This function is kept for backward
     /// compatibility but the embedded_search field must be passed separately when
     /// constructing AppState.
+    ///
+    /// # Arguments
+    /// * `meili` - Shared embedded MeilisearchLib instance for personality index operations
     #[allow(clippy::type_complexity)]
-    pub fn init_defaults() -> (
+    pub fn init_defaults(meili: Arc<MeilisearchLib>) -> (
         CampaignManager,
         SessionManager,
         NPCStore,
@@ -156,20 +160,8 @@ impl AppState {
         };
 
         // Personality Extension components
-        // TODO: PersonalityIndexManager needs to be updated to work with EmbeddedSearch.
-        // Currently using placeholder values. Once EmbeddedSearch exposes an HTTP endpoint
-        // or we refactor PersonalityIndexManager to use the embedded client directly,
-        // this should be updated. For now, these stores will not have search capabilities
-        // until the embedded_search is properly integrated.
-        //
-        // Options for future integration:
-        // 1. Pass EmbeddedSearch to PersonalityIndexManager and use its internal client
-        // 2. If MeilisearchLib exposes an HTTP server, use that URL
-        // 3. Refactor PersonalityIndexManager to accept Arc<MeilisearchLib> directly
-        let personality_index_manager = Arc::new(PersonalityIndexManager::new(
-            "http://placeholder:7700", // Placeholder - will be updated when EmbeddedSearch integration is complete
-            None,
-        ));
+        // Uses embedded MeilisearchLib directly (no HTTP server required)
+        let personality_index_manager = Arc::new(PersonalityIndexManager::new(meili));
 
         let template_store = Arc::new(SettingTemplateStore::from_manager(
             personality_index_manager.clone()

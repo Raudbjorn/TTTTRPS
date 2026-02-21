@@ -179,9 +179,11 @@ impl IndexConfig for PlotPointsIndexConfig {
 // All Index Configurations
 // ============================================================================
 
-/// Get all campaign generation index names
+/// Get all campaign generation index names.
+///
+/// Derived from [`get_index_configs`] to keep the single source of truth.
 pub fn all_campaign_indexes() -> Vec<&'static str> {
-    vec![INDEX_CAMPAIGN_ARCS, INDEX_SESSION_PLANS, INDEX_PLOT_POINTS]
+    get_index_configs().iter().map(|c| c.name).collect()
 }
 
 /// Index initialization configuration

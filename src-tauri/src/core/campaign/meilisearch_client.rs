@@ -10,7 +10,6 @@ use meilisearch_sdk::search::SearchResults;
 use serde::{de::DeserializeOwned, Serialize};
 use std::time::Duration;
 use thiserror::Error;
-use tokio::sync::Mutex;
 
 use super::meilisearch_indexes::{
     get_index_configs, INDEX_CAMPAIGN_ARCS, INDEX_PLOT_POINTS, INDEX_SESSION_PLANS,
@@ -101,8 +100,6 @@ pub struct MeilisearchCampaignClient {
     host: String,
     #[allow(dead_code)]
     api_key: Option<String>,
-    /// Lock for ensuring single-writer semantics on critical operations
-    _write_lock: Mutex<()>,
 }
 
 impl MeilisearchCampaignClient {
@@ -115,7 +112,6 @@ impl MeilisearchCampaignClient {
             client,
             host: host.to_string(),
             api_key: api_key.map(|s| s.to_string()),
-            _write_lock: Mutex::new(()),
         })
     }
 
@@ -248,7 +244,9 @@ impl MeilisearchCampaignClient {
     // Generic CRUD Operations with Retry
     // ========================================================================
 
-    /// Add or update a single document with retry
+    /// Add or update a single document with retry.
+    ///
+    /// All campaign indexes use `"id"` as primary key (see [`IndexConfig::primary_key`]).
     pub async fn upsert_document<T: Serialize + Send + Sync>(
         &self,
         index_name: &str,
@@ -452,7 +450,11 @@ impl MeilisearchCampaignClient {
             .await
     }
 
-    /// Count documents matching a filter
+    /// Count documents matching a filter.
+    ///
+    /// Uses `limit(0)` to return zero hits while still populating
+    /// `estimated_total_hits`, which gives the matching document count
+    /// without transferring document bodies.
     pub async fn count(&self, index_name: &str, filter: Option<&str>) -> Result<usize> {
         let index = self.client.index(index_name);
 
@@ -465,7 +467,6 @@ impl MeilisearchCampaignClient {
 
         let results: SearchResults<serde_json::Value> = search.execute().await?;
 
-        // estimated_total_hits gives us the count
         Ok(results.estimated_total_hits.unwrap_or(0))
     }
 

@@ -41,21 +41,6 @@ fn main() {
                 });
             }
 
-            // Initialize managers
-            let (
-                cm, sm, ns, creds, vm,
-                personality_store, personality_manager, pipeline,
-                _llm_router, version_manager, world_state_manager,
-                relationship_manager, location_manager, llm_manager,
-                claude, gemini, copilot, setting_pack_loader,
-                // Phase 4: Personality Extensions
-                template_store, blend_rule_store, personality_blender, contextual_personality_manager,
-                // Query Preprocessing Pipeline (typo correction + synonyms)
-                query_pipeline,
-                // Dictionary rebuild service for post-ingestion dictionary regeneration
-                dictionary_rebuild_service
-            ) = commands::AppState::init_defaults();
-
             // Initialize Database
             let app_handle = app.handle();
             let app_dir = app_handle.path().app_data_dir().unwrap_or(std::path::PathBuf::from("."));
@@ -72,13 +57,28 @@ fn main() {
             });
             log::info!("Database initialized at {:?}", database.path());
 
-            // Initialize Embedded Meilisearch
+            // Initialize embedded Meilisearch (must be before init_defaults for personality indexes)
             let meili_db_path = app_dir.join("meilisearch");
             let embedded_search = std::sync::Arc::new(
                 ttrpg_assistant::core::search::EmbeddedSearch::new(meili_db_path)
                     .expect("Failed to initialize embedded Meilisearch")
             );
             log::info!("Embedded Meilisearch initialized");
+
+            // Initialize managers (personality indexes use embedded Meilisearch directly)
+            let (
+                cm, sm, ns, creds, vm,
+                personality_store, personality_manager, pipeline,
+                _llm_router, version_manager, world_state_manager,
+                relationship_manager, location_manager, llm_manager,
+                claude, gemini, copilot, setting_pack_loader,
+                // Phase 4: Personality Extensions
+                template_store, blend_rule_store, personality_blender, contextual_personality_manager,
+                // Query Preprocessing Pipeline (typo correction + synonyms)
+                query_pipeline,
+                // Dictionary rebuild service for post-ingestion dictionary regeneration
+                dictionary_rebuild_service
+            ) = commands::AppState::init_defaults(embedded_search.clone_inner());
 
             // Load persisted voice config or use default
             let voice_manager = if let Some(voice_config) = commands::load_voice_config_disk(app.handle()) {
@@ -116,9 +116,9 @@ fn main() {
                 claude,
                 gemini,
                 copilot,
-                // Archetype Registry fields - TODO: Refactor to use embedded MeilisearchLib directly
+                // Archetype Registry fields - TODO: Refactor to use embedded Meilisearch directly
                 // The archetype registry used the meilisearch-sdk HTTP client which is incompatible
-                // with embedded MeilisearchLib. Needs refactoring to use the Rust API directly.
+                // with embedded Meilisearch. Needs refactoring to use the Rust API directly.
                 archetype_registry: tokio::sync::RwLock::new(None),
                 vocabulary_manager: tokio::sync::RwLock::new(None),
                 setting_pack_loader,
@@ -135,17 +135,17 @@ fn main() {
                 dictionary_rebuild_service,
             });
 
-            // TODO: Initialize Archetype Registry using embedded MeilisearchLib
+            // TODO: Initialize Archetype Registry using embedded Meilisearch
             // The archetype registry currently depends on meilisearch-sdk's HTTP client.
-            // This needs to be refactored to use the embedded MeilisearchLib Rust API directly.
+            // This needs to be refactored to use the embedded Meilisearch Rust API directly.
             // For now, archetype_registry and vocabulary_manager remain None in AppState.
             // See: planning/meilisearch-lib-integration/ for migration details.
-            log::info!("Archetype registry initialization deferred - pending embedded MeilisearchLib integration");
+            log::info!("Archetype registry initialization deferred - pending embedded Meilisearch integration");
 
 
-            // TODO: Initialize Meilisearch Chat Client using embedded MeilisearchLib
+            // TODO: Initialize Meilisearch Chat Client using embedded Meilisearch
             // The chat client previously used HTTP endpoints from the sidecar process.
-            // With embedded MeilisearchLib, we need to refactor LLMManager to work with
+            // With embedded Meilisearch, we need to refactor LLMManager to work with
             // the in-process Rust API instead of HTTP requests.
             // For now, chat-specific Meilisearch features are disabled.
             log::info!("Meilisearch chat client initialization deferred - pending embedded integration");
