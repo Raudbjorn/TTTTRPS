@@ -29,7 +29,7 @@ mod combat;
 mod documents;
 mod locations;
 mod npcs;
-pub mod quick_reference;
+mod quick_reference;
 mod relationships;
 mod search_analytics;
 mod sessions;

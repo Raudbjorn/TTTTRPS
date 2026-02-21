@@ -118,7 +118,7 @@ impl TtrpgOps for Database {
     }
 
     async fn search_ttrpg_documents_by_name(&self, name_pattern: &str) -> Result<Vec<TTRPGDocumentRecord>, sqlx::Error> {
-        // Escape LIKE metacharacters: backslash first, then % and _
+        // Escape LIKE wildcards to treat user input literally
         let escaped = name_pattern
             .replace('\\', "\\\\")
             .replace('%', "\\%")

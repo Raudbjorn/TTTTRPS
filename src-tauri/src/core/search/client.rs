@@ -33,12 +33,12 @@ pub struct SearchClient {
 }
 
 impl SearchClient {
-    pub fn new(host: &str, api_key: Option<&str>) -> Result<Self> {
-        Ok(Self {
-            client: Client::new(host, api_key)?,
+    pub fn new(host: &str, api_key: Option<&str>) -> Self {
+        Self {
+            client: Client::new(host, api_key).expect("Failed to create Meilisearch client"),
             host: host.to_string(),
             api_key: api_key.map(|s| s.to_string()),
-        })
+        }
     }
 
     pub fn host(&self) -> &str {
@@ -308,23 +308,20 @@ impl SearchClient {
         Ok(configured)
     }
 
-    /// Configure Copilot REST embedder on all content indexes
+    /// Configure Copilot embeddings on all content indexes
     ///
-    /// This sets up AI-powered semantic search using GitHub Copilot's embedding API.
-    /// The embedder is named "copilot" and uses direct API access.
-    ///
-    /// **Note:** Copilot API tokens are short-lived (~30 minutes). If the token expires,
-    /// you will need to call this method again to refresh the configuration.
+    /// This configures Meilisearch to use GitHub Copilot for AI-powered semantic search.
+    /// The embedder is configured as a REST source calling the Copilot API directly.
     pub async fn setup_copilot_embeddings(
         &self,
         model: &str,
         dimensions: u32,
         api_key: &str,
     ) -> Result<Vec<String>> {
-        let config = EmbedderConfig::CopilotRest {
+        let config = EmbedderConfig::Copilot {
+            api_key: api_key.to_string(),
             model: model.to_string(),
             dimensions,
-            api_key: api_key.to_string(),
         };
 
         let mut configured = Vec::new();
@@ -334,26 +331,21 @@ impl SearchClient {
             match self.configure_embedder(index_name, "copilot", &config).await {
                 Ok(_) => {
                     log::info!(
-                        "Configured Copilot embedder on index '{}' with model '{}' ({} dimensions)",
+                        "Configured Copilot embedder on index '{}' with model '{}'",
                         index_name,
-                        model,
-                        dimensions
+                        model
                     );
                     configured.push(index_name.to_string());
                 }
                 Err(e) => {
-                    log::warn!(
-                        "Failed to configure Copilot embedder on '{}': {}",
-                        index_name,
-                        e
-                    );
+                    log::warn!("Failed to configure embedder on '{}': {}", index_name, e);
                 }
             }
         }
 
         if configured.is_empty() {
             return Err(SearchError::ConfigError(
-                "Failed to configure Copilot embedder on any indexes".to_string(),
+                "Failed to configure any indexes".to_string(),
             ));
         }
 

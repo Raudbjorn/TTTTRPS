@@ -112,7 +112,7 @@ pub async fn update_chat_message(
 
     // Update only the fields that are being changed
     message.content = content;
-    message.is_streaming = is_streaming;
+    message.is_streaming = if is_streaming { 1 } else { 0 };
 
     // Only update tokens if provided, otherwise preserve existing
     if let Some((input, output)) = tokens {

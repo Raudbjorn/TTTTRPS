@@ -116,7 +116,7 @@ pub fn RecapViewer(
         let key_events = recap.key_events.clone();
         let on_save = on_save.clone();
 
-        Callback::new(move |_| {
+        move |_| {
             let updated = SessionRecap {
                 id: recap_id.clone(),
                 session_id: session_id.clone(),
@@ -137,7 +137,7 @@ pub fn RecapViewer(
             }
 
             is_editing.set(false);
-        })
+        }
     };
 
     view! {
@@ -184,32 +184,33 @@ pub fn RecapViewer(
                     })}
 
                     // Edit/Save buttons
-                    <Show when=move || editable>
-                        <Show
-                            when=move || is_editing.get()
-                            fallback=move || view! {
+                    {editable.then(|| {
+                        if is_editing.get() {
+                            view! {
+                                <button
+                                    class="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg text-sm transition-colors"
+                                    on:click=move |_| is_editing.set(false)
+                                >
+                                    "Cancel"
+                                </button>
+                                <button
+                                    class="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded-lg text-sm transition-colors"
+                                    on:click=handle_save.clone()
+                                >
+                                    "Save"
+                                </button>
+                            }.into_any()
+                        } else {
+                            view! {
                                 <button
                                     class="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg text-sm transition-colors"
                                     on:click=move |_| is_editing.set(true)
                                 >
                                     "Edit"
                                 </button>
-                            }
-                        >
-                            <button
-                                class="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg text-sm transition-colors"
-                                on:click=move |_| is_editing.set(false)
-                            >
-                                "Cancel"
-                            </button>
-                            <button
-                                class="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded-lg text-sm transition-colors"
-                                on:click=move |ev| handle_save.run(ev)
-                            >
-                                "Save"
-                            </button>
-                        </Show>
-                    </Show>
+                            }.into_any()
+                        }
+                    })}
                 </div>
             </div>
 
@@ -460,10 +461,8 @@ fn BulletsView(
                                             prop:value=bullet
                                             on:input=move |ev| {
                                                 let mut updated_bullets = bullets.get();
-                                                if i < updated_bullets.len() {
-                                                    updated_bullets[i] = event_target_value(&ev);
-                                                    on_change.run(updated_bullets);
-                                                }
+                                                updated_bullets[i] = event_target_value(&ev);
+                                                on_change.run(updated_bullets);
                                             }
                                         />
                                         <button
@@ -625,7 +624,9 @@ fn copy_to_clipboard(text: &str) {
         spawn_local(async move {
             if let Some(window) = web_sys::window() {
                 let clipboard = window.navigator().clipboard();
-                let _ = wasm_bindgen_futures::JsFuture::from(clipboard.write_text(&text)).await;
+                let _ = wasm_bindgen_futures::JsFuture::from(
+                    clipboard.write_text(&text)
+                ).await;
             }
         });
     }

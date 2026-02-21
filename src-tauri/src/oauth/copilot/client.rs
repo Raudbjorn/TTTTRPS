@@ -218,11 +218,20 @@ impl<S: CopilotTokenStorage> CopilotClient<S> {
     }
 
     /// Checks if the client is authenticated.
+    ///
+    /// Returns `false` when no token is stored.  Storage errors are logged as
+    /// warnings rather than silently discarded — previously the `_ => false`
+    /// pattern hid parse failures (e.g. from a serde rename_all mismatch),
+    /// making the auth flow appear to reset after a successful login.
     #[must_use]
     pub async fn is_authenticated(&self) -> bool {
         match self.storage.load().await {
             Ok(Some(token)) => token.has_github_token(),
-            _ => false,
+            Ok(None) => false,
+            Err(e) => {
+                warn!(error = %e, "Failed to load token from storage during is_authenticated check");
+                false
+            }
         }
     }
 

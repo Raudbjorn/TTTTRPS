@@ -1,6 +1,6 @@
 //! Copilot OAuth State and Commands
 //!
-//! Handles OAuth for the Copilot Gate provider (GitHub Copilot using Device Code Flow).
+//! Handles OAuth for the Copilot provider (GitHub Copilot using Device Code Flow).
 //! Provides type-erased storage backend support and runtime backend switching.
 
 use serde::{Deserialize, Serialize};
@@ -10,7 +10,7 @@ use tokio::sync::RwLock as AsyncRwLock;
 // Copilot OAuth client - for Device Code flow
 use crate::oauth::copilot::{
     CopilotClient, DeviceFlowPending, GateStorageAdapter as CopilotStorageAdapter,
-    ModelInfo as ApiModelInfo, ModelsResponse as CopilotModelsResponse,
+    ModelInfo as CopilotModelInfo, ModelsResponse as CopilotModelsResponse,
     PollResult as CopilotPollResult, QuotaInfo as CopilotQuotaInfo,
     UsageResponse as CopilotUsageResponse,
     storage::CopilotTokenStorage,
@@ -30,7 +30,7 @@ use crate::commands::AppState;
 #[serde(rename_all = "lowercase")]
 #[derive(Default)]
 pub enum CopilotStorageBackend {
-    /// File-based storage (~/.local/share/ttrpg-assistant/oauth-tokens.json)
+    /// File-based storage (~/.config/gate/copilot/auth.json)
     File,
     /// System keyring storage (not yet implemented for Copilot)
     Keyring,
@@ -67,10 +67,10 @@ impl std::str::FromStr for CopilotStorageBackend {
 }
 
 // ============================================================================
-// Copilot Gate Client Trait (for type-erased storage backend support)
+// Copilot Client Trait (for type-erased storage backend support)
 // ============================================================================
 
-/// Trait for Copilot Gate client operations, allowing type-erased storage backends.
+/// Trait for Copilot client operations, allowing type-erased storage backends.
 #[async_trait::async_trait]
 trait CopilotClientOps: Send + Sync {
     async fn is_authenticated(&self) -> Result<bool, String>;
@@ -180,10 +180,10 @@ impl CopilotClientOps for CopilotFileStorageClientWrapper {
 }
 
 // ============================================================================
-// Copilot Gate State
+// Copilot State
 // ============================================================================
 
-/// Type-erased Copilot Gate client wrapper.
+/// Type-erased Copilot client wrapper.
 /// This allows storing the client in AppState regardless of storage backend.
 pub struct CopilotState {
     /// The active client (type-erased)
@@ -195,35 +195,23 @@ pub struct CopilotState {
 }
 
 impl CopilotState {
-    /// Check if file storage has a copilot token (synchronous check).
-    /// Used by Auto backend selection to prefer file when tokens exist there.
-    /// Checks both the new unified path and legacy path for migration support.
-    fn file_storage_has_copilot_token() -> bool {
-        // Check unified path: ~/.local/share/ttrpg-assistant/oauth-tokens.json
-        if let Some(app_path) = GateFileTokenStorage::app_token_path() {
-            if app_path.exists() {
-                if let Ok(content) = std::fs::read_to_string(&app_path) {
-                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                        if json.get("copilot").is_some() {
-                            log::debug!("Copilot: Found existing token in app data storage");
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
-
-        false
-    }
-
     /// Create a client for the specified backend
     fn create_client(
         backend: CopilotStorageBackend,
     ) -> Result<Box<dyn CopilotClientOps>, String> {
         match backend {
-            CopilotStorageBackend::File => {
-                // Use unified app data path: ~/.local/share/ttrpg-assistant/oauth-tokens.json
-                let file_storage = GateFileTokenStorage::app_data_path()
+            CopilotStorageBackend::File | CopilotStorageBackend::Auto => {
+                // Create file-based storage for Copilot tokens
+                let storage_path = dirs::config_dir()
+                    .ok_or("Could not determine config directory")?
+                    .join("gate")
+                    .join("copilot");
+
+                // Ensure the directory exists
+                std::fs::create_dir_all(&storage_path)
+                    .map_err(|e| format!("Failed to create storage directory: {}", e))?;
+
+                let file_storage = GateFileTokenStorage::new(storage_path.join("auth.json"))
                     .map_err(|e| format!("Failed to create file storage: {}", e))?;
                 let adapter = CopilotStorageAdapter::new(file_storage);
 
@@ -236,24 +224,10 @@ impl CopilotState {
             }
             CopilotStorageBackend::Keyring => {
                 // Keyring support for Copilot is not yet implemented
-                // Return an error so the frontend can show a message
-                Err("Keyring storage for Copilot is not yet implemented. Please use File storage or Auto.".to_string())
-            }
-            CopilotStorageBackend::Auto => {
-                // Smart Auto: Check for existing tokens before selecting backend
-                // Currently keyring is not implemented, so this mainly future-proofs
-                // the code for when keyring support is added
-
-                let file_has_tokens = Self::file_storage_has_copilot_token();
-
-                if file_has_tokens {
-                    log::info!("Copilot: Auto-selected file storage (has existing tokens)");
-                    return Self::create_client(CopilotStorageBackend::File);
-                }
-
-                // TODO: When keyring is implemented, add keyring check here
-                // For now, default to file storage
-                log::info!("Copilot: Using file storage backend (default)");
+                // Fall back to file storage
+                log::warn!(
+                    "Keyring storage for Copilot is not yet implemented, using file storage"
+                );
                 Self::create_client(CopilotStorageBackend::File)
             }
         }
@@ -279,7 +253,7 @@ impl CopilotState {
         let client = self.client.read().await;
         let client = client
             .as_ref()
-            .ok_or("Copilot Gate client not initialized")?;
+            .ok_or("Copilot client not initialized")?;
         client.is_authenticated().await
     }
 
@@ -290,7 +264,7 @@ impl CopilotState {
         let client = self.client.read().await;
         let client = client
             .as_ref()
-            .ok_or("Copilot Gate client not initialized")?;
+            .ok_or("Copilot client not initialized")?;
         client.get_token_info().await
     }
 
@@ -299,7 +273,7 @@ impl CopilotState {
         let client = self.client.read().await;
         let client = client
             .as_ref()
-            .ok_or("Copilot Gate client not initialized")?;
+            .ok_or("Copilot client not initialized")?;
         let pending = client.start_device_flow().await?;
 
         // Store pending state for later polling
@@ -323,7 +297,7 @@ impl CopilotState {
         let client = self.client.read().await;
         let client = client
             .as_ref()
-            .ok_or("Copilot Gate client not initialized")?;
+            .ok_or("Copilot client not initialized")?;
         client.poll_for_token(pending).await
     }
 
@@ -332,7 +306,7 @@ impl CopilotState {
         let client = self.client.read().await;
         let client = client
             .as_ref()
-            .ok_or("Copilot Gate client not initialized")?;
+            .ok_or("Copilot client not initialized")?;
         client.complete_auth(github_token).await?;
 
         // Clear pending state
@@ -346,7 +320,7 @@ impl CopilotState {
         let client = self.client.read().await;
         let client = client
             .as_ref()
-            .ok_or("Copilot Gate client not initialized")?;
+            .ok_or("Copilot client not initialized")?;
         client.sign_out().await?;
 
         // Clear pending state
@@ -360,7 +334,7 @@ impl CopilotState {
         let client = self.client.read().await;
         let client = client
             .as_ref()
-            .ok_or("Copilot Gate client not initialized")?;
+            .ok_or("Copilot client not initialized")?;
         client.get_models().await
     }
 
@@ -369,7 +343,7 @@ impl CopilotState {
         let client = self.client.read().await;
         let client = client
             .as_ref()
-            .ok_or("Copilot Gate client not initialized")?;
+            .ok_or("Copilot client not initialized")?;
         client.get_usage().await
     }
 
@@ -383,7 +357,7 @@ impl CopilotState {
         let client = self.client.read().await;
         let client = client
             .as_ref()
-            .ok_or("Copilot Gate client not initialized")?;
+            .ok_or("Copilot client not initialized")?;
         client.get_embeddings(model, input, dimensions).await
     }
 
@@ -399,7 +373,7 @@ impl CopilotState {
         let client = self.client.read().await;
         let client = client
             .as_ref()
-            .ok_or("Copilot Gate client not initialized")?;
+            .ok_or("Copilot client not initialized")?;
         client.ensure_valid_token().await
     }
 
@@ -438,7 +412,7 @@ impl CopilotState {
         }
 
         log::info!(
-            "Switched Copilot Gate storage backend to: {}",
+            "Switched Copilot storage backend to: {}",
             backend_name
         );
         Ok(backend_name.to_string())
@@ -508,7 +482,6 @@ pub struct CopilotAuthStatus {
 
 /// Response for copilot_set_storage_backend command
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct CopilotSetStorageResponse {
     /// Whether the storage backend was changed successfully
     pub success: bool,
@@ -584,8 +557,8 @@ pub struct CopilotModelInfo {
     pub preview: bool,
 }
 
-impl From<ApiModelInfo> for CopilotModelInfo {
-    fn from(model: ApiModelInfo) -> Self {
+impl From<CopilotModelInfo> for CopilotModelInfo {
+    fn from(model: CopilotModelInfo) -> Self {
         let (supports_chat, supports_tools, supports_vision, max_context, max_output) =
             if let Some(caps) = &model.capabilities {
                 let supports = caps.supports.as_ref();
@@ -666,7 +639,7 @@ pub async fn poll_copilot_auth(
         Err(e) => {
             let error_msg = e.to_string();
             // TODO: Refactor to propagate structured copilot::error::Error through the trait
-            // instead of string matching. This would involve changing CopilotGateClientOps
+            // instead of string matching. This would involve changing CopilotClientOps
             // to return CopilotResult<T> and matching on Error variants directly.
             // Match against specific error messages from copilot::error::Error variants:
             // - DeviceCodeExpired: "Device code expired - please try again"

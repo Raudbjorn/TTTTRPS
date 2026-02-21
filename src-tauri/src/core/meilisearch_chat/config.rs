@@ -326,12 +326,11 @@ impl ChatProviderConfig {
         let provider = self.provider_id();
 
         match self {
-            // API key-based Claude with dynamic model selection
+            // Providers with dynamic model selection
             Self::Claude { model, .. } => {
                 let m = model.clone().unwrap_or_else(|| model_selector().select_model_sync());
                 format!("claude:{}", m)
             }
-            // OAuth-based Claude
             Self::ClaudeOAuth { model, .. } => format!("claude:{}", model),
             Self::Gemini { model, .. } => format!("gemini:{}", model),
             Self::Copilot { model, .. } => format!("copilot:{}", model),
@@ -415,12 +414,12 @@ impl ChatProviderConfig {
 
             // All other providers route through the proxy
             Self::Claude { .. }
-            | Self::ClaudeOAuth { .. }
             | Self::OpenRouter { .. }
             | Self::Groq { .. }
             | Self::Together { .. }
             | Self::Cohere { .. }
             | Self::DeepSeek { .. }
+            | Self::ClaudeOAuth { .. }
             | Self::Gemini { .. }
             | Self::Copilot { .. } => ChatWorkspaceSettings::via_proxy(proxy_url),
         }
@@ -500,7 +499,7 @@ impl ChatProviderConfig {
                 base_url: Some(GROK_API_BASE_URL.to_string()),
             },
 
-            // OAuth-based providers (no API key, use gate services)
+            // OAuth-based providers (no API key, use OAuth services)
             Self::ClaudeOAuth { model, max_tokens } => ProviderConfig::Claude {
                 storage_backend: "auto".to_string(),
                 model: model.clone(),

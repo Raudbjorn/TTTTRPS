@@ -64,7 +64,7 @@ pub struct AppState {
     pub location_manager: crate::core::location_manager::LocationManager,
     // Document extraction settings
     pub extraction_settings: AsyncRwLock<crate::ingestion::ExtractionSettings>,
-    // OAuth Gate clients
+    // OAuth clients
     pub claude: Arc<ClaudeState>,
     pub gemini: Arc<GeminiState>,
     pub copilot: Arc<CopilotState>,
@@ -149,13 +149,13 @@ impl AppState {
             }
         };
 
-        // Initialize Copilot Gate client
+        // Initialize Copilot client
         let copilot = match CopilotState::with_defaults() {
             Ok(state) => Arc::new(state),
             Err(e) => {
-                log::warn!("Failed to initialize Copilot Gate with default storage: {}. Using file storage.", e);
+                log::warn!("Failed to initialize Copilot with default storage: {}. Using file storage.", e);
                 Arc::new(CopilotState::new(CopilotStorageBackend::File)
-                    .expect("Failed to initialize Copilot Gate with file storage"))
+                    .expect("Failed to initialize Copilot with file storage"))
             }
         };
 

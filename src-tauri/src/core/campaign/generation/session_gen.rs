@@ -350,26 +350,24 @@ impl SessionGenerator {
     }
 
     fn parse_beat(beat: &serde_json::Value) -> Option<SessionBeat> {
-        let encounter = beat.get("encounter")
-            .filter(|e| e.is_object() && !e.as_object().map_or(true, |o| o.is_empty()))
-            .and_then(|e| {
-                Some(EncounterDetails {
-                    encounter_type: match e.get("type").and_then(|v| v.as_str()).unwrap_or("combat") {
-                        "social" => EncounterType::Social,
-                        "exploration" => EncounterType::Exploration,
-                        "puzzle" => EncounterType::Puzzle,
-                        _ => EncounterType::Combat,
-                    },
-                    difficulty: match e.get("difficulty").and_then(|v| v.as_str()).unwrap_or("medium") {
-                        "easy" => EncounterDifficulty::Easy,
-                        "hard" => EncounterDifficulty::Hard,
-                        "deadly" => EncounterDifficulty::Deadly,
-                        _ => EncounterDifficulty::Medium,
-                    },
-                    participants: Self::parse_string_array(e.get("participants")),
-                    environment: e.get("environment").and_then(|v| v.as_str()).map(String::from),
-                })
-            });
+        let encounter = beat.get("encounter").and_then(|e| {
+            Some(EncounterDetails {
+                encounter_type: match e.get("type").and_then(|v| v.as_str()).unwrap_or("combat") {
+                    "social" => EncounterType::Social,
+                    "exploration" => EncounterType::Exploration,
+                    "puzzle" => EncounterType::Puzzle,
+                    _ => EncounterType::Combat,
+                },
+                difficulty: match e.get("difficulty").and_then(|v| v.as_str()).unwrap_or("medium") {
+                    "easy" => EncounterDifficulty::Easy,
+                    "hard" => EncounterDifficulty::Hard,
+                    "deadly" => EncounterDifficulty::Deadly,
+                    _ => EncounterDifficulty::Medium,
+                },
+                participants: Self::parse_string_array(e.get("participants")),
+                environment: e.get("environment").and_then(|v| v.as_str()).map(String::from),
+            })
+        });
 
         Some(SessionBeat {
             name: beat.get("name").and_then(|v| v.as_str())?.to_string(),

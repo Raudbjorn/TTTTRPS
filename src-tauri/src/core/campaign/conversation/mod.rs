@@ -32,7 +32,7 @@
 //! ```rust,ignore
 //! use crate::core::campaign::conversation::{
 //!     ConversationManager, ConversationThread, ConversationMessage,
-//!     ConversationPurpose, ConversationRole, MessagePagination, ThreadListOptions,
+//!     ConversationPurpose, MessagePagination, ThreadListOptions,
 //! };
 //!
 //! // Create a manager

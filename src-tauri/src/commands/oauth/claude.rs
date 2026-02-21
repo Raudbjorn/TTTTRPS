@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 use tokio::sync::RwLock as AsyncRwLock;
 
-// Unified Gate OAuth types
+// Unified OAuth types
 use crate::oauth::{OAuthFlowState as GateOAuthFlowState, TokenInfo as GateTokenInfo};
 
 // Claude OAuth client
@@ -511,11 +511,11 @@ pub async fn claude_get_status(
     let storage_backend = state.claude.storage_backend_name().await;
 
     let token_expires_at = if authenticated {
-        state
+        let token_info: Option<GateTokenInfo> = state
             .claude
             .get_token_info()
-            .await?
-            .map(|t| t.expires_at)
+            .await?;
+        token_info.map(|t| t.expires_at)
     } else {
         None
     };
@@ -589,11 +589,12 @@ pub async fn claude_complete_oauth(
         final_state.is_some()
     );
 
-    match state
+    let auth_result: Result<GateTokenInfo, String> = state
         .claude
         .complete_oauth_flow(&actual_code, final_state.as_deref())
-        .await
-    {
+        .await;
+
+    match auth_result {
         Ok(_token) => {
             log::info!("Claude OAuth flow completed successfully");
             Ok(ClaudeOAuthCompleteResponse {
@@ -660,7 +661,7 @@ pub async fn claude_list_models(
     }
 
     // Get models from API
-    let models = state.claude.list_models().await?;
+    let models: Vec<crate::oauth::claude::ApiModel> = state.claude.list_models().await?;
 
     // Convert to response format
     let model_infos: Vec<ClaudeModelInfo> = models

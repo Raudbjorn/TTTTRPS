@@ -10,7 +10,7 @@
 //! - Combat event logging
 
 use crate::core::session_manager::{
-    CombatEventType, CombatStatus, Combatant, CombatantType, SessionError, SessionManager,
+    CombatEventType, CombatStatus, CombatantType, SessionError, SessionManager,
 };
 use crate::tests::common::fixtures::{
     create_combatant_with_hp, create_monster, create_test_combatant,

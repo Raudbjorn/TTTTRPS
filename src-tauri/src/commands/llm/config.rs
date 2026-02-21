@@ -130,36 +130,21 @@ pub async fn configure_llm(
             api_key: settings.api_key.clone().ok_or("DeepSeek requires an API key")?,
             model: settings.model,
         },
-        "claude" => {
-            // Use the actual resolved storage backend from ClaudeState
-            // This ensures the LLM provider uses the same backend as the OAuth state
-            let storage_backend = state.claude.storage_backend_name().await;
-            LLMConfig::Claude {
-                storage_backend,
-                model: settings.model,
-                max_tokens: 8192, // Default max tokens
-            }
-        }
-        "gemini" => {
-            // Use the actual resolved storage backend from GeminiState
-            // This ensures the LLM provider uses the same backend as the OAuth state
-            let storage_backend = state.gemini.storage_backend_name().await;
-            LLMConfig::Gemini {
-                storage_backend,
-                model: settings.model,
-                max_tokens: 8192, // Default max tokens
-            }
-        }
-        "copilot" => {
-            // Use the actual resolved storage backend from CopilotState
-            // This ensures the LLM provider uses the same backend as the OAuth state
-            let storage_backend = state.copilot.storage_backend_name().await;
-            LLMConfig::Copilot {
-                storage_backend,
-                model: settings.model,
-                max_tokens: 8192, // Default max tokens
-            }
-        }
+        "claude" => LLMConfig::Claude {
+            storage_backend: "auto".to_string(), // Will use configured backend from AppState
+            model: settings.model,
+            max_tokens: 8192, // Default max tokens
+        },
+        "gemini" => LLMConfig::Gemini {
+            storage_backend: "auto".to_string(), // Will use configured backend from AppState
+            model: settings.model,
+            max_tokens: 8192, // Default max tokens
+        },
+        "copilot" => LLMConfig::Copilot {
+            storage_backend: "auto".to_string(), // Will use configured backend from AppState
+            model: settings.model,
+            max_tokens: 8192, // Default max tokens
+        },
         _ => return Err(format!("Unknown provider: {}", settings.provider)),
     };
 

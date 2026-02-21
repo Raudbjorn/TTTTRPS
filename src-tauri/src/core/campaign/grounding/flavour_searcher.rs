@@ -7,7 +7,6 @@
 
 use crate::core::search::{SearchClient, SearchResult, INDEX_FICTION, INDEX_RULES};
 use crate::database::Citation;
-use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use super::citation_builder::CitationBuilder;
@@ -249,46 +248,6 @@ impl FlavourSearcher {
         Self { search }
     }
 
-    /// Extract keywords from a text query using a simple stop-word filter and frequency analysis.
-    fn extract_keywords(&self, query: &str) -> String {
-        let stop_words: HashSet<&str> = [
-            "the", "and", "a", "of", "in", "to", "is", "it", "with", "for", "on", "as", "by", "at",
-            "an", "be", "this", "that", "from", "which", "are", "about", "who", "whom", "whose",
-            "these", "those", "am", "was", "were", "been", "being", "have", "has", "had", "having",
-            "do", "does", "did", "doing", "but", "if", "or", "because", "until", "while", "against",
-            "between", "into", "through", "during", "before", "after", "above", "below", "up",
-            "down", "out", "off", "over", "under", "again", "further", "then", "once", "here",
-            "there", "when", "where", "why", "how", "all", "any", "both", "each", "few", "more",
-            "most", "other", "some", "such", "no", "nor", "not", "only", "own", "same", "so", "than",
-            "too", "very", "can", "will", "just", "should", "now"
-        ].iter().cloned().collect();
-
-        let words: Vec<String> = query.to_lowercase()
-            .split(|c: char| !c.is_alphanumeric())
-            .filter(|w| !w.is_empty() && !stop_words.contains(w))
-            .map(|w| w.to_string())
-            .collect();
-
-        if words.is_empty() {
-            return query.to_string();
-        }
-
-        // Frequency analysis
-        let mut counts = HashMap::new();
-        for word in &words {
-            *counts.entry(word).or_insert(0) += 1;
-        }
-
-        let mut sorted_words: Vec<_> = counts.into_iter().collect();
-        // Sort by frequency (desc), then alphabetically
-        sorted_words.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-
-        sorted_words.into_iter()
-            .map(|(w, _)| w.clone())
-            .collect::<Vec<_>>()
-            .join(" ")
-    }
-
     /// Search for setting lore.
     ///
     /// # Arguments
@@ -304,8 +263,6 @@ impl FlavourSearcher {
         filters: Option<FlavourFilters>,
         limit: usize,
     ) -> FlavourResult<Vec<LoreResult>> {
-        let limit = limit.max(1);
-        let extracted_query = self.extract_keywords(query);
         let filter_str = filters.as_ref().and_then(|f| f.to_filter_string());
 
         // Search fiction index first (primary source for lore)
@@ -313,7 +270,7 @@ impl FlavourSearcher {
             .search
             .search(
                 INDEX_FICTION,
-                &extracted_query,
+                query,
                 limit,
                 filter_str.as_deref(),
             )
@@ -325,7 +282,7 @@ impl FlavourSearcher {
             .search
             .search(
                 INDEX_RULES,
-                &extracted_query,
+                query,
                 limit / 2,
                 filter_str.as_deref(),
             )
@@ -349,6 +306,10 @@ impl FlavourSearcher {
             .map(|result| self.to_lore_result(result))
             .collect();
 
+        if lore_results.is_empty() {
+            return Err(FlavourSearchError::NoResults(query.to_string()));
+        }
+
         Ok(lore_results)
     }
 
@@ -367,7 +328,6 @@ impl FlavourSearcher {
         filters: Option<FlavourFilters>,
         limit: usize,
     ) -> FlavourResult<Vec<NameResult>> {
-        let limit = limit.max(1);
         // Build query based on name type
         let query = match name_type {
             NameType::Person => "character name person hero",
@@ -417,7 +377,6 @@ impl FlavourSearcher {
         filters: Option<FlavourFilters>,
         limit: usize,
     ) -> FlavourResult<Vec<LocationResult>> {
-        let limit = limit.max(1);
         // Enhance query with location-related terms
         let enhanced_query = format!("{} location region city town", query);
         let filter_str = filters.as_ref().and_then(|f| f.to_filter_string());

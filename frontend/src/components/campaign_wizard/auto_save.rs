@@ -15,7 +15,9 @@ use crate::services::wizard_state::{auto_save_wizard, use_wizard_context, Partia
 /// Auto-save interval in milliseconds
 const AUTO_SAVE_INTERVAL_MS: u64 = 30_000;
 
-// DEBOUNCE_DELAY_MS removed (unused)
+/// Debounce delay for detecting changes (ms)
+#[allow(dead_code)]
+const DEBOUNCE_DELAY_MS: u64 = 2_000;
 
 // ============================================================================
 // Auto-save State
@@ -95,29 +97,22 @@ pub fn use_auto_save() -> (AutoSaveState, Callback<Option<PartialCampaign>>) {
     let has_pending = RwSignal::new(false);
 
     // Flag to control interval execution (set to false on cleanup)
-    // Note: gloo_timers::Interval is not Send+Sync in WASM, so we use .forget() to
-    // keep the interval alive and control execution via this flag. The interval
-    // callback early-returns when the flag is false.
-    let interval_active = RwSignal::new(false);
+    let interval_active = RwSignal::new(true);
 
-    // Setup auto-save interval
+    // Setup auto-save interval with flag-based cleanup
+    // Note: gloo_timers::Interval is not Send+Sync in WASM, so we use a flag
+    // to stop execution rather than dropping the handle in on_cleanup
     Effect::new(move |_| {
         if !state.enabled.get() {
-            interval_active.set(false);
             return;
         }
 
-        // Only create interval once (check prevents multiple intervals on re-runs)
-        if interval_active.get_untracked() {
-            return;
-        }
-
-        // Mark interval as active before creating
+        // Mark interval as active
         interval_active.set(true);
 
         // Check for pending saves periodically
-        gloo_timers::callback::Interval::new(AUTO_SAVE_INTERVAL_MS as u32, move || {
-            // Check if interval should still be active
+        let _handle = gloo_timers::callback::Interval::new(AUTO_SAVE_INTERVAL_MS as u32, move || {
+            // Check if interval should still be active (flag-based cleanup)
             if !interval_active.get_untracked() {
                 return;
             }
@@ -141,8 +136,7 @@ pub fn use_auto_save() -> (AutoSaveState, Callback<Option<PartialCampaign>>) {
 
                             // Update context
                             ctx.auto_save_pending.set(false);
-                            ctx.last_auto_save
-                                .set(Some(chrono::Utc::now().to_rfc3339()));
+                            ctx.last_auto_save.set(Some(chrono::Utc::now().to_rfc3339()));
                         }
                         Err(e) => {
                             state.status.set(AutoSaveStatus::Failed);
@@ -152,10 +146,10 @@ pub fn use_auto_save() -> (AutoSaveState, Callback<Option<PartialCampaign>>) {
                     }
                 });
             }
-        })
-        .forget(); // Keep interval alive; execution controlled by interval_active flag
+        });
 
-        // Effect-level cleanup when effect re-runs
+        // Flag-based cleanup: set interval_active to false when component unmounts
+        // The interval callback checks this flag and early-returns
         on_cleanup(move || {
             interval_active.set(false);
         });
@@ -168,9 +162,6 @@ pub fn use_auto_save() -> (AutoSaveState, Callback<Option<PartialCampaign>>) {
 
             // Perform immediate save on retry
             if let Some(wizard_id) = ctx.wizard_id() {
-                if state.status.get() == AutoSaveStatus::Saving {
-                    return;
-                }
                 let data = pending_data.get();
                 state.status.set(AutoSaveStatus::Saving);
 
@@ -183,8 +174,7 @@ pub fn use_auto_save() -> (AutoSaveState, Callback<Option<PartialCampaign>>) {
                             has_pending.set(false);
                             pending_data.set(None);
                             ctx.auto_save_pending.set(false);
-                            ctx.last_auto_save
-                                .set(Some(chrono::Utc::now().to_rfc3339()));
+                            ctx.last_auto_save.set(Some(chrono::Utc::now().to_rfc3339()));
                         }
                         Err(e) => {
                             state.status.set(AutoSaveStatus::Failed);
@@ -196,7 +186,7 @@ pub fn use_auto_save() -> (AutoSaveState, Callback<Option<PartialCampaign>>) {
         }
     });
 
-    // Cleanup: disable interval execution on component unmount
+    // Cleanup: disable interval on unmount
     on_cleanup(move || {
         interval_active.set(false);
     });

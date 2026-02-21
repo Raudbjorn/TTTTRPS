@@ -407,10 +407,7 @@ impl CharacterGenerator {
                 relationship: Some(rel.relationship_type.clone()),
                 significance: format!("{} - {}", rel.relationship_type, rel.status),
                 recurring: rel.plot_hook_potential,
-                should_create: rel.plot_hook_potential && {
-                    let s = rel.status.to_lowercase();
-                    s != "dead" && s != "deceased"
-                },
+                should_create: rel.plot_hook_potential && rel.status != "dead",
             });
         }
 
