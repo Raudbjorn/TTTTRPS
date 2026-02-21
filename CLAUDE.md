@@ -70,24 +70,24 @@ rustup target add wasm32-unknown-unknown
 | `ingestion/chunker.rs` | Semantic text chunking with TTRPG-aware splitting |
 | `database/` | SQLite with SQLx migrations (legacy, being migrated) |
 
-### Search Architecture (SurrealDB)
+### Search Architecture (SurrealDB – target during migration)
 
-The application uses **embedded SurrealDB** with RocksDB storage - no external process required:
+The **target** search architecture uses embedded SurrealDB with RocksDB storage (no external process required). The codebase is currently migrating from SQLite + Meilisearch/`EmbeddedSearch`, and some core search flows still route through the legacy Meilisearch-backed path while `AppState.surreal_storage` remains optional.
 
 | Module | Purpose |
 |--------|---------|
 | `core/storage/surrealdb.rs` | `SurrealStorage` wrapper with connection pooling |
 | `core/storage/schema.rs` | Database schema (tables, analyzers, indexes) |
-| `core/storage/search.rs` | Hybrid, vector, and fulltext search operations |
-| `core/storage/rag.rs` | RAG context retrieval and formatting |
-| `core/storage/ingestion.rs` | Chunk insertion with embeddings |
-| `core/storage/migration.rs` | Data migration from SQLite + Meilisearch |
-| `commands/search/surrealdb.rs` | SurrealDB Tauri commands |
-| `commands/search/rag_surrealdb.rs` | RAG Tauri commands |
+| `core/storage/search.rs` | SurrealDB-backed hybrid, vector, and fulltext search operations |
+| `core/storage/rag.rs` | RAG context retrieval and formatting (SurrealDB-backed) |
+| `core/storage/ingestion.rs` | Chunk insertion with embeddings (SurrealDB-backed pipeline) |
+| `core/storage/migration.rs` | Data migration from SQLite + Meilisearch to SurrealDB |
+| `commands/search/surrealdb.rs` | SurrealDB Tauri commands (used where SurrealDB is enabled) |
+| `commands/search/rag_surrealdb.rs` | RAG Tauri commands over SurrealDB |
 
-**Key Types:**
-- `SurrealStorage` - Thread-safe wrapper for `Arc<Surreal<Db>>`, accessed via `state.surreal_storage`
-- `HybridSearchConfig` - Configures semantic/keyword weights, limits, score normalization
+**Key Types (SurrealDB path):**
+- `SurrealStorage` - Thread-safe wrapper for `Arc<Surreal<Db>>`, accessed via `state.surreal_storage` when available
+- `HybridSearchConfig` - Configures semantic/keyword weights, limits, score normalization for SurrealDB search
 - `SearchFilters` - Filter by content_type, library_item, page_range
 - `RagConfig` - TTRPG-specific RAG configuration
 
