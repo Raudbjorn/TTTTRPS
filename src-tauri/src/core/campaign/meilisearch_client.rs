@@ -29,6 +29,12 @@ pub const TASK_TIMEOUT_SHORT_SECS: u64 = 30;
 /// Default timeout for long operations (batch, index creation)
 pub const TASK_TIMEOUT_LONG_SECS: u64 = 300;
 
+/// Primary key used by all campaign indexes (see [`IndexConfig::primary_key`]).
+///
+/// Centralised here so that `upsert_document`/`upsert_documents` and
+/// `delete_by_filter` share a single source of truth.
+const CAMPAIGN_PRIMARY_KEY: &str = "id";
+
 /// Maximum retry attempts for transient errors
 const MAX_RETRY_ATTEMPTS: u32 = 3;
 
@@ -206,17 +212,19 @@ impl MeilisearchCampaignClient {
 
     /// Add or update a single document with retry.
     ///
-    /// All campaign indexes use `"id"` as primary key (see [`IndexConfig::primary_key`]).
+    /// Uses [`CAMPAIGN_PRIMARY_KEY`] as the primary key for all campaign indexes.
     pub fn upsert_document<T: Serialize>(
         &self,
         index_name: &str,
         document: &T,
     ) -> Result<()> {
-        self.with_retry(|| {
+        self.with_retry_blocking(|| {
             let value = serde_json::to_value(document)?;
-            let task = self
-                .meili
-                .add_documents(index_name, vec![value], Some("id".to_string()))?;
+            let task = self.meili.add_documents(
+                index_name,
+                vec![value],
+                Some(CAMPAIGN_PRIMARY_KEY.to_string()),
+            )?;
             self.meili
                 .wait_for_task(task.uid, Some(Duration::from_secs(TASK_TIMEOUT_SHORT_SECS)))?;
             Ok(())
@@ -224,6 +232,8 @@ impl MeilisearchCampaignClient {
     }
 
     /// Add or update multiple documents in batches (REC-MEIL-002)
+    ///
+    /// Uses [`CAMPAIGN_PRIMARY_KEY`] as the primary key for all campaign indexes.
     pub fn upsert_documents<T: Serialize>(
         &self,
         index_name: &str,
@@ -235,15 +245,17 @@ impl MeilisearchCampaignClient {
 
         // Process in batches
         for chunk in documents.chunks(MEILISEARCH_BATCH_SIZE) {
-            self.with_retry(|| {
+            self.with_retry_blocking(|| {
                 let values: Vec<serde_json::Value> = chunk
                     .iter()
                     .map(|doc| serde_json::to_value(doc))
                     .collect::<std::result::Result<Vec<_>, _>>()?;
 
-                let task = self
-                    .meili
-                    .add_documents(index_name, values, Some("id".to_string()))?;
+                let task = self.meili.add_documents(
+                    index_name,
+                    values,
+                    Some(CAMPAIGN_PRIMARY_KEY.to_string()),
+                )?;
                 self.meili
                     .wait_for_task(task.uid, Some(Duration::from_secs(TASK_TIMEOUT_LONG_SECS)))?;
                 Ok(())
@@ -276,7 +288,7 @@ impl MeilisearchCampaignClient {
 
     /// Delete a document by ID
     pub fn delete_document(&self, index_name: &str, id: &str) -> Result<()> {
-        self.with_retry(|| {
+        self.with_retry_blocking(|| {
             let task = self.meili.delete_document(index_name, id)?;
             self.meili
                 .wait_for_task(task.uid, Some(Duration::from_secs(TASK_TIMEOUT_SHORT_SECS)))?;
@@ -290,7 +302,7 @@ impl MeilisearchCampaignClient {
             return Ok(());
         }
 
-        self.with_retry(|| {
+        self.with_retry_blocking(|| {
             let id_strings: Vec<String> = ids.iter().map(|s| s.to_string()).collect();
             let task = self
                 .meili
@@ -318,11 +330,11 @@ impl MeilisearchCampaignClient {
                 break;
             }
 
-            // Extract IDs by primary key ("id" — invariant for all campaign indexes)
+            // Extract IDs by primary key
             let ids: Vec<String> = results
                 .hits
                 .iter()
-                .filter_map(|hit| hit.document.get("id").and_then(|v| v.as_str()))
+                .filter_map(|hit| hit.document.get(CAMPAIGN_PRIMARY_KEY).and_then(|v| v.as_str()))
                 .map(|s| s.to_string())
                 .collect();
 
@@ -596,9 +608,9 @@ impl MeilisearchCampaignClient {
     /// Execute an operation with exponential backoff retry.
     ///
     /// **Blocking**: uses `std::thread::sleep` for backoff delays. In async
-    /// contexts (e.g. Tauri command handlers), call via `spawn_blocking` to
-    /// avoid stalling the runtime thread pool.
-    fn with_retry<F, T>(&self, operation: F) -> Result<T>
+    /// contexts (e.g. Tauri command handlers), call via
+    /// `tokio::task::spawn_blocking` to avoid stalling the runtime thread pool.
+    fn with_retry_blocking<F, T>(&self, operation: F) -> Result<T>
     where
         F: Fn() -> Result<T>,
     {
