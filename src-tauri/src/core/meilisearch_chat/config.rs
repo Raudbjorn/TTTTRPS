@@ -9,7 +9,8 @@ use crate::core::llm::providers::ProviderConfig;
 
 use super::prompts::{
     DEFAULT_DM_SYSTEM_PROMPT, DEFAULT_SEARCH_DESCRIPTION, DEFAULT_SEARCH_INDEX_PARAM,
-    DEFAULT_SEARCH_Q_PARAM, GROK_API_BASE_URL, GROK_DEFAULT_MODEL,
+    DEFAULT_SEARCH_Q_PARAM, GOOGLE_DEFAULT_MODEL, GROK_API_BASE_URL, GROK_DEFAULT_MODEL,
+    OLLAMA_API_KEY_PLACEHOLDER,
 };
 
 // ============================================================================
@@ -22,6 +23,7 @@ use super::prompts::{
 pub enum ChatLLMSource {
     #[default]
     OpenAi,
+    Anthropic,
     AzureOpenAi,
     Mistral,
     Google,
@@ -342,7 +344,7 @@ impl ChatProviderConfig {
                 format!("{}:{}", provider, model.as_deref().unwrap_or("mistral-large-latest"))
             }
             Self::Google { model, .. } => {
-                format!("{}:{}", provider, model.as_deref().unwrap_or("gemini-2.0-flash"))
+                format!("{}:{}", provider, model.as_deref().unwrap_or(GOOGLE_DEFAULT_MODEL))
             }
             Self::Grok { model, .. } => {
                 format!("{}:{}", provider, model.as_deref().unwrap_or(GROK_DEFAULT_MODEL))
@@ -401,7 +403,7 @@ impl ChatProviderConfig {
                 let base_url = format!("{}/v1", host.trim_end_matches('/'));
                 ChatWorkspaceSettings {
                     source: ChatLLMSource::VLlm,
-                    api_key: Some("ollama".to_string()), // Placeholder key required by Meilisearch
+                    api_key: Some(OLLAMA_API_KEY_PLACEHOLDER.to_string()),
                     base_url: Some(base_url),
                     prompts: Some(ChatPrompts {
                         system: Some(DEFAULT_DM_SYSTEM_PROMPT.to_string()),
@@ -453,7 +455,7 @@ impl ChatProviderConfig {
 
             Self::Google { api_key, model } => ProviderConfig::Google {
                 api_key: api_key.clone(),
-                model: model.as_deref().unwrap_or("gemini-2.0-flash").to_string(),
+                model: model.as_deref().unwrap_or(GOOGLE_DEFAULT_MODEL).to_string(),
             },
 
             Self::OpenRouter { api_key, model } => ProviderConfig::OpenRouter {
