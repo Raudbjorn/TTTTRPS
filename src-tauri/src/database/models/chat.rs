@@ -160,7 +160,7 @@ fn estimate_cost(provider: &str, model: &str, input_tokens: u32, output_tokens: 
 pub struct UsageStats {
     pub total_input_tokens: u64,
     pub total_output_tokens: u64,
-    pub total_requests: u64,
+    pub total_requests: u32,
     pub estimated_cost_usd: f64,
 }
 
@@ -232,7 +232,7 @@ pub struct ChatMessageRecord {
     pub content: String,
     pub tokens_input: Option<i32>,
     pub tokens_output: Option<i32>,
-    pub is_streaming: bool,  // SQLite bool maps to 0/1 automatically via sqlx
+    pub is_streaming: i32,  // SQLite doesn't have bool, use 0/1
     pub metadata: Option<String>,  // JSON for extensibility
     pub created_at: String,
 }
@@ -246,7 +246,7 @@ impl ChatMessageRecord {
             content,
             tokens_input: None,
             tokens_output: None,
-            is_streaming: false,
+            is_streaming: 0,
             metadata: None,
             created_at: chrono::Utc::now().to_rfc3339(),
         }
@@ -269,7 +269,7 @@ impl ChatMessageRecord {
     }
 
     pub fn streaming(mut self) -> Self {
-        self.is_streaming = true;
+        self.is_streaming = 1;
         self
     }
 

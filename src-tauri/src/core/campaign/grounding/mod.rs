@@ -141,14 +141,16 @@ impl CombinedGrounder {
 impl Grounder for CombinedGrounder {
     async fn ground(&self, text: &str, _campaign_id: Option<&str>) -> Result<GroundedContent, String> {
         // Find references in the text
-        let all_references = self.linker.find_references(text);
+        let references = self.linker.find_references(text);
 
         let mut citations = Vec::new();
         let mut ungrounded = Vec::new();
+        let mut marked_text = text.to_string();
+        let mut citation_num = 1;
 
-        // First pass: Try to link all identified references
-        let mut valid_links = Vec::new();
-        for reference in all_references {
+        // Process references in reverse order to preserve positions
+        for reference in references.iter().rev() {
+            // Try to link the reference
             let query = if let Some(term) = &reference.term {
                 term.clone()
             } else if let Some(section) = &reference.section {
@@ -158,32 +160,29 @@ impl Grounder for CombinedGrounder {
             };
 
             match self.linker.link_to_rulebook(&query, None).await {
-                Ok(linked) if !linked.is_empty() && linked[0].confidence >= 0.5 => {
-                    valid_links.push((reference, linked[0].clone()));
+                Ok(linked) if !linked.is_empty() => {
+                    let best = &linked[0];
+                    if best.confidence >= 0.5 {
+                        let citation = self.linker.build_citation(reference, Some(best));
+                        citations.push(citation);
+
+                        // Add marker after the reference
+                        marked_text.insert_str(
+                            reference.end_pos.min(marked_text.len()),
+                            &format!("[{}]", citation_num),
+                        );
+                        citation_num += 1;
+                    } else {
+                        ungrounded.push(reference.clone());
+                    }
                 }
                 _ => {
-                    ungrounded.push(reference);
+                    ungrounded.push(reference.clone());
                 }
             }
         }
 
-        let mut marked_text = text.to_string();
-
-        // Second pass: Build citations and insert markers in reverse order to preserve offsets
-        // We use numbers 1..N based on their forward appearance in the text
-        for (i, (reference, best_match)) in valid_links.into_iter().enumerate().rev() {
-            let citation_num = i + 1;
-            let citation = self.linker.build_citation(&reference, Some(&best_match));
-            citations.push(citation);
-
-            // Add marker after the reference using standard markdown footnote syntax
-            marked_text.insert_str(
-                reference.end_pos.min(marked_text.len()),
-                &format!("[^{}]", citation_num),
-            );
-        }
-
-        // Reverse citations to match forward text order (since we processed in reverse)
+        // Reverse citations to match text order
         citations.reverse();
 
         // Calculate overall confidence

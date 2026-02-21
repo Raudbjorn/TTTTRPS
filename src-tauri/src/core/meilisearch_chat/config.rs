@@ -267,19 +267,19 @@ pub enum ChatProviderConfig {
         model: Option<String>,
     },
     /// Claude OAuth (via proxy, no API key needed - uses OAuth tokens)
-    ClaudeOAuth {
+    ClaudeGate {
         model: String,
         #[serde(default)]
         max_tokens: Option<u32>,
     },
-    /// Gemini OAuth (via proxy, no API key needed - uses OAuth tokens via gemini)
-    Gemini {
+    /// Gemini OAuth (via proxy, no API key needed - uses OAuth tokens via gemini_gate)
+    GeminiGate {
         model: String,
         #[serde(default)]
         max_tokens: Option<u32>,
     },
     /// Copilot (via proxy, no API key needed - uses Device Code OAuth tokens)
-    Copilot {
+    CopilotGate {
         model: String,
         #[serde(default)]
         max_tokens: Option<u32>,
@@ -291,7 +291,7 @@ impl ChatProviderConfig {
     pub fn provider_id(&self) -> &'static str {
         match self {
             Self::OpenAI { .. } => "openai",
-            Self::Claude { .. } | Self::ClaudeOAuth { .. } => "claude",
+            Self::Claude { .. } | Self::ClaudeGate { .. } => "claude",
             Self::Mistral { .. } => "mistral",
             Self::Ollama { .. } => "ollama",
             Self::Google { .. } => "google",
@@ -302,8 +302,8 @@ impl ChatProviderConfig {
             Self::Cohere { .. } => "cohere",
             Self::DeepSeek { .. } => "deepseek",
             Self::Grok { .. } => "grok",
-            Self::Gemini { .. } => "gemini",
-            Self::Copilot { .. } => "copilot",
+            Self::GeminiGate { .. } => "gemini",
+            Self::CopilotGate { .. } => "copilot",
         }
     }
 
@@ -324,15 +324,14 @@ impl ChatProviderConfig {
         let provider = self.provider_id();
 
         match self {
-            // API key-based Claude with dynamic model selection
+            // Providers with dynamic model selection
             Self::Claude { model, .. } => {
                 let m = model.clone().unwrap_or_else(|| model_selector().select_model_sync());
                 format!("claude:{}", m)
             }
-            // OAuth-based Claude
-            Self::ClaudeOAuth { model, .. } => format!("claude:{}", model),
-            Self::Gemini { model, .. } => format!("gemini:{}", model),
-            Self::Copilot { model, .. } => format!("copilot:{}", model),
+            Self::ClaudeGate { model, .. } => format!("claude:{}", model),
+            Self::GeminiGate { model, .. } => format!("gemini:{}", model),
+            Self::CopilotGate { model, .. } => format!("copilot:{}", model),
 
             // Providers with explicit or default model
             Self::OpenAI { model, .. } => {
@@ -413,14 +412,14 @@ impl ChatProviderConfig {
 
             // All other providers route through the proxy
             Self::Claude { .. }
-            | Self::ClaudeOAuth { .. }
             | Self::OpenRouter { .. }
             | Self::Groq { .. }
             | Self::Together { .. }
             | Self::Cohere { .. }
             | Self::DeepSeek { .. }
-            | Self::Gemini { .. }
-            | Self::Copilot { .. } => ChatWorkspaceSettings::via_proxy(proxy_url),
+            | Self::ClaudeGate { .. }
+            | Self::GeminiGate { .. }
+            | Self::CopilotGate { .. } => ChatWorkspaceSettings::via_proxy(proxy_url),
         }
     }
 
@@ -499,19 +498,19 @@ impl ChatProviderConfig {
             },
 
             // OAuth-based providers (no API key, use gate services)
-            Self::ClaudeOAuth { model, max_tokens } => ProviderConfig::Claude {
+            Self::ClaudeGate { model, max_tokens } => ProviderConfig::Claude {
                 storage_backend: "auto".to_string(),
                 model: model.clone(),
                 max_tokens: max_tokens.unwrap_or(8192),
             },
 
-            Self::Gemini { model, max_tokens } => ProviderConfig::Gemini {
+            Self::GeminiGate { model, max_tokens } => ProviderConfig::Gemini {
                 storage_backend: "auto".to_string(),
                 model: model.clone(),
                 max_tokens: max_tokens.unwrap_or(8192),
             },
 
-            Self::Copilot { model, max_tokens } => ProviderConfig::Copilot {
+            Self::CopilotGate { model, max_tokens } => ProviderConfig::Copilot {
                 storage_backend: "auto".to_string(),
                 model: model.clone(),
                 max_tokens: max_tokens.unwrap_or(8192),
@@ -565,15 +564,15 @@ impl TryFrom<&ProviderConfig> for ChatProviderConfig {
                 api_key: api_key.clone(),
                 model: model.clone(),
             }),
-            ProviderConfig::Claude { model, max_tokens, .. } => Ok(ChatProviderConfig::ClaudeOAuth {
+            ProviderConfig::Claude { model, max_tokens, .. } => Ok(ChatProviderConfig::ClaudeGate {
                 model: model.clone(),
                 max_tokens: Some(*max_tokens),
             }),
-            ProviderConfig::Gemini { model, max_tokens, .. } => Ok(ChatProviderConfig::Gemini {
+            ProviderConfig::Gemini { model, max_tokens, .. } => Ok(ChatProviderConfig::GeminiGate {
                 model: model.clone(),
                 max_tokens: Some(*max_tokens),
             }),
-            ProviderConfig::Copilot { model, max_tokens, .. } => Ok(ChatProviderConfig::Copilot {
+            ProviderConfig::Copilot { model, max_tokens, .. } => Ok(ChatProviderConfig::CopilotGate {
                 model: model.clone(),
                 max_tokens: Some(*max_tokens),
             }),

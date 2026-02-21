@@ -23,8 +23,8 @@ pub async fn ingest_document(
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     let path_obj = Path::new(&path);
-    if !path_obj.is_file() {
-        return Err(format!("File not found or is a directory: {}", path));
+    if !path_obj.exists() {
+        return Err(format!("File not found: {}", path));
     }
 
     let opts = options.unwrap_or_default();
@@ -67,8 +67,8 @@ pub async fn ingest_document_two_phase(
     use crate::core::meilisearch_pipeline::{MeilisearchPipeline, generate_source_slug};
 
     let path_buf = std::path::PathBuf::from(&path);
-    if !path_buf.is_file() {
-        return Err(format!("File not found or is a directory: {}", path));
+    if !path_buf.exists() {
+        return Err(format!("File not found: {}", path));
     }
 
     let source_name = path_buf
@@ -181,8 +181,8 @@ pub async fn import_layout_json(
     use crate::ingestion::layout_json::LayoutDocument;
 
     let path_buf = std::path::PathBuf::from(&path);
-    if !path_buf.is_file() {
-        return Err(format!("File not found or is a directory: {}", path));
+    if !path_buf.exists() {
+        return Err(format!("File not found: {}", path));
     }
 
     // Verify it's a valid layout JSON
@@ -271,16 +271,13 @@ pub async fn ingest_pdf(
     path: String,
     state: State<'_, AppState>,
 ) -> Result<IngestResult, String> {
-    let path_buf = std::path::PathBuf::from(&path);
-    if !path_buf.is_file() {
-        return Err(format!("File not found or is a directory: {}", path));
-    }
+    let path_buf = std::path::Path::new(&path);
 
     // Use two-phase pipeline for ingestion
     let (extraction, _chunking) = state.ingestion_pipeline
         .ingest_two_phase(
             &state.search_client,
-            &path_buf,
+            path_buf,
             None, // No title override
         )
         .await

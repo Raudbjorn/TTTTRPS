@@ -295,7 +295,7 @@ impl PartyAnalyzer {
             overall_balance_score: analysis_data
                 .get("overall_balance_score")
                 .and_then(|v| v.as_u64())
-                .map(|n| n.min(100) as u8)
+                .map(|n| n.min(255) as u8)
                 .unwrap_or(50),
             strengths: Self::parse_string_array(analysis_data.get("strengths")),
             weaknesses: Self::parse_string_array(analysis_data.get("weaknesses")),

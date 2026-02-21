@@ -52,7 +52,7 @@ impl UsageOps for Database {
         Ok(UsageStats {
             total_input_tokens: row.get::<i64, _>("total_input") as u64,
             total_output_tokens: row.get::<i64, _>("total_output") as u64,
-            total_requests: row.get::<i64, _>("total_requests") as u64,
+            total_requests: row.get::<i64, _>("total_requests") as u32,
             estimated_cost_usd: row.get("total_cost"),
         })
     }

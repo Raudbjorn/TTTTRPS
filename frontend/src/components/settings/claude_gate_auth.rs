@@ -24,7 +24,7 @@ use crate::services::notification_service::{show_error, show_success};
 /// - Logout functionality
 /// - Refresh status button
 #[component]
-pub fn ClaudeAuth(
+pub fn ClaudeGateAuth(
     /// Optional callback when authentication status changes
     #[prop(optional)]
     on_status_change: Option<Callback<ClaudeStatus>>,
@@ -373,7 +373,7 @@ pub fn ClaudeAuth(
 /// Compact status indicator for Claude authentication.
 /// Shows just the authentication status badge.
 #[component]
-pub fn ClaudeStatusBadge() -> impl IntoView {
+pub fn ClaudeGateStatusBadge() -> impl IntoView {
     let status = RwSignal::new(ClaudeStatus::default());
 
     Effect::new(move |_| {

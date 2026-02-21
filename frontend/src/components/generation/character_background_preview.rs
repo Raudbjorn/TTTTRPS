@@ -25,30 +25,10 @@ pub struct CharacterBackground {
 /// Key event in character's past
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BackgroundEvent {
-    /// Unique identifier for stable removal
-    #[serde(default = "BackgroundEvent::generate_id")]
-    pub id: String,
     pub name: String,
     pub description: String,
     /// Age at event (u16 to support ages up to 65535, e.g., for long-lived races like elves)
     pub age_at_event: Option<u16>,
-}
-
-impl BackgroundEvent {
-    /// Generate a new unique ID
-    fn generate_id() -> String {
-        uuid::Uuid::new_v4().to_string()
-    }
-
-    /// Create a new empty event with a unique ID
-    pub fn new() -> Self {
-        Self {
-            id: Self::generate_id(),
-            name: String::new(),
-            description: String::new(),
-            age_at_event: None,
-        }
-    }
 }
 
 /// Connection to other entities
@@ -302,7 +282,11 @@ pub fn CharacterBackgroundPreview(
 
     let add_event = move |_| {
         events.update(|e| {
-            e.push(RwSignal::new(BackgroundEvent::new()));
+            e.push(RwSignal::new(BackgroundEvent {
+                name: String::new(),
+                description: String::new(),
+                age_at_event: None,
+            }));
         });
     };
 
@@ -352,13 +336,13 @@ pub fn CharacterBackgroundPreview(
                 <div class="space-y-2">
                     {move || {
                         events.get().iter().map(|event| {
-                            // Capture event ID for stable removal
-                            // (avoids issues with signal identity or index shifts)
-                            let event_id = event.get().id.clone();
+                            // Capture event data for content-based removal
+                            // (avoids index shift issues between render and callback)
+                            let event_to_remove = event.clone();
                             let remove_cb = Callback::new(move |_: ()| {
-                                let id_to_remove = event_id.clone();
+                                let target = event_to_remove.clone();
                                 events.update(|e| {
-                                    e.retain(|item| item.get().id != id_to_remove);
+                                    e.retain(|item| item != &target);
                                 });
                             });
                             view! {

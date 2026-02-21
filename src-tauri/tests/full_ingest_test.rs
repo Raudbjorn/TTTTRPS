@@ -33,8 +33,7 @@ async fn test_full_ingest() {
     let meili_key = std::env::var("MEILI_MASTER_KEY")
         .unwrap_or_else(|_| "ttrpg-assistant-dev-key".to_string());
 
-    let search_client = SearchClient::new("http://127.0.0.1:7700", Some(&meili_key))
-        .expect("Failed to create search client");
+    let search_client = SearchClient::new("http://127.0.0.1:7700", Some(&meili_key));
 
     // 2. Ingest using two-phase pipeline (extract → raw index → chunk index)
     println!("\n[2/3] Ingesting with two-phase pipeline...");

@@ -70,18 +70,6 @@ fn CharacterEntry(
             <select
                 class="w-36 px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-white text-sm
                        focus:border-purple-500 focus:outline-none"
-                prop:value=move || {
-                    role.get().map(|r| match r {
-                        PartyRole::Tank => "tank",
-                        PartyRole::Healer => "healer",
-                        PartyRole::DamageDealer => "damage",
-                        PartyRole::Support => "support",
-                        PartyRole::Controller => "controller",
-                        PartyRole::Utility => "utility",
-                        PartyRole::Face => "face",
-                        PartyRole::Scout => "scout",
-                    }).unwrap_or("")
-                }
                 on:change=move |ev| {
                     let value = event_target_value(&ev);
                     role.set(match value.as_str() {
@@ -97,15 +85,15 @@ fn CharacterEntry(
                     });
                 }
             >
-                <option value="">"Role..."</option>
-                <option value="tank">"Tank"</option>
-                <option value="healer">"Healer"</option>
-                <option value="damage">"Damage Dealer"</option>
-                <option value="support">"Support"</option>
-                <option value="controller">"Controller"</option>
-                <option value="utility">"Utility"</option>
-                <option value="face">"Face"</option>
-                <option value="scout">"Scout"</option>
+                <option value="" selected=move || role.get().is_none()>"Role..."</option>
+                <option value="tank" selected=move || role.get() == Some(PartyRole::Tank)>"Tank"</option>
+                <option value="healer" selected=move || role.get() == Some(PartyRole::Healer)>"Healer"</option>
+                <option value="damage" selected=move || role.get() == Some(PartyRole::DamageDealer)>"Damage Dealer"</option>
+                <option value="support" selected=move || role.get() == Some(PartyRole::Support)>"Support"</option>
+                <option value="controller" selected=move || role.get() == Some(PartyRole::Controller)>"Controller"</option>
+                <option value="utility" selected=move || role.get() == Some(PartyRole::Utility)>"Utility"</option>
+                <option value="face" selected=move || role.get() == Some(PartyRole::Face)>"Face"</option>
+                <option value="scout" selected=move || role.get() == Some(PartyRole::Scout)>"Scout"</option>
             </select>
 
             // Remove button - uses id instead of index

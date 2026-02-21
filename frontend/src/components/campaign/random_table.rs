@@ -8,9 +8,9 @@
 //! - Roll history sidebar
 //! - Table editing support
 
-use js_sys;
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
+use js_sys;
 
 // ============================================================================
 // Types (mirrored from backend)
@@ -93,19 +93,11 @@ pub fn RandomTableDisplay(
         let is_compound = is_compound_dice(&dice_notation);
         let range_total = (max_roll - min_roll + 1) as f64;
 
-        table
-            .entries
-            .iter()
-            .map(|entry| {
-                let range_size = (entry.range_end - entry.range_start + 1) as f64;
-                let probability = if range_total > 0.0 {
-                    range_size / range_total * 100.0
-                } else {
-                    0.0
-                };
-                (entry.clone(), probability, is_compound)
-            })
-            .collect::<Vec<_>>()
+        table.entries.iter().map(|entry| {
+            let range_size = (entry.range_end - entry.range_start + 1) as f64;
+            let probability = range_size / range_total * 100.0;
+            (entry.clone(), probability, is_compound)
+        }).collect::<Vec<_>>()
     };
 
     // Handle roll button click
@@ -204,12 +196,10 @@ pub fn RandomTableDisplay(
                             }
                         )>
                             // Probability background bar
-                            {(!is_compound).then(|| view! {
-                                <div
-                                    class="absolute inset-y-0 left-0 bg-purple-600/10"
-                                    style=format!("width: {}%", probability)
-                                />
-                            })}
+                            <div
+                                class="absolute inset-y-0 left-0 bg-purple-600/10"
+                                style=format!("width: {}%", probability)
+                            />
 
                             // Content
                             <div class="relative flex items-center gap-3">
@@ -227,12 +217,16 @@ pub fn RandomTableDisplay(
                                     {entry.result_text.clone()}
                                 </p>
 
-                                // Probability percentage (hidden for compound dice as uniform distribution math is incorrect)
-                                {(!is_compound).then(|| view! {
-                                    <span class="shrink-0 text-xs text-zinc-500 tabular-nums">
-                                        {format!("{:.1}%", probability)}
-                                    </span>
-                                })}
+                                // Probability percentage (show ~ for compound dice as distribution is not uniform)
+                                <span class="shrink-0 text-xs text-zinc-500 tabular-nums" title={
+                                    if is_compound { "Approximate (compound dice have non-uniform distribution)" } else { "" }
+                                }>
+                                    {if is_compound {
+                                        format!("~{:.0}%", probability)
+                                    } else {
+                                        format!("{:.1}%", probability)
+                                    }}
+                                </span>
 
                                 // Nested indicator
                                 {entry.nested_table_id.as_ref().map(|_| view! {
@@ -362,10 +356,7 @@ pub fn DiceRollerWidget(
                 callback.run((notation.get(), result));
             }
 
-            set_timeout(
-                move || is_rolling.set(false),
-                std::time::Duration::from_millis(300),
-            );
+            set_timeout(move || is_rolling.set(false), std::time::Duration::from_millis(300));
         }
     };
 
@@ -455,10 +446,7 @@ fn is_compound_dice(notation: &str) -> bool {
 
     // Parse dice count
     if let Some(pos) = notation.find('d') {
-        let count_str: String = notation[..pos]
-            .chars()
-            .filter(|c| c.is_ascii_digit())
-            .collect();
+        let count_str: String = notation[..pos].chars().filter(|c| c.is_ascii_digit()).collect();
         let count: i32 = count_str.parse().unwrap_or(1);
         count > 1
     } else {
@@ -480,10 +468,7 @@ fn parse_max_roll(notation: &str) -> i32 {
     // Parse standard notation: [count]d<sides>[+/-modifier]
     if let Some(pos) = notation.find('d') {
         // Parse dice count (default 1 if not specified)
-        let count_str: String = notation[..pos]
-            .chars()
-            .filter(|c| c.is_ascii_digit())
-            .collect();
+        let count_str: String = notation[..pos].chars().filter(|c| c.is_ascii_digit()).collect();
         let count: i32 = count_str.parse().unwrap_or(1).max(1);
 
         // Parse sides
@@ -493,16 +478,10 @@ fn parse_max_roll(notation: &str) -> i32 {
 
         // Parse modifier (+ or -)
         let modifier = if let Some(plus_pos) = rest.find('+') {
-            let mod_str: String = rest[plus_pos + 1..]
-                .chars()
-                .take_while(|c| c.is_ascii_digit())
-                .collect();
+            let mod_str: String = rest[plus_pos + 1..].chars().take_while(|c| c.is_ascii_digit()).collect();
             mod_str.parse::<i32>().unwrap_or(0)
         } else if let Some(minus_pos) = rest.find('-') {
-            let mod_str: String = rest[minus_pos + 1..]
-                .chars()
-                .take_while(|c| c.is_ascii_digit())
-                .collect();
+            let mod_str: String = rest[minus_pos + 1..].chars().take_while(|c| c.is_ascii_digit()).collect();
             -mod_str.parse::<i32>().unwrap_or(0)
         } else {
             0
@@ -529,25 +508,16 @@ fn parse_min_roll(notation: &str) -> i32 {
     // Parse standard notation: [count]d<sides>[+/-modifier]
     if let Some(pos) = notation.find('d') {
         // Parse dice count (default 1 if not specified)
-        let count_str: String = notation[..pos]
-            .chars()
-            .filter(|c| c.is_ascii_digit())
-            .collect();
+        let count_str: String = notation[..pos].chars().filter(|c| c.is_ascii_digit()).collect();
         let count: i32 = count_str.parse().unwrap_or(1).max(1);
 
         // Parse modifier (+ or -)
         let rest = &notation[pos + 1..];
         let modifier = if let Some(plus_pos) = rest.find('+') {
-            let mod_str: String = rest[plus_pos + 1..]
-                .chars()
-                .take_while(|c| c.is_ascii_digit())
-                .collect();
+            let mod_str: String = rest[plus_pos + 1..].chars().take_while(|c| c.is_ascii_digit()).collect();
             mod_str.parse::<i32>().unwrap_or(0)
         } else if let Some(minus_pos) = rest.find('-') {
-            let mod_str: String = rest[minus_pos + 1..]
-                .chars()
-                .take_while(|c| c.is_ascii_digit())
-                .collect();
+            let mod_str: String = rest[minus_pos + 1..].chars().take_while(|c| c.is_ascii_digit()).collect();
             -mod_str.parse::<i32>().unwrap_or(0)
         } else {
             0
@@ -566,9 +536,7 @@ fn simulate_roll(table: &RandomTable) -> TableRollResult {
     let max = parse_max_roll(&table.dice_notation);
     let roll = simulate_dice_roll(min, max);
 
-    let entry = table
-        .entries
-        .iter()
+    let entry = table.entries.iter()
         .find(|e| roll >= e.range_start && roll <= e.range_end)
         .cloned()
         .unwrap_or_else(|| TableEntry {
