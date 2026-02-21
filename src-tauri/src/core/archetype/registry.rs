@@ -203,8 +203,14 @@ impl ArchetypeRegistry {
         cache_capacity: usize,
     ) -> Result<Self> {
         // Ensure indexes exist (using embedded meilisearch-lib)
+        // Run in spawn_blocking to avoid blocking the async runtime during
+        // synchronous index creation/settings operations.
         let index_manager = ArchetypeIndexManager::new(meili);
-        index_manager.ensure_indexes()?;
+        tokio::task::spawn_blocking(move || index_manager.ensure_indexes())
+            .await
+            .map_err(|e| ArchetypeError::Meilisearch(
+                format!("Index initialization task panicked: {}", e)
+            ))??;
 
         let registry = Self {
             archetypes: Arc::new(RwLock::new(HashMap::new())),

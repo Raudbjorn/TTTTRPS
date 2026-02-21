@@ -23,7 +23,7 @@ use crate::commands::AppState;
 pub fn get_search_suggestions(
     partial: String,
     state: State<'_, AppState>,
-) -> Vec<String> {
+) -> Result<Vec<String>, String> {
     // TODO: Migrate to embedded MeilisearchLib
     // HybridSearchEngine::with_defaults expects Arc<SearchClient> (HTTP SDK).
     // Need to update HybridSearchEngine to work with EmbeddedSearch/MeilisearchLib.
@@ -36,8 +36,8 @@ pub fn get_search_suggestions(
         partial
     );
 
-    // Return empty suggestions for now - full migration in Phase 3 Task 6
-    Vec::new()
+    // Return empty suggestions with explicit Ok - migration in Phase 3 Task 6
+    Ok(Vec::new())
 }
 
 /// Get search hints for a query
@@ -48,7 +48,7 @@ pub fn get_search_suggestions(
 pub fn get_search_hints(
     query: String,
     state: State<'_, AppState>,
-) -> Vec<String> {
+) -> Result<Vec<String>, String> {
     // TODO: Migrate to embedded MeilisearchLib
     // HybridSearchEngine::with_defaults expects Arc<SearchClient> (HTTP SDK).
     // Need to update HybridSearchEngine to work with EmbeddedSearch/MeilisearchLib.
@@ -61,8 +61,8 @@ pub fn get_search_hints(
         query
     );
 
-    // Return empty hints for now - full migration in Phase 3 Task 6
-    Vec::new()
+    // Return empty hints with explicit Ok - migration in Phase 3 Task 6
+    Ok(Vec::new())
 }
 
 /// Expand a query with TTRPG synonyms

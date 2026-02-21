@@ -10,7 +10,7 @@ use tokio::sync::RwLock as AsyncRwLock;
 // Copilot OAuth client - for Device Code flow
 use crate::oauth::copilot::{
     CopilotClient, DeviceFlowPending, GateStorageAdapter as CopilotStorageAdapter,
-    ModelInfo as CopilotModelInfo, ModelsResponse as CopilotModelsResponse,
+    ModelInfo as CopilotLibModelInfo, ModelsResponse as CopilotModelsResponse,
     PollResult as CopilotPollResult, QuotaInfo as CopilotQuotaInfo,
     UsageResponse as CopilotUsageResponse,
     storage::CopilotTokenStorage,
@@ -557,8 +557,8 @@ pub struct CopilotModelInfo {
     pub preview: bool,
 }
 
-impl From<CopilotModelInfo> for CopilotModelInfo {
-    fn from(model: CopilotModelInfo) -> Self {
+impl From<CopilotLibModelInfo> for CopilotModelInfo {
+    fn from(model: CopilotLibModelInfo) -> Self {
         let (supports_chat, supports_tools, supports_vision, max_context, max_output) =
             if let Some(caps) = &model.capabilities {
                 let supports = caps.supports.as_ref();

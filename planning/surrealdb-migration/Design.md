@@ -415,23 +415,80 @@ pub struct SearchResult {
     pub highlights: Option<String>,
 }
 
+/// Allowed content types for search filtering.
+const ALLOWED_CONTENT_TYPES: &[&str] = &[
+    "pdf", "epub", "docx", "txt", "markdown", "html", "image", "note",
+];
+
+/// Structured search filter to prevent SurrealQL injection.
+///
+/// Instead of accepting raw filter strings, callers provide typed filter
+/// values that are validated and bound as parameters.
+#[derive(Clone, Debug, Default)]
+pub struct SearchFilter {
+    /// Filter by content types (validated against allowlist)
+    pub content_types: Option<Vec<String>>,
+    /// Filter by campaign ID (bound as a parameter)
+    pub campaign_id: Option<String>,
+    /// Filter by source type (bound as a parameter)
+    pub source_type: Option<String>,
+}
+
+impl SearchFilter {
+    /// Build a SurrealQL WHERE clause fragment and collect parameter bindings.
+    ///
+    /// Returns `(clause_fragment, bindings)` where the clause uses `$param` placeholders
+    /// and bindings contains the values to bind. The clause includes a leading `AND`
+    /// for each condition.
+    pub fn to_clause_and_bindings(&self) -> (String, Vec<(&'static str, surrealdb::sql::Value)>) {
+        let mut clauses = Vec::new();
+        let mut bindings: Vec<(&'static str, surrealdb::sql::Value)> = Vec::new();
+
+        if let Some(ref types) = self.content_types {
+            // Validate against allowlist — reject unknown types
+            let valid: Vec<String> = types.iter()
+                .filter(|t| ALLOWED_CONTENT_TYPES.contains(&t.as_str()))
+                .cloned()
+                .collect();
+            if !valid.is_empty() {
+                clauses.push("AND content_type IN $filter_content_types".to_string());
+                bindings.push(("filter_content_types", valid.into()));
+            }
+        }
+
+        if let Some(ref cid) = self.campaign_id {
+            clauses.push("AND campaign_id = $filter_campaign_id".to_string());
+            bindings.push(("filter_campaign_id", cid.clone().into()));
+        }
+
+        if let Some(ref st) = self.source_type {
+            clauses.push("AND source_type = $filter_source_type".to_string());
+            bindings.push(("filter_source_type", st.clone().into()));
+        }
+
+        (clauses.join(" "), bindings)
+    }
+}
+
 /// Perform hybrid search combining vector and full-text.
 pub async fn hybrid_search(
     db: &Surreal<RocksDb>,
     query: &str,
     query_embedding: Vec<f32>,
     config: &HybridSearchConfig,
-    filters: Option<&str>,
+    filters: Option<&SearchFilter>,
 ) -> Result<Vec<SearchResult>, StorageError> {
     let norm = match config.normalization {
         ScoreNormalization::MinMax => "minmax",
         ScoreNormalization::ZScore => "zscore",
     };
 
-    // Build filter clause
-    let filter_clause = filters.map(|f| format!("AND {}", f)).unwrap_or_default();
+    // Build filter clause and parameter bindings
+    let (filter_clause, filter_bindings) = filters
+        .map(|f| f.to_clause_and_bindings())
+        .unwrap_or_default();
 
-    let query = format!(r#"
+    let sql = format!(r#"
         -- Vector search: top K nearest neighbors
         LET $vec_results = SELECT
             id,
@@ -476,11 +533,17 @@ pub async fn hybrid_search(
         norm = norm,
     );
 
-    let mut response = db
-        .query(&query)
+    let mut stmt = db
+        .query(&sql)
         .bind(("embedding", query_embedding))
-        .bind(("query", query))
-        .await?;
+        .bind(("query", query));
+
+    // Bind filter parameters
+    for (key, value) in filter_bindings {
+        stmt = stmt.bind((key, value));
+    }
+
+    let mut response = stmt.await?;
 
     let results: Vec<SearchResult> = response.take(2)?;
 
@@ -497,11 +560,13 @@ pub async fn vector_search(
     db: &Surreal<RocksDb>,
     embedding: Vec<f32>,
     limit: usize,
-    filters: Option<&str>,
+    filters: Option<&SearchFilter>,
 ) -> Result<Vec<SearchResult>, StorageError> {
-    let filter_clause = filters.map(|f| format!("AND {}", f)).unwrap_or_default();
+    let (filter_clause, filter_bindings) = filters
+        .map(|f| f.to_clause_and_bindings())
+        .unwrap_or_default();
 
-    let query = format!(r#"
+    let sql = format!(r#"
         SELECT
             id,
             content,
@@ -516,10 +581,15 @@ pub async fn vector_search(
         ORDER BY score;
     "#);
 
-    let mut response = db
-        .query(&query)
-        .bind(("embedding", embedding))
-        .await?;
+    let mut stmt = db
+        .query(&sql)
+        .bind(("embedding", embedding));
+
+    for (key, value) in filter_bindings {
+        stmt = stmt.bind((key, value));
+    }
+
+    let mut response = stmt.await?;
 
     response.take(0)
 }
@@ -529,11 +599,13 @@ pub async fn fulltext_search(
     db: &Surreal<RocksDb>,
     query: &str,
     limit: usize,
-    filters: Option<&str>,
+    filters: Option<&SearchFilter>,
 ) -> Result<Vec<SearchResult>, StorageError> {
-    let filter_clause = filters.map(|f| format!("AND {}", f)).unwrap_or_default();
+    let (filter_clause, filter_bindings) = filters
+        .map(|f| f.to_clause_and_bindings())
+        .unwrap_or_default();
 
-    let query_str = format!(r#"
+    let sql = format!(r#"
         SELECT
             id,
             content,
@@ -550,10 +622,15 @@ pub async fn fulltext_search(
         LIMIT {limit};
     "#);
 
-    let mut response = db
-        .query(&query_str)
-        .bind(("query", query))
-        .await?;
+    let mut stmt = db
+        .query(&sql)
+        .bind(("query", query));
+
+    for (key, value) in filter_bindings {
+        stmt = stmt.bind((key, value));
+    }
+
+    let mut response = stmt.await?;
 
     response.take(0)
 }
@@ -1093,13 +1170,10 @@ pub async fn rag_query_cmd(
         .await
         .map_err(|e| e.to_string())?;
 
-    // Build filter from content types
-    let filter = content_types.map(|types| {
-        let type_list = types.iter()
-            .map(|t| format!("'{}'", t))
-            .collect::<Vec<_>>()
-            .join(", ");
-        format!("content_type IN [{}]", type_list)
+    // Build structured filter from content types (validated against allowlist)
+    let filter = content_types.map(|types| SearchFilter {
+        content_types: Some(types),
+        ..Default::default()
     });
 
     // Execute RAG
@@ -1109,7 +1183,7 @@ pub async fn rag_query_cmd(
         &question,
         embedding,
         &RagConfig::default(),
-        filter.as_deref(),
+        filter.as_ref(),
     ).await.map_err(|e| e.to_string())?;
 
     Ok(response)
@@ -1138,13 +1212,10 @@ pub async fn rag_query_stream(
             }
         };
 
-        // Build filter
-        let filter = content_types.map(|types| {
-            let type_list = types.iter()
-                .map(|t| format!("'{}'", t))
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("content_type IN [{}]", type_list)
+        // Build structured filter from content types (validated against allowlist)
+        let filter = content_types.map(|types| SearchFilter {
+            content_types: Some(types),
+            ..Default::default()
         });
 
         // Execute hybrid search for context
@@ -1153,7 +1224,7 @@ pub async fn rag_query_stream(
             &question,
             embedding,
             &HybridSearchConfig::default(),
-            filter.as_deref(),
+            filter.as_ref(),
         ).await {
             Ok(r) => r,
             Err(e) => {

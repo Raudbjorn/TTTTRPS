@@ -251,16 +251,23 @@ pub async fn hybrid_search(
 // Helper Functions
 // ============================================================================
 
+/// Escape a value for use in Meilisearch filter expressions.
+///
+/// Prevents filter injection by escaping `\` and `"` characters.
+fn escape_filter_value(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
 /// Build filter expression from SearchOptions
 fn build_filter_expression(opts: &SearchOptions) -> Option<serde_json::Value> {
     let mut filters = Vec::new();
 
     if let Some(ref campaign_id) = opts.campaign_id {
-        filters.push(format!("campaign_id = \"{}\"", campaign_id));
+        filters.push(format!("campaign_id = \"{}\"", escape_filter_value(campaign_id)));
     }
 
     if let Some(ref source_type) = opts.source_type {
-        filters.push(format!("source_type = \"{}\"", source_type));
+        filters.push(format!("source_type = \"{}\"", escape_filter_value(source_type)));
     }
 
     if filters.is_empty() {
@@ -275,11 +282,11 @@ fn build_hybrid_filter_expression(opts: &HybridSearchOptions) -> Option<serde_js
     let mut filters = Vec::new();
 
     if let Some(ref campaign_id) = opts.campaign_id {
-        filters.push(format!("campaign_id = \"{}\"", campaign_id));
+        filters.push(format!("campaign_id = \"{}\"", escape_filter_value(campaign_id)));
     }
 
     if let Some(ref source_type) = opts.source_type {
-        filters.push(format!("source_type = \"{}\"", source_type));
+        filters.push(format!("source_type = \"{}\"", escape_filter_value(source_type)));
     }
 
     if filters.is_empty() {
@@ -346,7 +353,7 @@ fn convert_hit_to_payload(
 fn convert_hit_to_hybrid_payload(
     hit: &meilisearch_lib::SearchHit,
     index: &str,
-    rank: usize,
+    _rank: usize,
 ) -> Option<HybridSearchResultPayload> {
     let doc = &hit.document;
 
