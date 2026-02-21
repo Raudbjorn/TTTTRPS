@@ -13,14 +13,24 @@
 //! All mutable state is protected by `tokio::sync::RwLock` for async-safe access.
 //! This is critical for proper operation in the Tauri async command context.
 //!
+//! # Dual-Client Architecture
+//!
+//! The registry uses two Meilisearch access paths:
+//! - **`MeilisearchLib` (embedded)**: For index management (create, configure, delete)
+//!   via [`ArchetypeIndexManager`]. No HTTP overhead.
+//! - **`meilisearch_sdk::Client`**: For document CRUD operations (add, search, delete
+//!   documents). Connects to the embedded instance's HTTP interface.
+//!
 //! # Usage
 //!
 //! ```rust,ignore
 //! use crate::core::archetype::{ArchetypeRegistry, Archetype, ArchetypeCategory};
+//! use crate::core::search::EmbeddedSearch;
 //! use meilisearch_sdk::Client;
 //!
+//! let search = EmbeddedSearch::new(db_path)?;
 //! let client = Client::new("http://localhost:7700", None::<String>)?;
-//! let registry = ArchetypeRegistry::new(client).await?;
+//! let registry = ArchetypeRegistry::new(search.clone_inner(), client).await?;
 //!
 //! // Register an archetype
 //! let archetype = Archetype::new("knight", "Knight", ArchetypeCategory::Class);
@@ -39,6 +49,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use lru::LruCache;
+use meilisearch_lib::MeilisearchLib;
 use meilisearch_sdk::client::Client;
 use tokio::sync::RwLock;
 
@@ -148,7 +159,6 @@ pub struct ArchetypeRegistry {
     meilisearch_client: Client,
 
     /// Event listeners (stub for future event system).
-
     event_listeners: Arc<RwLock<Vec<Box<dyn Fn(ArchetypeEvent) + Send + Sync>>>>,
 }
 
@@ -162,7 +172,8 @@ impl ArchetypeRegistry {
     ///
     /// # Arguments
     ///
-    /// * `meilisearch_client` - Initialized Meilisearch client
+    /// * `meili` - Shared reference to embedded MeilisearchLib (for index management)
+    /// * `meilisearch_client` - Initialized Meilisearch SDK client (for document CRUD)
     ///
     /// # Errors
     ///
@@ -171,26 +182,29 @@ impl ArchetypeRegistry {
     /// # Example
     ///
     /// ```rust,ignore
+    /// let search = EmbeddedSearch::new(db_path)?;
     /// let client = Client::new("http://localhost:7700", None::<String>)?;
-    /// let registry = ArchetypeRegistry::new(client).await?;
+    /// let registry = ArchetypeRegistry::new(search.clone_inner(), client).await?;
     /// ```
-    pub async fn new(meilisearch_client: Client) -> Result<Self> {
-        Self::with_cache_capacity(meilisearch_client, DEFAULT_CACHE_CAPACITY).await
+    pub async fn new(meili: Arc<MeilisearchLib>, meilisearch_client: Client) -> Result<Self> {
+        Self::with_cache_capacity(meili, meilisearch_client, DEFAULT_CACHE_CAPACITY).await
     }
 
     /// Create a new registry with custom cache capacity.
     ///
     /// # Arguments
     ///
-    /// * `meilisearch_client` - Initialized Meilisearch client
+    /// * `meili` - Shared reference to embedded MeilisearchLib (for index management)
+    /// * `meilisearch_client` - Initialized Meilisearch SDK client (for document CRUD)
     /// * `cache_capacity` - Maximum number of resolved archetypes to cache
     pub async fn with_cache_capacity(
+        meili: Arc<MeilisearchLib>,
         meilisearch_client: Client,
         cache_capacity: usize,
     ) -> Result<Self> {
-        // Ensure indexes exist
-        let index_manager = ArchetypeIndexManager::new(&meilisearch_client);
-        index_manager.ensure_indexes().await?;
+        // Ensure indexes exist (using embedded meilisearch-lib)
+        let index_manager = ArchetypeIndexManager::new(meili);
+        index_manager.ensure_indexes()?;
 
         let registry = Self {
             archetypes: Arc::new(RwLock::new(HashMap::new())),
@@ -800,19 +814,16 @@ impl ArchetypeRegistry {
     ///
     /// This is used by `ArchetypeResolver` to access archetypes without
     /// going through the registry's public API.
-
     pub(crate) fn archetypes(&self) -> Arc<RwLock<HashMap<String, Archetype>>> {
         self.archetypes.clone()
     }
 
     /// Get a reference to the setting packs map for the resolver.
-
     pub(crate) fn setting_packs(&self) -> Arc<RwLock<HashMap<String, SettingPack>>> {
         self.setting_packs.clone()
     }
 
     /// Get a reference to the active packs map for the resolver.
-
     pub(crate) fn active_packs(&self) -> Arc<RwLock<HashMap<String, String>>> {
         self.active_packs.clone()
     }
