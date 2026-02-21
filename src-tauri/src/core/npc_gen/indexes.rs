@@ -6,11 +6,45 @@
 //! - Exclamation templates (interjections and exclamations by culture)
 //!
 //! These indexes enable fast, filtered search across NPC generation data.
+//! Uses embedded meilisearch-lib (no HTTP server required).
 
-use meilisearch_sdk::client::Client;
-use meilisearch_sdk::indexes::Index;
-use meilisearch_sdk::settings::Settings;
+use std::collections::BTreeSet;
+use std::time::Duration;
+
+use meilisearch_lib::{FilterableAttributesRule, MeilisearchLib, Setting, Settings, Unchecked};
 use serde::{Deserialize, Serialize};
+
+// ============================================================================
+// Error Type
+// ============================================================================
+
+/// Errors that can occur during NPC index operations.
+///
+/// Field is named `detail` (not `source`) to avoid thiserror's automatic
+/// `#[source]` inference, since the inner value is a `String`, not an `Error`.
+#[derive(Debug, thiserror::Error)]
+pub enum NpcIndexError {
+    #[error("Failed to check index '{index}': {detail}")]
+    Check { index: String, detail: String },
+
+    #[error("Failed to create index '{index}': {detail}")]
+    Create { index: String, detail: String },
+
+    #[error("Failed to update settings for '{index}': {detail}")]
+    Settings { index: String, detail: String },
+
+    #[error("Task wait failed for index '{index}': {detail}")]
+    TaskFailed { index: String, detail: String },
+
+    #[error("Failed to clear index '{index}': {detail}")]
+    Clear { index: String, detail: String },
+}
+
+impl From<NpcIndexError> for String {
+    fn from(e: NpcIndexError) -> Self {
+        e.to_string()
+    }
+}
 
 // ============================================================================
 // Index Names
@@ -26,7 +60,7 @@ pub const INDEX_NAME_COMPONENTS: &str = "ttrpg_name_components";
 pub const INDEX_EXCLAMATION_TEMPLATES: &str = "ttrpg_exclamation_templates";
 
 /// Default task timeout for index operations (30 seconds)
-const INDEX_TASK_TIMEOUT_SECS: u64 = 30;
+const INDEX_TIMEOUT: Duration = Duration::from_secs(30);
 
 // ============================================================================
 // Index Document Types
@@ -100,8 +134,130 @@ pub struct ExclamationTemplateDocument {
 }
 
 // ============================================================================
-// Index Configuration
+// Index Settings
 // ============================================================================
+
+/// Build settings for the vocabulary banks index.
+fn vocabulary_settings() -> Settings<Unchecked> {
+    let filterable = vec![
+        FilterableAttributesRule::Field("culture".to_string()),
+        FilterableAttributesRule::Field("role".to_string()),
+        FilterableAttributesRule::Field("race".to_string()),
+        FilterableAttributesRule::Field("category".to_string()),
+        FilterableAttributesRule::Field("formality".to_string()),
+        FilterableAttributesRule::Field("bank_id".to_string()),
+        FilterableAttributesRule::Field("tags".to_string()),
+    ];
+
+    Settings {
+        searchable_attributes: Setting::Set(vec![
+            "phrase".to_string(),
+            "category".to_string(),
+            "bank_id".to_string(),
+            "tags".to_string(),
+        ])
+        .into(),
+        filterable_attributes: Setting::Set(filterable),
+        sortable_attributes: Setting::Set(BTreeSet::from(["frequency".to_string()])),
+        ..Default::default()
+    }
+}
+
+/// Build settings for the name components index.
+fn name_components_settings() -> Settings<Unchecked> {
+    let filterable = vec![
+        FilterableAttributesRule::Field("culture".to_string()),
+        FilterableAttributesRule::Field("component_type".to_string()),
+        FilterableAttributesRule::Field("gender".to_string()),
+        FilterableAttributesRule::Field("phonetic_tags".to_string()),
+    ];
+
+    Settings {
+        searchable_attributes: Setting::Set(vec![
+            "component".to_string(),
+            "meaning".to_string(),
+            "phonetic_tags".to_string(),
+        ])
+        .into(),
+        filterable_attributes: Setting::Set(filterable),
+        sortable_attributes: Setting::Set(BTreeSet::from(["frequency".to_string()])),
+        ..Default::default()
+    }
+}
+
+/// Build settings for the exclamation templates index.
+fn exclamation_settings() -> Settings<Unchecked> {
+    let filterable = vec![
+        FilterableAttributesRule::Field("culture".to_string()),
+        FilterableAttributesRule::Field("intensity".to_string()),
+        FilterableAttributesRule::Field("emotion".to_string()),
+        FilterableAttributesRule::Field("religious".to_string()),
+    ];
+
+    Settings {
+        searchable_attributes: Setting::Set(vec![
+            "template".to_string(),
+            "emotion".to_string(),
+        ])
+        .into(),
+        filterable_attributes: Setting::Set(filterable),
+        sortable_attributes: Setting::Set(BTreeSet::from(["frequency".to_string()])),
+        ..Default::default()
+    }
+}
+
+// ============================================================================
+// Index Management
+// ============================================================================
+
+/// Create an index if it doesn't exist, then apply settings.
+///
+/// This is idempotent: calling it multiple times is safe. If the index
+/// already exists, only settings are updated.
+fn ensure_single_index(
+    meili: &MeilisearchLib,
+    uid: &str,
+    settings: Settings<Unchecked>,
+) -> Result<(), NpcIndexError> {
+    let exists = meili
+        .index_exists(uid)
+        .map_err(|e| NpcIndexError::Check {
+            index: uid.to_string(),
+            detail: e.to_string(),
+        })?;
+
+    if !exists {
+        log::info!("Index '{}' not found, creating...", uid);
+        let task = meili
+            .create_index(uid, Some("id".to_string()))
+            .map_err(|e| NpcIndexError::Create {
+                index: uid.to_string(),
+                detail: e.to_string(),
+            })?;
+        meili
+            .wait_for_task(task.uid, Some(INDEX_TIMEOUT))
+            .map_err(|e| NpcIndexError::TaskFailed {
+                index: uid.to_string(),
+                detail: e.to_string(),
+            })?;
+    }
+
+    let task = meili
+        .update_settings(uid, settings)
+        .map_err(|e| NpcIndexError::Settings {
+            index: uid.to_string(),
+            detail: e.to_string(),
+        })?;
+    meili
+        .wait_for_task(task.uid, Some(INDEX_TIMEOUT))
+        .map_err(|e| NpcIndexError::TaskFailed {
+            index: uid.to_string(),
+            detail: e.to_string(),
+        })?;
+
+    log::debug!("Configured index '{}'", uid);
+    Ok(())
+}
 
 /// Ensures all NPC-related indexes exist with proper settings.
 ///
@@ -109,174 +265,19 @@ pub struct ExclamationTemplateDocument {
 /// Indexes that already exist will have their settings updated.
 ///
 /// # Arguments
-/// * `client` - Meilisearch client
+/// * `meili` - Embedded MeilisearchLib instance
 ///
 /// # Returns
 /// * `Ok(())` - All indexes created/verified successfully
-/// * `Err(String)` - If index creation or configuration fails
-///
-/// # Example
-/// ```ignore
-/// use meilisearch_sdk::client::Client;
-/// use crate::core::npc_gen::indexes::ensure_npc_indexes;
-///
-/// async fn setup() -> Result<(), String> {
-///     let client = Client::new("http://localhost:7700", Some("api_key"));
-///     ensure_npc_indexes(&client).await?;
-///     Ok(())
-/// }
-/// ```
-pub async fn ensure_npc_indexes(client: &Client) -> Result<(), String> {
+/// * `Err(NpcIndexError)` - If index creation or configuration fails
+pub fn ensure_npc_indexes(meili: &MeilisearchLib) -> Result<(), NpcIndexError> {
     log::info!("Ensuring NPC generation indexes exist...");
 
-    // Create vocabulary banks index
-    ensure_vocabulary_bank_index(client).await?;
-
-    // Create name components index
-    ensure_name_components_index(client).await?;
-
-    // Create exclamation templates index
-    ensure_exclamation_templates_index(client).await?;
+    ensure_single_index(meili, INDEX_VOCABULARY_BANKS, vocabulary_settings())?;
+    ensure_single_index(meili, INDEX_NAME_COMPONENTS, name_components_settings())?;
+    ensure_single_index(meili, INDEX_EXCLAMATION_TEMPLATES, exclamation_settings())?;
 
     log::info!("NPC generation indexes ready");
-    Ok(())
-}
-
-/// Ensure the vocabulary banks index exists with proper configuration.
-async fn ensure_vocabulary_bank_index(client: &Client) -> Result<Index, String> {
-    let index = ensure_index(client, INDEX_VOCABULARY_BANKS, "id").await?;
-
-    let settings = Settings::new()
-        .with_searchable_attributes([
-            "phrase",
-            "category",
-            "bank_id",
-            "tags",
-        ])
-        .with_filterable_attributes([
-            "culture",
-            "role",
-            "race",
-            "category",
-            "formality",
-            "bank_id",
-            "tags",
-        ])
-        .with_sortable_attributes([
-            "frequency",
-        ]);
-
-    apply_settings(&index, &settings, client).await?;
-
-    log::debug!("Configured index '{}'", INDEX_VOCABULARY_BANKS);
-    Ok(index)
-}
-
-/// Ensure the name components index exists with proper configuration.
-async fn ensure_name_components_index(client: &Client) -> Result<Index, String> {
-    let index = ensure_index(client, INDEX_NAME_COMPONENTS, "id").await?;
-
-    let settings = Settings::new()
-        .with_searchable_attributes([
-            "component",
-            "meaning",
-            "phonetic_tags",
-        ])
-        .with_filterable_attributes([
-            "culture",
-            "component_type",
-            "gender",
-            "phonetic_tags",
-        ])
-        .with_sortable_attributes([
-            "frequency",
-        ]);
-
-    apply_settings(&index, &settings, client).await?;
-
-    log::debug!("Configured index '{}'", INDEX_NAME_COMPONENTS);
-    Ok(index)
-}
-
-/// Ensure the exclamation templates index exists with proper configuration.
-async fn ensure_exclamation_templates_index(client: &Client) -> Result<Index, String> {
-    let index = ensure_index(client, INDEX_EXCLAMATION_TEMPLATES, "id").await?;
-
-    let settings = Settings::new()
-        .with_searchable_attributes([
-            "template",
-            "emotion",
-        ])
-        .with_filterable_attributes([
-            "culture",
-            "intensity",
-            "emotion",
-            "religious",
-        ])
-        .with_sortable_attributes([
-            "frequency",
-        ]);
-
-    apply_settings(&index, &settings, client).await?;
-
-    log::debug!("Configured index '{}'", INDEX_EXCLAMATION_TEMPLATES);
-    Ok(index)
-}
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/// Ensure an index exists, creating it if necessary.
-async fn ensure_index(client: &Client, name: &str, primary_key: &str) -> Result<Index, String> {
-    match client.get_index(name).await {
-        Ok(idx) => Ok(idx),
-        Err(meilisearch_sdk::errors::Error::Meilisearch(err))
-            if err.error_code == meilisearch_sdk::errors::ErrorCode::IndexNotFound =>
-        {
-            // Index doesn't exist, create it
-            log::info!("Index '{}' not found, creating...", name);
-            let task = client
-                .create_index(name, Some(primary_key))
-                .await
-                .map_err(|e| format!("Failed to create index '{}': {}", name, e))?;
-
-            task.wait_for_completion(
-                client,
-                Some(std::time::Duration::from_millis(100)),
-                Some(std::time::Duration::from_secs(INDEX_TASK_TIMEOUT_SECS)),
-            )
-            .await
-            .map_err(|e| format!("Timeout waiting for index '{}' creation: {}", name, e))?;
-
-            Ok(client.index(name))
-        }
-        Err(e) => {
-            // Other errors (connectivity, auth, etc.) should be surfaced
-            Err(format!("Failed to get index '{}': {}", name, e))
-        }
-    }
-}
-
-/// Apply settings to an index.
-async fn apply_settings(
-    index: &Index,
-    settings: &Settings,
-    client: &Client,
-) -> Result<(), String> {
-    let task = index
-        .set_settings(settings)
-        .await
-        .map_err(|e| format!("Failed to set settings on '{}': {}", index.uid, e))?;
-
-    task.wait_for_completion(
-        client,
-        Some(std::time::Duration::from_millis(100)),
-        Some(std::time::Duration::from_secs(INDEX_TASK_TIMEOUT_SECS)),
-    )
-    .await
-    .map_err(|e| format!("Timeout waiting for settings on '{}': {}", index.uid, e))?;
-
     Ok(())
 }
 
@@ -285,8 +286,7 @@ async fn apply_settings(
 // ============================================================================
 
 /// Statistics about NPC generation indexes.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NpcIndexStats {
     /// Number of vocabulary phrases indexed
     pub vocabulary_phrase_count: u64,
@@ -294,38 +294,33 @@ pub struct NpcIndexStats {
     pub name_component_count: u64,
     /// Number of exclamation templates indexed
     pub exclamation_template_count: u64,
-    /// List of cultures with indexed data
+    /// List of cultures with indexed data.
+    // TODO: Populate via faceted search once culture facets are configured.
     pub indexed_cultures: Vec<String>,
 }
 
-
 /// Get statistics about NPC generation indexes.
 ///
-/// # Arguments
-/// * `client` - Meilisearch client
+/// Returns zero counts for indexes that don't exist or are inaccessible;
+/// errors from individual index lookups are logged and treated as missing
+/// data. Use `ensure_npc_indexes()` first if you need to guarantee the
+/// indexes exist.
 ///
-/// # Returns
-/// * `Ok(NpcIndexStats)` - Statistics about indexed data
-/// * `Err(String)` - If statistics cannot be retrieved
-pub async fn get_npc_index_stats(client: &Client) -> Result<NpcIndexStats, String> {
+/// Although this function currently always returns `Ok(NpcIndexStats)`,
+/// it is exposed as `Result` so that future implementations can surface
+/// hard Meilisearch failures. Callers should be prepared to handle errors.
+///
+/// # Arguments
+/// * `meili` - Embedded Meilisearch instance
+pub fn get_npc_index_stats(meili: &MeilisearchLib) -> Result<NpcIndexStats, NpcIndexError> {
     let mut stats = NpcIndexStats::default();
 
     // Get vocabulary phrase count
-    match client.get_index(INDEX_VOCABULARY_BANKS).await {
-        Ok(index) => match index.get_stats().await {
-            Ok(index_stats) => {
-                stats.vocabulary_phrase_count = index_stats.number_of_documents as u64;
-            }
-            Err(e) => {
-                log::warn!(
-                    "Failed to get stats for index '{}': {}",
-                    INDEX_VOCABULARY_BANKS,
-                    e
-                );
-            }
-        },
+    match meili.index_stats(INDEX_VOCABULARY_BANKS) {
+        Ok(index_stats) => {
+            stats.vocabulary_phrase_count = index_stats.number_of_documents;
+        }
         Err(e) => {
-            // Log but don't fail - index may not exist yet
             log::debug!(
                 "Index '{}' not found or inaccessible: {}",
                 INDEX_VOCABULARY_BANKS,
@@ -335,19 +330,10 @@ pub async fn get_npc_index_stats(client: &Client) -> Result<NpcIndexStats, Strin
     }
 
     // Get name component count
-    match client.get_index(INDEX_NAME_COMPONENTS).await {
-        Ok(index) => match index.get_stats().await {
-            Ok(index_stats) => {
-                stats.name_component_count = index_stats.number_of_documents as u64;
-            }
-            Err(e) => {
-                log::warn!(
-                    "Failed to get stats for index '{}': {}",
-                    INDEX_NAME_COMPONENTS,
-                    e
-                );
-            }
-        },
+    match meili.index_stats(INDEX_NAME_COMPONENTS) {
+        Ok(index_stats) => {
+            stats.name_component_count = index_stats.number_of_documents;
+        }
         Err(e) => {
             log::debug!(
                 "Index '{}' not found or inaccessible: {}",
@@ -358,19 +344,10 @@ pub async fn get_npc_index_stats(client: &Client) -> Result<NpcIndexStats, Strin
     }
 
     // Get exclamation template count
-    match client.get_index(INDEX_EXCLAMATION_TEMPLATES).await {
-        Ok(index) => match index.get_stats().await {
-            Ok(index_stats) => {
-                stats.exclamation_template_count = index_stats.number_of_documents as u64;
-            }
-            Err(e) => {
-                log::warn!(
-                    "Failed to get stats for index '{}': {}",
-                    INDEX_EXCLAMATION_TEMPLATES,
-                    e
-                );
-            }
-        },
+    match meili.index_stats(INDEX_EXCLAMATION_TEMPLATES) {
+        Ok(index_stats) => {
+            stats.exclamation_template_count = index_stats.number_of_documents;
+        }
         Err(e) => {
             log::debug!(
                 "Index '{}' not found or inaccessible: {}",
@@ -380,8 +357,6 @@ pub async fn get_npc_index_stats(client: &Client) -> Result<NpcIndexStats, Strin
         }
     }
 
-    // TODO: Retrieve unique cultures from indexes using faceted search
-
     Ok(stats)
 }
 
@@ -389,7 +364,7 @@ pub async fn get_npc_index_stats(client: &Client) -> Result<NpcIndexStats, Strin
 ///
 /// # Warning
 /// This will delete all indexed NPC generation data!
-pub async fn clear_npc_indexes(client: &Client) -> Result<(), String> {
+pub fn clear_npc_indexes(meili: &MeilisearchLib) -> Result<(), NpcIndexError> {
     log::warn!("Clearing all NPC generation indexes!");
 
     for index_name in [
@@ -397,21 +372,32 @@ pub async fn clear_npc_indexes(client: &Client) -> Result<(), String> {
         INDEX_NAME_COMPONENTS,
         INDEX_EXCLAMATION_TEMPLATES,
     ] {
-        if let Ok(index) = client.get_index(index_name).await {
-            let task = index
-                .delete_all_documents()
-                .await
-                .map_err(|e| format!("Failed to clear '{}': {}", index_name, e))?;
+        log::info!("Clearing index '{}'...", index_name);
 
-            task.wait_for_completion(
-                client,
-                Some(std::time::Duration::from_millis(100)),
-                Some(std::time::Duration::from_secs(INDEX_TASK_TIMEOUT_SECS)),
-            )
-            .await
-            .map_err(|e| format!("Timeout clearing '{}': {}", index_name, e))?;
+        // Only clear if the index exists
+        let exists = meili.index_exists(index_name).map_err(|e| NpcIndexError::Check {
+            index: index_name.to_string(),
+            detail: e.to_string(),
+        })?;
 
-            log::info!("Cleared index '{}'", index_name);
+        if exists {
+            let task = meili
+                .delete_all_documents(index_name)
+                .map_err(|e| NpcIndexError::Clear {
+                    index: index_name.to_string(),
+                    detail: e.to_string(),
+                })?;
+
+            meili
+                .wait_for_task(task.uid, Some(INDEX_TIMEOUT))
+                .map_err(|e| NpcIndexError::TaskFailed {
+                    index: index_name.to_string(),
+                    detail: e.to_string(),
+                })?;
+
+            log::info!("Cleared index '{}' successfully", index_name);
+        } else {
+            log::debug!("Index '{}' doesn't exist, skipping", index_name);
         }
     }
 

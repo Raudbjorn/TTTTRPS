@@ -30,7 +30,7 @@ pub async fn filter_templates_by_game_system(
     game_system: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<TemplatePreviewResponse>, String> {
-    let templates = state.template_store.filter_by_game_system(&game_system).await.map_err(|e| e.to_string())?;
+    let templates = state.template_store.filter_by_game_system(&game_system).map_err(|e| e.to_string())?;
     Ok(templates.into_iter().map(TemplatePreviewResponse::from).collect())
 }
 
@@ -40,7 +40,7 @@ pub async fn filter_templates_by_setting(
     setting_name: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<TemplatePreviewResponse>, String> {
-    let templates = state.template_store.filter_by_setting(&setting_name).await.map_err(|e| e.to_string())?;
+    let templates = state.template_store.filter_by_setting(&setting_name).map_err(|e| e.to_string())?;
     Ok(templates.into_iter().map(TemplatePreviewResponse::from).collect())
 }
 
@@ -50,7 +50,7 @@ pub async fn search_personality_templates(
     query: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<TemplatePreviewResponse>, String> {
-    let templates = state.template_store.search_with_limit(&query, 100).await.map_err(|e| e.to_string())?;
+    let templates = state.template_store.search_with_limit(&query, 100).map_err(|e| e.to_string())?;
     Ok(templates.into_iter().map(TemplatePreviewResponse::from).collect())
 }
 

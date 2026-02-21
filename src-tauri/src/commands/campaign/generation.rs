@@ -4,12 +4,16 @@
 //! Provides the frontend interface for generating campaign content
 //! (characters, NPCs, sessions, arcs, party analysis).
 
+// TODO: Arc and RwLock will be needed when get_orchestrator is restored
+#[allow(unused_imports)]
 use std::sync::Arc;
 use tauri::State;
+#[allow(unused_imports)]
 use tokio::sync::RwLock;
 use tracing::{debug, error, info};
 
 use crate::commands::AppState;
+#[allow(unused_imports)]
 use crate::core::campaign::generation::{
     AcceptanceManager, ArcDraft, ArcGenerationRequest, ArcGenerator, ArcTemplateType,
     CharacterDraft, CharacterGenerationRequest, CharacterGenerator,
@@ -32,22 +36,32 @@ fn gen_err_to_string(err: impl std::fmt::Display) -> String {
 }
 
 /// Create a GenerationOrchestrator from AppState
+///
+/// TODO: GenerationOrchestrator::new expects Arc<SearchClient> which was the
+/// HTTP-based meilisearch_sdk client. With embedded MeilisearchLib, the orchestrator
+/// needs to be updated to accept EmbeddedSearch or remove the search_client dependency
+/// (it's marked #[allow(dead_code)] in the struct, so it may not be actively used).
 async fn get_orchestrator(
-    state: &State<'_, AppState>,
+    _state: &State<'_, AppState>,
 ) -> Result<GenerationOrchestrator, String> {
-    let llm_router = state.llm_router.read().await;
-    let search_client = state.search_client.clone();
-    let database = state.database.clone();
+    // TODO: GenerationOrchestrator::new expects Arc<SearchClient> which was the
+    // HTTP-based meilisearch_sdk client. With embedded MeilisearchLib, the orchestrator
+    // needs to be updated to accept EmbeddedSearch or remove the search_client dependency
+    // (it's marked #[allow(dead_code)] in the struct, so it may not be actively used).
+    //
+    // Original code that needs migration:
+    // let llm_router = state.llm_router.read().await;
+    // let search_client = state.search_client.clone();
+    // let database = state.database.clone();
+    // let registry = TemplateRegistry::with_defaults().await;
+    // Ok(GenerationOrchestrator::new(
+    //     Arc::new(RwLock::new(llm_router.clone())),
+    //     search_client,
+    //     registry,
+    //     database,
+    // ))
 
-    // Load template registry (use defaults if no custom templates)
-    let registry = TemplateRegistry::with_defaults().await;
-
-    Ok(GenerationOrchestrator::new(
-        Arc::new(RwLock::new(llm_router.clone())),
-        search_client,
-        registry,
-        database,
-    ))
+    Err("GenerationOrchestrator not yet migrated to MeilisearchLib. The search_client dependency needs to be removed or replaced with EmbeddedSearch.".to_string())
 }
 
 /// Create an AcceptanceManager from AppState

@@ -24,7 +24,7 @@ use crate::bindings::{
 };
 use crate::components::design_system::{Badge, BadgeVariant, Button, ButtonVariant, Card, Input};
 use crate::services::notification_service::{show_error, show_success};
-use super::{ClaudeGateAuth, CopilotAuth, GeminiGateAuth};
+use super::{ClaudeAuth, CopilotAuth, GeminiAuth};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum LLMProvider {
@@ -620,7 +620,7 @@ pub fn LLMSettingsView() -> impl IntoView {
                                     // Claude OAuth panel - uses shared component
                                     view! {
                                         <div class="space-y-3">
-                                            <ClaudeGateAuth
+                                            <ClaudeAuth
                                                 show_card=false
                                                 on_status_change=Callback::new(move |status: ClaudeStatus| {
                                                     let is_ready = status.authenticated;
@@ -678,7 +678,7 @@ pub fn LLMSettingsView() -> impl IntoView {
                                     // Gemini OAuth panel - uses shared component
                                     view! {
                                         <div class="space-y-3">
-                                            <GeminiGateAuth
+                                            <GeminiAuth
                                                 show_card=false
                                                 on_status_change=Callback::new(move |status: GeminiStatus| {
                                                     let is_ready = status.authenticated;

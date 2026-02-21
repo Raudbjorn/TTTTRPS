@@ -1,23 +1,38 @@
 //! Search Query Commands
 //!
 //! Core search functionality including basic search and hybrid search.
+//! Uses embedded MeilisearchLib for direct Rust integration without HTTP.
 
+use std::time::Instant;
+
+use meilisearch_lib::{HybridQuery, SearchQuery};
 use tauri::State;
 
 use crate::commands::AppState;
-use crate::core::search::{
-    HybridSearchEngine, HybridConfig,
-    hybrid::HybridSearchOptions as CoreHybridSearchOptions,
-};
+// Re-exported from core::search::config - config module is private but items are pub
+use crate::core::search::{all_indexes, select_index_for_source_type};
+
 use super::types::{
-    SearchOptions, SearchResultPayload,
-    HybridSearchOptions, HybridSearchResultPayload, HybridSearchResponsePayload,
+    HybridSearchOptions, HybridSearchResponsePayload, HybridSearchResultPayload, SearchOptions,
+    SearchResultPayload,
 };
 
 // ============================================================================
 // Basic Search
 // ============================================================================
 
+/// Perform a keyword search across TTRPG content indexes.
+///
+/// This command searches using Meilisearch's BM25 ranking algorithm for fast,
+/// typo-tolerant keyword matching.
+///
+/// # Arguments
+/// * `query` - Search query string
+/// * `options` - Optional search configuration (limit, filters, index)
+/// * `state` - Application state containing embedded search engine
+///
+/// # Returns
+/// Vector of search results with content, source, and relevance scores
 #[tauri::command]
 pub async fn search(
     query: String,
@@ -25,71 +40,90 @@ pub async fn search(
     state: State<'_, AppState>,
 ) -> Result<Vec<SearchResultPayload>, String> {
     let opts = options.unwrap_or_default();
+    let meili = state.embedded_search.clone_inner();
+    let query_clone = query.clone();
 
-    // Helper to escape Meilisearch filter values (prevent injection)
-    fn escape_filter_value(s: &str) -> String {
-        s.replace('\\', "\\\\").replace('\'', "\\'")
-    }
+    tokio::task::spawn_blocking(move || {
+        let start = Instant::now();
 
-    // Build filter if needed (with proper escaping)
-    let filter = match (&opts.source_type, &opts.campaign_id) {
-        (Some(st), Some(cid)) => Some(format!(
-            "source_type = '{}' AND campaign_id = '{}'",
-            escape_filter_value(st),
-            escape_filter_value(cid)
-        )),
-        (Some(st), None) => Some(format!("source_type = '{}'", escape_filter_value(st))),
-        (None, Some(cid)) => Some(format!("campaign_id = '{}'", escape_filter_value(cid))),
-        (None, None) => None,
-    };
+        // Determine which index(es) to search
+        let indexes_to_search = if let Some(ref index) = opts.index {
+            vec![index.as_str()]
+        } else if let Some(ref source_type) = opts.source_type {
+            vec![select_index_for_source_type(source_type)]
+        } else {
+            // Search all content indexes
+            all_indexes()
+        };
 
-    let results = if let Some(index_name) = &opts.index {
-        // Search specific index
-        state.search_client
-            .search(index_name, &query, opts.limit, filter.as_deref())
-            .await
-            .map_err(|e| format!("Search failed: {}", e))?
-    } else {
-        // Federated search across all content indexes
-        let federated = state.search_client
-            .search_all(&query, opts.limit)
-            .await
-            .map_err(|e| format!("Search failed: {}", e))?;
-        federated.results
-    };
+        // Build filter expression if we have campaign_id or source_type filters
+        let filter = build_filter_expression(&opts);
 
-    // Format results
-    let formatted: Vec<SearchResultPayload> = results
-        .into_iter()
-        .map(|r| SearchResultPayload {
-            content: r.document.content,
-            source: r.document.source,
-            source_type: r.document.source_type,
-            page_number: r.document.page_number,
-            score: r.score,
-            index: r.index,
-        })
-        .collect();
+        let mut all_results = Vec::new();
 
-    Ok(formatted)
+        for index_uid in indexes_to_search {
+            // Build search query
+            let mut search_query = SearchQuery::new(&query_clone);
+            search_query = search_query.with_pagination(0, opts.limit);
+
+            // Apply filter if present
+            if let Some(ref filter_value) = filter {
+                search_query = search_query.with_filter(filter_value.clone());
+            }
+
+            // Enable ranking scores
+            search_query.show_ranking_score = true;
+
+            // Execute search
+            match meili.search(index_uid, search_query) {
+                Ok(result) => {
+                    for hit in result.hits {
+                        if let Some(payload) = convert_hit_to_payload(&hit, index_uid) {
+                            all_results.push(payload);
+                        }
+                    }
+                }
+                Err(e) => {
+                    // Log error but continue with other indexes
+                    log::warn!("Search error in index '{}': {}", index_uid, e);
+                }
+            }
+        }
+
+        // Sort by score descending and limit total results
+        all_results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        all_results.truncate(opts.limit);
+
+        log::debug!(
+            "Search for '{}' returned {} results in {:?}",
+            query_clone,
+            all_results.len(),
+            start.elapsed()
+        );
+
+        Ok(all_results)
+    })
+    .await
+    .map_err(|e| format!("Search task failed: {}", e))?
 }
 
 // ============================================================================
 // Hybrid Search
 // ============================================================================
 
-/// Perform hybrid search with RRF fusion
+/// Perform hybrid search combining keyword and semantic matching.
 ///
-/// Combines keyword (Meilisearch BM25) and semantic (vector similarity) search
-/// using Reciprocal Rank Fusion (RRF) for optimal ranking.
+/// Uses Meilisearch's native hybrid search which combines BM25 keyword matching
+/// with vector similarity search. Results are fused using the configured
+/// semantic ratio (0.0 = pure keyword, 1.0 = pure semantic).
 ///
 /// # Arguments
 /// * `query` - The search query string
-/// * `options` - Optional search configuration
-/// * `state` - Application state containing search client
+/// * `options` - Optional search configuration (limit, filters, semantic_weight)
+/// * `state` - Application state containing embedded search engine
 ///
 /// # Returns
-/// Search results with RRF-fused scores, timing, and query enhancement info
+/// Search results with fused scores, timing, and query metadata
 #[tauri::command]
 pub async fn hybrid_search(
     query: String,
@@ -97,84 +131,279 @@ pub async fn hybrid_search(
     state: State<'_, AppState>,
 ) -> Result<HybridSearchResponsePayload, String> {
     let opts = options.unwrap_or_default();
+    let meili = state.embedded_search.clone_inner();
+    let query_clone = query.clone();
 
-    // Build hybrid config from options
-    let mut config = HybridConfig::default();
+    tokio::task::spawn_blocking(move || {
+        let start = Instant::now();
 
-    // Apply fusion strategy if specified
-    if let Some(strategy) = &opts.fusion_strategy {
-        config.fusion_strategy = Some(strategy.clone());
-    }
+        // Determine semantic ratio from options
+        // Default to balanced (0.5) if not specified, clamp to [0.0, 1.0] and handle NaN
+        let raw_semantic_ratio = opts.semantic_weight.unwrap_or(0.5);
+        let semantic_ratio = if raw_semantic_ratio.is_nan() {
+            0.5
+        } else if raw_semantic_ratio < 0.0 {
+            0.0
+        } else if raw_semantic_ratio > 1.0 {
+            1.0
+        } else {
+            raw_semantic_ratio
+        };
 
-    // Apply query expansion setting
-    if let Some(expand) = opts.query_expansion {
-        config.query_expansion = expand;
-    }
+        // Determine which index(es) to search
+        let indexes_to_search = if let Some(ref index) = opts.index {
+            vec![index.as_str()]
+        } else if let Some(ref source_type) = opts.source_type {
+            vec![select_index_for_source_type(source_type)]
+        } else {
+            // Search all content indexes for federated hybrid search
+            all_indexes()
+        };
 
-    // Apply spell correction setting
-    if let Some(correct) = opts.spell_correction {
-        config.spell_correction = correct;
-    }
+        // Build filter expression
+        let filter = build_hybrid_filter_expression(&opts);
 
-    // Create hybrid search engine with configured options
-    let engine = HybridSearchEngine::new(
-        state.search_client.clone(),
-        None, // Embedding provider - use Meilisearch's built-in for now
-        config,
-    );
+        let mut all_results = Vec::new();
+        let mut total_hits: usize = 0;
+        let mut hints = Vec::new();
 
-    // Convert options to core search options
-    let search_options = CoreHybridSearchOptions {
-        limit: opts.limit,
-        source_type: opts.source_type,
-        campaign_id: opts.campaign_id,
-        index: opts.index,
-        semantic_weight: opts.semantic_weight,
-        keyword_weight: opts.keyword_weight,
-    };
+        for index_uid in indexes_to_search {
+            // Build hybrid search query
+            let hybrid_config = HybridQuery::new(semantic_ratio);
+            let mut search_query = SearchQuery::new(&query_clone)
+                .with_hybrid(hybrid_config)
+                .with_pagination(0, opts.limit);
 
-    // Perform search
-    let response = engine
-        .search(&query, search_options)
-        .await
-        .map_err(|e| format!("Hybrid search failed: {}", e))?;
-
-    // Determine overlap count for each result
-    let results: Vec<HybridSearchResultPayload> = response
-        .results
-        .into_iter()
-        .map(|r| {
-            let overlap_count = match (r.keyword_rank.is_some(), r.semantic_rank.is_some()) {
-                (true, true) => Some(2),
-                (true, false) | (false, true) => Some(1),
-                (false, false) => None,
-            };
-
-            HybridSearchResultPayload {
-                content: r.document.content,
-                source: r.document.source,
-                source_type: r.document.source_type,
-                page_number: r.document.page_number,
-                score: r.score,
-                index: r.index,
-                keyword_rank: r.keyword_rank,
-                semantic_rank: r.semantic_rank,
-                overlap_count,
+            // Apply filter if present
+            if let Some(ref filter_value) = filter {
+                search_query = search_query.with_filter(filter_value.clone());
             }
+
+            // Enable ranking scores
+            search_query.show_ranking_score = true;
+
+            // Execute hybrid search
+            match meili.search(index_uid, search_query) {
+                Ok(result) => {
+                    if let Some(estimated) = result.estimated_total_hits {
+                        total_hits += estimated as usize;
+                    }
+
+                    // Track if semantic search found results
+                    if let Some(semantic_count) = result.semantic_hit_count {
+                        if semantic_count > 0 {
+                            hints.push(format!(
+                                "Found {} semantic matches in {}",
+                                semantic_count, index_uid
+                            ));
+                        }
+                    }
+
+                    for (rank, hit) in result.hits.iter().enumerate() {
+                        if let Some(payload) = convert_hit_to_hybrid_payload(&hit, index_uid, rank) {
+                            all_results.push(payload);
+                        }
+                    }
+                }
+                Err(e) => {
+                    // Log error but continue with other indexes
+                    log::warn!("Hybrid search error in index '{}': {}", index_uid, e);
+                    hints.push(format!("Search unavailable for {}: {}", index_uid, e));
+                }
+            }
+        }
+
+        // Sort by score descending and limit total results
+        all_results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        all_results.truncate(opts.limit);
+
+        let processing_time_ms = start.elapsed().as_millis() as u64;
+        let within_target = processing_time_ms < 500; // Performance target: <500ms
+
+        log::debug!(
+            "Hybrid search for '{}' returned {} results in {}ms (target: {})",
+            query_clone,
+            all_results.len(),
+            processing_time_ms,
+            if within_target { "met" } else { "missed" }
+        );
+
+        Ok(HybridSearchResponsePayload {
+            results: all_results,
+            total_hits,
+            original_query: query_clone,
+            expanded_query: None, // Query expansion handled by MeilisearchLib synonyms
+            corrected_query: None, // Typo tolerance handled by MeilisearchLib
+            processing_time_ms,
+            hints,
+            within_target,
         })
-        .collect();
+    })
+    .await
+    .map_err(|e| format!("Hybrid search task failed: {}", e))?
+}
 
-    // Check if within performance target
-    let within_target = response.processing_time_ms < 500;
+// ============================================================================
+// Helper Functions
+// ============================================================================
 
-    Ok(HybridSearchResponsePayload {
-        results,
-        total_hits: response.total_hits,
-        original_query: response.original_query,
-        expanded_query: response.expanded_query,
-        corrected_query: response.corrected_query,
-        processing_time_ms: response.processing_time_ms,
-        hints: response.hints,
-        within_target,
+/// Escape a value for use in Meilisearch filter expressions.
+///
+/// Prevents filter injection by escaping `\` and `"` characters.
+fn escape_filter_value(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// Build filter expression from SearchOptions
+fn build_filter_expression(opts: &SearchOptions) -> Option<serde_json::Value> {
+    let mut filters = Vec::new();
+
+    if let Some(ref campaign_id) = opts.campaign_id {
+        filters.push(format!("campaign_id = \"{}\"", escape_filter_value(campaign_id)));
+    }
+
+    if let Some(ref source_type) = opts.source_type {
+        filters.push(format!("source_type = \"{}\"", escape_filter_value(source_type)));
+    }
+
+    if filters.is_empty() {
+        None
+    } else {
+        Some(serde_json::Value::String(filters.join(" AND ")))
+    }
+}
+
+/// Build filter expression from HybridSearchOptions
+fn build_hybrid_filter_expression(opts: &HybridSearchOptions) -> Option<serde_json::Value> {
+    let mut filters = Vec::new();
+
+    if let Some(ref campaign_id) = opts.campaign_id {
+        filters.push(format!("campaign_id = \"{}\"", escape_filter_value(campaign_id)));
+    }
+
+    if let Some(ref source_type) = opts.source_type {
+        filters.push(format!("source_type = \"{}\"", escape_filter_value(source_type)));
+    }
+
+    if filters.is_empty() {
+        None
+    } else {
+        Some(serde_json::Value::String(filters.join(" AND ")))
+    }
+}
+
+/// Convert a MeilisearchLib SearchHit to frontend SearchResultPayload
+fn convert_hit_to_payload(
+    hit: &meilisearch_lib::SearchHit,
+    index: &str,
+) -> Option<SearchResultPayload> {
+    let doc = &hit.document;
+
+    // Extract content - try multiple field names
+    let content = doc
+        .get("content")
+        .or_else(|| doc.get("text"))
+        .or_else(|| doc.get("body"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    // Extract source - try multiple field names
+    let source = doc
+        .get("source")
+        .or_else(|| doc.get("file_name"))
+        .or_else(|| doc.get("book_title"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("Unknown")
+        .to_string();
+
+    // Extract source_type with fallback
+    let source_type = doc
+        .get("source_type")
+        .or_else(|| doc.get("content_category"))
+        .or_else(|| doc.get("chunk_type"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("document")
+        .to_string();
+
+    // Extract page number
+    let page_number = doc
+        .get("page_number")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as u32);
+
+    // Get ranking score, default to 0.0
+    let score = hit.ranking_score.unwrap_or(0.0) as f32;
+
+    Some(SearchResultPayload {
+        content,
+        source,
+        source_type,
+        page_number,
+        score,
+        index: index.to_string(),
+    })
+}
+
+/// Convert a MeilisearchLib SearchHit to frontend HybridSearchResultPayload
+fn convert_hit_to_hybrid_payload(
+    hit: &meilisearch_lib::SearchHit,
+    index: &str,
+    _rank: usize,
+) -> Option<HybridSearchResultPayload> {
+    let doc = &hit.document;
+
+    // Extract content
+    let content = doc
+        .get("content")
+        .or_else(|| doc.get("text"))
+        .or_else(|| doc.get("body"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    // Extract source
+    let source = doc
+        .get("source")
+        .or_else(|| doc.get("file_name"))
+        .or_else(|| doc.get("book_title"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("Unknown")
+        .to_string();
+
+    // Extract source_type
+    let source_type = doc
+        .get("source_type")
+        .or_else(|| doc.get("content_category"))
+        .or_else(|| doc.get("chunk_type"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("document")
+        .to_string();
+
+    // Extract page number
+    let page_number = doc
+        .get("page_number")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as u32);
+
+    // Get ranking score
+    let score = hit.ranking_score.unwrap_or(0.0) as f32;
+
+    Some(HybridSearchResultPayload {
+        content,
+        source,
+        source_type,
+        page_number,
+        score,
+        index: index.to_string(),
+        // Hybrid search returns a fused ranking; keyword/semantic ranks are not separable.
+        keyword_rank: None,
+        semantic_rank: None,
+        // Native hybrid doesn't provide per-source overlap information.
+        overlap_count: None,
     })
 }

@@ -43,11 +43,15 @@ pub async fn chat(
     // Use unified LLM Manager using Meilisearch Chat (RAG-enabled)
     let manager = state.llm_manager.clone();
 
-    // Ensure chat client is configured
-    {
-        let manager_guard = manager.write().await;
-        manager_guard.set_chat_client(state.search_client.host(), Some(&state.sidecar_manager.config().master_key)).await;
-    }
+    // TODO: set_chat_client was for HTTP-based Meilisearch.
+    // With embedded MeilisearchLib, chat completion goes through embedded_search.inner() directly.
+    // This will be replaced with RAG commands in Phase 4.
+    //
+    // Previously this ensured chat client was configured:
+    // {
+    //     let manager_guard = manager.write().await;
+    //     manager_guard.set_chat_client(state.search_client.host(), Some(&state.sidecar_manager.config().master_key)).await;
+    // }
 
     // Prepare messages - start with system prompt as first message
     let mut messages = vec![

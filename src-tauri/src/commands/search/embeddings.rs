@@ -1,6 +1,11 @@
 //! Embeddings Configuration Commands
 //!
 //! Commands for configuring vector embeddings for semantic search.
+//!
+//! TODO: Phase 3 Migration - These commands need to be updated to use EmbeddedSearch/MeilisearchLib.
+//! The MeilisearchLib provides embedder configuration through the settings API:
+//!   - meili.update_settings(uid, settings) where settings includes embedders
+//! See: meili-dev/crates/meilisearch-lib/src/settings.rs
 
 use tauri::State;
 
@@ -15,8 +20,15 @@ use super::types::{
 // ============================================================================
 
 #[tauri::command]
+#[allow(unused_variables)]
 pub async fn get_vector_store_status(state: State<'_, AppState>) -> Result<String, String> {
-    if state.search_client.health_check().await {
+    // TODO: Migrate to embedded MeilisearchLib
+    // Old: state.search_client.health_check().await
+    // New: Use state.embedded_search.inner().health() which always returns "available"
+    let meili = state.embedded_search.inner();
+    let health = meili.health();
+
+    if health.status == "available" {
         Ok("Meilisearch Ready".to_string())
     } else {
         Ok("Meilisearch Unhealthy".to_string())
@@ -24,66 +36,66 @@ pub async fn get_vector_store_status(state: State<'_, AppState>) -> Result<Strin
 }
 
 /// Configure Meilisearch embedder for semantic/vector search
+///
+/// TODO: Phase 3 Migration - Update to use MeilisearchLib settings API
 #[tauri::command]
+#[allow(unused_variables)]
 pub async fn configure_meilisearch_embedder(
     index_name: String,
     config: EmbedderConfigRequest,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    use crate::core::search::EmbedderConfig;
+    // TODO: Migrate to embedded MeilisearchLib
+    // The old SearchClient had configure_embedder() method.
+    // The new MeilisearchLib uses:
+    //   meili.update_settings(uid, settings) where settings.embedders contains the config
+    //
+    // Access via: state.embedded_search.inner()
+    let _meili = state.embedded_search.inner();
 
-    let embedder_config = match config.provider.as_str() {
-        "openAi" | "openai" => {
-            let api_key = config.api_key.ok_or("OpenAI API key required")?;
-            EmbedderConfig::OpenAI {
-                api_key,
-                model: config.model,
-                dimensions: config.dimensions,
-            }
-        }
-        "ollama" => {
-            let url = config.url.unwrap_or_else(|| "http://localhost:11434".to_string());
-            let model = config.model.unwrap_or_else(|| "nomic-embed-text".to_string());
-            EmbedderConfig::Ollama { url, model }
-        }
-        "huggingFace" | "huggingface" => {
-            let model = config.model.unwrap_or_else(|| "BAAI/bge-base-en-v1.5".to_string());
-            EmbedderConfig::HuggingFace { model }
-        }
-        other => return Err(format!("Unknown provider: {}. Use 'openAi', 'ollama', or 'huggingFace'", other)),
-    };
+    log::warn!(
+        "configure_meilisearch_embedder() called but not yet migrated to embedded MeilisearchLib. Index: {}, Provider: {}",
+        index_name, config.provider
+    );
 
-    state.search_client
-        .configure_embedder(&index_name, &config.name, &embedder_config)
-        .await
-        .map_err(|e| format!("Failed to configure embedder: {}", e))?;
-
-    Ok(format!("Configured embedder '{}' for index '{}'", config.name, index_name))
+    // Return error for now - full migration in Phase 3 Task 6
+    Err(format!(
+        "Embedder configuration not yet available - migration in progress. Index: {}",
+        index_name
+    ))
 }
 
 /// Setup Ollama embeddings on all content indexes using REST embedder
 ///
 /// This configures Meilisearch to use Ollama for AI-powered semantic search.
 /// The embedder is configured as a REST source for maximum compatibility.
+///
+/// TODO: Phase 3 Migration - Update to use MeilisearchLib settings API
 #[tauri::command]
+#[allow(unused_variables)]
 pub async fn setup_ollama_embeddings(
     host: String,
     model: String,
     state: State<'_, AppState>,
 ) -> Result<SetupEmbeddingsResult, String> {
-    let configured = state.search_client
-        .setup_ollama_embeddings(&host, &model)
-        .await
-        .map_err(|e| format!("Failed to setup embeddings: {}", e))?;
+    // TODO: Migrate to embedded MeilisearchLib
+    // The old SearchClient had setup_ollama_embeddings() method.
+    // The new MeilisearchLib uses:
+    //   meili.update_settings(uid, settings) for each index
+    //
+    // Access via: state.embedded_search.inner()
+    let _meili = state.embedded_search.inner();
 
-    let dimensions = crate::core::search::ollama_embedding_dimensions(&model);
+    log::warn!(
+        "setup_ollama_embeddings() called but not yet migrated to embedded MeilisearchLib. Host: {}, Model: {}",
+        host, model
+    );
 
-    Ok(SetupEmbeddingsResult {
-        indexes_configured: configured,
-        model: model.clone(),
-        dimensions,
-        host: host.clone(),
-    })
+    // Return error for now - full migration in Phase 3 Task 6
+    Err(format!(
+        "Ollama embeddings setup not yet available - migration in progress. Model: {}",
+        model
+    ))
 }
 
 /// Setup Copilot embeddings on all content indexes via direct API access
@@ -94,7 +106,10 @@ pub async fn setup_ollama_embeddings(
 ///
 /// **Note:** Copilot API tokens are short-lived (~30 minutes). If the token expires,
 /// you will need to call this command again to refresh the configuration.
+///
+/// TODO: Phase 3 Migration - Update to use MeilisearchLib settings API
 #[tauri::command]
+#[allow(unused_variables)]
 pub async fn setup_copilot_embeddings(
     model: String,
     dimensions: Option<u32>,
@@ -105,7 +120,7 @@ pub async fn setup_copilot_embeddings(
     });
 
     // First, ensure we're authenticated with Copilot
-    let is_authenticated = state.copilot_gate.is_authenticated().await
+    let is_authenticated = state.copilot.is_authenticated().await
         .map_err(|e| format!("Failed to check Copilot auth: {}", e))?;
 
     if !is_authenticated {
@@ -113,42 +128,55 @@ pub async fn setup_copilot_embeddings(
     }
 
     // Get a valid Copilot API token (refreshing if needed)
-    let api_key = state.copilot_gate.get_valid_token().await
+    let _api_key = state.copilot.get_valid_token().await
         .map_err(|e| format!("Failed to get Copilot API token: {}", e))?;
 
     log::info!("Retrieved valid Copilot API token for Meilisearch embeddings");
 
-    // Configure Meilisearch to call the Copilot API directly
-    let configured = state.search_client
-        .setup_copilot_embeddings(&model, dims, &api_key)
-        .await
-        .map_err(|e| format!("Failed to setup Copilot embeddings: {}", e))?;
+    // TODO: Migrate to embedded MeilisearchLib
+    // The old SearchClient had setup_copilot_embeddings() method.
+    // The new MeilisearchLib uses:
+    //   meili.update_settings(uid, settings) where settings.embedders contains the Copilot REST config
+    //
+    // Access via: state.embedded_search.inner()
+    let _meili = state.embedded_search.inner();
 
-    log::info!(
-        "Configured Copilot embeddings on {} indexes with model '{}' ({} dimensions)",
-        configured.len(),
-        model,
-        dims
+    log::warn!(
+        "setup_copilot_embeddings() called but not yet migrated to embedded MeilisearchLib. Model: {}",
+        model
     );
 
-    Ok(SetupCopilotEmbeddingsResult {
-        indexes_configured: configured,
-        model,
-        dimensions: dims,
-        api_url: "https://api.githubcopilot.com/embeddings".to_string(),
-    })
+    // Return error for now - full migration in Phase 3 Task 6
+    Err(format!(
+        "Copilot embeddings setup not yet available - migration in progress. Model: {}",
+        model
+    ))
 }
 
 /// Get embedder configuration for an index
+///
+/// TODO: Phase 3 Migration - Update to use MeilisearchLib settings API
 #[tauri::command]
+#[allow(unused_variables)]
 pub async fn get_embedder_status(
     index_name: String,
     state: State<'_, AppState>,
 ) -> Result<Option<serde_json::Value>, String> {
-    state.search_client
-        .get_embedder_settings(&index_name)
-        .await
-        .map_err(|e| format!("Failed to get embedder status: {}", e))
+    // TODO: Migrate to embedded MeilisearchLib
+    // The old SearchClient had get_embedder_settings() method.
+    // The new MeilisearchLib uses:
+    //   meili.get_settings(uid) -> Settings which includes embedders
+    //
+    // Access via: state.embedded_search.inner()
+    let _meili = state.embedded_search.inner();
+
+    log::warn!(
+        "get_embedder_status() called but not yet migrated to embedded MeilisearchLib. Index: {}",
+        index_name
+    );
+
+    // Return None for now - full migration in Phase 3 Task 6
+    Ok(None)
 }
 
 /// List available Ollama embedding models (filters for embedding-capable models)
@@ -270,45 +298,35 @@ pub async fn list_local_embedding_models() -> Result<Vec<LocalEmbeddingModel>, S
 /// This configures Meilisearch to use local ONNX models for AI-powered semantic search.
 /// Models are downloaded and cached automatically by Meilisearch.
 /// No external service (like Ollama) is required.
+///
+/// TODO: Phase 3 Migration - Update to use MeilisearchLib settings API
 #[tauri::command]
+#[allow(unused_variables)]
 pub async fn setup_local_embeddings(
     model: String,
     state: State<'_, AppState>,
 ) -> Result<SetupEmbeddingsResult, String> {
-    use crate::core::search::EmbedderConfig;
-
     // Get dimensions for the model
-    let dimensions = huggingface_embedding_dimensions(&model);
+    let _dimensions = huggingface_embedding_dimensions(&model);
 
-    // Configure HuggingFace embedder on all content indexes
-    let indexes = vec!["documents", "chat_history", "rules", "campaigns"];
-    let mut configured = Vec::new();
+    // TODO: Migrate to embedded MeilisearchLib
+    // The old SearchClient had configure_embedder() method.
+    // The new MeilisearchLib uses:
+    //   meili.update_settings(uid, settings) for each index
+    //
+    // Access via: state.embedded_search.inner()
+    let _meili = state.embedded_search.inner();
 
-    for index_name in indexes {
-        let config = EmbedderConfig::HuggingFace {
-            model: model.clone(),
-        };
+    log::warn!(
+        "setup_local_embeddings() called but not yet migrated to embedded MeilisearchLib. Model: {}",
+        model
+    );
 
-        match state.search_client
-            .configure_embedder(index_name, "default", &config)
-            .await
-        {
-            Ok(_) => {
-                configured.push(index_name.to_string());
-                log::info!("Configured HuggingFace embedder on index '{}'", index_name);
-            }
-            Err(e) => {
-                log::warn!("Failed to configure embedder on '{}': {}", index_name, e);
-            }
-        }
-    }
-
-    Ok(SetupEmbeddingsResult {
-        indexes_configured: configured,
-        model: model.clone(),
-        dimensions,
-        host: "local".to_string(),
-    })
+    // Return error for now - full migration in Phase 3 Task 6
+    Err(format!(
+        "Local embeddings setup not yet available - migration in progress. Model: {}",
+        model
+    ))
 }
 
 /// Get dimensions for HuggingFace embedding models

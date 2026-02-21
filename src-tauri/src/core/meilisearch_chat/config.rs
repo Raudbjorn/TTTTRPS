@@ -9,7 +9,8 @@ use crate::core::llm::providers::ProviderConfig;
 
 use super::prompts::{
     DEFAULT_DM_SYSTEM_PROMPT, DEFAULT_SEARCH_DESCRIPTION, DEFAULT_SEARCH_INDEX_PARAM,
-    DEFAULT_SEARCH_Q_PARAM, GROK_API_BASE_URL, GROK_DEFAULT_MODEL,
+    DEFAULT_SEARCH_Q_PARAM, GOOGLE_DEFAULT_MODEL, GROK_API_BASE_URL, GROK_DEFAULT_MODEL,
+    OLLAMA_API_KEY_PLACEHOLDER,
 };
 
 // ============================================================================
@@ -22,6 +23,7 @@ use super::prompts::{
 pub enum ChatLLMSource {
     #[default]
     OpenAi,
+    Anthropic,
     AzureOpenAi,
     Mistral,
     Google,
@@ -267,19 +269,19 @@ pub enum ChatProviderConfig {
         model: Option<String>,
     },
     /// Claude OAuth (via proxy, no API key needed - uses OAuth tokens)
-    ClaudeGate {
+    ClaudeOAuth {
         model: String,
         #[serde(default)]
         max_tokens: Option<u32>,
     },
-    /// Gemini OAuth (via proxy, no API key needed - uses OAuth tokens via gemini_gate)
-    GeminiGate {
+    /// Gemini OAuth (via proxy, no API key needed - uses OAuth tokens via gemini)
+    Gemini {
         model: String,
         #[serde(default)]
         max_tokens: Option<u32>,
     },
     /// Copilot (via proxy, no API key needed - uses Device Code OAuth tokens)
-    CopilotGate {
+    Copilot {
         model: String,
         #[serde(default)]
         max_tokens: Option<u32>,
@@ -291,7 +293,7 @@ impl ChatProviderConfig {
     pub fn provider_id(&self) -> &'static str {
         match self {
             Self::OpenAI { .. } => "openai",
-            Self::Claude { .. } | Self::ClaudeGate { .. } => "claude",
+            Self::Claude { .. } | Self::ClaudeOAuth { .. } => "claude",
             Self::Mistral { .. } => "mistral",
             Self::Ollama { .. } => "ollama",
             Self::Google { .. } => "google",
@@ -302,8 +304,8 @@ impl ChatProviderConfig {
             Self::Cohere { .. } => "cohere",
             Self::DeepSeek { .. } => "deepseek",
             Self::Grok { .. } => "grok",
-            Self::GeminiGate { .. } => "gemini",
-            Self::CopilotGate { .. } => "copilot",
+            Self::Gemini { .. } => "gemini",
+            Self::Copilot { .. } => "copilot",
         }
     }
 
@@ -329,9 +331,9 @@ impl ChatProviderConfig {
                 let m = model.clone().unwrap_or_else(|| model_selector().select_model_sync());
                 format!("claude:{}", m)
             }
-            Self::ClaudeGate { model, .. } => format!("claude:{}", model),
-            Self::GeminiGate { model, .. } => format!("gemini:{}", model),
-            Self::CopilotGate { model, .. } => format!("copilot:{}", model),
+            Self::ClaudeOAuth { model, .. } => format!("claude:{}", model),
+            Self::Gemini { model, .. } => format!("gemini:{}", model),
+            Self::Copilot { model, .. } => format!("copilot:{}", model),
 
             // Providers with explicit or default model
             Self::OpenAI { model, .. } => {
@@ -341,7 +343,7 @@ impl ChatProviderConfig {
                 format!("{}:{}", provider, model.as_deref().unwrap_or("mistral-large-latest"))
             }
             Self::Google { model, .. } => {
-                format!("{}:{}", provider, model.as_deref().unwrap_or("gemini-2.0-flash"))
+                format!("{}:{}", provider, model.as_deref().unwrap_or(GOOGLE_DEFAULT_MODEL))
             }
             Self::Grok { model, .. } => {
                 format!("{}:{}", provider, model.as_deref().unwrap_or(GROK_DEFAULT_MODEL))
@@ -400,7 +402,7 @@ impl ChatProviderConfig {
                 let base_url = format!("{}/v1", host.trim_end_matches('/'));
                 ChatWorkspaceSettings {
                     source: ChatLLMSource::VLlm,
-                    api_key: Some("ollama".to_string()), // Placeholder key required by Meilisearch
+                    api_key: Some(OLLAMA_API_KEY_PLACEHOLDER.to_string()),
                     base_url: Some(base_url),
                     prompts: Some(ChatPrompts {
                         system: Some(DEFAULT_DM_SYSTEM_PROMPT.to_string()),
@@ -417,9 +419,9 @@ impl ChatProviderConfig {
             | Self::Together { .. }
             | Self::Cohere { .. }
             | Self::DeepSeek { .. }
-            | Self::ClaudeGate { .. }
-            | Self::GeminiGate { .. }
-            | Self::CopilotGate { .. } => ChatWorkspaceSettings::via_proxy(proxy_url),
+            | Self::ClaudeOAuth { .. }
+            | Self::Gemini { .. }
+            | Self::Copilot { .. } => ChatWorkspaceSettings::via_proxy(proxy_url),
         }
     }
 
@@ -452,7 +454,7 @@ impl ChatProviderConfig {
 
             Self::Google { api_key, model } => ProviderConfig::Google {
                 api_key: api_key.clone(),
-                model: model.as_deref().unwrap_or("gemini-2.0-flash").to_string(),
+                model: model.as_deref().unwrap_or(GOOGLE_DEFAULT_MODEL).to_string(),
             },
 
             Self::OpenRouter { api_key, model } => ProviderConfig::OpenRouter {
@@ -497,20 +499,20 @@ impl ChatProviderConfig {
                 base_url: Some(GROK_API_BASE_URL.to_string()),
             },
 
-            // OAuth-based providers (no API key, use gate services)
-            Self::ClaudeGate { model, max_tokens } => ProviderConfig::Claude {
+            // OAuth-based providers (no API key, use OAuth services)
+            Self::ClaudeOAuth { model, max_tokens } => ProviderConfig::Claude {
                 storage_backend: "auto".to_string(),
                 model: model.clone(),
                 max_tokens: max_tokens.unwrap_or(8192),
             },
 
-            Self::GeminiGate { model, max_tokens } => ProviderConfig::Gemini {
+            Self::Gemini { model, max_tokens } => ProviderConfig::Gemini {
                 storage_backend: "auto".to_string(),
                 model: model.clone(),
                 max_tokens: max_tokens.unwrap_or(8192),
             },
 
-            Self::CopilotGate { model, max_tokens } => ProviderConfig::Copilot {
+            Self::Copilot { model, max_tokens } => ProviderConfig::Copilot {
                 storage_backend: "auto".to_string(),
                 model: model.clone(),
                 max_tokens: max_tokens.unwrap_or(8192),
@@ -564,15 +566,15 @@ impl TryFrom<&ProviderConfig> for ChatProviderConfig {
                 api_key: api_key.clone(),
                 model: model.clone(),
             }),
-            ProviderConfig::Claude { model, max_tokens, .. } => Ok(ChatProviderConfig::ClaudeGate {
+            ProviderConfig::Claude { model, max_tokens, .. } => Ok(ChatProviderConfig::ClaudeOAuth {
                 model: model.clone(),
                 max_tokens: Some(*max_tokens),
             }),
-            ProviderConfig::Gemini { model, max_tokens, .. } => Ok(ChatProviderConfig::GeminiGate {
+            ProviderConfig::Gemini { model, max_tokens, .. } => Ok(ChatProviderConfig::Gemini {
                 model: model.clone(),
                 max_tokens: Some(*max_tokens),
             }),
-            ProviderConfig::Copilot { model, max_tokens, .. } => Ok(ChatProviderConfig::CopilotGate {
+            ProviderConfig::Copilot { model, max_tokens, .. } => Ok(ChatProviderConfig::Copilot {
                 model: model.clone(),
                 max_tokens: Some(*max_tokens),
             }),

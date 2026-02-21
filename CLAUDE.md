@@ -53,15 +53,67 @@ rustup target add wasm32-unknown-unknown
 
 | Module | Purpose |
 |--------|---------|
-| `commands.rs` | All Tauri IPC command handlers (~3000+ lines) |
+| `commands/` | Tauri IPC command handlers organized by domain |
 | `core/llm/` | LLM provider implementations (Claude, Gemini, OpenAI, Ollama) |
 | `core/llm_router.rs` | Multi-provider routing with cost tracking and failover |
-| `core/search_client.rs` | Meilisearch client for hybrid search (BM25 + vector) |
+| `core/storage/` | **SurrealDB unified storage (documents, vectors, graph relations)** |
+| `core/storage/surrealdb.rs` | SurrealStorage wrapper with RocksDB persistence |
+| `core/storage/search.rs` | Hybrid search (BM25 + HNSW vector fusion) |
+| `core/storage/rag.rs` | RAG pipeline with context formatting |
+| `core/storage/ingestion.rs` | Document chunk ingestion |
+| `core/storage/migration.rs` | SQLite/Meilisearch migration utilities |
+| `core/rag/` | RAG configuration for TTRPG content retrieval |
+| `core/preprocess/` | Query preprocessing: typo correction (SymSpell) + synonym expansion |
 | `core/meilisearch_pipeline.rs` | Document ingestion pipeline using kreuzberg |
 | `core/session_manager.rs` | Campaign session state, combat tracker, conditions |
 | `ingestion/kreuzberg_extractor.rs` | Document extraction (PDF, EPUB, DOCX, images) with OCR fallback |
 | `ingestion/chunker.rs` | Semantic text chunking with TTRPG-aware splitting |
-| `database/` | SQLite with SQLx migrations |
+| `database/` | SQLite with SQLx migrations (legacy, being migrated) |
+
+### Search Architecture (SurrealDB – target during migration)
+
+The **target** search architecture uses embedded SurrealDB with RocksDB storage (no external process required). The codebase is currently migrating from SQLite + Meilisearch/`EmbeddedSearch`, and some core search flows still route through the legacy Meilisearch-backed path while `AppState.surreal_storage` remains optional.
+
+| Module | Purpose |
+|--------|---------|
+| `core/storage/surrealdb.rs` | `SurrealStorage` wrapper with connection pooling |
+| `core/storage/schema.rs` | Database schema (tables, analyzers, indexes) |
+| `core/storage/search.rs` | SurrealDB-backed hybrid, vector, and fulltext search operations |
+| `core/storage/rag.rs` | RAG context retrieval and formatting (SurrealDB-backed) |
+| `core/storage/ingestion.rs` | Chunk insertion with embeddings (SurrealDB-backed pipeline) |
+| `core/storage/migration.rs` | Data migration from SQLite + Meilisearch to SurrealDB |
+| `commands/search/surrealdb.rs` | SurrealDB Tauri commands (used where SurrealDB is enabled) |
+| `commands/search/rag_surrealdb.rs` | RAG Tauri commands over SurrealDB |
+
+**Key Types (SurrealDB path):**
+- `SurrealStorage` - Thread-safe wrapper for `Arc<Surreal<Db>>`, accessed via `state.surreal_storage` when available
+- `HybridSearchConfig` - Configures semantic/keyword weights, limits, score normalization for SurrealDB search
+- `SearchFilters` - Filter by content_type, library_item, page_range
+- `RagConfig` - TTRPG-specific RAG configuration
+
+**TTRPG Content Types:**
+- `rules` - Game rules and mechanics (semantic ratio: 0.7)
+- `fiction` - Lore and fiction (semantic ratio: 0.6)
+- `session_notes` - Campaign notes (semantic ratio: 0.5)
+- `homebrew` - Custom content (semantic ratio: 0.7)
+
+**Schema Highlights:**
+- `chunk` table: BM25 full-text index + HNSW vector index (768 dim)
+- `npc_relation` table: Graph edges for NPC relationships
+- `campaign`, `session`, `chat_message` tables: Campaign data with record links
+
+**Query Preprocessing:**
+Search queries go through typo correction and synonym expansion before execution:
+- Queries are normalized (trim, lowercase), then typo-corrected via SymSpell
+- The corrected text is used for embedding generation (vector search)
+- Synonym expansion creates OR-groups for BM25 full-text search
+- Example: "firball damge" becomes "fireball damage" (corrected), then the FTS query expands to `(fireball OR fire bolt) AND (damage OR harm)`
+
+Key components in `core/preprocess/`:
+- `TypoCorrector` - SymSpell-based correction using corpus + English dictionaries
+- `SynonymMap` - Bidirectional synonym groups with TTRPG-specific defaults (hp/hit points, ac/armor class, etc.)
+- `QueryPipeline` - Orchestrates the full preprocessing flow
+- `DictionaryGenerator` - Builds corpus dictionaries from indexed content
 
 ### Frontend (`frontend/src/`)
 
@@ -93,15 +145,62 @@ rustup target add wasm32-unknown-unknown
 
 ## Data Storage
 
-- **Database**: `~/.local/share/ttrpg-assistant/ttrpg_assistant.db`
-- **Meilisearch**: `~/.local/share/ttrpg-assistant/meilisearch/`
+- **Database**: `~/.local/share/ttrpg-assistant/surrealdb/` (RocksDB-backed SurrealDB)
+- **Legacy SQLite**: `~/.local/share/ttrpg-assistant/ttrpg_assistant.db` (migrated to SurrealDB)
+- **Legacy Meilisearch**: `~/.local/share/ttrpg-assistant/meilisearch/` (migrated to SurrealDB)
 - **API Keys**: System keyring via `keyring` crate
+- **Query Preprocessing Dictionaries**:
+  - Corpus dictionary: `~/.local/share/ttrpg-assistant/ttrpg_corpus.txt` (word frequencies from indexed content)
+  - Bigram dictionary: `~/.local/share/ttrpg-assistant/ttrpg_bigrams.txt` (word pair frequencies)
+  - English dictionary: bundled in app resources (`resources/en-80k.txt`)
 
 ## External Dependencies
 
-- **Meilisearch**: Embedded, auto-started by the app
+- **SurrealDB**: Embedded via `surrealdb` crate with `kv-rocksdb` feature - no external process
 - **Tesseract OCR**: Required for scanned PDF extraction (`tesseract` + `pdftoppm`)
 - **pdfinfo**: Used for PDF page count estimation
+
+## RAG (Retrieval-Augmented Generation)
+
+The application uses SurrealDB's hybrid search for RAG queries:
+
+### RAG Configuration
+
+```rust
+use crate::core::storage::rag::{RagConfig, prepare_rag_context};
+use crate::core::storage::search::HybridSearchConfig;
+
+// Configure RAG with custom settings
+let config = RagConfig::default()
+    .with_semantic_ratio(0.7)  // 70% semantic, 30% keyword
+    .with_max_chunks(8)
+    .with_max_bytes(4000);
+
+// Retrieve context for LLM
+let context = prepare_rag_context(db, "How does flanking work?", embedding, &config, None).await?;
+// context.system_prompt contains formatted context
+// context.sources contains citations
+```
+
+### RAG Tauri Commands
+
+| Command | Description |
+|---------|-------------|
+| `search_surrealdb` | Hybrid search with optional embedding |
+| `search_with_preprocessing` | Hybrid search with typo correction + synonym expansion |
+| `rebuild_dictionaries` | Admin: regenerate corpus dictionaries from indexed content |
+| `rag_query_surrealdb` | Non-streaming RAG query |
+| `rag_query_stream_surrealdb` | Streaming RAG with events |
+| `get_rag_presets_surrealdb` | TTRPG-specific presets |
+
+### Supported LLM Providers
+
+- **Anthropic** (Claude) - Primary provider
+- **OpenAI** (GPT-4) - Secondary provider
+- **Ollama** - Local/offline mode
+- **Mistral** - Alternative cloud provider
+- **Azure OpenAI** - Enterprise deployments
+- **vLLM** - Self-hosted inference
 
 ## LLM Providers
 

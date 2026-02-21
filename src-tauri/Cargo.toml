@@ -28,7 +28,7 @@ tokio = { version = "1", features = ["full"] }
 log = "0.4"
 env_logger = "0.10"
 sysinfo = "0.30"
-chrono = { version = "=0.4.38", features = ["serde"] }
+chrono = { version = "0.4", features = ["serde"] }
 # Data Management Dependencies
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid", "json"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
@@ -55,9 +55,22 @@ pbkdf2 = "0.12"
 flate2 = "1.0"
 
 # Meilisearch for unified search (replaces lancedb + tantivy)
+# Using embedded meilisearch-lib for direct Rust integration (no HTTP server/sidecar)
+meilisearch-lib = { path = "../meili-dev/crates/meilisearch-lib" }
+# Keep meilisearch-sdk temporarily for existing code during migration
 meilisearch-sdk = "0.31"
+
+# SurrealDB for unified document and graph database
+# Using embedded RocksDB storage (no external server required)
+# Note: meilisearch-lib and sqlx retained temporarily during migration (Phase 7 removal)
+surrealdb = { version = "2.6", features = ["kv-rocksdb"] }
 # LRU cache for archetype resolution
 lru = "0.16"
+
+# Query preprocessing: typo correction and spell checking
+symspell = "0.4"
+strsim = "0.11"
+toml = "0.8"
 dirs = "6.0"
 which = "7.0"
 serde_yaml_ng = "0.10"
@@ -136,6 +149,8 @@ quick-xml = "0.36"
 [features]
 default = ["custom-protocol", "keyring"]
 custom-protocol = ["tauri/custom-protocol"]
+# Enable SurrealDB-specific dictionary generation (for async corpus building)
+surrealdb-dict = []
 # Enable keyring storage backend for claude-gate OAuth tokens
 keyring = []
 # Enable kreuzberg's built-in embeddings for users without Ollama

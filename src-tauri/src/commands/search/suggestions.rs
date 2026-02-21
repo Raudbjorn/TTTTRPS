@@ -1,34 +1,68 @@
 //! Search Suggestions Commands
 //!
 //! Commands for autocomplete, query hints, query expansion, and spell correction.
+//!
+//! TODO: Phase 3 Migration - HybridSearchEngine needs to be updated to work with
+//! EmbeddedSearch/MeilisearchLib. Currently stubbed out.
 
 use tauri::State;
 
 use crate::commands::AppState;
-use crate::core::search::HybridSearchEngine;
+// TODO: Re-enable when HybridSearchEngine is migrated to EmbeddedSearch
+// use crate::core::search::HybridSearchEngine;
 
 // ============================================================================
 // Search Suggestions and Hints
 // ============================================================================
 
 /// Get search suggestions for autocomplete
+///
+/// TODO: Phase 3 Migration - Update HybridSearchEngine to work with EmbeddedSearch
 #[tauri::command]
+#[allow(unused_variables)]
 pub fn get_search_suggestions(
     partial: String,
     state: State<'_, AppState>,
-) -> Vec<String> {
-    let engine = HybridSearchEngine::with_defaults(state.search_client.clone());
-    engine.suggest(&partial)
+) -> Result<Vec<String>, String> {
+    // TODO: Migrate to embedded MeilisearchLib
+    // HybridSearchEngine::with_defaults expects Arc<SearchClient> (HTTP SDK).
+    // Need to update HybridSearchEngine to work with EmbeddedSearch/MeilisearchLib.
+    //
+    // Access via: state.embedded_search.inner()
+    let _meili = state.embedded_search.inner();
+
+    log::warn!(
+        "get_search_suggestions() called but not yet migrated to embedded MeilisearchLib. Partial: {}",
+        partial
+    );
+
+    // Return empty suggestions with explicit Ok - migration in Phase 3 Task 6
+    Ok(Vec::new())
 }
 
 /// Get search hints for a query
+///
+/// TODO: Phase 3 Migration - Update HybridSearchEngine to work with EmbeddedSearch
 #[tauri::command]
+#[allow(unused_variables)]
 pub fn get_search_hints(
     query: String,
     state: State<'_, AppState>,
-) -> Vec<String> {
-    let engine = HybridSearchEngine::with_defaults(state.search_client.clone());
-    engine.get_hints(&query)
+) -> Result<Vec<String>, String> {
+    // TODO: Migrate to embedded MeilisearchLib
+    // HybridSearchEngine::with_defaults expects Arc<SearchClient> (HTTP SDK).
+    // Need to update HybridSearchEngine to work with EmbeddedSearch/MeilisearchLib.
+    //
+    // Access via: state.embedded_search.inner()
+    let _meili = state.embedded_search.inner();
+
+    log::warn!(
+        "get_search_hints() called but not yet migrated to embedded MeilisearchLib. Query: {}",
+        query
+    );
+
+    // Return empty hints with explicit Ok - migration in Phase 3 Task 6
+    Ok(Vec::new())
 }
 
 /// Expand a query with TTRPG synonyms

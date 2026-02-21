@@ -8,7 +8,7 @@
 use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
-use super::ClaudeGateAuth;
+use super::ClaudeAuth;
 use crate::bindings::{
     claude_get_status, get_extraction_settings, save_extraction_settings, ClaudeStatus,
     TextExtractionProvider,
@@ -165,7 +165,7 @@ pub fn ExtractionSettingsView() -> impl IntoView {
             // Claude Authentication Section (shown when Claude is selected)
             {move || if selected_provider.get() == TextExtractionProvider::Claude {
                 view! {
-                    <ClaudeGateAuth
+                    <ClaudeAuth
                         on_status_change=Callback::new(move |status: ClaudeStatus| {
                             claude_status.set(status);
                         })

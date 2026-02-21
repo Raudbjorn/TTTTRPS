@@ -201,7 +201,7 @@ pub use errors::{
     BlendError, BlendRuleError, ContextDetectionError, PersonalityExtensionError, TemplateError,
 };
 pub use meilisearch::{
-    PersonalityIndexManager, PersonalityIndexStats,
+    PersonalityIndexError, PersonalityIndexManager, PersonalityIndexStats,
     INDEX_BLEND_RULES, INDEX_PERSONALITY_TEMPLATES,
 };
 pub use types::{

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 use tokio::sync::RwLock as AsyncRwLock;
 
-// Unified Gate OAuth types
+// Unified OAuth types
 use crate::oauth::{OAuthFlowState as GateOAuthFlowState, TokenInfo as GateTokenInfo};
 
 // Gemini OAuth client
@@ -30,7 +30,7 @@ use crate::commands::AppState;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 #[derive(Default)]
-pub enum GeminiGateStorageBackend {
+pub enum GeminiStorageBackend {
     /// File-based storage (~/.config/antigravity/auth.json)
     File,
     /// System keyring storage
@@ -41,7 +41,7 @@ pub enum GeminiGateStorageBackend {
 }
 
 
-impl std::fmt::Display for GeminiGateStorageBackend {
+impl std::fmt::Display for GeminiStorageBackend {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::File => write!(f, "file"),
@@ -51,7 +51,7 @@ impl std::fmt::Display for GeminiGateStorageBackend {
     }
 }
 
-impl std::str::FromStr for GeminiGateStorageBackend {
+impl std::str::FromStr for GeminiStorageBackend {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -74,10 +74,10 @@ impl std::str::FromStr for GeminiGateStorageBackend {
 /// Trait for Gemini client operations, allowing type-erased storage backends.
 ///
 /// This trait uses unified gate types for OAuth flow state while internally
-/// using gemini_gate types for API operations.
+/// using gemini types for API operations.
 #[async_trait::async_trait]
 #[allow(deprecated)]
-trait GeminiGateClientOps: Send + Sync {
+trait GeminiClientOps: Send + Sync {
     async fn is_authenticated(&self) -> Result<bool, String>;
     async fn get_token_info(&self) -> Result<Option<GateTokenInfo>, String>;
     async fn start_oauth_flow_with_state(&self) -> Result<(String, GateOAuthFlowState), String>;
@@ -99,7 +99,7 @@ struct GeminiFileStorageClientWrapper {
 
 #[allow(deprecated)]
 #[async_trait::async_trait]
-impl GeminiGateClientOps for GeminiFileStorageClientWrapper {
+impl GeminiClientOps for GeminiFileStorageClientWrapper {
     async fn is_authenticated(&self) -> Result<bool, String> {
         self.client
             .is_authenticated()
@@ -149,7 +149,7 @@ struct GeminiKeyringStorageClientWrapper {
 #[cfg(feature = "keyring")]
 #[allow(deprecated)]
 #[async_trait::async_trait]
-impl GeminiGateClientOps for GeminiKeyringStorageClientWrapper {
+impl GeminiClientOps for GeminiKeyringStorageClientWrapper {
     async fn is_authenticated(&self) -> Result<bool, String> {
         self.client
             .is_authenticated()
@@ -197,23 +197,23 @@ impl GeminiGateClientOps for GeminiKeyringStorageClientWrapper {
 /// This allows storing the client in AppState regardless of storage backend
 /// and supports runtime backend switching.
 #[allow(deprecated)]
-pub struct GeminiGateState {
+pub struct GeminiState {
     /// The active client (type-erased)
-    client: AsyncRwLock<Option<Box<dyn GeminiGateClientOps>>>,
+    client: AsyncRwLock<Option<Box<dyn GeminiClientOps>>>,
     /// In-memory flow state for OAuth (needed for state verification)
     pending_oauth_state: AsyncRwLock<Option<String>>,
     /// Current storage backend
-    storage_backend: AsyncRwLock<GeminiGateStorageBackend>,
+    storage_backend: AsyncRwLock<GeminiStorageBackend>,
 }
 
 #[allow(deprecated)]
-impl GeminiGateState {
+impl GeminiState {
     /// Create a client for the specified backend
     fn create_client(
-        backend: GeminiGateStorageBackend,
-    ) -> Result<Box<dyn GeminiGateClientOps>, String> {
+        backend: GeminiStorageBackend,
+    ) -> Result<Box<dyn GeminiClientOps>, String> {
         match backend {
-            GeminiGateStorageBackend::File => {
+            GeminiStorageBackend::File => {
                 let storage = GeminiFileTokenStorage::default_path()
                     .map_err(|e| format!("Failed to create file storage: {}", e))?;
                 let client = GeminiCloudCodeClient::builder()
@@ -224,7 +224,7 @@ impl GeminiGateState {
                 }))
             }
             #[cfg(feature = "keyring")]
-            GeminiGateStorageBackend::Keyring => {
+            GeminiStorageBackend::Keyring => {
                 let storage = GeminiKeyringTokenStorage::new();
                 let client = GeminiCloudCodeClient::builder()
                     .with_storage(storage)
@@ -234,14 +234,14 @@ impl GeminiGateState {
                 }))
             }
             #[cfg(not(feature = "keyring"))]
-            GeminiGateStorageBackend::Keyring => {
+            GeminiStorageBackend::Keyring => {
                 Err("Keyring storage is not available (keyring feature disabled)".to_string())
             }
-            GeminiGateStorageBackend::Auto => {
+            GeminiStorageBackend::Auto => {
                 // Try keyring first, fall back to file
                 #[cfg(feature = "keyring")]
                 {
-                    match Self::create_client(GeminiGateStorageBackend::Keyring) {
+                    match Self::create_client(GeminiStorageBackend::Keyring) {
                         Ok(client) => {
                             log::info!("Gemini: Auto-selected keyring storage backend");
                             return Ok(client);
@@ -255,13 +255,13 @@ impl GeminiGateState {
                     }
                 }
                 log::info!("Gemini: Using file storage backend");
-                Self::create_client(GeminiGateStorageBackend::File)
+                Self::create_client(GeminiStorageBackend::File)
             }
         }
     }
 
-    /// Create a new GeminiGateState with the specified backend.
-    pub fn new(backend: GeminiGateStorageBackend) -> Result<Self, String> {
+    /// Create a new GeminiState with the specified backend.
+    pub fn new(backend: GeminiStorageBackend) -> Result<Self, String> {
         let client = Self::create_client(backend)?;
         Ok(Self {
             client: AsyncRwLock::new(Some(client)),
@@ -272,7 +272,7 @@ impl GeminiGateState {
 
     /// Create with default (Auto) backend
     pub fn with_defaults() -> Result<Self, String> {
-        Self::new(GeminiGateStorageBackend::Auto)
+        Self::new(GeminiStorageBackend::Auto)
     }
 
     /// Switch to a different storage backend.
@@ -280,7 +280,7 @@ impl GeminiGateState {
     /// Note: Any existing tokens will not be migrated.
     pub async fn switch_backend(
         &self,
-        new_backend: GeminiGateStorageBackend,
+        new_backend: GeminiStorageBackend,
     ) -> Result<String, String> {
         let new_client = Self::create_client(new_backend)?;
         let backend_name = new_client.storage_name();
@@ -418,7 +418,7 @@ impl GeminiGateState {
 
 /// Response for gemini_get_status command
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GeminiGateStatusResponse {
+pub struct GeminiStatusResponse {
     /// Whether the user is authenticated with valid tokens
     pub authenticated: bool,
     /// Current storage backend being used (file, keyring, auto)
@@ -431,7 +431,7 @@ pub struct GeminiGateStatusResponse {
 
 /// Response for gemini_start_oauth command
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GeminiGateOAuthStartResponse {
+pub struct GeminiOAuthStartResponse {
     /// URL to open in user's browser for OAuth authorization
     pub auth_url: String,
     /// State parameter for CSRF protection (pass back to complete_oauth)
@@ -440,7 +440,7 @@ pub struct GeminiGateOAuthStartResponse {
 
 /// Response for gemini_complete_oauth command
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GeminiGateOAuthCompleteResponse {
+pub struct GeminiOAuthCompleteResponse {
     /// Whether the OAuth flow completed successfully
     pub success: bool,
     /// Error message if the flow failed
@@ -449,14 +449,14 @@ pub struct GeminiGateOAuthCompleteResponse {
 
 /// Response for gemini_logout command
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GeminiGateLogoutResponse {
+pub struct GeminiLogoutResponse {
     /// Whether the logout was successful
     pub success: bool,
 }
 
 /// Response for gemini_set_storage_backend command
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GeminiGateSetStorageResponse {
+pub struct GeminiSetStorageResponse {
     /// Whether the storage backend was changed successfully
     pub success: bool,
     /// The currently active storage backend after the change
@@ -473,13 +473,13 @@ pub struct GeminiGateSetStorageResponse {
 #[tauri::command]
 pub async fn gemini_get_status(
     state: State<'_, AppState>,
-) -> Result<GeminiGateStatusResponse, String> {
-    let authenticated = state.gemini_gate.is_authenticated().await?;
-    let storage_backend = state.gemini_gate.storage_backend_name().await;
+) -> Result<GeminiStatusResponse, String> {
+    let authenticated = state.gemini.is_authenticated().await?;
+    let storage_backend = state.gemini.storage_backend_name().await;
 
     let token_expires_at = if authenticated {
         state
-            .gemini_gate
+            .gemini
             .get_token_info()
             .await?
             .map(|t| t.expires_at)
@@ -493,7 +493,7 @@ pub async fn gemini_get_status(
     #[cfg(not(feature = "keyring"))]
     let keyring_available = false;
 
-    Ok(GeminiGateStatusResponse {
+    Ok(GeminiStatusResponse {
         authenticated,
         storage_backend,
         token_expires_at,
@@ -508,12 +508,12 @@ pub async fn gemini_get_status(
 #[tauri::command]
 pub async fn gemini_start_oauth(
     state: State<'_, AppState>,
-) -> Result<GeminiGateOAuthStartResponse, String> {
-    let (auth_url, oauth_state) = state.gemini_gate.start_oauth_flow().await?;
+) -> Result<GeminiOAuthStartResponse, String> {
+    let (auth_url, oauth_state) = state.gemini.start_oauth_flow().await?;
 
     log::info!("Gemini OAuth flow started");
 
-    Ok(GeminiGateOAuthStartResponse {
+    Ok(GeminiOAuthStartResponse {
         auth_url,
         state: oauth_state,
     })
@@ -532,7 +532,7 @@ pub async fn gemini_complete_oauth(
     code: String,
     oauth_state: Option<String>,
     state: State<'_, AppState>,
-) -> Result<GeminiGateOAuthCompleteResponse, String> {
+) -> Result<GeminiOAuthCompleteResponse, String> {
     // Parse code#state format if present
     let (actual_code, embedded_state) = if let Some(hash_pos) = code.find('#') {
         let (c, s) = code.split_at(hash_pos);
@@ -557,20 +557,20 @@ pub async fn gemini_complete_oauth(
     );
 
     match state
-        .gemini_gate
+        .gemini
         .complete_oauth_flow(&actual_code, final_state.as_deref())
         .await
     {
         Ok(_token) => {
             log::info!("Gemini OAuth flow completed successfully");
-            Ok(GeminiGateOAuthCompleteResponse {
+            Ok(GeminiOAuthCompleteResponse {
                 success: true,
                 error: None,
             })
         }
         Err(e) => {
             log::error!("Gemini OAuth flow failed: {}", e);
-            Ok(GeminiGateOAuthCompleteResponse {
+            Ok(GeminiOAuthCompleteResponse {
                 success: false,
                 error: Some(e),
             })
@@ -582,11 +582,11 @@ pub async fn gemini_complete_oauth(
 #[tauri::command]
 pub async fn gemini_logout(
     state: State<'_, AppState>,
-) -> Result<GeminiGateLogoutResponse, String> {
-    state.gemini_gate.logout().await?;
+) -> Result<GeminiLogoutResponse, String> {
+    state.gemini.logout().await?;
     log::info!("Gemini logout completed");
 
-    Ok(GeminiGateLogoutResponse { success: true })
+    Ok(GeminiLogoutResponse { success: true })
 }
 
 /// Change Gemini storage backend
@@ -600,15 +600,15 @@ pub async fn gemini_logout(
 pub async fn gemini_set_storage_backend(
     backend: String,
     state: State<'_, AppState>,
-) -> Result<GeminiGateSetStorageResponse, String> {
+) -> Result<GeminiSetStorageResponse, String> {
     // Parse and validate the backend string
-    let new_backend: GeminiGateStorageBackend = backend.parse()?;
+    let new_backend: GeminiStorageBackend = backend.parse()?;
 
     // Switch to the new backend - this recreates the client
-    let active = state.gemini_gate.switch_backend(new_backend).await?;
+    let active = state.gemini.switch_backend(new_backend).await?;
     log::info!("Gemini storage backend switched to: {}", active);
 
-    Ok(GeminiGateSetStorageResponse {
+    Ok(GeminiSetStorageResponse {
         success: true,
         active_backend: active,
     })
@@ -623,7 +623,7 @@ use std::time::Duration;
 
 /// Response for gemini_oauth_with_callback command
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GeminiGateOAuthCallbackResponse {
+pub struct GeminiOAuthCallbackResponse {
     /// Whether the OAuth flow completed successfully
     pub success: bool,
     /// Error message if the flow failed
@@ -651,12 +651,12 @@ pub async fn gemini_oauth_with_callback(
     timeout_secs: Option<u64>,
     open_browser: Option<bool>,
     state: State<'_, AppState>,
-) -> Result<GeminiGateOAuthCallbackResponse, String> {
+) -> Result<GeminiOAuthCallbackResponse, String> {
     let timeout = Duration::from_secs(timeout_secs.unwrap_or(300));
     let should_open_browser = open_browser.unwrap_or(true);
 
     // Start the OAuth flow to get the auth URL and state
-    let (auth_url, oauth_state) = state.gemini_gate.start_oauth_flow().await?;
+    let (auth_url, oauth_state) = state.gemini.start_oauth_flow().await?;
 
     log::info!("Gemini OAuth: Starting callback server on port 51121");
 
@@ -666,7 +666,7 @@ pub async fn gemini_oauth_with_callback(
         Ok(h) => h,
         Err(e) => {
             log::error!("Failed to start callback server: {}", e);
-            return Ok(GeminiGateOAuthCallbackResponse {
+            return Ok(GeminiOAuthCallbackResponse {
                 success: false,
                 error: Some(format!("Failed to start callback server: {}", e)),
                 auth_url: Some(auth_url),
@@ -688,7 +688,7 @@ pub async fn gemini_oauth_with_callback(
         Ok(result) => result,
         Err(e) => {
             log::error!("OAuth callback failed: {}", e);
-            return Ok(GeminiGateOAuthCallbackResponse {
+            return Ok(GeminiOAuthCallbackResponse {
                 success: false,
                 error: Some(format!("OAuth callback failed: {}", e)),
                 auth_url: Some(auth_url),
@@ -706,7 +706,7 @@ pub async fn gemini_oauth_with_callback(
             oauth_state,
             callback_state
         );
-        return Ok(GeminiGateOAuthCallbackResponse {
+        return Ok(GeminiOAuthCallbackResponse {
             success: false,
             error: Some("OAuth state mismatch - possible CSRF attack".to_string()),
             auth_url: None,
@@ -715,13 +715,13 @@ pub async fn gemini_oauth_with_callback(
 
     // Complete the OAuth flow
     match state
-        .gemini_gate
+        .gemini
         .complete_oauth_flow(&callback_result.code, callback_state)
         .await
     {
         Ok(_token) => {
             log::info!("Gemini OAuth completed successfully");
-            Ok(GeminiGateOAuthCallbackResponse {
+            Ok(GeminiOAuthCallbackResponse {
                 success: true,
                 error: None,
                 auth_url: None,
@@ -729,7 +729,7 @@ pub async fn gemini_oauth_with_callback(
         }
         Err(e) => {
             log::error!("Gemini OAuth completion failed: {}", e);
-            Ok(GeminiGateOAuthCallbackResponse {
+            Ok(GeminiOAuthCallbackResponse {
                 success: false,
                 error: Some(e),
                 auth_url: None,
@@ -744,7 +744,7 @@ pub async fn gemini_oauth_with_callback(
 
 /// A model available via the Gemini Cloud Code API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GeminiGateModel {
+pub struct GeminiModel {
     /// Unique identifier for the model.
     pub id: String,
     /// Display name for the model.
@@ -753,7 +753,7 @@ pub struct GeminiGateModel {
     pub description: Option<String>,
 }
 
-impl From<crate::oauth::gemini::GeminiApiModel> for GeminiGateModel {
+impl From<crate::oauth::gemini::GeminiApiModel> for GeminiModel {
     fn from(m: crate::oauth::gemini::GeminiApiModel) -> Self {
         Self {
             id: m.id.clone(),
@@ -770,12 +770,12 @@ impl From<crate::oauth::gemini::GeminiApiModel> for GeminiGateModel {
 #[tauri::command]
 pub async fn gemini_list_models(
     state: State<'_, AppState>,
-) -> Result<Vec<GeminiGateModel>, String> {
+) -> Result<Vec<GeminiModel>, String> {
     // Check if authenticated
-    if !state.gemini_gate.is_authenticated().await? {
+    if !state.gemini.is_authenticated().await? {
         return Err("Not authenticated. Please complete OAuth login first.".to_string());
     }
 
-    let models = state.gemini_gate.list_models().await?;
-    Ok(models.into_iter().map(GeminiGateModel::from).collect())
+    let models = state.gemini.list_models().await?;
+    Ok(models.into_iter().map(GeminiModel::from).collect())
 }

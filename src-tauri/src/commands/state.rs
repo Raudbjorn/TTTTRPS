@@ -15,8 +15,7 @@ use crate::core::campaign_manager::CampaignManager;
 use crate::core::session_manager::SessionManager;
 use crate::core::npc_gen::NPCStore;
 use crate::core::credentials::CredentialManager;
-use crate::core::sidecar_manager::{SidecarManager, MeilisearchConfig};
-use crate::core::search::SearchClient;
+use crate::core::search::EmbeddedSearch;
 use crate::core::meilisearch_pipeline::MeilisearchPipeline;
 use crate::core::campaign::versioning::VersionManager;
 use crate::core::campaign::world_state::WorldStateManager;
@@ -27,13 +26,16 @@ use crate::core::personality::{
     ContextualPersonalityManager, PersonalityIndexManager,
 };
 use crate::core::archetype::{ArchetypeRegistry, VocabularyBankManager, SettingPackLoader};
+use crate::core::preprocess::{QueryPipeline, PreprocessConfig, DictionaryRebuildService};
+use crate::core::storage::SurrealStorage;
 use crate::database::Database;
+use meilisearch_lib::MeilisearchLib;
 
 // Re-export OAuth state types
 pub use super::oauth::{
-    ClaudeGateState, ClaudeGateStorageBackend,
-    GeminiGateState, GeminiGateStorageBackend,
-    CopilotGateState, CopilotGateStorageBackend,
+    ClaudeState, ClaudeStorageBackend,
+    GeminiState, GeminiStorageBackend,
+    CopilotState, CopilotStorageBackend,
 };
 
 // ============================================================================
@@ -50,8 +52,7 @@ pub struct AppState {
     pub npc_store: NPCStore,
     pub credentials: CredentialManager,
     pub voice_manager: Arc<AsyncRwLock<VoiceManager>>,
-    pub sidecar_manager: Arc<SidecarManager>,
-    pub search_client: Arc<SearchClient>,
+    pub embedded_search: Arc<EmbeddedSearch>,
     pub personality_store: Arc<PersonalityStore>,
     pub personality_manager: Arc<PersonalityApplicationManager>,
     pub ingestion_pipeline: Arc<MeilisearchPipeline>,
@@ -63,10 +64,10 @@ pub struct AppState {
     pub location_manager: crate::core::location_manager::LocationManager,
     // Document extraction settings
     pub extraction_settings: AsyncRwLock<crate::ingestion::ExtractionSettings>,
-    // OAuth Gate clients
-    pub claude_gate: Arc<ClaudeGateState>,
-    pub gemini_gate: Arc<GeminiGateState>,
-    pub copilot_gate: Arc<CopilotGateState>,
+    // OAuth clients
+    pub claude: Arc<ClaudeState>,
+    pub gemini: Arc<GeminiState>,
+    pub copilot: Arc<CopilotState>,
     // Archetype Registry for unified character archetype management
     pub archetype_registry: AsyncRwLock<Option<Arc<ArchetypeRegistry>>>,
     // Vocabulary Bank Manager for NPC dialogue phrase management
@@ -78,18 +79,33 @@ pub struct AppState {
     pub blend_rule_store: Arc<BlendRuleStore>,
     pub personality_blender: Arc<PersonalityBlender>,
     pub contextual_personality_manager: Arc<ContextualPersonalityManager>,
+    // SurrealDB Storage (migration from Meilisearch)
+    // Optional during migration period - will be required after Phase 7
+    pub surreal_storage: Option<Arc<SurrealStorage>>,
+    // Query preprocessing pipeline (typo correction + synonym expansion)
+    // Uses AsyncRwLock to allow dictionary reloading after ingestion
+    pub query_pipeline: Option<Arc<AsyncRwLock<QueryPipeline>>>,
+    // Dictionary rebuild service for post-ingestion dictionary generation
+    pub dictionary_rebuild_service: Arc<DictionaryRebuildService>,
 }
 
 impl AppState {
     /// Initialize all default state components
-    pub fn init_defaults() -> (
+    ///
+    /// NOTE: This function does NOT initialize `embedded_search` - that requires async
+    /// initialization and must be done in main.rs. This function is kept for backward
+    /// compatibility but the embedded_search field must be passed separately when
+    /// constructing AppState.
+    ///
+    /// # Arguments
+    /// * `meili` - Shared embedded MeilisearchLib instance for personality index operations
+    #[allow(clippy::type_complexity)]
+    pub fn init_defaults(meili: Arc<MeilisearchLib>) -> (
         CampaignManager,
         SessionManager,
         NPCStore,
         CredentialManager,
         Arc<AsyncRwLock<VoiceManager>>,
-        Arc<SidecarManager>,
-        Arc<SearchClient>,
         Arc<PersonalityStore>,
         Arc<PersonalityApplicationManager>,
         Arc<MeilisearchPipeline>,
@@ -99,61 +115,53 @@ impl AppState {
         RelationshipManager,
         crate::core::location_manager::LocationManager,
         Arc<AsyncRwLock<crate::core::llm::LLMManager>>,
-        Arc<ClaudeGateState>,
-        Arc<GeminiGateState>,
-        Arc<CopilotGateState>,
+        Arc<ClaudeState>,
+        Arc<GeminiState>,
+        Arc<CopilotState>,
         Arc<SettingPackLoader>,
         Arc<SettingTemplateStore>,
         Arc<BlendRuleStore>,
         Arc<PersonalityBlender>,
         Arc<ContextualPersonalityManager>,
+        Arc<AsyncRwLock<QueryPipeline>>,
+        Arc<DictionaryRebuildService>,
     ) {
-        let sidecar_config = MeilisearchConfig::default();
-        let search_client = SearchClient::new(
-            &sidecar_config.url(),
-            Some(&sidecar_config.master_key),
-        );
         let personality_store = Arc::new(PersonalityStore::new());
         let personality_manager = Arc::new(PersonalityApplicationManager::new(personality_store.clone()));
 
-        // Initialize Claude Gate client
-        let claude_gate = match ClaudeGateState::with_defaults() {
+        // Initialize Claude Client
+        let claude = match ClaudeState::with_defaults() {
             Ok(state) => Arc::new(state),
             Err(e) => {
-                log::warn!("Failed to initialize Claude Gate with default storage: {}. Using file storage.", e);
-                Arc::new(ClaudeGateState::new(ClaudeGateStorageBackend::File)
-                    .expect("Failed to initialize Claude Gate with file storage"))
+                log::warn!("Failed to initialize Claude with default storage: {}. Using file storage.", e);
+                Arc::new(ClaudeState::new(ClaudeStorageBackend::File)
+                    .expect("Failed to initialize Claude with file storage"))
             }
         };
 
         // Initialize Gemini client
-        let gemini_gate = match GeminiGateState::with_defaults() {
+        let gemini = match GeminiState::with_defaults() {
             Ok(state) => Arc::new(state),
             Err(e) => {
                 log::warn!("Failed to initialize Gemini with default storage: {}. Using file storage.", e);
-                Arc::new(GeminiGateState::new(GeminiGateStorageBackend::File)
+                Arc::new(GeminiState::new(GeminiStorageBackend::File)
                     .expect("Failed to initialize Gemini with file storage"))
             }
         };
 
-        // Initialize Copilot Gate client
-        let copilot_gate = match CopilotGateState::with_defaults() {
+        // Initialize Copilot client
+        let copilot = match CopilotState::with_defaults() {
             Ok(state) => Arc::new(state),
             Err(e) => {
-                log::warn!("Failed to initialize Copilot Gate with default storage: {}. Using file storage.", e);
-                Arc::new(CopilotGateState::new(CopilotGateStorageBackend::File)
-                    .expect("Failed to initialize Copilot Gate with file storage"))
+                log::warn!("Failed to initialize Copilot with default storage: {}. Using file storage.", e);
+                Arc::new(CopilotState::new(CopilotStorageBackend::File)
+                    .expect("Failed to initialize Copilot with file storage"))
             }
         };
 
         // Personality Extension components
-        let meilisearch_url = sidecar_config.url();
-        let meilisearch_key = sidecar_config.master_key.clone();
-
-        let personality_index_manager = Arc::new(PersonalityIndexManager::new(
-            &meilisearch_url,
-            Some(&meilisearch_key),
-        ));
+        // Uses embedded MeilisearchLib directly (no HTTP server required)
+        let personality_index_manager = Arc::new(PersonalityIndexManager::new(meili));
 
         let template_store = Arc::new(SettingTemplateStore::from_manager(
             personality_index_manager.clone()
@@ -170,6 +178,26 @@ impl AppState {
             personality_store.clone(),
         ));
 
+        // Initialize query preprocessing pipeline
+        // Attempt to load with full dictionaries, fall back to minimal if unavailable
+        // Uses AsyncRwLock to allow dictionary reloading after ingestion
+        let query_pipeline = match QueryPipeline::new(PreprocessConfig::default()) {
+            Ok(pipeline) => {
+                log::info!("Query preprocessing pipeline initialized with full dictionaries");
+                Arc::new(AsyncRwLock::new(pipeline))
+            }
+            Err(e) => {
+                log::warn!(
+                    "Failed to initialize query pipeline with dictionaries: {}. Using minimal pipeline.",
+                    e
+                );
+                Arc::new(AsyncRwLock::new(QueryPipeline::new_minimal()))
+            }
+        };
+
+        // Initialize dictionary rebuild service for post-ingestion dictionary regeneration
+        let dictionary_rebuild_service = Arc::new(DictionaryRebuildService::new());
+
         (
             CampaignManager::new(),
             SessionManager::new(),
@@ -179,8 +207,6 @@ impl AppState {
                 cache_dir: Some(PathBuf::from("./voice_cache")),
                 ..Default::default()
             }))),
-            Arc::new(SidecarManager::with_config(sidecar_config)),
-            Arc::new(search_client),
             personality_store,
             personality_manager,
             Arc::new(MeilisearchPipeline::with_defaults()),
@@ -190,14 +216,16 @@ impl AppState {
             RelationshipManager::default(),
             crate::core::location_manager::LocationManager::new(),
             Arc::new(AsyncRwLock::new(crate::core::llm::LLMManager::new())),
-            claude_gate,
-            gemini_gate,
-            copilot_gate,
+            claude,
+            gemini,
+            copilot,
             Arc::new(SettingPackLoader::new()),
             template_store,
             blend_rule_store,
             personality_blender,
             contextual_personality_manager,
+            query_pipeline,
+            dictionary_rebuild_service,
         )
     }
 }

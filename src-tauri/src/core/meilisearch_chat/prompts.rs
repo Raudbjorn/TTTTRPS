@@ -90,8 +90,76 @@ VALID INDEXES:
 
 Do NOT invent index names. Only use the ones listed above."#;
 
+// ============================================================================
+// Provider Constants
+// ============================================================================
+
 /// Default model for Grok/xAI provider
 pub const GROK_DEFAULT_MODEL: &str = "grok-3-mini";
 
 /// Base URL for Grok/xAI API (OpenAI-compatible)
 pub const GROK_API_BASE_URL: &str = "https://api.x.ai/v1";
+
+/// Base URL for Google Gemini (OpenAI-compatible endpoint)
+pub const GOOGLE_API_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta/openai";
+
+/// Base URL for OpenRouter
+pub const OPENROUTER_API_BASE_URL: &str = "https://openrouter.ai/api/v1";
+
+/// Base URL for Groq (OpenAI-compatible)
+pub const GROQ_API_BASE_URL: &str = "https://api.groq.com/openai/v1";
+
+/// Base URL for Together.ai
+pub const TOGETHER_API_BASE_URL: &str = "https://api.together.xyz/v1";
+
+/// Base URL for Cohere
+pub const COHERE_API_BASE_URL: &str = "https://api.cohere.ai/v1";
+
+/// Base URL for DeepSeek
+pub const DEEPSEEK_API_BASE_URL: &str = "https://api.deepseek.com/v1";
+
+// ============================================================================
+// Default Models
+// ============================================================================
+
+/// Default model for Ollama
+pub const OLLAMA_DEFAULT_MODEL: &str = "llama3.2";
+
+/// Default host for Ollama
+pub const OLLAMA_DEFAULT_HOST: &str = "http://localhost:11434";
+
+/// Default model for Azure OpenAI
+pub const AZURE_DEFAULT_DEPLOYMENT: &str = "gpt-4";
+
+/// Default API version for Azure OpenAI
+pub const AZURE_DEFAULT_API_VERSION: &str = "2024-06-01";
+
+/// Default model for Groq
+pub const GROQ_DEFAULT_MODEL: &str = "llama-3.3-70b-versatile";
+
+/// Default model for Cohere
+pub const COHERE_DEFAULT_MODEL: &str = "command-r-plus";
+
+/// Default model for DeepSeek
+pub const DEEPSEEK_DEFAULT_MODEL: &str = "deepseek-chat";
+
+/// Default model for Google Gemini
+pub const GOOGLE_DEFAULT_MODEL: &str = "gemini-2.0-flash";
+
+// ============================================================================
+// Placeholder API Keys
+// ============================================================================
+// Meilisearch requires a non-empty API key even for providers that don't need one.
+
+/// Placeholder API key for Ollama (no auth required)
+pub const OLLAMA_API_KEY_PLACEHOLDER: &str = "ollama";
+
+/// Placeholder API key for OAuth-proxy providers (ClaudeOAuth, Gemini, Copilot)
+pub const OAUTH_PROXY_API_KEY_PLACEHOLDER: &str = "oauth-proxy";
+
+// ============================================================================
+// Timeouts
+// ============================================================================
+
+/// Timeout in seconds for waiting on Meilisearch task completion
+pub const TASK_COMPLETION_TIMEOUT_SECS: u64 = 60;
