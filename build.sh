@@ -225,7 +225,14 @@ run_parallel_tasks() {
 
 # Dev-mode build optimizations: fast compile over fast runtime
 # Called for dev/check/test/lint - NOT for build/build --release
+# Idempotent: uses _DEV_OPTS_APPLIED marker to avoid reprocessing on repeated calls
 setup_dev_optimizations() {
+    # Guard against repeated invocations (e.g. sourced twice)
+    if [ "${_DEV_OPTS_APPLIED:-}" = true ]; then
+        return 0
+    fi
+    _DEV_OPTS_APPLIED=true
+
     print_section "Dev Build Optimizations"
 
     # Ensure sccache is wrapping rustc
@@ -233,7 +240,7 @@ setup_dev_optimizations() {
         export RUSTC_WRAPPER=sccache
         sccache --start-server 2>/dev/null || true
         local cache_loc
-        cache_loc=$(sccache --show-stats 2>&1 | grep 'Cache location' | sed 's/.*Cache location\s*//' | xargs) || cache_loc="unknown"
+        cache_loc=$(sccache --show-stats 2>&1 | grep 'Cache location' | sed 's/.*Cache location[[:space:]]*//' | xargs) || cache_loc="unknown"
         print_success "sccache: $cache_loc"
     else
         print_warning "sccache not found - compilation caching disabled"

@@ -160,6 +160,88 @@ impl CopilotTokenStorage for MemoryTokenStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::oauth::storage::FileTokenStorage as GateFileStorage;
+    use tempfile::tempdir;
+
+    // -------------------------------------------------------------------------
+    // GateStorageAdapter round-trip tests
+    //
+    // These tests verify the complete save → file write → file read → load
+    // conversion path through GateStorageAdapter backed by FileTokenStorage.
+    // A serde rename_all mismatch (the historical source of this regression)
+    // would cause the `from_value` call inside FileTokenStorage::get_token to
+    // fail, making is_authenticated() silently return false right after a
+    // successful complete_auth().
+    // -------------------------------------------------------------------------
+
+    /// Constructs a file-backed GateStorageAdapter in a temp directory.
+    fn file_backed_adapter() -> (GateStorageAdapter<GateFileStorage>, tempfile::TempDir) {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("oauth-tokens.json");
+        let file_storage = GateFileStorage::new(&path).unwrap();
+        (GateStorageAdapter::new(file_storage), dir)
+    }
+
+    #[tokio::test]
+    async fn test_gate_adapter_round_trip_with_file_storage() {
+        let (adapter, dir) = file_backed_adapter();
+        let token_path = dir.path().join("oauth-tokens.json");
+
+        // Save a token with both github + copilot fields
+        let future_ts = chrono::Utc::now().timestamp() + 3600;
+        let token = TokenInfo::with_copilot("gho_test_github", "tid=copilot_tok", future_ts);
+        adapter.save(&token).await.unwrap();
+
+        // Verify file was created
+        assert!(token_path.exists(), "token file must exist after save");
+
+        // Load back and check round-trip fidelity
+        let loaded = adapter.load().await.unwrap().expect("token must be present after save");
+        assert_eq!(loaded.github_token, "gho_test_github", "github_token round-trip failed");
+        assert!(loaded.has_github_token(), "has_github_token() must be true after save");
+        assert_eq!(
+            loaded.copilot_token.as_deref(),
+            Some("tid=copilot_tok"),
+            "copilot_token round-trip failed"
+        );
+        assert_eq!(
+            loaded.copilot_expires_at,
+            Some(future_ts),
+            "copilot_expires_at round-trip failed"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_gate_adapter_github_token_only_round_trip() {
+        let (adapter, _dir) = file_backed_adapter();
+
+        // Save a token with only the GitHub token (copilot token not yet obtained)
+        let token = TokenInfo::new("gho_github_only");
+        adapter.save(&token).await.unwrap();
+
+        let loaded = adapter.load().await.unwrap().expect("token must be present");
+        assert_eq!(loaded.github_token, "gho_github_only");
+        assert!(loaded.has_github_token());
+        // Copilot fields should be absent
+        assert!(loaded.copilot_token.is_none());
+        assert!(loaded.copilot_expires_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_gate_adapter_remove() {
+        let (adapter, _dir) = file_backed_adapter();
+
+        let token = TokenInfo::new("gho_to_remove");
+        adapter.save(&token).await.unwrap();
+        assert!(adapter.load().await.unwrap().is_some());
+
+        adapter.remove().await.unwrap();
+        assert!(adapter.load().await.unwrap().is_none());
+    }
+
+    // -------------------------------------------------------------------------
+    // MemoryTokenStorage tests (copilot-specific)
+    // -------------------------------------------------------------------------
 
     #[tokio::test]
     async fn test_memory_storage_empty() {
