@@ -384,8 +384,10 @@ fn convert_hit_to_hybrid_payload(
         page_number,
         score,
         index: index.to_string(),
-        keyword_rank: Some(rank + 1), // Hybrid search fuses ranks
-        semantic_rank: Some(rank + 1), // Not separable in native hybrid
-        overlap_count: Some(1), // Native hybrid doesn't separate sources
+        // Hybrid search returns a fused ranking; keyword/semantic ranks are not separable.
+        keyword_rank: None,
+        semantic_rank: None,
+        // Native hybrid doesn't provide per-source overlap information.
+        overlap_count: None,
     })
 }
