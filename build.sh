@@ -175,6 +175,98 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+# Run two tasks in parallel with consistent logging and error aggregation
+# Usage: run_parallel_tasks "task_name" "backend_cmd" "frontend_cmd"
+# Returns 0 if both succeed, 1 if either fails
+run_parallel_tasks() {
+    local task_name="$1"
+    local backend_cmd="$2"
+    local frontend_cmd="$3"
+
+    print_info "Running parallel ${task_name}..."
+
+    local backend_log
+    local frontend_log
+    backend_log=$(mktemp)
+    frontend_log=$(mktemp)
+
+    # Run tasks in parallel (redirect both stdout and stderr to log)
+    (cd "$BACKEND_DIR" && eval "$backend_cmd") > "$backend_log" 2>&1 &
+    local backend_pid=$!
+
+    (cd "$FRONTEND_DIR" && eval "$frontend_cmd") > "$frontend_log" 2>&1 &
+    local frontend_pid=$!
+
+    local failed=false
+
+    # Wait for backend
+    if wait $backend_pid; then
+        print_success "Backend ${task_name} passed"
+    else
+        print_error "Backend ${task_name} failed"
+        cat "$backend_log"
+        failed=true
+    fi
+
+    # Wait for frontend
+    if wait $frontend_pid; then
+        print_success "Frontend ${task_name} passed"
+    else
+        print_error "Frontend ${task_name} failed"
+        cat "$frontend_log"
+        failed=true
+    fi
+
+    rm -f "$backend_log" "$frontend_log"
+
+    [ "$failed" = true ] && return 1
+    return 0
+}
+
+# Dev-mode build optimizations: fast compile over fast runtime
+# Called for dev/check/test/lint - NOT for build/build --release
+setup_dev_optimizations() {
+    print_section "Dev Build Optimizations"
+
+    # Ensure sccache is wrapping rustc
+    if command_exists sccache; then
+        export RUSTC_WRAPPER=sccache
+        sccache --start-server 2>/dev/null || true
+        local cache_loc
+        cache_loc=$(sccache --show-stats 2>&1 | grep 'Cache location' | sed 's/.*Cache location\s*//' | xargs) || cache_loc="unknown"
+        print_success "sccache: $cache_loc"
+    else
+        print_warning "sccache not found - compilation caching disabled"
+    fi
+
+    # Strip opt-level from RUSTFLAGS so cargo profiles control it
+    # (dev profile = O0 for fastest compile; release profile = O3)
+    if [[ "${RUSTFLAGS:-}" == *"opt-level"* ]]; then
+        RUSTFLAGS=$(echo "$RUSTFLAGS" | sed 's/-C opt-level=[0-9sz]*//g' | tr -s ' ')
+        export RUSTFLAGS
+        print_info "Stripped opt-level from RUSTFLAGS (dev=O0 for fast compile)"
+    fi
+
+    # Verify mold linker; strip -fuse-ld=mold from RUSTFLAGS if missing
+    if command_exists mold; then
+        print_success "Linker: mold $(mold --version 2>/dev/null | cut -d' ' -f2)"
+    else
+        print_warning "mold linker not found - falling back to default linker"
+        if [[ "${RUSTFLAGS:-}" == *"fuse-ld=mold"* ]]; then
+            RUSTFLAGS=$(echo "$RUSTFLAGS" | sed 's/-C link-arg=-fuse-ld=mold//g' | tr -s ' ')
+            export RUSTFLAGS
+        fi
+        if [[ "${LDFLAGS:-}" == *"fuse-ld=mold"* ]]; then
+            LDFLAGS=$(echo "$LDFLAGS" | sed 's/-fuse-ld=mold//g' | tr -s ' ')
+            export LDFLAGS
+        fi
+    fi
+
+    print_info "RUSTC_WRAPPER=${RUSTC_WRAPPER:-unset}"
+    print_info "RUSTFLAGS=${RUSTFLAGS:-unset}"
+}
+
+
 check_rust_env() {
     print_section "Checking Rust Environment"
 
@@ -1182,6 +1274,7 @@ case $COMMAND in
         print_success "Setup complete! You can now run './build.sh dev' or './build.sh build'"
         ;;
     dev)
+        setup_dev_optimizations
         if command_exists cargo; then
              :
         else
@@ -1229,15 +1322,18 @@ case $COMMAND in
         build_backend
         ;;
     test)
+        setup_dev_optimizations
         run_tests
         ;;
     check)
+        setup_dev_optimizations
         run_check
         ;;
     clean)
         clean_artifacts
         ;;
     lint)
+        setup_dev_optimizations
         run_lint
         ;;
     format)
