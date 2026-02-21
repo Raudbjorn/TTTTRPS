@@ -8,7 +8,7 @@
 
 1. Add dependencies to `Cargo.toml`:
    ```toml
-   symspell = "0.5"
+   symspell = "0.4"
    strsim = "0.11"
    ```
 2. Create module structure:
