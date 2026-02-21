@@ -138,8 +138,17 @@ pub async fn hybrid_search(
         let start = Instant::now();
 
         // Determine semantic ratio from options
-        // Default to balanced (0.5) if not specified
-        let semantic_ratio = opts.semantic_weight.unwrap_or(0.5);
+        // Default to balanced (0.5) if not specified, clamp to [0.0, 1.0] and handle NaN
+        let raw_semantic_ratio = opts.semantic_weight.unwrap_or(0.5);
+        let semantic_ratio = if raw_semantic_ratio.is_nan() {
+            0.5
+        } else if raw_semantic_ratio < 0.0 {
+            0.0
+        } else if raw_semantic_ratio > 1.0 {
+            1.0
+        } else {
+            raw_semantic_ratio
+        };
 
         // Determine which index(es) to search
         let indexes_to_search = if let Some(ref index) = opts.index {
