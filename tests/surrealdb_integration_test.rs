@@ -16,7 +16,7 @@
 
 use tempfile::TempDir;
 
-use ttrpg_assistant::core::storage::{
+use ttttrps::core::storage::{
     ingest_chunks, ChunkData,
     create_library_item, get_library_item, delete_library_item,
     LibraryItem, LibraryItemBuilder,
@@ -25,7 +25,7 @@ use ttrpg_assistant::core::storage::{
     prepare_rag_context, RagConfig,
     SurrealStorage,
 };
-use ttrpg_assistant::core::preprocess::QueryPipeline;
+use ttttrps::core::preprocess::QueryPipeline;
 
 // ============================================================================
 // Test Helpers

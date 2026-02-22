@@ -1,9 +1,9 @@
 use wiremock::{Mock, MockServer, ResponseTemplate};
 use wiremock::matchers::{method, path, header};
-use ttrpg_assistant::oauth::copilot::CopilotClient;
-use ttrpg_assistant::oauth::copilot::models::auth::TokenInfo;
-use ttrpg_assistant::oauth::copilot::storage::MemoryTokenStorage;
-use ttrpg_assistant::oauth::copilot::config::CopilotConfig;
+use ttttrps::oauth::copilot::CopilotClient;
+use ttttrps::oauth::copilot::models::auth::TokenInfo;
+use ttttrps::oauth::copilot::storage::MemoryTokenStorage;
+use ttttrps::oauth::copilot::config::CopilotConfig;
 use chrono::Utc;
 
 #[tokio::test]

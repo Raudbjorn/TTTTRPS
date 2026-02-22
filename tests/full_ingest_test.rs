@@ -32,13 +32,13 @@ async fn test_full_ingest() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let db_path = temp_dir.path().join("meilisearch");
 
-    use ttrpg_assistant::core::search::EmbeddedSearch;
+    use ttttrps::core::search::EmbeddedSearch;
     let search = EmbeddedSearch::new(db_path).expect("Failed to create embedded search");
     let meili = search.inner();
 
     // 2. Ingest using two-phase pipeline (extract → raw index → chunk index)
     println!("\n[2/3] Ingesting with two-phase pipeline...");
-    use ttrpg_assistant::core::meilisearch_pipeline::MeilisearchPipeline;
+    use ttttrps::core::meilisearch_pipeline::MeilisearchPipeline;
 
     let pipeline = MeilisearchPipeline::with_defaults();
     let (extraction, chunking) = pipeline.ingest_two_phase(

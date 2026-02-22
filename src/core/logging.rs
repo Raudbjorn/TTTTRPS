@@ -194,6 +194,56 @@ pub fn init() -> WorkerGuard {
     guard
 }
 
+/// Initialize the logging system for TUI mode.
+///
+/// Identical to [`init()`] but omits the stdout layer to avoid corrupting
+/// the terminal while ratatui is in raw/alternate-screen mode.
+/// All logs go to the file appender only.
+pub fn init_tui() -> WorkerGuard {
+    let log_dir = dirs::data_dir()
+        .map(|d| d.join("ttrpg-assistant").join("logs"))
+        .unwrap_or_else(|| PathBuf::from("logs"));
+
+    if !log_dir.exists() {
+        if let Err(e) = fs::create_dir_all(&log_dir) {
+            eprintln!("Failed to create logs directory: {}", e);
+        }
+    }
+
+    let file_appender = tracing_appender::rolling::daily(&log_dir, "ttrpg-assistant.log");
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+    let env_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("debug"));
+
+    let file_layer = tracing_subscriber::fmt::layer()
+        .with_writer(non_blocking)
+        .json()
+        .with_file(true)
+        .with_line_number(true)
+        .with_thread_ids(true)
+        .with_target(true)
+        .with_filter(env_filter);
+
+    // No stdout layer — TUI owns the terminal
+    tracing_subscriber::registry()
+        .with(file_layer)
+        .init();
+
+    if let Err(e) = tracing_log::LogTracer::init() {
+        eprintln!("Failed to initialize LogTracer: {}", e);
+    }
+
+    init_miette();
+
+    let log_dir_clone = log_dir.clone();
+    std::thread::spawn(move || {
+        compress_old_logs(log_dir_clone);
+    });
+
+    guard
+}
+
 /// Compress old log files in the background
 fn compress_old_logs(log_dir: PathBuf) {
     let now = chrono::Local::now();

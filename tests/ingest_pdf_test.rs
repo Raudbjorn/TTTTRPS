@@ -28,7 +28,7 @@ async fn test_ingest_pdf() {
     println!("PDF: {:?}", pdf_path);
 
     // 1. Extract with kreuzberg (will fall back to OCR for scanned PDFs)
-    use ttrpg_assistant::ingestion::DocumentExtractor;
+    use ttttrps::ingestion::DocumentExtractor;
 
     let extractor = DocumentExtractor::with_ocr();
     println!("\n[1/2] Extracting document...");

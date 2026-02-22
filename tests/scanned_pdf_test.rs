@@ -24,7 +24,7 @@ async fn test_scanned_ttrpg_document() {
     println!("=== Scanned TTRPG Document OCR Test ===");
     println!("PDF: {:?}", pdf_path);
 
-    use ttrpg_assistant::ingestion::DocumentExtractor;
+    use ttttrps::ingestion::DocumentExtractor;
 
     let extractor = DocumentExtractor::with_ocr();
     let cb: Option<fn(f32, &str)> = None;
@@ -68,7 +68,7 @@ async fn test_scanned_lighthouse_document() {
     println!("=== Lighthouse Document OCR Test ===");
     println!("PDF: {:?}", pdf_path);
 
-    use ttrpg_assistant::ingestion::DocumentExtractor;
+    use ttttrps::ingestion::DocumentExtractor;
 
     let extractor = DocumentExtractor::with_ocr();
     let cb: Option<fn(f32, &str)> = None;
@@ -101,7 +101,7 @@ async fn test_scanned_lighthouse_document() {
 async fn test_multiple_scanned_documents() {
     let _ = env_logger::builder().is_test(true).try_init();
 
-    use ttrpg_assistant::ingestion::DocumentExtractor;
+    use ttttrps::ingestion::DocumentExtractor;
 
     let fixtures_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
     let extractor = DocumentExtractor::with_ocr();
