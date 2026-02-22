@@ -51,6 +51,9 @@ pub enum Action {
     NewChatSession,
     ClearChat,
 
+    // Settings
+    RefreshSettings,
+
     // Application
     Quit,
     SendMessage(String),

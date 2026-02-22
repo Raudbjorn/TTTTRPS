@@ -19,6 +19,7 @@ use super::views::chat::{ChatInputMode, ChatState};
 use super::views::command_palette::{
     build_command_registry, CommandPaletteState, PaletteResult,
 };
+use super::views::settings::SettingsState;
 
 /// Central application state (Elm architecture).
 pub struct AppState {
@@ -28,6 +29,8 @@ pub struct AppState {
     pub focus: Focus,
     /// Chat view state.
     pub chat: ChatState,
+    /// Settings view state.
+    pub settings: SettingsState,
     /// Active notifications (max 3 visible).
     pub notifications: Vec<Notification>,
     /// Monotonic counter for notification IDs.
@@ -55,6 +58,7 @@ impl AppState {
             running: true,
             focus: Focus::Chat,
             chat: ChatState::new(),
+            settings: SettingsState::new(),
             notifications: Vec::new(),
             notification_counter: 0,
             show_help: false,
@@ -123,9 +127,18 @@ impl AppState {
                     }
                 }
                 // Priority 2: Help modal
-                // Priority 3: Focused view (chat in insert/normal mode)
-                if self.focus == Focus::Chat && !self.show_help {
-                    if self.chat.handle_input(&crossterm_event, &self.services) {
+                // Priority 3: Focused view
+                if !self.show_help {
+                    let consumed = match self.focus {
+                        Focus::Chat => {
+                            self.chat.handle_input(&crossterm_event, &self.services)
+                        }
+                        Focus::Settings => {
+                            self.settings.handle_input(&crossterm_event, &self.services)
+                        }
+                        _ => false,
+                    };
+                    if consumed {
                         return;
                     }
                 }
@@ -222,20 +235,19 @@ impl AppState {
             }
             Action::FocusLibrary => self.focus = Focus::Library,
             Action::FocusCampaign => self.focus = Focus::Campaign,
-            Action::FocusSettings => self.focus = Focus::Settings,
+            Action::FocusSettings => {
+                self.focus = Focus::Settings;
+                self.settings.load(&self.services);
+            }
             Action::FocusGeneration => self.focus = Focus::Generation,
             Action::FocusPersonality => self.focus = Focus::Personality,
             Action::TabNext => {
                 self.focus = self.focus.next();
-                if self.focus == Focus::Chat {
-                    self.chat.load_session(&self.services);
-                }
+                self.on_focus_changed();
             }
             Action::TabPrev => {
                 self.focus = self.focus.prev();
-                if self.focus == Focus::Chat {
-                    self.chat.load_session(&self.services);
-                }
+                self.on_focus_changed();
             }
             Action::ShowHelp => self.show_help = true,
             Action::CloseHelp => self.show_help = false,
@@ -244,6 +256,9 @@ impl AppState {
             }
             Action::ClearChat => {
                 self.chat.cmd_clear(&self.services);
+            }
+            Action::RefreshSettings => {
+                self.settings.load(&self.services);
             }
             Action::OpenCommandPalette => {
                 self.command_palette =
@@ -255,6 +270,14 @@ impl AppState {
             Action::SendMessage(_msg) => {
                 // Handled directly by ChatState via input handling
             }
+        }
+    }
+
+    fn on_focus_changed(&mut self) {
+        match self.focus {
+            Focus::Chat => self.chat.load_session(&self.services),
+            Focus::Settings => self.settings.load(&self.services),
+            _ => {}
         }
     }
 
@@ -279,12 +302,15 @@ impl AppState {
         }
     }
 
-    /// Tick: decrement notification TTLs and dismiss expired.
+    /// Tick: decrement notification TTLs, dismiss expired, poll async data.
     fn on_tick(&mut self) {
         for n in &mut self.notifications {
             n.ttl_ticks = n.ttl_ticks.saturating_sub(1);
         }
         self.notifications.retain(|n| n.ttl_ticks > 0);
+
+        // Poll async settings data
+        self.settings.poll();
     }
 
     // ── Rendering ───────────────────────────────────────────────────────
@@ -347,12 +373,9 @@ impl AppState {
 
     fn render_content(&self, frame: &mut Frame, area: Rect) {
         match self.focus {
-            Focus::Chat => {
-                self.chat.render(frame, area);
-            }
-            _ => {
-                self.render_placeholder(frame, area);
-            }
+            Focus::Chat => self.chat.render(frame, area),
+            Focus::Settings => self.settings.render(frame, area),
+            _ => self.render_placeholder(frame, area),
         }
     }
 
