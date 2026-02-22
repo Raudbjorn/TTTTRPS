@@ -1,18 +1,16 @@
 use std::io;
+use std::time::Duration;
 
 use crossterm::{
-    event::{self, Event, KeyCode, KeyEventKind},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use ratatui::{
-    backend::CrosstermBackend,
-    layout::{Constraint, Layout},
-    style::{Color, Modifier, Style},
-    text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
-    Terminal,
-};
+use ratatui::{backend::CrosstermBackend, Terminal};
+use tokio::sync::mpsc;
+
+use ttttrps::config::AppConfig;
+use ttttrps::tui::app::AppState;
+use ttttrps::tui::services::Services;
 
 /// Restore terminal state — called from panic hook and normal exit.
 fn restore_terminal() {
@@ -34,9 +32,27 @@ async fn main() {
     // Install panic hook BEFORE entering raw mode
     install_panic_hook();
 
+    // Load configuration
+    let config = AppConfig::load();
+
     // Initialize TUI-safe logging (file only, no stdout)
     let _log_guard = ttttrps::core::logging::init_tui();
     log::info!("TTTTRPS v{} starting", ttttrps::VERSION);
+
+    // Create event channel
+    let (event_tx, event_rx) = mpsc::unbounded_channel();
+
+    // Initialize backend services
+    let services = match Services::init(&config, event_tx.clone()).await {
+        Ok(s) => s,
+        Err(e) => {
+            // Don't enter raw mode if services fail
+            log::error!("Failed to initialize services: {e}");
+            eprintln!("Fatal: failed to initialize services: {e}");
+            std::process::exit(1);
+        }
+    };
+    log::info!("All services initialized");
 
     // Setup terminal
     if let Err(e) = enable_raw_mode() {
@@ -59,8 +75,11 @@ async fn main() {
         }
     };
 
-    // Run the app
-    let result = run_app(&mut terminal);
+    // Create app state and run the event loop
+    let mut app = AppState::new(event_rx, event_tx, services);
+    let tick_rate = Duration::from_millis(config.tui.tick_rate_ms);
+
+    let result = app.run(&mut terminal, tick_rate).await;
 
     // Restore terminal
     restore_terminal();
@@ -71,82 +90,6 @@ async fn main() {
         eprintln!("Error: {e}");
         std::process::exit(1);
     }
-}
 
-fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> {
-    loop {
-        terminal.draw(|frame| {
-            let area = frame.area();
-
-            let chunks = Layout::vertical([
-                Constraint::Length(3),
-                Constraint::Min(1),
-                Constraint::Length(3),
-            ])
-            .split(area);
-
-            // Header
-            let header = Paragraph::new(Line::from(vec![
-                Span::styled(
-                    " TTTTRPS ",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::raw("- AI-Powered TTRPG Assistant (TUI)"),
-            ]))
-            .block(Block::default().borders(Borders::ALL));
-            frame.render_widget(header, chunks[0]);
-
-            // Main content
-            let content = Paragraph::new(vec![
-                Line::raw(""),
-                Line::raw("  Welcome to TTTTRPS - your AI-powered Game Master companion."),
-                Line::raw(""),
-                Line::raw("  This is the TUI skeleton. Core systems are ready:"),
-                Line::raw("    - LLM routing (Claude, OpenAI, Ollama, Gemini)"),
-                Line::raw("    - Campaign & session management"),
-                Line::raw("    - Document ingestion & RAG search"),
-                Line::raw("    - NPC generation & personality system"),
-                Line::raw("    - Voice synthesis queue"),
-                Line::raw(""),
-                Line::raw("  TUI panels coming soon: chat, library, campaign, combat tracker"),
-            ])
-            .block(
-                Block::default()
-                    .title(" Main ")
-                    .borders(Borders::ALL),
-            );
-            frame.render_widget(content, chunks[1]);
-
-            // Footer
-            let footer = Paragraph::new(Line::from(vec![
-                Span::styled(
-                    " q ",
-                    Style::default()
-                        .fg(Color::Red)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::raw("Quit  "),
-                Span::styled(
-                    " ? ",
-                    Style::default()
-                        .fg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::raw("Help"),
-            ]))
-            .block(Block::default().borders(Borders::ALL));
-            frame.render_widget(footer, chunks[2]);
-        })?;
-
-        // Handle input
-        if event::poll(std::time::Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press && key.code == KeyCode::Char('q') {
-                    return Ok(());
-                }
-            }
-        }
-    }
+    log::info!("TTTTRPS shut down cleanly");
 }
