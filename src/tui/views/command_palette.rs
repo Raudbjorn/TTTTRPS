@@ -146,6 +146,13 @@ pub fn build_command_registry() -> Vec<Command> {
             action: Action::RefreshLibrary,
         },
         Command {
+            label: "Refresh Campaign",
+            description: "Reload session data",
+            category: CommandCategory::System,
+            keybinding: Some("r"),
+            action: Action::RefreshCampaign,
+        },
+        Command {
             label: "Refresh Settings",
             description: "Reload settings data from backend",
             category: CommandCategory::System,
@@ -565,7 +572,7 @@ mod tests {
     fn test_empty_input_shows_all() {
         let palette = make_palette();
         assert_eq!(palette.filtered.len(), palette.commands.len());
-        assert_eq!(palette.filtered.len(), 12);
+        assert_eq!(palette.filtered.len(), 13);
     }
 
     #[test]
@@ -650,10 +657,10 @@ mod tests {
         palette.input.insert_char('q');
         palette.refilter();
         let filtered_count = palette.filtered.len();
-        assert!(filtered_count < 12);
+        assert!(filtered_count < 13);
 
         palette.input.clear();
         palette.refilter();
-        assert_eq!(palette.filtered.len(), 12);
+        assert_eq!(palette.filtered.len(), 13);
     }
 }

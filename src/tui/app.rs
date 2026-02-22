@@ -19,6 +19,7 @@ use super::views::chat::{ChatInputMode, ChatState};
 use super::views::command_palette::{
     build_command_registry, CommandPaletteState, PaletteResult,
 };
+use super::views::campaign::{CampaignResult, CampaignState};
 use super::views::library::LibraryState;
 use super::views::settings::SettingsState;
 
@@ -32,6 +33,8 @@ pub struct AppState {
     pub chat: ChatState,
     /// Library view state.
     pub library: LibraryState,
+    /// Campaign/session management view state.
+    pub campaign: CampaignState,
     /// Settings view state.
     pub settings: SettingsState,
     /// Active notifications (max 3 visible).
@@ -62,6 +65,7 @@ impl AppState {
             focus: Focus::Chat,
             chat: ChatState::new(),
             library: LibraryState::new(),
+            campaign: CampaignState::new(),
             settings: SettingsState::new(),
             notifications: Vec::new(),
             notification_counter: 0,
@@ -139,6 +143,17 @@ impl AppState {
                         }
                         Focus::Library => {
                             self.library.handle_input(&crossterm_event, &self.services)
+                        }
+                        Focus::Campaign => {
+                            match self.campaign.handle_input(&crossterm_event, &self.services)
+                            {
+                                Some(CampaignResult::Consumed) => true,
+                                Some(CampaignResult::SwitchSession(sid)) => {
+                                    self.handle_action(Action::SwitchChatSession(sid));
+                                    true
+                                }
+                                None => false,
+                            }
                         }
                         Focus::Settings => {
                             self.settings.handle_input(&crossterm_event, &self.services)
@@ -244,7 +259,10 @@ impl AppState {
                 self.focus = Focus::Library;
                 self.library.load(&self.services);
             }
-            Action::FocusCampaign => self.focus = Focus::Campaign,
+            Action::FocusCampaign => {
+                self.focus = Focus::Campaign;
+                self.campaign.load(&self.services);
+            }
             Action::FocusSettings => {
                 self.focus = Focus::Settings;
                 self.settings.load(&self.services);
@@ -273,6 +291,13 @@ impl AppState {
             Action::RefreshLibrary => {
                 self.library.load(&self.services);
             }
+            Action::RefreshCampaign => {
+                self.campaign.load(&self.services);
+            }
+            Action::SwitchChatSession(session_id) => {
+                self.chat.switch_to_session(session_id, &self.services);
+                self.focus = Focus::Chat;
+            }
             Action::OpenCommandPalette => {
                 self.command_palette =
                     Some(CommandPaletteState::new(build_command_registry()));
@@ -290,6 +315,7 @@ impl AppState {
         match self.focus {
             Focus::Chat => self.chat.load_session(&self.services),
             Focus::Library => self.library.load(&self.services),
+            Focus::Campaign => self.campaign.load(&self.services),
             Focus::Settings => self.settings.load(&self.services),
             _ => {}
         }
@@ -325,6 +351,7 @@ impl AppState {
 
         // Poll async view data
         self.library.poll();
+        self.campaign.poll();
         self.settings.poll();
     }
 
@@ -390,6 +417,7 @@ impl AppState {
         match self.focus {
             Focus::Chat => self.chat.render(frame, area),
             Focus::Library => self.library.render(frame, area),
+            Focus::Campaign => self.campaign.render(frame, area),
             Focus::Settings => self.settings.render(frame, area),
             _ => self.render_placeholder(frame, area),
         }

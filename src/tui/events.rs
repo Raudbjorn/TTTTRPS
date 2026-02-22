@@ -57,6 +57,10 @@ pub enum Action {
     // Library
     RefreshLibrary,
 
+    // Campaign
+    RefreshCampaign,
+    SwitchChatSession(String),
+
     // Application
     Quit,
     SendMessage(String),

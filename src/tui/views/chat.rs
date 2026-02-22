@@ -431,6 +431,46 @@ impl ChatState {
         self.scroll_offset = 0;
     }
 
+    /// Switch to a specific chat session by ID.
+    /// Clears current state and loads the target session's messages.
+    pub fn switch_to_session(&mut self, session_id: String, services: &Services) {
+        self.messages.clear();
+        self.session_id = None;
+        self.scroll_offset = 0;
+        self.streaming_buffer.clear();
+        self.streaming_record_id = None;
+        self.active_stream_id = None;
+        self.session_loading = true;
+
+        let db = services.database.clone();
+        let tx = services.event_tx.clone();
+        let sid = session_id.clone();
+
+        tokio::spawn(async move {
+            use crate::database::ChatOps;
+
+            match db.get_chat_messages(&sid, 200).await {
+                Ok(messages) => {
+                    let _ = tx.send(crate::tui::events::AppEvent::ChatSessionLoaded {
+                        session_id: sid,
+                        messages,
+                    });
+                }
+                Err(e) => {
+                    log::error!("Failed to load session {sid}: {e}");
+                    let _ = tx.send(crate::tui::events::AppEvent::Notification(
+                        crate::tui::events::Notification {
+                            id: 0,
+                            message: format!("Session load failed: {e}"),
+                            level: crate::tui::events::NotificationLevel::Error,
+                            ttl_ticks: 100,
+                        },
+                    ));
+                }
+            }
+        });
+    }
+
     pub fn cmd_new_session(&mut self, services: &Services) {
         if let Some(ref sid) = self.session_id {
             let db = services.database.clone();
