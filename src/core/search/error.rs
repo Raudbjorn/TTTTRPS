@@ -45,12 +45,6 @@ impl From<meilisearch_lib::Error> for SearchError {
             meilisearch_lib::Error::DocumentNotFound(id) => {
                 SearchError::DocumentNotFound(id.clone())
             }
-            meilisearch_lib::Error::ChatNotConfigured => SearchError::RagNotConfigured,
-            meilisearch_lib::Error::ChatProvider(msg) => SearchError::LlmProvider(msg.clone()),
-            meilisearch_lib::Error::Config(msg) => SearchError::ConfigError(msg.clone()),
-            meilisearch_lib::Error::MissingDbPath => {
-                SearchError::ConfigError("database path is required".to_string())
-            }
             _ => SearchError::MeilisearchError(e.to_string()),
         }
     }

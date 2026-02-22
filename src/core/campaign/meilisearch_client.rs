@@ -5,7 +5,7 @@
 //!
 //! Migrated from `meilisearch_sdk` to embedded `meilisearch_lib` (TASK-CAMP-004).
 
-use meilisearch_lib::{MeilisearchLib, SearchQuery, Settings, Unchecked};
+use meilisearch_lib::{Meilisearch, SearchQuery, Settings};
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
@@ -102,15 +102,15 @@ pub type Result<T> = std::result::Result<T, MeilisearchCampaignError>;
 
 /// Client for campaign generation Meilisearch operations.
 ///
-/// Uses embedded `MeilisearchLib` for direct Rust integration without HTTP.
+/// Uses embedded `Meilisearch` for direct Rust integration without HTTP.
 /// All operations are synchronous.
 pub struct MeilisearchCampaignClient {
-    meili: Arc<MeilisearchLib>,
+    meili: Arc<Meilisearch>,
 }
 
 impl MeilisearchCampaignClient {
-    /// Create a new campaign client wrapping an embedded MeilisearchLib instance
-    pub fn new(meili: Arc<MeilisearchLib>) -> Self {
+    /// Create a new campaign client wrapping an embedded Meilisearch instance
+    pub fn new(meili: Arc<Meilisearch>) -> Self {
         Self { meili }
     }
 
@@ -160,29 +160,17 @@ impl MeilisearchCampaignClient {
         &self,
         name: &str,
         primary_key: &str,
-        settings: Settings<Unchecked>,
+        settings: Settings,
     ) -> Result<()> {
-        let exists = self.meili.index_exists(name)?;
-
-        if exists {
+        if self.meili.index_exists(name) {
             // Index exists, update settings
-            let task = self.meili.update_settings(name, settings)?;
-            self.meili
-                .wait_for_task(task.uid, Some(Duration::from_secs(TASK_TIMEOUT_SHORT_SECS)))?;
+            let index = self.meili.get_index(name)?;
+            index.update_settings(&settings)?;
             log::debug!("Updated settings for index '{}'", name);
         } else {
-            // Create new index
-            let task = self
-                .meili
-                .create_index(name, Some(primary_key.to_string()))?;
-            self.meili
-                .wait_for_task(task.uid, Some(Duration::from_secs(TASK_TIMEOUT_SHORT_SECS)))?;
-
-            // Apply settings
-            let task = self.meili.update_settings(name, settings)?;
-            self.meili
-                .wait_for_task(task.uid, Some(Duration::from_secs(TASK_TIMEOUT_SHORT_SECS)))?;
-
+            // Create new index and apply settings
+            let index = self.meili.create_index(name, Some(primary_key))?;
+            index.update_settings(&settings)?;
             log::info!("Created index '{}' with settings", name);
         }
 
@@ -192,9 +180,7 @@ impl MeilisearchCampaignClient {
     /// Delete an index (idempotent — treats `IndexNotFound` as success).
     pub fn delete_index(&self, name: &str) -> Result<()> {
         match self.meili.delete_index(name) {
-            Ok(task) => {
-                self.meili
-                    .wait_for_task(task.uid, Some(Duration::from_secs(TASK_TIMEOUT_SHORT_SECS)))?;
+            Ok(()) => {
                 log::info!("Deleted index '{}'", name);
                 Ok(())
             }
@@ -220,13 +206,8 @@ impl MeilisearchCampaignClient {
     ) -> Result<()> {
         self.with_retry_blocking(|| {
             let value = serde_json::to_value(document)?;
-            let task = self.meili.add_documents(
-                index_name,
-                vec![value],
-                Some(CAMPAIGN_PRIMARY_KEY.to_string()),
-            )?;
-            self.meili
-                .wait_for_task(task.uid, Some(Duration::from_secs(TASK_TIMEOUT_SHORT_SECS)))?;
+            let index = self.meili.get_index(index_name)?;
+            index.add_documents(vec![value], Some(CAMPAIGN_PRIMARY_KEY))?;
             Ok(())
         })
     }
@@ -251,13 +232,8 @@ impl MeilisearchCampaignClient {
                     .map(|doc| serde_json::to_value(doc))
                     .collect::<std::result::Result<Vec<_>, _>>()?;
 
-                let task = self.meili.add_documents(
-                    index_name,
-                    values,
-                    Some(CAMPAIGN_PRIMARY_KEY.to_string()),
-                )?;
-                self.meili
-                    .wait_for_task(task.uid, Some(Duration::from_secs(TASK_TIMEOUT_LONG_SECS)))?;
+                let index = self.meili.get_index(index_name)?;
+                index.add_documents(values, Some(CAMPAIGN_PRIMARY_KEY))?;
                 Ok(())
             })?;
         }
@@ -276,11 +252,14 @@ impl MeilisearchCampaignClient {
         index_name: &str,
         id: &str,
     ) -> Result<Option<T>> {
-        match self.meili.get_document(index_name, id) {
-            Ok(doc) => {
+        let index = self.meili.get_index(index_name)
+            .map_err(|e| MeilisearchCampaignError::OperationError(e.to_string()))?;
+        match index.get_document(id) {
+            Ok(Some(doc)) => {
                 let deserialized: T = serde_json::from_value(doc)?;
                 Ok(Some(deserialized))
             }
+            Ok(None) => Ok(None),
             Err(meilisearch_lib::Error::DocumentNotFound(_)) => Ok(None),
             Err(e) => Err(MeilisearchCampaignError::OperationError(e.to_string())),
         }
@@ -289,9 +268,8 @@ impl MeilisearchCampaignClient {
     /// Delete a document by ID
     pub fn delete_document(&self, index_name: &str, id: &str) -> Result<()> {
         self.with_retry_blocking(|| {
-            let task = self.meili.delete_document(index_name, id)?;
-            self.meili
-                .wait_for_task(task.uid, Some(Duration::from_secs(TASK_TIMEOUT_SHORT_SECS)))?;
+            let index = self.meili.get_index(index_name)?;
+            index.delete_document(id)?;
             Ok(())
         })
     }
@@ -304,11 +282,8 @@ impl MeilisearchCampaignClient {
 
         self.with_retry_blocking(|| {
             let id_strings: Vec<String> = ids.iter().map(|s| s.to_string()).collect();
-            let task = self
-                .meili
-                .delete_documents_batch(index_name, id_strings)?;
-            self.meili
-                .wait_for_task(task.uid, Some(Duration::from_secs(TASK_TIMEOUT_LONG_SECS)))?;
+            let index = self.meili.get_index(index_name)?;
+            index.delete_documents(id_strings)?;
             Ok(())
         })
     }
@@ -316,15 +291,17 @@ impl MeilisearchCampaignClient {
     /// Delete documents matching a filter
     pub fn delete_by_filter(&self, index_name: &str, filter: &str) -> Result<usize> {
         let mut total_deleted = 0;
+        let index = self.meili.get_index(index_name)?;
 
         // Loop until no more matching documents
         loop {
             // Search for matching documents
-            let query = SearchQuery::empty()
+            let query = SearchQuery::match_all()
                 .with_filter(Value::String(filter.to_string()))
-                .with_pagination(0, MEILISEARCH_BATCH_SIZE);
+                .with_offset(0)
+                .with_limit(MEILISEARCH_BATCH_SIZE);
 
-            let results = self.meili.search(index_name, query)?;
+            let results = index.search(&query)?;
 
             if results.hits.is_empty() {
                 break;
@@ -375,12 +352,12 @@ impl MeilisearchCampaignClient {
         offset: usize,
     ) -> Result<Vec<T>> {
         let mut search_query = if query.is_empty() {
-            SearchQuery::empty()
+            SearchQuery::match_all()
         } else {
             SearchQuery::new(query)
         };
 
-        search_query = search_query.with_pagination(offset, limit);
+        search_query = search_query.with_offset(offset).with_limit(limit);
 
         if let Some(f) = filter {
             search_query = search_query.with_filter(Value::String(f.to_string()));
@@ -391,7 +368,8 @@ impl MeilisearchCampaignClient {
             search_query = search_query.with_sort(sort_vec);
         }
 
-        let results = self.meili.search(index_name, search_query)?;
+        let index = self.meili.get_index(index_name)?;
+        let results = index.search(&search_query)?;
 
         results
             .hits
@@ -414,20 +392,24 @@ impl MeilisearchCampaignClient {
 
     /// Count documents matching a filter.
     ///
-    /// Uses `with_pagination(0, 0)` (offset=0, limit=0) to request zero
-    /// document bodies, relying on `estimated_total_hits` for the count.
+    /// Uses offset=0, limit=0 to request zero document bodies, relying on
+    /// `HitsInfo` pagination metadata for the count.
     pub fn count(&self, index_name: &str, filter: Option<&str>) -> Result<usize> {
-        let mut search_query = SearchQuery::empty().with_pagination(0, 0);
+        let mut search_query = SearchQuery::match_all().with_offset(0).with_limit(0);
 
         if let Some(f) = filter {
             search_query = search_query.with_filter(Value::String(f.to_string()));
         }
 
-        let results = self.meili.search(index_name, search_query)?;
+        let index = self.meili.get_index(index_name)?;
+        let results = index.search(&search_query)?;
 
-        // Clamp to usize::MAX to avoid truncation on 32-bit targets
-        let estimated = results.estimated_total_hits.unwrap_or(0);
-        Ok(usize::try_from(estimated).unwrap_or(usize::MAX))
+        // Extract count from HitsInfo (OffsetLimit or Pagination variant)
+        let estimated = match &results.hits_info {
+            meilisearch_lib::HitsInfo::OffsetLimit { estimated_total_hits, .. } => *estimated_total_hits,
+            meilisearch_lib::HitsInfo::Pagination { total_hits, .. } => *total_hits,
+        };
+        Ok(estimated)
     }
 
     // ========================================================================

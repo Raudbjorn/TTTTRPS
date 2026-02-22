@@ -757,13 +757,12 @@ mod tests {
     fn setup_test_store_with_capacity(
         capacity: usize,
     ) -> (tempfile::TempDir, SettingTemplateStore) {
-        use meilisearch_lib::MeilisearchLib;
         let temp_dir = tempfile::TempDir::new().unwrap();
-        let config = meilisearch_lib::Config::builder()
-            .db_path(temp_dir.path())
-            .build()
-            .unwrap();
-        let meili = Arc::new(MeilisearchLib::new(config).unwrap());
+        let options = meilisearch_lib::MeilisearchOptions {
+            db_path: temp_dir.path().to_path_buf(),
+            ..Default::default()
+        };
+        let meili = Arc::new(meilisearch_lib::Meilisearch::new(options).unwrap());
         let index_manager = Arc::new(PersonalityIndexManager::new(meili));
         index_manager.initialize_indexes().unwrap();
         let store = SettingTemplateStore::from_manager_with_capacity(index_manager, capacity);

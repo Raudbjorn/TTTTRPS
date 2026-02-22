@@ -16,17 +16,16 @@
 //!
 //! This module has been migrated from HTTP-based `meilisearch_sdk` to the
 //! embedded `meilisearch_lib`. All operations are now synchronous and use
-//! the `MeilisearchLib` API directly.
+//! the `Meilisearch` API directly.
 
 use crate::core::search::{LibraryDocumentMetadata, SearchError, INDEX_LIBRARY_METADATA};
 use crate::ingestion::claude_extractor::ClaudeDocumentExtractor;
 use crate::ingestion::extraction_settings::TextExtractionProvider;
 use crate::ingestion::kreuzberg_extractor::DocumentExtractor;
 use chrono::Utc;
-use meilisearch_lib::{FilterableAttributesRule, MeilisearchLib, SearchQuery, Settings, Setting};
+use meilisearch_lib::{Meilisearch, SearchQuery, Settings};
 use std::collections::BTreeSet;
 use std::path::Path;
-use std::time::Duration;
 
 // Re-export types that external code may need (preserving backward compatibility)
 pub use crate::ingestion::slugs::{
@@ -82,7 +81,7 @@ impl MeilisearchPipeline {
     /// `ExtractionResult` with slug, page count, and detected metadata
     pub async fn extract_to_raw(
         &self,
-        meili: &MeilisearchLib,
+        meili: &Meilisearch,
         path: &Path,
         title_override: Option<&str>,
     ) -> Result<ExtractionResult, SearchError> {
@@ -247,7 +246,7 @@ impl MeilisearchPipeline {
     /// 3. Writes each page to Meilisearch immediately after OCR
     async fn extract_to_raw_incremental(
         &self,
-        meili: &MeilisearchLib,
+        meili: &Meilisearch,
         path: &Path,
         slug: &str,
         raw_index: &str,
@@ -372,20 +371,24 @@ impl MeilisearchPipeline {
 
             let doc_count = raw_docs.len();
 
-            match meili.add_documents(raw_index, raw_docs, Some("id".to_string())) {
-                Ok(task) => {
-                    let _ = meili.wait_for_task(task.uid, Some(Duration::from_secs(60)));
-                    pages_written += doc_count;
-                    log::info!(
-                        "Wave complete: indexed {} pages (total: {}/{})",
-                        doc_count,
-                        pages_written + existing_page_count,
-                        total_pages
-                    );
-                }
+            match meili.get_index(raw_index) {
+                Ok(index) => match index.add_documents(raw_docs, Some("id")) {
+                    Ok(()) => {
+                        pages_written += doc_count;
+                        log::info!(
+                            "Wave complete: indexed {} pages (total: {}/{})",
+                            doc_count,
+                            pages_written + existing_page_count,
+                            total_pages
+                        );
+                    }
+                    Err(e) => {
+                        log::error!("Failed to index wave: {}", e);
+                        // Continue to next wave - partial progress is still saved
+                    }
+                },
                 Err(e) => {
-                    log::error!("Failed to index wave: {}", e);
-                    // Continue to next wave - partial progress is still saved
+                    log::error!("Failed to get index '{}': {}", raw_index, e);
                 }
             }
 
@@ -448,7 +451,7 @@ impl MeilisearchPipeline {
     /// - Documents with handwritten annotations
     async fn extract_to_raw_with_claude(
         &self,
-        meili: &MeilisearchLib,
+        meili: &Meilisearch,
         path: &Path,
         slug: &str,
         raw_index: &str,
@@ -551,7 +554,7 @@ impl MeilisearchPipeline {
     /// `ExtractionResult` with slug, page count, and detected metadata
     pub async fn import_layout_json(
         &self,
-        meili: &MeilisearchLib,
+        meili: &Meilisearch,
         path: &Path,
         title_override: Option<&str>,
     ) -> Result<ExtractionResult, SearchError> {
@@ -650,16 +653,12 @@ impl MeilisearchPipeline {
             .map(|doc| serde_json::to_value(doc).unwrap_or_default())
             .collect();
 
-        let task = meili.add_documents(&raw_index, json_docs, Some("id".to_string())).map_err(|e| {
+        let index = meili.get_index(&raw_index).map_err(|e| {
+            SearchError::MeilisearchError(format!("Failed to get index '{}': {}", raw_index, e))
+        })?;
+        index.add_documents(json_docs, Some("id")).map_err(|e| {
             SearchError::MeilisearchError(format!("Failed to add raw documents: {}", e))
         })?;
-
-        // Wait for indexing to complete
-        meili
-            .wait_for_task(task.uid, Some(Duration::from_secs(60)))
-            .map_err(|e| {
-                SearchError::MeilisearchError(format!("Failed to complete indexing: {}", e))
-            })?;
 
         // Update library_metadata
         let final_metadata = LibraryDocumentMetadata {
@@ -699,7 +698,7 @@ impl MeilisearchPipeline {
     /// Shared helper used by both kreuzberg and Claude extraction paths.
     async fn store_extracted_content(
         &self,
-        meili: &MeilisearchLib,
+        meili: &Meilisearch,
         path: &Path,
         slug: &str,
         raw_index: &str,
@@ -751,16 +750,12 @@ impl MeilisearchPipeline {
             .map(|doc| serde_json::to_value(doc).unwrap_or_default())
             .collect();
 
-        let task = meili
-            .add_documents(raw_index, json_docs, Some("id".to_string()))
-            .map_err(|e| {
-                SearchError::MeilisearchError(format!("Failed to add raw documents: {}", e))
-            })?;
-
-        // Wait for indexing to complete
-        meili
-            .wait_for_task(task.uid, Some(Duration::from_secs(60)))
-            .map_err(|e| SearchError::MeilisearchError(format!("Raw indexing failed: {}", e)))?;
+        let index = meili.get_index(raw_index).map_err(|e| {
+            SearchError::MeilisearchError(format!("Failed to get index '{}': {}", raw_index, e))
+        })?;
+        index.add_documents(json_docs, Some("id")).map_err(|e| {
+            SearchError::MeilisearchError(format!("Failed to add raw documents: {}", e))
+        })?;
 
         log::info!("Stored {} raw pages in '{}'", page_count, raw_index);
 
@@ -813,7 +808,7 @@ impl MeilisearchPipeline {
     /// `ChunkingResult` with chunk count and pages consumed
     pub async fn chunk_from_raw(
         &self,
-        meili: &MeilisearchLib,
+        meili: &Meilisearch,
         extraction: &ExtractionResult,
     ) -> Result<ChunkingResult, SearchError> {
         let slug = &extraction.slug;
@@ -828,9 +823,13 @@ impl MeilisearchPipeline {
         })?;
 
         // Fetch all raw documents from the raw index
-        let (_total, docs) = meili.get_documents(raw_index, 0, 10000).map_err(|e| {
+        let raw_index_handle = meili.get_index(raw_index).map_err(|e| {
+            SearchError::MeilisearchError(format!("Failed to get index '{}': {}", raw_index, e))
+        })?;
+        let docs_result = raw_index_handle.get_documents(0, 10000).map_err(|e| {
             SearchError::MeilisearchError(format!("Failed to fetch raw docs: {}", e))
         })?;
+        let docs = docs_result.documents;
 
         // Convert JSON values back to RawDocument
         let raw_docs: Vec<RawDocument> = docs
@@ -863,15 +862,12 @@ impl MeilisearchPipeline {
             .map(|c| serde_json::to_value(c).unwrap_or_default())
             .collect();
 
-        let task = meili
-            .add_documents(&chunks_index, json_chunks, Some("id".to_string()))
-            .map_err(|e| {
-                SearchError::MeilisearchError(format!("Failed to add chunks: {}", e))
-            })?;
-
-        meili
-            .wait_for_task(task.uid, Some(Duration::from_secs(60)))
-            .map_err(|e| SearchError::MeilisearchError(format!("Chunk indexing failed: {}", e)))?;
+        let chunks_index_handle = meili.get_index(&chunks_index).map_err(|e| {
+            SearchError::MeilisearchError(format!("Failed to get index '{}': {}", chunks_index, e))
+        })?;
+        chunks_index_handle.add_documents(json_chunks, Some("id")).map_err(|e| {
+            SearchError::MeilisearchError(format!("Failed to add chunks: {}", e))
+        })?;
 
         log::info!(
             "Created {} chunks from {} pages in '{}'",
@@ -893,7 +889,7 @@ impl MeilisearchPipeline {
     /// Convenience method that runs both phases sequentially.
     pub async fn ingest_two_phase(
         &self,
-        meili: &MeilisearchLib,
+        meili: &Meilisearch,
         path: &Path,
         title_override: Option<&str>,
     ) -> Result<(ExtractionResult, ChunkingResult), SearchError> {
@@ -1053,41 +1049,28 @@ fn find_split_point(text: &str, target: usize) -> usize {
 }
 
 // ============================================================================
-// MeilisearchLib Helper Functions
+// Meilisearch Helper Functions
 // ============================================================================
 
 /// Ensure a raw index exists with proper settings for page storage.
 ///
 /// Creates the index if it doesn't exist and configures sortable attributes
 /// for page_number ordering (needed for incremental extraction).
-fn ensure_raw_index(meili: &MeilisearchLib, uid: &str) -> Result<(), SearchError> {
-    // Create index if it doesn't exist
-    if !meili
-        .index_exists(uid)
-        .map_err(|e| SearchError::MeilisearchError(e.to_string()))?
-    {
-        let task = meili
-            .create_index(uid, Some("id".to_string()))
-            .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
+fn ensure_raw_index(meili: &Meilisearch, uid: &str) -> Result<(), SearchError> {
+    if !meili.index_exists(uid) {
         meili
-            .wait_for_task(task.uid, Some(Duration::from_secs(30)))
+            .create_index(uid, Some("id"))
             .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
     }
 
-    // Configure sortable attributes for page ordering
-    let mut sortable: BTreeSet<String> = BTreeSet::new();
-    sortable.insert("page_number".to_string());
+    let settings = Settings::new()
+        .with_sortable_attributes(BTreeSet::from(["page_number".to_string()]));
 
-    let settings: Settings<meilisearch_lib::Unchecked> = Settings {
-        sortable_attributes: Setting::Set(sortable),
-        ..Default::default()
-    };
-
-    let task = meili
-        .update_settings(uid, settings)
+    let index = meili
+        .get_index(uid)
         .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
-    meili
-        .wait_for_task(task.uid, Some(Duration::from_secs(30)))
+    index
+        .update_settings(&settings)
         .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
 
     Ok(())
@@ -1097,42 +1080,27 @@ fn ensure_raw_index(meili: &MeilisearchLib, uid: &str) -> Result<(), SearchError
 ///
 /// Creates the index if it doesn't exist and configures searchable and
 /// filterable attributes for optimal search performance.
-fn ensure_chunks_index(meili: &MeilisearchLib, uid: &str) -> Result<(), SearchError> {
-    // Create index if it doesn't exist
-    if !meili
-        .index_exists(uid)
-        .map_err(|e| SearchError::MeilisearchError(e.to_string()))?
-    {
-        let task = meili
-            .create_index(uid, Some("id".to_string()))
-            .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
+fn ensure_chunks_index(meili: &Meilisearch, uid: &str) -> Result<(), SearchError> {
+    if !meili.index_exists(uid) {
         meili
-            .wait_for_task(task.uid, Some(Duration::from_secs(30)))
+            .create_index(uid, Some("id"))
             .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
     }
 
-    // Configure searchable, filterable, and sortable attributes
-    let filterable: Vec<FilterableAttributesRule> = vec![
-        FilterableAttributesRule::Field("source".to_string()),
-        FilterableAttributesRule::Field("game_system".to_string()),
-        FilterableAttributesRule::Field("content_category".to_string()),
-    ];
+    let settings = Settings::new()
+        .with_searchable_attributes(vec!["content".to_string()])
+        .with_filterable_attributes(vec![
+            "source".to_string(),
+            "game_system".to_string(),
+            "content_category".to_string(),
+        ])
+        .with_sortable_attributes(BTreeSet::from(["chunk_index".to_string()]));
 
-    let mut sortable: BTreeSet<String> = BTreeSet::new();
-    sortable.insert("chunk_index".to_string());
-
-    let settings: Settings<meilisearch_lib::Unchecked> = Settings {
-        searchable_attributes: Setting::Set(vec!["content".to_string()]).into(),
-        filterable_attributes: Setting::Set(filterable),
-        sortable_attributes: Setting::Set(sortable),
-        ..Default::default()
-    };
-
-    let task = meili
-        .update_settings(uid, settings)
+    let index = meili
+        .get_index(uid)
         .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
-    meili
-        .wait_for_task(task.uid, Some(Duration::from_secs(30)))
+    index
+        .update_settings(&settings)
         .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
 
     Ok(())
@@ -1140,18 +1108,17 @@ fn ensure_chunks_index(meili: &MeilisearchLib, uid: &str) -> Result<(), SearchEr
 
 /// Save a library document metadata entry.
 fn save_library_document(
-    meili: &MeilisearchLib,
+    meili: &Meilisearch,
     metadata: &LibraryDocumentMetadata,
 ) -> Result<(), SearchError> {
     let doc = serde_json::to_value(metadata)
         .map_err(|e| SearchError::ConfigError(format!("Failed to serialize metadata: {}", e)))?;
 
-    let task = meili
-        .add_documents(INDEX_LIBRARY_METADATA, vec![doc], Some("id".to_string()))
+    let index = meili
+        .get_index(INDEX_LIBRARY_METADATA)
         .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
-
-    meili
-        .wait_for_task(task.uid, Some(Duration::from_secs(30)))
+    index
+        .add_documents(vec![doc], Some("id"))
         .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
 
     Ok(())
@@ -1159,13 +1126,21 @@ fn save_library_document(
 
 /// Query the raw index to find the highest page number already extracted.
 /// Returns 0 if no pages exist.
-fn get_highest_page_number(meili: &MeilisearchLib, raw_index: &str) -> usize {
-    // Use search with sort to find highest page number
-    let query = SearchQuery::empty()
+fn get_highest_page_number(meili: &Meilisearch, raw_index: &str) -> usize {
+    let query = SearchQuery::match_all()
         .with_sort(vec!["page_number:desc".to_string()])
-        .with_pagination(0, 1);
+        .with_offset(0)
+        .with_limit(1);
 
-    match meili.search(raw_index, query) {
+    let index = match meili.get_index(raw_index) {
+        Ok(idx) => idx,
+        Err(e) => {
+            log::warn!("Could not get index '{}': {}", raw_index, e);
+            return 0;
+        }
+    };
+
+    match index.search(&query) {
         Ok(results) => {
             if let Some(hit) = results.hits.first() {
                 if let Some(page_num) = hit.document.get("page_number") {
@@ -1184,12 +1159,18 @@ fn get_highest_page_number(meili: &MeilisearchLib, raw_index: &str) -> usize {
 }
 
 /// Get a content sample from the raw index for metadata detection.
-fn get_content_sample(meili: &MeilisearchLib, raw_index: &str) -> String {
-    let query = SearchQuery::empty()
+fn get_content_sample(meili: &Meilisearch, raw_index: &str) -> String {
+    let query = SearchQuery::match_all()
         .with_sort(vec!["page_number:asc".to_string()])
-        .with_pagination(0, 20);
+        .with_offset(0)
+        .with_limit(20);
 
-    match meili.search(raw_index, query) {
+    let index = match meili.get_index(raw_index) {
+        Ok(idx) => idx,
+        Err(_) => return String::new(),
+    };
+
+    match index.search(&query) {
         Ok(results) => results
             .hits
             .iter()

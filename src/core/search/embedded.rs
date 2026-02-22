@@ -1,12 +1,12 @@
 //! Embedded Meilisearch Wrapper
 //!
-//! Provides a thin wrapper around `meilisearch_lib::MeilisearchLib` for shared
+//! Provides a thin wrapper around `meilisearch_lib::Meilisearch` for shared
 //! access across the TTRPG Assistant application. This module enables embedded
 //! search capabilities without requiring an external Meilisearch process.
 //!
 //! # Architecture
 //!
-//! The `EmbeddedSearch` struct wraps `MeilisearchLib` in an `Arc` for safe
+//! The `EmbeddedSearch` struct wraps `Meilisearch` in an `Arc` for safe
 //! concurrent access from multiple Tauri command handlers. This replaces the
 //! previous HTTP-based `SearchClient` and `SidecarManager` approach.
 //!
@@ -19,7 +19,7 @@
 //! let db_path = PathBuf::from("~/.local/share/ttrpg-assistant/meilisearch");
 //! let search = EmbeddedSearch::new(db_path)?;
 //!
-//! // Access the inner MeilisearchLib for operations
+//! // Access the inner Meilisearch for operations
 //! let meili = search.inner();
 //! let results = meili.search("ttrpg_rules", SearchQuery::new("fireball"))?;
 //! ```
@@ -27,7 +27,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use meilisearch_lib::{Config, MeilisearchLib};
+use meilisearch_lib::{Meilisearch, MeilisearchOptions};
 
 use super::error::{Result, SearchError};
 
@@ -36,11 +36,11 @@ const DEFAULT_MAX_INDEX_SIZE: usize = 10 * 1024 * 1024 * 1024;
 
 /// Embedded Meilisearch search engine with RAG capabilities.
 ///
-/// Wraps `MeilisearchLib` in an `Arc` for thread-safe shared access across
+/// Wraps `Meilisearch` in an `Arc` for thread-safe shared access across
 /// Tauri command handlers and async tasks.
 #[derive(Clone)]
 pub struct EmbeddedSearch {
-    inner: Arc<MeilisearchLib>,
+    inner: Arc<Meilisearch>,
 }
 
 impl EmbeddedSearch {
@@ -78,21 +78,21 @@ impl EmbeddedSearch {
     /// Returns `SearchError::ConfigError` if the configuration is invalid, or
     /// `SearchError::InitError` if the database fails to initialize.
     pub fn with_max_index_size(db_path: PathBuf, max_index_size: usize) -> Result<Self> {
-        let config = Config::builder()
-            .db_path(&db_path)
-            .max_index_size(max_index_size)
-            .build()
-            .map_err(|e| SearchError::ConfigError(e.to_string()))?;
+        let options = MeilisearchOptions {
+            db_path,
+            max_index_size,
+            ..MeilisearchOptions::default()
+        };
 
         let inner =
-            MeilisearchLib::new(config).map_err(|e| SearchError::InitError(e.to_string()))?;
+            Meilisearch::new(options).map_err(|e| SearchError::InitError(e.to_string()))?;
 
         Ok(Self {
             inner: Arc::new(inner),
         })
     }
 
-    /// Get a reference to the inner `MeilisearchLib`.
+    /// Get a reference to the inner `Meilisearch`.
     ///
     /// Use this for synchronous operations or when you need direct access
     /// to the search engine methods.
@@ -104,11 +104,11 @@ impl EmbeddedSearch {
     /// let indexes = meili.list_indexes()?;
     /// ```
     #[inline]
-    pub fn inner(&self) -> &MeilisearchLib {
+    pub fn inner(&self) -> &Meilisearch {
         &self.inner
     }
 
-    /// Clone the `Arc<MeilisearchLib>` for sharing across async tasks.
+    /// Clone the `Arc<Meilisearch>` for sharing across async tasks.
     ///
     /// Use this when spawning tasks that need owned access to the search engine,
     /// such as streaming response handlers.
@@ -123,14 +123,14 @@ impl EmbeddedSearch {
     /// });
     /// ```
     #[inline]
-    pub fn clone_inner(&self) -> Arc<MeilisearchLib> {
+    pub fn clone_inner(&self) -> Arc<Meilisearch> {
         Arc::clone(&self.inner)
     }
 
     /// Attempt to shutdown the embedded Meilisearch instance.
     ///
     /// This attempts to gracefully shutdown if this is the last reference to the
-    /// inner `MeilisearchLib`. If other references exist, this method succeeds
+    /// inner `Meilisearch`. If other references exist, this method succeeds
     /// without performing shutdown - cleanup will occur when all references are dropped.
     ///
     /// # Behavior
@@ -146,7 +146,8 @@ impl EmbeddedSearch {
         match Arc::try_unwrap(self.inner) {
             Ok(meili) => {
                 tracing::info!("EmbeddedSearch: sole owner, performing shutdown");
-                meili.shutdown().map_err(SearchError::from)
+                drop(meili);
+                Ok(())
             }
             Err(_arc) => {
                 tracing::debug!(
@@ -161,7 +162,7 @@ impl EmbeddedSearch {
 impl std::fmt::Debug for EmbeddedSearch {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("EmbeddedSearch")
-            .field("inner", &"Arc<MeilisearchLib>")
+            .field("inner", &"Arc<Meilisearch>")
             .finish()
     }
 }
@@ -238,7 +239,7 @@ mod tests {
         let search = EmbeddedSearch::new(db_path).expect("Should create search");
         let debug_str = format!("{:?}", search);
         assert!(debug_str.contains("EmbeddedSearch"));
-        assert!(debug_str.contains("Arc<MeilisearchLib>"));
+        assert!(debug_str.contains("Arc<Meilisearch>"));
 
         search.shutdown().expect("Shutdown should succeed");
     }

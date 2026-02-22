@@ -16,7 +16,7 @@
 //! # Dual-Client Architecture
 //!
 //! The registry uses two Meilisearch access paths:
-//! - **`MeilisearchLib` (embedded)**: For index management (create, configure, delete)
+//! - **`Meilisearch` (embedded)**: For index management (create, configure, delete)
 //!   via [`ArchetypeIndexManager`]. No HTTP overhead.
 //! - **`meilisearch_sdk::Client`**: For document CRUD operations (add, search, delete
 //!   documents). Connects to the embedded instance's HTTP interface.
@@ -49,7 +49,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use lru::LruCache;
-use meilisearch_lib::MeilisearchLib;
+use meilisearch_lib::Meilisearch;
 use meilisearch_sdk::client::Client;
 use tokio::sync::RwLock;
 
@@ -172,7 +172,7 @@ impl ArchetypeRegistry {
     ///
     /// # Arguments
     ///
-    /// * `meili` - Shared reference to embedded MeilisearchLib (for index management)
+    /// * `meili` - Shared reference to embedded Meilisearch (for index management)
     /// * `meilisearch_client` - Initialized Meilisearch SDK client (for document CRUD)
     ///
     /// # Errors
@@ -186,7 +186,7 @@ impl ArchetypeRegistry {
     /// let client = Client::new("http://localhost:7700", None::<String>)?;
     /// let registry = ArchetypeRegistry::new(search.clone_inner(), client).await?;
     /// ```
-    pub async fn new(meili: Arc<MeilisearchLib>, meilisearch_client: Client) -> Result<Self> {
+    pub async fn new(meili: Arc<Meilisearch>, meilisearch_client: Client) -> Result<Self> {
         Self::with_cache_capacity(meili, meilisearch_client, DEFAULT_CACHE_CAPACITY).await
     }
 
@@ -194,11 +194,11 @@ impl ArchetypeRegistry {
     ///
     /// # Arguments
     ///
-    /// * `meili` - Shared reference to embedded MeilisearchLib (for index management)
+    /// * `meili` - Shared reference to embedded Meilisearch (for index management)
     /// * `meilisearch_client` - Initialized Meilisearch SDK client (for document CRUD)
     /// * `cache_capacity` - Maximum number of resolved archetypes to cache
     pub async fn with_cache_capacity(
-        meili: Arc<MeilisearchLib>,
+        meili: Arc<Meilisearch>,
         meilisearch_client: Client,
         cache_capacity: usize,
     ) -> Result<Self> {

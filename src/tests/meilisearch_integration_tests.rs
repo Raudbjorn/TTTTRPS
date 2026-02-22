@@ -27,7 +27,6 @@ mod tests {
         let (_temp, search) = create_test_search();
         let health = search.inner().health();
         assert_eq!(health.status, "available", "Embedded Meilisearch should be available");
-        search.shutdown().expect("Shutdown should succeed");
     }
 
     #[test]
@@ -36,20 +35,15 @@ mod tests {
         let meili = search.inner();
 
         // Create an index
-        let task = meili.create_index("test_index", Some("id".to_string()))
+        meili.create_index("test_index", Some("id"))
             .expect("Should create index");
-        meili.wait_for_task(task.uid, None).expect("Task should complete");
 
-        // List indexes
-        let (total, indexes) = meili.list_indexes(0, 10).expect("Should list indexes");
-        assert!(total >= 1, "Should have at least one index");
-        assert!(indexes.iter().any(|i| i.uid == "test_index"), "Should find test_index");
+        // Verify it exists
+        assert!(meili.index_exists("test_index"), "Should find test_index");
 
         // Delete it
-        let task = meili.delete_index("test_index").expect("Should delete index");
-        meili.wait_for_task(task.uid, None).expect("Task should complete");
-
-        search.shutdown().expect("Shutdown should succeed");
+        meili.delete_index("test_index").expect("Should delete index");
+        assert!(!meili.index_exists("test_index"), "test_index should be gone");
     }
 
     // ========================================================================
@@ -62,9 +56,8 @@ mod tests {
         let meili = search.inner();
 
         // Create index
-        let task = meili.create_index("test_docs", Some("id".to_string()))
+        meili.create_index("test_docs", Some("id"))
             .expect("Should create index");
-        meili.wait_for_task(task.uid, None).expect("Task should complete");
 
         // Add document
         let doc = serde_json::json!({
@@ -73,19 +66,16 @@ mod tests {
             "source": "test_rules.pdf",
             "source_type": "rules"
         });
-        let task = meili.add_documents("test_docs", vec![doc], Some("id".to_string()))
-            .expect("Should add document");
-        meili.wait_for_task(task.uid, None).expect("Task should complete");
+        let index = meili.get_index("test_docs").expect("Should get index");
+        index.add_documents(vec![doc], Some("id")).expect("Should add document");
 
         // Search for it
-        let query = SearchQuery::new("dragon fire").with_pagination(0, 10);
-        let results = meili.search("test_docs", query).expect("Search should succeed");
+        let query = SearchQuery::new("dragon fire").with_offset(0).with_limit(10);
+        let results = index.search(&query).expect("Search should succeed");
         assert!(!results.hits.is_empty(), "Should find the dragon document");
 
         // Cleanup
-        let task = meili.delete_index("test_docs").expect("Should delete index");
-        meili.wait_for_task(task.uid, None).expect("Task should complete");
-        search.shutdown().expect("Shutdown should succeed");
+        meili.delete_index("test_docs").expect("Should delete index");
     }
 
     // ========================================================================
@@ -98,28 +88,24 @@ mod tests {
         let meili = search.inner();
 
         // Create index
-        let task = meili.create_index("typo_test", Some("id".to_string()))
+        meili.create_index("typo_test", Some("id"))
             .expect("Should create index");
-        meili.wait_for_task(task.uid, None).expect("Task should complete");
 
         // Add document
         let doc = serde_json::json!({
             "id": "typo1",
             "content": "Fireball is a powerful evocation spell that deals fire damage."
         });
-        let task = meili.add_documents("typo_test", vec![doc], Some("id".to_string()))
-            .expect("Should add document");
-        meili.wait_for_task(task.uid, None).expect("Task should complete");
+        let index = meili.get_index("typo_test").expect("Should get index");
+        index.add_documents(vec![doc], Some("id")).expect("Should add document");
 
         // Search with typo: "firebll" instead of "fireball"
-        let query = SearchQuery::new("firebll spell").with_pagination(0, 10);
-        let results = meili.search("typo_test", query).expect("Search should succeed");
+        let query = SearchQuery::new("firebll spell").with_offset(0).with_limit(10);
+        let results = index.search(&query).expect("Search should succeed");
         assert!(!results.hits.is_empty(), "Should find 'fireball' even with typo 'firebll'");
 
         // Cleanup
-        let task = meili.delete_index("typo_test").expect("Should delete index");
-        meili.wait_for_task(task.uid, None).expect("Task should complete");
-        search.shutdown().expect("Shutdown should succeed");
+        meili.delete_index("typo_test").expect("Should delete index");
     }
 
     // ========================================================================
@@ -153,15 +139,14 @@ mod tests {
         std::fs::remove_file(&test_file).ok();
 
         // Verify it's searchable in the chunks index
-        let query = SearchQuery::new("dragons treasure").with_pagination(0, 10);
-        let search_results = meili.search(&chunking.chunks_index, query).expect("Search should succeed");
+        let chunks_index = meili.get_index(&chunking.chunks_index).expect("Should get chunks index");
+        let query = SearchQuery::new("dragons treasure").with_offset(0).with_limit(10);
+        let search_results = chunks_index.search(&query).expect("Search should succeed");
         assert!(!search_results.hits.is_empty(), "Should find ingested document in chunks index");
 
         // Clean up indexes
         let _ = meili.delete_index(&extraction.raw_index);
         let _ = meili.delete_index(&chunking.chunks_index);
-
-        search.shutdown().expect("Shutdown should succeed");
     }
 
     // ========================================================================
@@ -174,23 +159,19 @@ mod tests {
         let meili = search.inner();
 
         // Create index and add a document
-        let task = meili.create_index("stats_test", Some("id".to_string()))
+        meili.create_index("stats_test", Some("id"))
             .expect("Should create index");
-        meili.wait_for_task(task.uid, None).expect("Task should complete");
 
         let doc = serde_json::json!({"id": "s1", "content": "test"});
-        let task = meili.add_documents("stats_test", vec![doc], Some("id".to_string()))
-            .expect("Should add document");
-        meili.wait_for_task(task.uid, None).expect("Task should complete");
+        let index = meili.get_index("stats_test").expect("Should get index");
+        index.add_documents(vec![doc], Some("id")).expect("Should add document");
 
         // Get stats
         let stats = meili.index_stats("stats_test").expect("Should get stats");
         assert_eq!(stats.number_of_documents, 1, "Should have 1 document");
 
         // Cleanup
-        let task = meili.delete_index("stats_test").expect("Should delete index");
-        meili.wait_for_task(task.uid, None).expect("Task should complete");
-        search.shutdown().expect("Shutdown should succeed");
+        meili.delete_index("stats_test").expect("Should delete index");
     }
 
     // ========================================================================
@@ -203,27 +184,23 @@ mod tests {
         let meili = search.inner();
 
         // Create index
-        let task = meili.create_index("clear_test", Some("id".to_string()))
+        meili.create_index("clear_test", Some("id"))
             .expect("Should create index");
-        meili.wait_for_task(task.uid, None).expect("Task should complete");
 
         // Add a document
         let doc = serde_json::json!({"id": "c1", "content": "This will be cleared"});
-        let task = meili.add_documents("clear_test", vec![doc], Some("id".to_string()))
-            .expect("Should add document");
-        meili.wait_for_task(task.uid, None).expect("Task should complete");
+        let index = meili.get_index("clear_test").expect("Should get index");
+        index.add_documents(vec![doc], Some("id")).expect("Should add document");
 
-        // Clear the index
-        let task = meili.delete_all_documents("clear_test").expect("Should clear index");
-        meili.wait_for_task(task.uid, None).expect("Task should complete");
+        // Clear the index by deleting and recreating
+        meili.delete_index("clear_test").expect("Should delete index");
+        meili.create_index("clear_test", Some("id")).expect("Should recreate index");
 
         // Verify it's empty
         let stats = meili.index_stats("clear_test").expect("Should get stats");
         assert_eq!(stats.number_of_documents, 0, "Index should be empty after clear");
 
         // Cleanup
-        let task = meili.delete_index("clear_test").expect("Should delete index");
-        meili.wait_for_task(task.uid, None).expect("Task should complete");
-        search.shutdown().expect("Shutdown should succeed");
+        meili.delete_index("clear_test").expect("Should delete index");
     }
 }

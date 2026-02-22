@@ -10,11 +10,10 @@ use super::types::{
     BlendRule, BlendRuleDocument, SettingPersonalityTemplate, TemplateDocument, TemplateId,
     BlendRuleId,
 };
-use meilisearch_lib::{FilterableAttributesRule, MeilisearchLib, SearchQuery, Setting, Settings, Unchecked};
+use meilisearch_lib::{Meilisearch, SearchQuery, Settings};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::sync::Arc;
-use std::time::Duration;
 
 // ============================================================================
 // Error Type
@@ -35,9 +34,6 @@ pub enum PersonalityIndexError {
 
     #[error("Failed to update settings for '{index}': {detail}")]
     Settings { index: String, detail: String },
-
-    #[error("Task wait failed for index '{index}': {detail}")]
-    TaskWaitFailed { index: String, detail: String },
 
     #[error("Failed to get stats for '{index}': {detail}")]
     Stats { index: String, detail: String },
@@ -80,9 +76,6 @@ pub const INDEX_PERSONALITY_TEMPLATES: &str = "ttrpg_personality_templates";
 /// Index name for blend rules.
 pub const INDEX_BLEND_RULES: &str = "ttrpg_blend_rules";
 
-/// Default timeout for index operations (30 seconds).
-const INDEX_TIMEOUT: Duration = Duration::from_secs(30);
-
 // ============================================================================
 // Filter Safety
 // ============================================================================
@@ -98,62 +91,48 @@ pub(crate) fn escape_filter_value(value: &str) -> String {
 // ============================================================================
 
 /// Get the settings configuration for the personality templates index.
-pub fn personality_templates_settings() -> Settings<Unchecked> {
-    let filterable: Vec<FilterableAttributesRule> = vec![
-        FilterableAttributesRule::Field("gameSystem".to_string()),
-        FilterableAttributesRule::Field("settingName".to_string()),
-        FilterableAttributesRule::Field("isBuiltin".to_string()),
-        FilterableAttributesRule::Field("tags".to_string()),
-        FilterableAttributesRule::Field("campaignId".to_string()),
-    ];
-
-    let sortable = BTreeSet::from([
-        "name".to_string(),
-        "createdAt".to_string(),
-        "updatedAt".to_string(),
-    ]);
-
-    Settings {
-        searchable_attributes: Setting::Set(vec![
+pub fn personality_templates_settings() -> Settings {
+    Settings::new()
+        .with_searchable_attributes(vec![
             "name".to_string(),
             "description".to_string(),
             "vocabularyKeys".to_string(),
             "commonPhrases".to_string(),
         ])
-        .into(),
-        filterable_attributes: Setting::Set(filterable),
-        sortable_attributes: Setting::Set(sortable),
-        ..Default::default()
-    }
+        .with_filterable_attributes(vec![
+            "gameSystem".to_string(),
+            "settingName".to_string(),
+            "isBuiltin".to_string(),
+            "tags".to_string(),
+            "campaignId".to_string(),
+        ])
+        .with_sortable_attributes(BTreeSet::from([
+            "name".to_string(),
+            "createdAt".to_string(),
+            "updatedAt".to_string(),
+        ]))
 }
 
 /// Get the settings configuration for the blend rules index.
-pub fn blend_rules_settings() -> Settings<Unchecked> {
-    let filterable: Vec<FilterableAttributesRule> = vec![
-        FilterableAttributesRule::Field("context".to_string()),
-        FilterableAttributesRule::Field("enabled".to_string()),
-        FilterableAttributesRule::Field("isBuiltin".to_string()),
-        FilterableAttributesRule::Field("tags".to_string()),
-        FilterableAttributesRule::Field("campaignId".to_string()),
-    ];
-
-    let sortable = BTreeSet::from([
-        "name".to_string(),
-        "priority".to_string(),
-        "createdAt".to_string(),
-        "updatedAt".to_string(),
-    ]);
-
-    Settings {
-        searchable_attributes: Setting::Set(vec![
+pub fn blend_rules_settings() -> Settings {
+    Settings::new()
+        .with_searchable_attributes(vec![
             "name".to_string(),
             "description".to_string(),
         ])
-        .into(),
-        filterable_attributes: Setting::Set(filterable),
-        sortable_attributes: Setting::Set(sortable),
-        ..Default::default()
-    }
+        .with_filterable_attributes(vec![
+            "context".to_string(),
+            "enabled".to_string(),
+            "isBuiltin".to_string(),
+            "tags".to_string(),
+            "campaignId".to_string(),
+        ])
+        .with_sortable_attributes(BTreeSet::from([
+            "name".to_string(),
+            "priority".to_string(),
+            "createdAt".to_string(),
+            "updatedAt".to_string(),
+        ]))
 }
 
 // ============================================================================
@@ -165,42 +144,28 @@ pub fn blend_rules_settings() -> Settings<Unchecked> {
 /// This is idempotent: calling it multiple times is safe. If the index
 /// already exists, only settings are updated.
 fn ensure_single_index(
-    meili: &MeilisearchLib,
+    meili: &Meilisearch,
     uid: &str,
-    settings: Settings<Unchecked>,
+    settings: Settings,
 ) -> Result<(), PersonalityIndexError> {
-    let exists = meili
-        .index_exists(uid)
-        .map_err(|e| PersonalityIndexError::Check {
-            index: uid.to_string(),
-            detail: e.to_string(),
-        })?;
-
-    if !exists {
+    if !meili.index_exists(uid) {
         log::info!("Index '{}' not found, creating...", uid);
-        let task = meili
-            .create_index(uid, Some("id".to_string()))
-            .map_err(|e| PersonalityIndexError::Create {
-                index: uid.to_string(),
-                detail: e.to_string(),
-            })?;
         meili
-            .wait_for_task(task.uid, Some(INDEX_TIMEOUT))
-            .map_err(|e| PersonalityIndexError::TaskWaitFailed {
+            .create_index(uid, Some("id"))
+            .map_err(|e| PersonalityIndexError::Create {
                 index: uid.to_string(),
                 detail: e.to_string(),
             })?;
     }
 
-    let task = meili
-        .update_settings(uid, settings)
+    let index = meili.get_index(uid).map_err(|e| PersonalityIndexError::Settings {
+        index: uid.to_string(),
+        detail: e.to_string(),
+    })?;
+
+    index
+        .update_settings(&settings)
         .map_err(|e| PersonalityIndexError::Settings {
-            index: uid.to_string(),
-            detail: e.to_string(),
-        })?;
-    meili
-        .wait_for_task(task.uid, Some(INDEX_TIMEOUT))
-        .map_err(|e| PersonalityIndexError::TaskWaitFailed {
             index: uid.to_string(),
             detail: e.to_string(),
         })?;
@@ -212,12 +177,9 @@ fn ensure_single_index(
 /// Get the document count for an index.
 ///
 /// Returns `Ok(0)` if the index does not exist, propagates errors from
-/// `index_exists` and `index_stats` calls.
-fn get_document_count(meili: &MeilisearchLib, uid: &str) -> Result<u64, PersonalityIndexError> {
-    if !meili.index_exists(uid).map_err(|e| PersonalityIndexError::Check {
-        index: uid.to_string(),
-        detail: e.to_string(),
-    })? {
+/// `index_stats` calls.
+fn get_document_count(meili: &Meilisearch, uid: &str) -> Result<u64, PersonalityIndexError> {
+    if !meili.index_exists(uid) {
         return Ok(0);
     }
 
@@ -236,19 +198,19 @@ fn get_document_count(meili: &MeilisearchLib, uid: &str) -> Result<u64, Personal
 
 /// Manages Meilisearch indexes for the personality system.
 ///
-/// Uses embedded `MeilisearchLib` for direct synchronous access without HTTP.
+/// Uses embedded `Meilisearch` for direct synchronous access without HTTP.
 pub struct PersonalityIndexManager {
-    meili: Arc<MeilisearchLib>,
+    meili: Arc<Meilisearch>,
 }
 
 impl PersonalityIndexManager {
-    /// Create a new index manager from a shared `MeilisearchLib` instance.
-    pub fn new(meili: Arc<MeilisearchLib>) -> Self {
+    /// Create a new index manager from a shared `Meilisearch` instance.
+    pub fn new(meili: Arc<Meilisearch>) -> Self {
         Self { meili }
     }
 
-    /// Get a reference to the underlying `MeilisearchLib`.
-    pub fn meili(&self) -> &MeilisearchLib {
+    /// Get a reference to the underlying `Meilisearch`.
+    pub fn meili(&self) -> &Meilisearch {
         &self.meili
     }
 
@@ -283,17 +245,16 @@ impl PersonalityIndexManager {
             PersonalityExtensionError::internal(format!("Failed to serialize template: {}", e))
         })?;
 
-        let task = self
-            .meili
-            .add_documents(INDEX_PERSONALITY_TEMPLATES, vec![doc_value], Some("id".to_string()))
-            .map_err(|e| PersonalityIndexError::AddDocuments {
+        let index = self.meili.get_index(INDEX_PERSONALITY_TEMPLATES).map_err(|e| {
+            PersonalityIndexError::AddDocuments {
                 index: INDEX_PERSONALITY_TEMPLATES.to_string(),
                 detail: e.to_string(),
-            })?;
+            }
+        })?;
 
-        self.meili
-            .wait_for_task(task.uid, Some(INDEX_TIMEOUT))
-            .map_err(|e| PersonalityIndexError::TaskWaitFailed {
+        index
+            .add_documents(vec![doc_value], Some("id"))
+            .map_err(|e| PersonalityIndexError::AddDocuments {
                 index: INDEX_PERSONALITY_TEMPLATES.to_string(),
                 detail: e.to_string(),
             })?;
@@ -307,8 +268,16 @@ impl PersonalityIndexManager {
         &self,
         id: &TemplateId,
     ) -> Result<Option<TemplateDocument>, PersonalityExtensionError> {
-        match self.meili.get_document(INDEX_PERSONALITY_TEMPLATES, id.as_str()) {
-            Ok(value) => {
+        let index = self.meili.get_index(INDEX_PERSONALITY_TEMPLATES).map_err(|e| {
+            PersonalityIndexError::GetDocument {
+                index: INDEX_PERSONALITY_TEMPLATES.to_string(),
+                doc_id: id.to_string(),
+                detail: e.to_string(),
+            }
+        })?;
+
+        match index.get_document(id.as_str()) {
+            Ok(Some(value)) => {
                 let doc: TemplateDocument = serde_json::from_value(value).map_err(|e| {
                     PersonalityExtensionError::internal(format!(
                         "Failed to deserialize template '{}': {}",
@@ -317,7 +286,7 @@ impl PersonalityIndexManager {
                 })?;
                 Ok(Some(doc))
             }
-            Err(meilisearch_lib::Error::DocumentNotFound(_)) => Ok(None),
+            Ok(None) => Ok(None),
             Err(e) => Err(PersonalityIndexError::GetDocument {
                 index: INDEX_PERSONALITY_TEMPLATES.to_string(),
                 doc_id: id.to_string(),
@@ -329,19 +298,19 @@ impl PersonalityIndexManager {
 
     /// Delete a template by ID.
     pub fn delete_template(&self, id: &TemplateId) -> Result<(), PersonalityExtensionError> {
-        let task = self
-            .meili
-            .delete_document(INDEX_PERSONALITY_TEMPLATES, id.as_str())
-            .map_err(|e| PersonalityIndexError::DeleteDocument {
+        let index = self.meili.get_index(INDEX_PERSONALITY_TEMPLATES).map_err(|e| {
+            PersonalityIndexError::DeleteDocument {
                 index: INDEX_PERSONALITY_TEMPLATES.to_string(),
                 doc_id: id.to_string(),
                 detail: e.to_string(),
-            })?;
+            }
+        })?;
 
-        self.meili
-            .wait_for_task(task.uid, Some(INDEX_TIMEOUT))
-            .map_err(|e| PersonalityIndexError::TaskWaitFailed {
+        index
+            .delete_document(id.as_str())
+            .map_err(|e| PersonalityIndexError::DeleteDocument {
                 index: INDEX_PERSONALITY_TEMPLATES.to_string(),
+                doc_id: id.to_string(),
                 detail: e.to_string(),
             })?;
 
@@ -357,20 +326,26 @@ impl PersonalityIndexManager {
         limit: usize,
     ) -> Result<Vec<TemplateDocument>, PersonalityExtensionError> {
         let mut search_query = if query.is_empty() {
-            SearchQuery::empty()
+            SearchQuery::match_all()
         } else {
             SearchQuery::new(query)
         };
 
-        search_query = search_query.with_pagination(0, limit);
+        search_query = search_query.with_offset(0).with_limit(limit);
 
         if let Some(f) = filter {
             search_query = search_query.with_filter(serde_json::Value::String(f.to_string()));
         }
 
-        let result = self
-            .meili
-            .search(INDEX_PERSONALITY_TEMPLATES, search_query)
+        let index = self.meili.get_index(INDEX_PERSONALITY_TEMPLATES).map_err(|e| {
+            PersonalityIndexError::Search {
+                index: INDEX_PERSONALITY_TEMPLATES.to_string(),
+                detail: e.to_string(),
+            }
+        })?;
+
+        let result = index
+            .search(&search_query)
             .map_err(|e| PersonalityIndexError::Search {
                 index: INDEX_PERSONALITY_TEMPLATES.to_string(),
                 detail: e.to_string(),
@@ -437,17 +412,16 @@ impl PersonalityIndexManager {
             PersonalityExtensionError::internal(format!("Failed to serialize blend rule: {}", e))
         })?;
 
-        let task = self
-            .meili
-            .add_documents(INDEX_BLEND_RULES, vec![doc_value], Some("id".to_string()))
-            .map_err(|e| PersonalityIndexError::AddDocuments {
+        let index = self.meili.get_index(INDEX_BLEND_RULES).map_err(|e| {
+            PersonalityIndexError::AddDocuments {
                 index: INDEX_BLEND_RULES.to_string(),
                 detail: e.to_string(),
-            })?;
+            }
+        })?;
 
-        self.meili
-            .wait_for_task(task.uid, Some(INDEX_TIMEOUT))
-            .map_err(|e| PersonalityIndexError::TaskWaitFailed {
+        index
+            .add_documents(vec![doc_value], Some("id"))
+            .map_err(|e| PersonalityIndexError::AddDocuments {
                 index: INDEX_BLEND_RULES.to_string(),
                 detail: e.to_string(),
             })?;
@@ -461,8 +435,16 @@ impl PersonalityIndexManager {
         &self,
         id: &BlendRuleId,
     ) -> Result<Option<BlendRuleDocument>, PersonalityExtensionError> {
-        match self.meili.get_document(INDEX_BLEND_RULES, id.as_str()) {
-            Ok(value) => {
+        let index = self.meili.get_index(INDEX_BLEND_RULES).map_err(|e| {
+            PersonalityIndexError::GetDocument {
+                index: INDEX_BLEND_RULES.to_string(),
+                doc_id: id.to_string(),
+                detail: e.to_string(),
+            }
+        })?;
+
+        match index.get_document(id.as_str()) {
+            Ok(Some(value)) => {
                 let doc: BlendRuleDocument = serde_json::from_value(value).map_err(|e| {
                     PersonalityExtensionError::internal(format!(
                         "Failed to deserialize blend rule '{}': {}",
@@ -471,7 +453,7 @@ impl PersonalityIndexManager {
                 })?;
                 Ok(Some(doc))
             }
-            Err(meilisearch_lib::Error::DocumentNotFound(_)) => Ok(None),
+            Ok(None) => Ok(None),
             Err(e) => Err(PersonalityIndexError::GetDocument {
                 index: INDEX_BLEND_RULES.to_string(),
                 doc_id: id.to_string(),
@@ -483,19 +465,19 @@ impl PersonalityIndexManager {
 
     /// Delete a blend rule by ID.
     pub fn delete_blend_rule(&self, id: &BlendRuleId) -> Result<(), PersonalityExtensionError> {
-        let task = self
-            .meili
-            .delete_document(INDEX_BLEND_RULES, id.as_str())
-            .map_err(|e| PersonalityIndexError::DeleteDocument {
+        let index = self.meili.get_index(INDEX_BLEND_RULES).map_err(|e| {
+            PersonalityIndexError::DeleteDocument {
                 index: INDEX_BLEND_RULES.to_string(),
                 doc_id: id.to_string(),
                 detail: e.to_string(),
-            })?;
+            }
+        })?;
 
-        self.meili
-            .wait_for_task(task.uid, Some(INDEX_TIMEOUT))
-            .map_err(|e| PersonalityIndexError::TaskWaitFailed {
+        index
+            .delete_document(id.as_str())
+            .map_err(|e| PersonalityIndexError::DeleteDocument {
                 index: INDEX_BLEND_RULES.to_string(),
+                doc_id: id.to_string(),
                 detail: e.to_string(),
             })?;
 
@@ -511,20 +493,26 @@ impl PersonalityIndexManager {
         limit: usize,
     ) -> Result<Vec<BlendRuleDocument>, PersonalityExtensionError> {
         let mut search_query = if query.is_empty() {
-            SearchQuery::empty()
+            SearchQuery::match_all()
         } else {
             SearchQuery::new(query)
         };
 
-        search_query = search_query.with_pagination(0, limit);
+        search_query = search_query.with_offset(0).with_limit(limit);
 
         if let Some(f) = filter {
             search_query = search_query.with_filter(serde_json::Value::String(f.to_string()));
         }
 
-        let result = self
-            .meili
-            .search(INDEX_BLEND_RULES, search_query)
+        let index = self.meili.get_index(INDEX_BLEND_RULES).map_err(|e| {
+            PersonalityIndexError::Search {
+                index: INDEX_BLEND_RULES.to_string(),
+                detail: e.to_string(),
+            }
+        })?;
+
+        let result = index
+            .search(&search_query)
             .map_err(|e| PersonalityIndexError::Search {
                 index: INDEX_BLEND_RULES.to_string(),
                 detail: e.to_string(),
@@ -568,14 +556,21 @@ impl PersonalityIndexManager {
         &self,
         limit: usize,
     ) -> Result<Vec<BlendRuleDocument>, PersonalityExtensionError> {
-        let search_query = SearchQuery::empty()
+        let search_query = SearchQuery::match_all()
             .with_filter(serde_json::Value::String("enabled = true".to_string()))
             .with_sort(vec!["priority:desc".to_string()])
-            .with_pagination(0, limit);
+            .with_offset(0)
+            .with_limit(limit);
 
-        let result = self
-            .meili
-            .search(INDEX_BLEND_RULES, search_query)
+        let index = self.meili.get_index(INDEX_BLEND_RULES).map_err(|e| {
+            PersonalityIndexError::Search {
+                index: INDEX_BLEND_RULES.to_string(),
+                detail: e.to_string(),
+            }
+        })?;
+
+        let result = index
+            .search(&search_query)
             .map_err(|e| PersonalityIndexError::Search {
                 index: INDEX_BLEND_RULES.to_string(),
                 detail: e.to_string(),
@@ -616,43 +611,37 @@ impl PersonalityIndexManager {
         })
     }
 
-    /// Clear all documents from the templates index.
+    /// Clear all documents from the templates index by deleting and recreating it.
     pub fn clear_templates(&self) -> Result<(), PersonalityExtensionError> {
-        let task = self
-            .meili
-            .delete_all_documents(INDEX_PERSONALITY_TEMPLATES)
-            .map_err(|e| PersonalityIndexError::Clear {
-                index: INDEX_PERSONALITY_TEMPLATES.to_string(),
-                detail: e.to_string(),
+        if self.meili.index_exists(INDEX_PERSONALITY_TEMPLATES) {
+            self.meili.delete_index(INDEX_PERSONALITY_TEMPLATES).map_err(|e| {
+                PersonalityIndexError::Clear {
+                    index: INDEX_PERSONALITY_TEMPLATES.to_string(),
+                    detail: e.to_string(),
+                }
             })?;
+        }
 
-        self.meili
-            .wait_for_task(task.uid, Some(INDEX_TIMEOUT))
-            .map_err(|e| PersonalityIndexError::TaskWaitFailed {
-                index: INDEX_PERSONALITY_TEMPLATES.to_string(),
-                detail: e.to_string(),
-            })?;
+        // Recreate with settings
+        ensure_single_index(&self.meili, INDEX_PERSONALITY_TEMPLATES, personality_templates_settings())?;
 
         log::info!("Cleared all templates");
         Ok(())
     }
 
-    /// Clear all documents from the blend rules index.
+    /// Clear all documents from the blend rules index by deleting and recreating it.
     pub fn clear_blend_rules(&self) -> Result<(), PersonalityExtensionError> {
-        let task = self
-            .meili
-            .delete_all_documents(INDEX_BLEND_RULES)
-            .map_err(|e| PersonalityIndexError::Clear {
-                index: INDEX_BLEND_RULES.to_string(),
-                detail: e.to_string(),
+        if self.meili.index_exists(INDEX_BLEND_RULES) {
+            self.meili.delete_index(INDEX_BLEND_RULES).map_err(|e| {
+                PersonalityIndexError::Clear {
+                    index: INDEX_BLEND_RULES.to_string(),
+                    detail: e.to_string(),
+                }
             })?;
+        }
 
-        self.meili
-            .wait_for_task(task.uid, Some(INDEX_TIMEOUT))
-            .map_err(|e| PersonalityIndexError::TaskWaitFailed {
-                index: INDEX_BLEND_RULES.to_string(),
-                detail: e.to_string(),
-            })?;
+        // Recreate with settings
+        ensure_single_index(&self.meili, INDEX_BLEND_RULES, blend_rules_settings())?;
 
         log::info!("Cleared all blend rules");
         Ok(())
@@ -664,27 +653,17 @@ impl PersonalityIndexManager {
     /// to attempt all deletions. This is intentional since cleanup should
     /// be best-effort - partial cleanup is better than failing early.
     pub fn delete_indexes(&self) -> Result<(), PersonalityExtensionError> {
-        // Delete templates index
-        match self.meili.delete_index(INDEX_PERSONALITY_TEMPLATES) {
-            Ok(task) => {
-                if let Err(e) = self.meili.wait_for_task(task.uid, Some(INDEX_TIMEOUT)) {
-                    log::warn!("Failed to wait for templates index deletion: {}", e);
+        for uid in [INDEX_PERSONALITY_TEMPLATES, INDEX_BLEND_RULES] {
+            match self.meili.delete_index(uid) {
+                Ok(()) => {
+                    log::info!("Deleted index '{}'", uid);
                 }
-            }
-            Err(e) => {
-                log::warn!("Failed to delete templates index: {}", e);
-            }
-        }
-
-        // Delete rules index
-        match self.meili.delete_index(INDEX_BLEND_RULES) {
-            Ok(task) => {
-                if let Err(e) = self.meili.wait_for_task(task.uid, Some(INDEX_TIMEOUT)) {
-                    log::warn!("Failed to wait for blend rules index deletion: {}", e);
+                Err(meilisearch_lib::Error::IndexNotFound(_)) => {
+                    log::debug!("Index '{}' already doesn't exist", uid);
                 }
-            }
-            Err(e) => {
-                log::warn!("Failed to delete blend rules index: {}", e);
+                Err(e) => {
+                    log::warn!("Failed to delete index '{}': {}", uid, e);
+                }
             }
         }
 
@@ -783,13 +762,6 @@ mod tests {
             detail: "not found".to_string(),
         };
         assert!(err.to_string().contains("doc-123"));
-
-        let err = PersonalityIndexError::TaskWaitFailed {
-            index: "test_index".to_string(),
-            detail: "timeout exceeded".to_string(),
-        };
-        assert!(err.to_string().contains("test_index"));
-        assert!(err.to_string().contains("timeout exceeded"));
     }
 
     #[test]

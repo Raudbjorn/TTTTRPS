@@ -7,7 +7,7 @@
 //!
 //! TASK-CAMP-001, TASK-CAMP-002, TASK-CAMP-003
 
-use meilisearch_lib::{FilterableAttributesRule, Setting, Settings, Unchecked};
+use meilisearch_lib::Settings;
 use std::collections::BTreeSet;
 
 // ============================================================================
@@ -45,15 +45,15 @@ pub trait IndexConfig {
     fn sortable_attributes() -> Vec<&'static str>;
 
     /// Build meilisearch-lib Settings from configuration
-    fn build_settings() -> Settings<Unchecked> {
+    fn build_settings() -> Settings {
         let searchable: Vec<String> = Self::searchable_attributes()
             .into_iter()
             .map(|s| s.to_string())
             .collect();
 
-        let filterable: Vec<FilterableAttributesRule> = Self::filterable_attributes()
+        let filterable: Vec<String> = Self::filterable_attributes()
             .into_iter()
-            .map(|s| FilterableAttributesRule::Field(s.to_string()))
+            .map(|s| s.to_string())
             .collect();
 
         let sortable: BTreeSet<String> = Self::sortable_attributes()
@@ -61,12 +61,10 @@ pub trait IndexConfig {
             .map(|s| s.to_string())
             .collect();
 
-        Settings {
-            searchable_attributes: Setting::Set(searchable).into(),
-            filterable_attributes: Setting::Set(filterable),
-            sortable_attributes: Setting::Set(sortable),
-            ..Default::default()
-        }
+        Settings::new()
+            .with_searchable_attributes(searchable)
+            .with_filterable_attributes(filterable)
+            .with_sortable_attributes(sortable)
     }
 }
 
@@ -211,7 +209,7 @@ pub struct IndexInitConfig {
     /// Primary key field
     pub primary_key: &'static str,
     /// Settings to apply (meilisearch-lib format)
-    pub settings: Settings<Unchecked>,
+    pub settings: Settings,
 }
 
 /// Get all index initialization configurations
@@ -294,33 +292,20 @@ mod tests {
         let settings = CampaignArcsIndexConfig::build_settings();
 
         // Verify filterable attributes are populated
-        match &settings.filterable_attributes {
-            Setting::Set(attrs) => {
-                assert_eq!(attrs.len(), 5, "Expected 5 filterable attributes for campaign arcs");
-            }
-            _ => panic!("filterable_attributes should be Set"),
-        }
+        let filterable = settings.filterable_attributes.as_ref().expect("filterable should be set");
+        assert_eq!(filterable.len(), 5, "Expected 5 filterable attributes for campaign arcs");
 
         // Verify sortable attributes are populated
-        match &settings.sortable_attributes {
-            Setting::Set(attrs) => {
-                assert_eq!(attrs.len(), 4, "Expected 4 sortable attributes for campaign arcs");
-                assert!(attrs.contains("created_at"));
-                assert!(attrs.contains("name"));
-            }
-            _ => panic!("sortable_attributes should be Set"),
-        }
+        let sortable = settings.sortable_attributes.as_ref().expect("sortable should be set");
+        assert_eq!(sortable.len(), 4, "Expected 4 sortable attributes for campaign arcs");
+        assert!(sortable.contains("created_at"));
+        assert!(sortable.contains("name"));
 
-        // Verify searchable attributes contain expected values.
-        // WildcardSetting derefs to Setting<Vec<String>>.
-        match &*settings.searchable_attributes {
-            Setting::Set(attrs) => {
-                assert_eq!(attrs.len(), 3, "Expected 3 searchable attributes for campaign arcs");
-                assert!(attrs.contains(&"name".to_string()));
-                assert!(attrs.contains(&"description".to_string()));
-                assert!(attrs.contains(&"premise".to_string()));
-            }
-            _ => panic!("searchable_attributes should be Set with specific values"),
-        }
+        // Verify searchable attributes contain expected values
+        let searchable = settings.searchable_attributes.as_ref().expect("searchable should be set");
+        assert_eq!(searchable.len(), 3, "Expected 3 searchable attributes for campaign arcs");
+        assert!(searchable.contains(&"name".to_string()));
+        assert!(searchable.contains(&"description".to_string()));
+        assert!(searchable.contains(&"premise".to_string()));
     }
 }

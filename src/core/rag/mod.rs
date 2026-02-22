@@ -6,7 +6,7 @@
 //!
 //! # Components
 //!
-//! - `RagConfig`: Main configuration wrapper for `meilisearch_lib::ChatConfig`
+//! - `RagConfig`: Main configuration wrapper for `ChatConfig`
 //! - `RagConfigBuilder`: Builder pattern for flexible configuration
 //! - `TtrpgIndex`: Enum of known TTRPG content indexes
 //! - `LlmProvider`: Enum of supported LLM providers (Anthropic, OpenAI, Ollama, etc.)
@@ -50,7 +50,8 @@ mod templates;
 // Core configuration types
 pub use config::{
     build_ttrpg_chat_config, create_custom_index_config, create_default_index_configs,
-    create_index_config, RagConfig, RagConfigBuilder, RagConfigError, RagSettings, TtrpgIndex,
+    create_index_config, ChatConfig, ChatIndexConfig, ChatPrompts, ChatSearchParams, ChatSource,
+    RagConfig, RagConfigBuilder, RagConfigError, RagSettings, TtrpgIndex,
     DEFAULT_DOCUMENT_LIMIT, DEFAULT_MAX_BYTES_FICTION, DEFAULT_MAX_BYTES_HOMEBREW,
     DEFAULT_MAX_BYTES_NOTES, DEFAULT_MAX_BYTES_RULES, DEFAULT_SEMANTIC_RATIO_FICTION,
     DEFAULT_SEMANTIC_RATIO_NOTES, DEFAULT_SEMANTIC_RATIO_RULES,

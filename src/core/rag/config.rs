@@ -1,18 +1,124 @@
-//! RAG Configuration - wrapping meilisearch_lib::ChatConfig with TTRPG defaults
+//! RAG Configuration with TTRPG defaults
 //!
 //! This module provides the core configuration types for RAG (Retrieval-Augmented
-//! Generation) in the TTRPG Assistant. It wraps `meilisearch_lib::ChatConfig`
-//! with sensible defaults for tabletop RPG content retrieval.
+//! Generation) in the TTRPG Assistant. It defines local Chat* types (previously
+//! from meilisearch_lib) with sensible defaults for tabletop RPG content retrieval.
 
 use std::collections::HashMap;
 
-use meilisearch_lib::{ChatConfig, ChatIndexConfig, ChatPrompts, ChatSearchParams, ChatSource};
 use serde::{Deserialize, Serialize};
 
 use super::provider::LlmProvider;
 use super::templates::{
     CHUNK_TEMPLATE, FICTION_TEMPLATE, RULES_TEMPLATE, TTRPG_SYSTEM_PROMPT,
 };
+
+// ============================================================================
+// Chat Configuration Types (local definitions)
+// ============================================================================
+
+/// LLM provider source for chat completions.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ChatSource {
+    Anthropic,
+    OpenAi,
+    Mistral,
+    VLlm,
+    AzureOpenAi,
+}
+
+impl Default for ChatSource {
+    fn default() -> Self {
+        Self::OpenAi
+    }
+}
+
+/// Prompt configuration for chat completions.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ChatPrompts {
+    /// System prompt for the LLM
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system: Option<String>,
+    /// Description of the search tool
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub search_description: Option<String>,
+    /// Description of the query parameter
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub search_q_param: Option<String>,
+    /// Description of the filter parameter
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub search_filter_param: Option<String>,
+    /// Description of the index selection parameter
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub search_index_uid_param: Option<String>,
+}
+
+/// Search parameters for a chat index.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ChatSearchParams {
+    /// Maximum number of documents to retrieve
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<usize>,
+    /// Sort criteria
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sort: Option<Vec<String>>,
+    /// Matching strategy (e.g., "last", "all")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub matching_strategy: Option<String>,
+    /// Semantic ratio for hybrid search (0.0 = keyword only, 1.0 = semantic only)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub semantic_ratio: Option<f32>,
+    /// Embedder to use for semantic search
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedder: Option<String>,
+}
+
+/// Configuration for a single chat index.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatIndexConfig {
+    /// Description of the index for the LLM
+    pub description: String,
+    /// Liquid template for rendering documents
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub template: Option<String>,
+    /// Maximum bytes per document
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_bytes: Option<usize>,
+    /// Search parameters
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub search_params: Option<ChatSearchParams>,
+}
+
+/// Top-level chat configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatConfig {
+    /// LLM provider source
+    pub source: ChatSource,
+    /// API key for the provider
+    pub api_key: String,
+    /// Base URL for the provider (required for vLLM, Azure, optional otherwise)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_url: Option<String>,
+    /// Model identifier
+    pub model: String,
+    /// Organization ID (OpenAI)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub org_id: Option<String>,
+    /// Project ID (OpenAI)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<String>,
+    /// API version (Azure)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api_version: Option<String>,
+    /// Deployment ID (Azure)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deployment_id: Option<String>,
+    /// Prompt configuration
+    pub prompts: ChatPrompts,
+    /// Per-index configurations keyed by index UID
+    pub index_configs: HashMap<String, ChatIndexConfig>,
+}
 
 // ============================================================================
 // Constants
@@ -171,7 +277,7 @@ impl Default for RagSettings {
     }
 }
 
-/// TTRPG-focused RAG configuration wrapping `meilisearch_lib::ChatConfig`.
+/// TTRPG-focused RAG configuration wrapping `ChatConfig`.
 ///
 /// Provides sensible defaults for tabletop RPG content retrieval while
 /// allowing full customization.
@@ -234,16 +340,6 @@ impl AsRef<ChatConfig> for RagConfig {
 // ============================================================================
 
 /// Build a TTRPG-optimized ChatConfig from an LLM provider configuration.
-///
-/// # Arguments
-///
-/// * `provider` - The LLM provider to use
-/// * `api_key` - API key for the provider (can be empty for local providers)
-/// * `model` - Model identifier
-///
-/// # Returns
-///
-/// A `ChatConfig` ready to be passed to `MeilisearchLib::set_chat_config`.
 pub fn build_ttrpg_chat_config(provider: LlmProvider, api_key: &str, model: &str) -> ChatConfig {
     let (source, base_url, deployment_id, api_version) = match &provider {
         LlmProvider::Anthropic => (ChatSource::Anthropic, None, None, None),
@@ -294,8 +390,6 @@ pub fn build_ttrpg_chat_config(provider: LlmProvider, api_key: &str, model: &str
 }
 
 /// Create default index configurations for all TTRPG indexes.
-///
-/// Returns a HashMap suitable for inclusion in `ChatConfig::index_configs`.
 pub fn create_default_index_configs() -> HashMap<String, ChatIndexConfig> {
     TtrpgIndex::all()
         .iter()
@@ -571,7 +665,7 @@ mod tests {
     fn test_ttrpg_index_descriptions() {
         for index in TtrpgIndex::all() {
             assert!(!index.description().is_empty());
-            assert!(index.description().len() > 20); // Meaningful description
+            assert!(index.description().len() > 20);
         }
     }
 

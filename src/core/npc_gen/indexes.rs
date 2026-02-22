@@ -9,9 +9,8 @@
 //! Uses embedded meilisearch-lib (no HTTP server required).
 
 use std::collections::BTreeSet;
-use std::time::Duration;
 
-use meilisearch_lib::{FilterableAttributesRule, MeilisearchLib, Setting, Settings, Unchecked};
+use meilisearch_lib::{Meilisearch, Settings};
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
@@ -58,9 +57,6 @@ pub const INDEX_NAME_COMPONENTS: &str = "ttrpg_name_components";
 
 /// Index for exclamation templates
 pub const INDEX_EXCLAMATION_TEMPLATES: &str = "ttrpg_exclamation_templates";
-
-/// Default task timeout for index operations (30 seconds)
-const INDEX_TIMEOUT: Duration = Duration::from_secs(30);
 
 // ============================================================================
 // Index Document Types
@@ -138,72 +134,57 @@ pub struct ExclamationTemplateDocument {
 // ============================================================================
 
 /// Build settings for the vocabulary banks index.
-fn vocabulary_settings() -> Settings<Unchecked> {
-    let filterable = vec![
-        FilterableAttributesRule::Field("culture".to_string()),
-        FilterableAttributesRule::Field("role".to_string()),
-        FilterableAttributesRule::Field("race".to_string()),
-        FilterableAttributesRule::Field("category".to_string()),
-        FilterableAttributesRule::Field("formality".to_string()),
-        FilterableAttributesRule::Field("bank_id".to_string()),
-        FilterableAttributesRule::Field("tags".to_string()),
-    ];
-
-    Settings {
-        searchable_attributes: Setting::Set(vec![
+fn vocabulary_settings() -> Settings {
+    Settings::new()
+        .with_searchable_attributes(vec![
             "phrase".to_string(),
             "category".to_string(),
             "bank_id".to_string(),
             "tags".to_string(),
         ])
-        .into(),
-        filterable_attributes: Setting::Set(filterable),
-        sortable_attributes: Setting::Set(BTreeSet::from(["frequency".to_string()])),
-        ..Default::default()
-    }
+        .with_filterable_attributes(vec![
+            "culture".to_string(),
+            "role".to_string(),
+            "race".to_string(),
+            "category".to_string(),
+            "formality".to_string(),
+            "bank_id".to_string(),
+            "tags".to_string(),
+        ])
+        .with_sortable_attributes(BTreeSet::from(["frequency".to_string()]))
 }
 
 /// Build settings for the name components index.
-fn name_components_settings() -> Settings<Unchecked> {
-    let filterable = vec![
-        FilterableAttributesRule::Field("culture".to_string()),
-        FilterableAttributesRule::Field("component_type".to_string()),
-        FilterableAttributesRule::Field("gender".to_string()),
-        FilterableAttributesRule::Field("phonetic_tags".to_string()),
-    ];
-
-    Settings {
-        searchable_attributes: Setting::Set(vec![
+fn name_components_settings() -> Settings {
+    Settings::new()
+        .with_searchable_attributes(vec![
             "component".to_string(),
             "meaning".to_string(),
             "phonetic_tags".to_string(),
         ])
-        .into(),
-        filterable_attributes: Setting::Set(filterable),
-        sortable_attributes: Setting::Set(BTreeSet::from(["frequency".to_string()])),
-        ..Default::default()
-    }
+        .with_filterable_attributes(vec![
+            "culture".to_string(),
+            "component_type".to_string(),
+            "gender".to_string(),
+            "phonetic_tags".to_string(),
+        ])
+        .with_sortable_attributes(BTreeSet::from(["frequency".to_string()]))
 }
 
 /// Build settings for the exclamation templates index.
-fn exclamation_settings() -> Settings<Unchecked> {
-    let filterable = vec![
-        FilterableAttributesRule::Field("culture".to_string()),
-        FilterableAttributesRule::Field("intensity".to_string()),
-        FilterableAttributesRule::Field("emotion".to_string()),
-        FilterableAttributesRule::Field("religious".to_string()),
-    ];
-
-    Settings {
-        searchable_attributes: Setting::Set(vec![
+fn exclamation_settings() -> Settings {
+    Settings::new()
+        .with_searchable_attributes(vec![
             "template".to_string(),
             "emotion".to_string(),
         ])
-        .into(),
-        filterable_attributes: Setting::Set(filterable),
-        sortable_attributes: Setting::Set(BTreeSet::from(["frequency".to_string()])),
-        ..Default::default()
-    }
+        .with_filterable_attributes(vec![
+            "culture".to_string(),
+            "intensity".to_string(),
+            "emotion".to_string(),
+            "religious".to_string(),
+        ])
+        .with_sortable_attributes(BTreeSet::from(["frequency".to_string()]))
 }
 
 // ============================================================================
@@ -215,42 +196,28 @@ fn exclamation_settings() -> Settings<Unchecked> {
 /// This is idempotent: calling it multiple times is safe. If the index
 /// already exists, only settings are updated.
 fn ensure_single_index(
-    meili: &MeilisearchLib,
+    meili: &Meilisearch,
     uid: &str,
-    settings: Settings<Unchecked>,
+    settings: Settings,
 ) -> Result<(), NpcIndexError> {
-    let exists = meili
-        .index_exists(uid)
-        .map_err(|e| NpcIndexError::Check {
-            index: uid.to_string(),
-            detail: e.to_string(),
-        })?;
-
-    if !exists {
+    if !meili.index_exists(uid) {
         log::info!("Index '{}' not found, creating...", uid);
-        let task = meili
-            .create_index(uid, Some("id".to_string()))
-            .map_err(|e| NpcIndexError::Create {
-                index: uid.to_string(),
-                detail: e.to_string(),
-            })?;
         meili
-            .wait_for_task(task.uid, Some(INDEX_TIMEOUT))
-            .map_err(|e| NpcIndexError::TaskFailed {
+            .create_index(uid, Some("id"))
+            .map_err(|e| NpcIndexError::Create {
                 index: uid.to_string(),
                 detail: e.to_string(),
             })?;
     }
 
-    let task = meili
-        .update_settings(uid, settings)
+    let index = meili.get_index(uid).map_err(|e| NpcIndexError::Settings {
+        index: uid.to_string(),
+        detail: e.to_string(),
+    })?;
+
+    index
+        .update_settings(&settings)
         .map_err(|e| NpcIndexError::Settings {
-            index: uid.to_string(),
-            detail: e.to_string(),
-        })?;
-    meili
-        .wait_for_task(task.uid, Some(INDEX_TIMEOUT))
-        .map_err(|e| NpcIndexError::TaskFailed {
             index: uid.to_string(),
             detail: e.to_string(),
         })?;
@@ -263,14 +230,7 @@ fn ensure_single_index(
 ///
 /// This function is idempotent - it can be called multiple times safely.
 /// Indexes that already exist will have their settings updated.
-///
-/// # Arguments
-/// * `meili` - Embedded MeilisearchLib instance
-///
-/// # Returns
-/// * `Ok(())` - All indexes created/verified successfully
-/// * `Err(NpcIndexError)` - If index creation or configuration fails
-pub fn ensure_npc_indexes(meili: &MeilisearchLib) -> Result<(), NpcIndexError> {
+pub fn ensure_npc_indexes(meili: &Meilisearch) -> Result<(), NpcIndexError> {
     log::info!("Ensuring NPC generation indexes exist...");
 
     ensure_single_index(meili, INDEX_VOCABULARY_BANKS, vocabulary_settings())?;
@@ -300,22 +260,9 @@ pub struct NpcIndexStats {
 }
 
 /// Get statistics about NPC generation indexes.
-///
-/// Returns zero counts for indexes that don't exist or are inaccessible;
-/// errors from individual index lookups are logged and treated as missing
-/// data. Use `ensure_npc_indexes()` first if you need to guarantee the
-/// indexes exist.
-///
-/// Although this function currently always returns `Ok(NpcIndexStats)`,
-/// it is exposed as `Result` so that future implementations can surface
-/// hard Meilisearch failures. Callers should be prepared to handle errors.
-///
-/// # Arguments
-/// * `meili` - Embedded Meilisearch instance
-pub fn get_npc_index_stats(meili: &MeilisearchLib) -> Result<NpcIndexStats, NpcIndexError> {
+pub fn get_npc_index_stats(meili: &Meilisearch) -> Result<NpcIndexStats, NpcIndexError> {
     let mut stats = NpcIndexStats::default();
 
-    // Get vocabulary phrase count
     match meili.index_stats(INDEX_VOCABULARY_BANKS) {
         Ok(index_stats) => {
             stats.vocabulary_phrase_count = index_stats.number_of_documents;
@@ -329,7 +276,6 @@ pub fn get_npc_index_stats(meili: &MeilisearchLib) -> Result<NpcIndexStats, NpcI
         }
     }
 
-    // Get name component count
     match meili.index_stats(INDEX_NAME_COMPONENTS) {
         Ok(index_stats) => {
             stats.name_component_count = index_stats.number_of_documents;
@@ -343,7 +289,6 @@ pub fn get_npc_index_stats(meili: &MeilisearchLib) -> Result<NpcIndexStats, NpcI
         }
     }
 
-    // Get exclamation template count
     match meili.index_stats(INDEX_EXCLAMATION_TEMPLATES) {
         Ok(index_stats) => {
             stats.exclamation_template_count = index_stats.number_of_documents;
@@ -360,11 +305,11 @@ pub fn get_npc_index_stats(meili: &MeilisearchLib) -> Result<NpcIndexStats, NpcI
     Ok(stats)
 }
 
-/// Clear all NPC generation indexes (for testing/reset).
+/// Clear all NPC generation indexes by deleting and recreating them.
 ///
 /// # Warning
 /// This will delete all indexed NPC generation data!
-pub fn clear_npc_indexes(meili: &MeilisearchLib) -> Result<(), NpcIndexError> {
+pub fn clear_npc_indexes(meili: &Meilisearch) -> Result<(), NpcIndexError> {
     log::warn!("Clearing all NPC generation indexes!");
 
     for index_name in [
@@ -372,34 +317,20 @@ pub fn clear_npc_indexes(meili: &MeilisearchLib) -> Result<(), NpcIndexError> {
         INDEX_NAME_COMPONENTS,
         INDEX_EXCLAMATION_TEMPLATES,
     ] {
-        log::info!("Clearing index '{}'...", index_name);
-
-        // Only clear if the index exists
-        let exists = meili.index_exists(index_name).map_err(|e| NpcIndexError::Check {
-            index: index_name.to_string(),
-            detail: e.to_string(),
-        })?;
-
-        if exists {
-            let task = meili
-                .delete_all_documents(index_name)
-                .map_err(|e| NpcIndexError::Clear {
-                    index: index_name.to_string(),
-                    detail: e.to_string(),
-                })?;
-
-            meili
-                .wait_for_task(task.uid, Some(INDEX_TIMEOUT))
-                .map_err(|e| NpcIndexError::TaskFailed {
-                    index: index_name.to_string(),
-                    detail: e.to_string(),
-                })?;
-
-            log::info!("Cleared index '{}' successfully", index_name);
+        if meili.index_exists(index_name) {
+            log::info!("Deleting index '{}'...", index_name);
+            meili.delete_index(index_name).map_err(|e| NpcIndexError::Clear {
+                index: index_name.to_string(),
+                detail: e.to_string(),
+            })?;
+            log::info!("Deleted index '{}' successfully", index_name);
         } else {
             log::debug!("Index '{}' doesn't exist, skipping", index_name);
         }
     }
+
+    // Recreate indexes with settings
+    ensure_npc_indexes(meili)?;
 
     Ok(())
 }
