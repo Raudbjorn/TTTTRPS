@@ -1,6 +1,8 @@
-# Sidecar DM - AI-Powered TTRPG Assistant
+# TTTTRPS - AI-Powered TTRPG Assistant (TUI)
 
-A desktop application for Game Masters running tabletop RPG sessions, powered by multiple LLM backends and built entirely in Rust.
+A terminal-based application for Game Masters running tabletop RPG sessions, powered by multiple LLM backends and built entirely in Rust with [ratatui](https://ratatui.rs/).
+
+The extra T stands for TUI. Forked from [TTTRPS](https://github.com/Raudbjorn/TTTRPS) (Tauri+Leptos desktop app) — same core engine, terminal interface.
 
 ## Features
 
@@ -17,172 +19,93 @@ A desktop application for Game Masters running tabletop RPG sessions, powered by
 ## Architecture
 
 ```
-TTTRPS/
-├── frontend/          # Leptos WASM frontend
-│   └── src/
-│       ├── components/   # UI components
-│       └── bindings.rs   # Tauri IPC wrappers
-├── src-tauri/         # Rust backend
-│   └── src/
-│       ├── core/         # Core business logic
-│       │   ├── llm/      # LLM providers
-│       │   ├── search_client.rs
-│       │   └── ...
-│       ├── database/     # SQLite with migrations
-│       ├── ingestion/    # Document parsers
-│       └── commands.rs   # Tauri command handlers
-└── build.sh           # Build script
+TTTTRPS/
+├── src/
+│   ├── main.rs            # TUI entry point (ratatui)
+│   ├── lib.rs             # Library root
+│   ├── core/              # Core business logic
+│   │   ├── llm/           # LLM providers & routing
+│   │   ├── search/        # Embedded search (Meilisearch + SurrealDB)
+│   │   ├── storage/       # SurrealDB unified storage
+│   │   ├── voice/         # Voice synthesis & queue
+│   │   ├── campaign/      # Campaign versioning, world state
+│   │   ├── personality/   # DM personality system
+│   │   └── preprocess/    # Query preprocessing (typo + synonyms)
+│   ├── database/          # SQLite with SQLx migrations
+│   ├── ingestion/         # Document extraction (PDF, EPUB, DOCX)
+│   └── oauth/             # OAuth flows (Claude, Gemini, Copilot)
+├── config/                # App configuration files
+├── resources/             # Bundled resources (dictionaries, templates)
+└── tests/                 # Integration & unit tests
 ```
 
 ## Prerequisites
 
-### All Platforms
-- [Rust](https://rustup.rs/) (stable toolchain)
-- WASM target: `rustup target add wasm32-unknown-unknown`
-
-### Linux (Arch)
-```bash
-paru -S webkit2gtk-4.1 gtk3 libappindicator-gtk3
-```
-
-### macOS
-Xcode Command Line Tools
-
-### Windows
-Visual Studio Build Tools with "Desktop development with C++"
+- [Rust](https://rustup.rs/) (stable toolchain, edition 2021)
+- Optional: [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) for scanned PDF extraction
+- Optional: [Ollama](https://ollama.ai/) for local LLM inference
 
 ## Installation
 
-1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/TTTRPS.git
-cd TTTRPS
+git clone https://github.com/Raudbjorn/TTTTRPS.git
+cd TTTTRPS
+cargo build --release
 ```
 
-2. Install CLI tools:
+## Usage
+
 ```bash
-cargo install trunk
-cargo install tauri-cli
+# Run the TUI
+cargo run
+
+# Or run the release binary directly
+./target/release/ttttrps
 ```
 
-3. Build and run:
+### Build Commands
+
 ```bash
-./build.sh dev    # Development mode
-# or
-./build.sh build --release  # Production build
+cargo run                  # Development mode
+cargo build --release      # Production build
+cargo check                # Type check
+cargo test --lib           # Run unit tests
+cargo test                 # Run all tests
 ```
 
 ## Configuration
 
 ### LLM Providers
 
-Configure your preferred LLM provider in the Settings panel:
-
 **Claude (Anthropic)**
 - Get API key from: https://console.anthropic.com/
-- Recommended models: claude-3-5-sonnet, claude-3-haiku
+- Models: claude-3-5-sonnet, claude-3-haiku
 
 **Gemini (Google)**
 - Get API key from: https://aistudio.google.com/
-- Recommended models: gemini-1.5-pro, gemini-1.5-flash
+- Models: gemini-1.5-pro, gemini-1.5-flash
 
 **Ollama (Local)**
 - Install: https://ollama.ai/
-- Run: `ollama run llama3.2` or your preferred model
+- Run: `ollama run llama3.2`
 - No API key required
 
 **OpenAI**
 - Get API key from: https://platform.openai.com/
-- Recommended models: gpt-4o, gpt-4-turbo
+- Models: gpt-4o, gpt-4-turbo
 
 ### Voice Synthesis
 
-**ElevenLabs**
-- Get API key from: https://elevenlabs.io/
-
-**OpenAI TTS**
-- Uses your OpenAI API key
-
-**Local Providers**
-- Chatterbox, GPT-SoVITS, XTTS-v2, Fish Speech, Piper
-
-## Usage
-
-### Document Ingestion
-1. Navigate to Library
-2. Drag and drop PDF/EPUB files
-3. Wait for processing and indexing
-
-### Campaign Management
-1. Go to Campaigns
-2. Create a new campaign with system selection
-3. Start a session to begin tracking
-
-### Combat Tracker
-1. In an active session, start combat
-2. Add combatants with initiative rolls
-3. Track HP, conditions, and turns
-
-### Character Generation
-1. Go to Characters
-2. Select game system
-3. Configure options (class, level, backstory)
-4. Generate!
-
-## Build Commands
-
-```bash
-./build.sh dev              # Start development server
-./build.sh build            # Build debug version
-./build.sh build --release  # Build optimized release
-./build.sh test             # Run all tests
-./build.sh check            # Run cargo check
-./build.sh clean            # Clean build artifacts
-./build.sh help             # Show help
-```
+- **ElevenLabs** - API key from https://elevenlabs.io/
+- **OpenAI TTS** - Uses your OpenAI API key
+- **Local**: Chatterbox, GPT-SoVITS, XTTS-v2, Fish Speech, Piper
 
 ## Data Storage
 
-- **Database**: `~/.local/share/ttrpg-assistant/ttrpg_assistant.db`
-- **Meilisearch**: `~/.local/share/ttrpg-assistant/meilisearch/`
-- **Backups**: `~/.local/share/ttrpg-assistant/backups/`
-- **Cache**: `~/.cache/ttrpg-assistant/`
-
-## Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| Enter | Send message |
-| Shift+Enter | New line in message |
-| Ctrl+K | Command palette |
-
-## Troubleshooting
-
-### "LLM not configured"
-Configure an API key in Settings for your preferred provider.
-
-### "Meilisearch not initialized"
-The app starts Meilisearch automatically. Check the logs if it fails.
-
-### AppImage doesn't run
-```bash
-chmod +x ttrpg-assistant.AppImage
-./ttrpg-assistant.AppImage --no-sandbox
-```
-
-### WebKitGTK errors on Linux
-Ensure webkit2gtk-4.1 is installed (not 4.0):
-```bash
-paru -S webkit2gtk-4.1
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run `./build.sh check`
-5. Submit a pull request
+- **SurrealDB**: `~/.local/share/ttrpg-assistant/surrealdb/` (RocksDB-backed)
+- **Legacy SQLite**: `~/.local/share/ttrpg-assistant/ttrpg_assistant.db`
+- **API Keys**: System keyring via `keyring` crate
+- **Dictionaries**: `~/.local/share/ttrpg-assistant/ttrpg_corpus.txt`
 
 ## License
 
@@ -190,6 +113,7 @@ MIT License - see LICENSE file for details.
 
 ## Acknowledgments
 
-- [Tauri](https://tauri.app/) - Desktop framework
-- [Leptos](https://leptos.dev/) - Reactive web framework
-- [Meilisearch](https://meilisearch.com/) - Search engine
+- [ratatui](https://ratatui.rs/) - Terminal UI framework
+- [Meilisearch](https://meilisearch.com/) - Search engine (embedded)
+- [SurrealDB](https://surrealdb.com/) - Multi-model database
+- [kreuzberg](https://github.com/kreuzberg-dev/kreuzberg) - Document extraction

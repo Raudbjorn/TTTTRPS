@@ -1,13 +1,13 @@
+# Build artifacts
+/target/
+
 # Generated output files
 check_output.txt
 check_output_*.txt
-fns.txt
 cargo_check_output.txt
 
-# Sidecar binaries (downloaded at build time)
-src-tauri/bin/
-frontend/tailwindcss
-src-tauri/proptest-regressions/
+# Test regressions
+proptest-regressions/
 
 # Planning/scratch directories
 planning/audaio/
@@ -22,5 +22,6 @@ inspection-results/
 # Backups and temporary directories
 original-project/
 dev-resources/
+
 # Generated shell completions
 .completions/
