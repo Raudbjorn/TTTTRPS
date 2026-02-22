@@ -37,11 +37,11 @@ static SYNTAX_SET: OnceLock<SyntaxSet> = OnceLock::new();
 static THEME_SET: OnceLock<ThemeSet> = OnceLock::new();
 static TERMINAL_CAPS: OnceLock<TerminalCapabilities> = OnceLock::new();
 
-fn get_syntax_set() -> &'static SyntaxSet {
+pub(crate) fn get_syntax_set() -> &'static SyntaxSet {
     SYNTAX_SET.get_or_init(|| SyntaxSet::load_defaults_newlines())
 }
 
-fn get_theme_set() -> &'static ThemeSet {
+pub(crate) fn get_theme_set() -> &'static ThemeSet {
     THEME_SET.get_or_init(ThemeSet::load_defaults)
 }
 

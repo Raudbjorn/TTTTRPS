@@ -15,6 +15,7 @@ use tokio::sync::mpsc;
 
 use super::events::{Action, AppEvent, Focus, Notification, NotificationLevel};
 use super::services::Services;
+use super::views::chat::{ChatInputMode, ChatState};
 
 /// Central application state (Elm architecture).
 pub struct AppState {
@@ -22,6 +23,8 @@ pub struct AppState {
     pub running: bool,
     /// Currently focused top-level view.
     pub focus: Focus,
+    /// Chat view state.
+    pub chat: ChatState,
     /// Active notifications (max 3 visible).
     pub notifications: Vec<Notification>,
     /// Monotonic counter for notification IDs.
@@ -36,7 +39,6 @@ pub struct AppState {
     #[allow(dead_code)]
     event_tx: mpsc::UnboundedSender<AppEvent>,
     /// Backend services handle.
-    #[allow(dead_code)]
     services: Services,
 }
 
@@ -49,6 +51,7 @@ impl AppState {
         Self {
             running: true,
             focus: Focus::Chat,
+            chat: ChatState::new(),
             notifications: Vec::new(),
             notification_counter: 0,
             show_help: false,
@@ -69,6 +72,11 @@ impl AppState {
     ) -> io::Result<()> {
         let mut tick_interval = tokio::time::interval(tick_rate);
         let mut event_stream = EventStream::new();
+
+        // Load initial chat session
+        if self.focus == Focus::Chat {
+            self.chat.load_session(&self.services);
+        }
 
         while self.running {
             // Render
@@ -96,17 +104,36 @@ impl AppState {
     fn handle_event(&mut self, event: AppEvent) {
         match event {
             AppEvent::Input(crossterm_event) => {
+                // Two-phase input: offer to focused view first
+                if self.focus == Focus::Chat
+                    && !self.show_help
+                    && !self.show_command_palette
+                {
+                    if self.chat.handle_input(&crossterm_event, &self.services) {
+                        return;
+                    }
+                }
+                // Fall through to global mapping
                 if let Some(action) = self.map_input_to_action(crossterm_event) {
                     self.handle_action(action);
                 }
             }
             AppEvent::Action(action) => self.handle_action(action),
             AppEvent::Tick => self.on_tick(),
-            AppEvent::LlmToken(_token) => {
-                // Will be handled when chat view is implemented
+            AppEvent::LlmToken(token) => {
+                self.chat.append_token(&token);
             }
             AppEvent::LlmDone => {
-                // Will be handled when chat view is implemented
+                self.chat.finalize_and_persist(&self.services);
+            }
+            AppEvent::LlmError(error) => {
+                self.chat.handle_stream_error(&error, &self.services);
+            }
+            AppEvent::ChatSessionLoaded {
+                session_id,
+                messages,
+            } => {
+                self.chat.on_session_loaded(session_id, messages);
             }
             AppEvent::AudioFinished => {
                 // Will be handled when voice UI is implemented
@@ -177,20 +204,34 @@ impl AppState {
     fn handle_action(&mut self, action: Action) {
         match action {
             Action::Quit => self.running = false,
-            Action::FocusChat => self.focus = Focus::Chat,
+            Action::FocusChat => {
+                self.focus = Focus::Chat;
+                // Trigger session loading on first focus
+                self.chat.load_session(&self.services);
+            }
             Action::FocusLibrary => self.focus = Focus::Library,
             Action::FocusCampaign => self.focus = Focus::Campaign,
             Action::FocusSettings => self.focus = Focus::Settings,
             Action::FocusGeneration => self.focus = Focus::Generation,
             Action::FocusPersonality => self.focus = Focus::Personality,
-            Action::TabNext => self.focus = self.focus.next(),
-            Action::TabPrev => self.focus = self.focus.prev(),
+            Action::TabNext => {
+                self.focus = self.focus.next();
+                if self.focus == Focus::Chat {
+                    self.chat.load_session(&self.services);
+                }
+            }
+            Action::TabPrev => {
+                self.focus = self.focus.prev();
+                if self.focus == Focus::Chat {
+                    self.chat.load_session(&self.services);
+                }
+            }
             Action::ShowHelp => self.show_help = true,
             Action::CloseHelp => self.show_help = false,
             Action::OpenCommandPalette => self.show_command_palette = true,
             Action::CloseCommandPalette => self.show_command_palette = false,
             Action::SendMessage(_msg) => {
-                // Will be handled when chat view is implemented
+                // Handled directly by ChatState via input handling
             }
         }
     }
@@ -283,6 +324,17 @@ impl AppState {
     }
 
     fn render_content(&self, frame: &mut Frame, area: Rect) {
+        match self.focus {
+            Focus::Chat => {
+                self.chat.render(frame, area);
+            }
+            _ => {
+                self.render_placeholder(frame, area);
+            }
+        }
+    }
+
+    fn render_placeholder(&self, frame: &mut Frame, area: Rect) {
         let title = format!(" {} ", self.focus.label());
         let block = Block::default()
             .title(title)
@@ -319,6 +371,19 @@ impl AppState {
     }
 
     fn render_status_bar(&self, frame: &mut Frame, area: Rect) {
+        let llm_status = if self.chat.is_streaming() {
+            Span::styled("streaming", Style::default().fg(Color::Cyan))
+        } else {
+            Span::raw("ready")
+        };
+
+        let mode_indicator = match self.chat.input_mode() {
+            ChatInputMode::Insert if self.focus == Focus::Chat => {
+                Span::styled(" INSERT ", Style::default().fg(Color::Black).bg(Color::Yellow))
+            }
+            _ => Span::raw(""),
+        };
+
         let status = Line::from(vec![
             Span::styled(
                 " TTTTRPS ",
@@ -328,10 +393,13 @@ impl AppState {
                     .bold(),
             ),
             Span::raw(" "),
+            mode_indicator,
+            Span::raw(" "),
             Span::styled(self.focus.label(), Style::default().fg(Color::Cyan)),
             Span::raw(" │ "),
             Span::styled("LLM:", Style::default().fg(Color::DarkGray)),
-            Span::raw(" ready"),
+            Span::raw(" "),
+            llm_status,
             Span::raw(" │ "),
             Span::styled("Tab", Style::default().fg(Color::DarkGray)),
             Span::raw(":nav "),
@@ -390,6 +458,14 @@ impl AppState {
             ("Ctrl+P", "Open command palette"),
             ("Ctrl+C", "Force quit"),
             ("Esc", "Close modal / palette"),
+            ("", ""),
+            ("Chat View:", ""),
+            ("i / Enter / a", "Enter insert mode"),
+            ("Esc", "Exit insert mode"),
+            ("j/k", "Scroll messages"),
+            ("G / g", "Jump to bottom / top"),
+            ("/clear", "Clear messages"),
+            ("/new", "New session"),
         ];
 
         let mut lines = vec![
@@ -404,14 +480,25 @@ impl AppState {
         ];
 
         for (key, desc) in &keybindings {
-            lines.push(Line::from(vec![
-                Span::raw("  "),
-                Span::styled(
-                    format!("{:<22}", key),
-                    Style::default().fg(Color::Cyan).bold(),
-                ),
-                Span::raw(*desc),
-            ]));
+            if key.is_empty() {
+                lines.push(Line::raw(""));
+            } else if desc.is_empty() {
+                lines.push(Line::from(Span::styled(
+                    format!("  {key}"),
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                )));
+            } else {
+                lines.push(Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled(
+                        format!("{:<22}", key),
+                        Style::default().fg(Color::Cyan).bold(),
+                    ),
+                    Span::raw(*desc),
+                ]));
+            }
         }
 
         lines.push(Line::raw(""));
@@ -446,7 +533,7 @@ impl AppState {
             )),
             Line::raw(""),
             Line::from(Span::styled(
-                "  (fuzzy search coming in Phase 2)",
+                "  (fuzzy search coming soon)",
                 Style::default().fg(Color::DarkGray),
             )),
             Line::raw(""),

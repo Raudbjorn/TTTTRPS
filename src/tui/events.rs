@@ -1,3 +1,5 @@
+use crate::database::ChatMessageRecord;
+
 /// Events flowing through the Elm-architecture event loop.
 #[derive(Debug, Clone)]
 pub enum AppEvent {
@@ -9,6 +11,13 @@ pub enum AppEvent {
     LlmToken(String),
     /// LLM response complete.
     LlmDone,
+    /// LLM streaming error.
+    LlmError(String),
+    /// Chat session loaded from database.
+    ChatSessionLoaded {
+        session_id: String,
+        messages: Vec<ChatMessageRecord>,
+    },
     /// Voice audio playback finished.
     AudioFinished,
     /// A resolved action to execute.
