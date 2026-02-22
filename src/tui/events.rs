@@ -54,6 +54,9 @@ pub enum Action {
     // Settings
     RefreshSettings,
 
+    // Library
+    RefreshLibrary,
+
     // Application
     Quit,
     SendMessage(String),

@@ -19,6 +19,7 @@ use super::views::chat::{ChatInputMode, ChatState};
 use super::views::command_palette::{
     build_command_registry, CommandPaletteState, PaletteResult,
 };
+use super::views::library::LibraryState;
 use super::views::settings::SettingsState;
 
 /// Central application state (Elm architecture).
@@ -29,6 +30,8 @@ pub struct AppState {
     pub focus: Focus,
     /// Chat view state.
     pub chat: ChatState,
+    /// Library view state.
+    pub library: LibraryState,
     /// Settings view state.
     pub settings: SettingsState,
     /// Active notifications (max 3 visible).
@@ -58,6 +61,7 @@ impl AppState {
             running: true,
             focus: Focus::Chat,
             chat: ChatState::new(),
+            library: LibraryState::new(),
             settings: SettingsState::new(),
             notifications: Vec::new(),
             notification_counter: 0,
@@ -132,6 +136,9 @@ impl AppState {
                     let consumed = match self.focus {
                         Focus::Chat => {
                             self.chat.handle_input(&crossterm_event, &self.services)
+                        }
+                        Focus::Library => {
+                            self.library.handle_input(&crossterm_event, &self.services)
                         }
                         Focus::Settings => {
                             self.settings.handle_input(&crossterm_event, &self.services)
@@ -233,7 +240,10 @@ impl AppState {
                 // Trigger session loading on first focus
                 self.chat.load_session(&self.services);
             }
-            Action::FocusLibrary => self.focus = Focus::Library,
+            Action::FocusLibrary => {
+                self.focus = Focus::Library;
+                self.library.load(&self.services);
+            }
             Action::FocusCampaign => self.focus = Focus::Campaign,
             Action::FocusSettings => {
                 self.focus = Focus::Settings;
@@ -260,6 +270,9 @@ impl AppState {
             Action::RefreshSettings => {
                 self.settings.load(&self.services);
             }
+            Action::RefreshLibrary => {
+                self.library.load(&self.services);
+            }
             Action::OpenCommandPalette => {
                 self.command_palette =
                     Some(CommandPaletteState::new(build_command_registry()));
@@ -276,6 +289,7 @@ impl AppState {
     fn on_focus_changed(&mut self) {
         match self.focus {
             Focus::Chat => self.chat.load_session(&self.services),
+            Focus::Library => self.library.load(&self.services),
             Focus::Settings => self.settings.load(&self.services),
             _ => {}
         }
@@ -309,7 +323,8 @@ impl AppState {
         }
         self.notifications.retain(|n| n.ttl_ticks > 0);
 
-        // Poll async settings data
+        // Poll async view data
+        self.library.poll();
         self.settings.poll();
     }
 
@@ -374,6 +389,7 @@ impl AppState {
     fn render_content(&self, frame: &mut Frame, area: Rect) {
         match self.focus {
             Focus::Chat => self.chat.render(frame, area),
+            Focus::Library => self.library.render(frame, area),
             Focus::Settings => self.settings.render(frame, area),
             _ => self.render_placeholder(frame, area),
         }

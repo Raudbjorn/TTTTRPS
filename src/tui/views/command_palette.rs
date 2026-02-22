@@ -139,6 +139,13 @@ pub fn build_command_registry() -> Vec<Command> {
             action: Action::ClearChat,
         },
         Command {
+            label: "Refresh Library",
+            description: "Reload library data from SurrealDB",
+            category: CommandCategory::System,
+            keybinding: Some("r"),
+            action: Action::RefreshLibrary,
+        },
+        Command {
             label: "Refresh Settings",
             description: "Reload settings data from backend",
             category: CommandCategory::System,
@@ -558,7 +565,7 @@ mod tests {
     fn test_empty_input_shows_all() {
         let palette = make_palette();
         assert_eq!(palette.filtered.len(), palette.commands.len());
-        assert_eq!(palette.filtered.len(), 11);
+        assert_eq!(palette.filtered.len(), 12);
     }
 
     #[test]
@@ -643,10 +650,10 @@ mod tests {
         palette.input.insert_char('q');
         palette.refilter();
         let filtered_count = palette.filtered.len();
-        assert!(filtered_count < 11);
+        assert!(filtered_count < 12);
 
         palette.input.clear();
         palette.refilter();
-        assert_eq!(palette.filtered.len(), 11);
+        assert_eq!(palette.filtered.len(), 12);
     }
 }
