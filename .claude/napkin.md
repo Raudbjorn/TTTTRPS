@@ -93,6 +93,7 @@
 - 2026-02-22: Completed Phase 5 — Library View. Async-loaded SurrealDB document listing (title, type, pages, chunks, status, game system). Same mpsc channel pattern as Settings. 1 new file (library.rs 463L), 4 modified. 0 errors, 4 new tests (37 total TUI tests pass).
 - 2026-02-22: Completed Phase 6 — Campaign View with Session Management. Chat session listing from SQLite, cursor selection, session switching. Adds switch_to_session() on ChatState, CampaignResult enum for action dispatch. 1 new file (campaign.rs ~400L), 5 modified. 0 errors, 6 new tests (43 total TUI tests pass).
 - 2026-02-22: Completed Phase 7 — Corrected TUI Migration Planning Document. 19 files in planning/tui-migration/ covering all 23 gaps from wily.md. Sections: storage, baseline, binary arch, search/RAG, OAuth, voice, NPC, personality, archetype, chargen, locations, campaign gen, relationships, error handling, data migration, audit/analytics, configuration, dual MessageRole. 1429 lines of documentation.
+- 2026-02-22: wilysearch PR #4 review — addressed 13 comments from Gemini+Copilot: Result propagation (no process::exit), BufReader, csv_to_vec empty filter, ExportArgs PathBuf + removed api_key, shared test helpers in tests/common/mod.rs. Fixed `use wilysearch::traits::*` importing custom `Result<T>` that shadows `std::result::Result` — used crate's Error type. Squash-merged PR #4 + dependabot PR #5. All LMDB "Stale file handle" test failures are pre-existing infrastructure issues.
 
 ## Domain Notes — Phase 7
 - RelationshipManager is in-memory only (RwLock<HashMap>), SurrealDB npc_relation table exists in schema but is not wired
@@ -103,3 +104,9 @@
 - AppConfig TOML at ~/.config/ttttrps/config.toml — only file-persisted config; all others are code-constructed
 - Migration module: resumable phase-gated migration, progress stored in SurrealDB as migration_status:current
 - Meilisearch migration phase is a placeholder — integration not yet wired in run_migration
+
+## Domain Notes — wilysearch CLI
+- `use wilysearch::traits::*` imports custom `pub type Result<T> = std::result::Result<T, Error>` — shadows std::result::Result. Use crate's Result<T> not `Result<T, Box<dyn Error>>`
+- wilysearch::error::Error has #[from] for io::Error and serde_json::Error — `?` works on both
+- LMDB "Stale file handle (os error 116)" in integration tests is pre-existing — affects any test calling `doc add` in temp dirs. Not fixable from CLI side.
+- Engine::with_config() already returns crate's Result<Engine>; map_err to Error::Internal for context
