@@ -47,6 +47,10 @@ pub enum Action {
     ShowHelp,
     CloseHelp,
 
+    // Chat
+    NewChatSession,
+    ClearChat,
+
     // Application
     Quit,
     SendMessage(String),

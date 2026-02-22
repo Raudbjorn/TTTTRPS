@@ -16,6 +16,7 @@ use crate::core::llm::router::{ChatMessage, ChatRequest};
 use crate::database::{ChatMessageRecord, MessageRole};
 use crate::tui::events::{AppEvent, Notification, NotificationLevel};
 use crate::tui::services::Services;
+use crate::tui::widgets::input_buffer::InputBuffer;
 use crate::tui::widgets::markdown::markdown_to_lines;
 
 // ============================================================================
@@ -113,146 +114,68 @@ impl DisplayMessage {
 }
 
 // ============================================================================
-// Simple Input Buffer (avoids tui-textarea version conflict)
+// Chat-specific input rendering
 // ============================================================================
 
-struct InputBuffer {
-    content: String,
-    cursor: usize,
-}
+fn render_chat_input(
+    input: &InputBuffer,
+    mode: ChatInputMode,
+    is_streaming: bool,
+) -> Paragraph<'static> {
+    let (border_color, title) = match mode {
+        ChatInputMode::Insert => (Color::Yellow, " Message (Esc to exit) "),
+        ChatInputMode::Normal => (Color::DarkGray, " Message "),
+    };
 
-impl InputBuffer {
-    fn new() -> Self {
-        Self {
-            content: String::new(),
-            cursor: 0,
-        }
-    }
+    let text = input.text();
+    let cursor = input.cursor_position();
 
-    fn insert_char(&mut self, c: char) {
-        self.content.insert(self.cursor, c);
-        self.cursor += c.len_utf8();
-    }
-
-    fn backspace(&mut self) {
-        if self.cursor > 0 {
-            let prev = self.content[..self.cursor]
-                .char_indices()
-                .next_back()
-                .map(|(i, _)| i)
-                .unwrap_or(0);
-            self.content.drain(prev..self.cursor);
-            self.cursor = prev;
-        }
-    }
-
-    fn delete(&mut self) {
-        if self.cursor < self.content.len() {
-            let next = self.content[self.cursor..]
-                .char_indices()
-                .nth(1)
-                .map(|(i, _)| self.cursor + i)
-                .unwrap_or(self.content.len());
-            self.content.drain(self.cursor..next);
-        }
-    }
-
-    fn move_left(&mut self) {
-        if self.cursor > 0 {
-            self.cursor = self.content[..self.cursor]
-                .char_indices()
-                .next_back()
-                .map(|(i, _)| i)
-                .unwrap_or(0);
-        }
-    }
-
-    fn move_right(&mut self) {
-        if self.cursor < self.content.len() {
-            self.cursor = self.content[self.cursor..]
-                .char_indices()
-                .nth(1)
-                .map(|(i, _)| self.cursor + i)
-                .unwrap_or(self.content.len());
-        }
-    }
-
-    fn move_home(&mut self) {
-        self.cursor = 0;
-    }
-
-    fn move_end(&mut self) {
-        self.cursor = self.content.len();
-    }
-
-    fn take(&mut self) -> String {
-        self.cursor = 0;
-        std::mem::take(&mut self.content)
-    }
-
-    fn clear(&mut self) {
-        self.content.clear();
-        self.cursor = 0;
-    }
-
-    fn is_empty(&self) -> bool {
-        self.content.trim().is_empty()
-    }
-
-    fn render(&self, mode: ChatInputMode, is_streaming: bool) -> Paragraph<'static> {
-        let (border_color, title) = match mode {
-            ChatInputMode::Insert => (Color::Yellow, " Message (Esc to exit) "),
-            ChatInputMode::Normal => (Color::DarkGray, " Message "),
-        };
-
-        let display = if self.content.is_empty() {
-            Line::styled(
-                "Type a message... (i to enter insert mode)",
-                Style::default().fg(Color::DarkGray),
-            )
+    let display = if text.is_empty() {
+        Line::styled(
+            "Type a message... (i to enter insert mode)",
+            Style::default().fg(Color::DarkGray),
+        )
+    } else {
+        let before = &text[..cursor];
+        let cursor_char = text[cursor..]
+            .chars()
+            .next()
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| " ".to_string());
+        let after_cursor = if cursor < text.len() {
+            let char_len = cursor_char.len();
+            &text[cursor + char_len..]
         } else {
-            // Show content with cursor
-            let before = &self.content[..self.cursor];
-            let cursor_char = self.content[self.cursor..]
-                .chars()
-                .next()
-                .map(|c| c.to_string())
-                .unwrap_or_else(|| " ".to_string());
-            let after_cursor = if self.cursor < self.content.len() {
-                let char_len = cursor_char.len();
-                &self.content[self.cursor + char_len..]
-            } else {
-                ""
-            };
-
-            if mode == ChatInputMode::Insert {
-                Line::from(vec![
-                    Span::raw(before.to_string()),
-                    Span::styled(
-                        cursor_char,
-                        Style::default().bg(Color::White).fg(Color::Black),
-                    ),
-                    Span::raw(after_cursor.to_string()),
-                ])
-            } else {
-                Line::raw(self.content.clone())
-            }
+            ""
         };
 
-        let mut block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(border_color))
-            .title(title);
-
-        if is_streaming {
-            block = block.title_bottom(Line::styled(
-                " streaming... ",
-                Style::default().fg(Color::Cyan),
-            ));
+        if mode == ChatInputMode::Insert {
+            Line::from(vec![
+                Span::raw(before.to_string()),
+                Span::styled(
+                    cursor_char,
+                    Style::default().bg(Color::White).fg(Color::Black),
+                ),
+                Span::raw(after_cursor.to_string()),
+            ])
+        } else {
+            Line::raw(text.to_string())
         }
+    };
 
-        Paragraph::new(display).block(block)
+    let mut block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(border_color))
+        .title(title);
+
+    if is_streaming {
+        block = block.title_bottom(Line::styled(
+            " streaming... ",
+            Style::default().fg(Color::Cyan),
+        ));
     }
+
+    Paragraph::new(display).block(block)
 }
 
 // ============================================================================
@@ -493,7 +416,7 @@ impl ChatState {
         }
     }
 
-    fn cmd_clear(&mut self, services: &Services) {
+    pub fn cmd_clear(&mut self, services: &Services) {
         if let Some(ref sid) = self.session_id {
             let db = services.database.clone();
             let sid = sid.clone();
@@ -508,7 +431,7 @@ impl ChatState {
         self.scroll_offset = 0;
     }
 
-    fn cmd_new_session(&mut self, services: &Services) {
+    pub fn cmd_new_session(&mut self, services: &Services) {
         if let Some(ref sid) = self.session_id {
             let db = services.database.clone();
             let sid = sid.clone();
@@ -920,7 +843,7 @@ impl ChatState {
 
         frame.render_widget(Paragraph::new(mode_line), chunks[0]);
         frame.render_widget(
-            self.input.render(self.input_mode, self.is_streaming()),
+            render_chat_input(&self.input, self.input_mode, self.is_streaming()),
             chunks[1],
         );
     }

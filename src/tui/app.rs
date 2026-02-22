@@ -16,6 +16,9 @@ use tokio::sync::mpsc;
 use super::events::{Action, AppEvent, Focus, Notification, NotificationLevel};
 use super::services::Services;
 use super::views::chat::{ChatInputMode, ChatState};
+use super::views::command_palette::{
+    build_command_registry, CommandPaletteState, PaletteResult,
+};
 
 /// Central application state (Elm architecture).
 pub struct AppState {
@@ -31,8 +34,8 @@ pub struct AppState {
     notification_counter: u64,
     /// Whether the help modal is open.
     pub show_help: bool,
-    /// Whether the command palette is open.
-    pub show_command_palette: bool,
+    /// Command palette state (Some when open).
+    pub command_palette: Option<CommandPaletteState>,
     /// Receiver for backend events.
     event_rx: mpsc::UnboundedReceiver<AppEvent>,
     /// Sender for pushing events from within the app.
@@ -55,7 +58,7 @@ impl AppState {
             notifications: Vec::new(),
             notification_counter: 0,
             show_help: false,
-            show_command_palette: false,
+            command_palette: None,
             event_rx,
             event_tx,
             services,
@@ -104,16 +107,29 @@ impl AppState {
     fn handle_event(&mut self, event: AppEvent) {
         match event {
             AppEvent::Input(crossterm_event) => {
-                // Two-phase input: offer to focused view first
-                if self.focus == Focus::Chat
-                    && !self.show_help
-                    && !self.show_command_palette
-                {
+                // Priority 1: Command palette consumes all input when open
+                if let Some(ref mut palette) = self.command_palette {
+                    match palette.handle_input(&crossterm_event) {
+                        PaletteResult::Consumed => return,
+                        PaletteResult::Execute(action) => {
+                            self.command_palette = None;
+                            self.handle_action(action);
+                            return;
+                        }
+                        PaletteResult::Close => {
+                            self.command_palette = None;
+                            return;
+                        }
+                    }
+                }
+                // Priority 2: Help modal
+                // Priority 3: Focused view (chat in insert/normal mode)
+                if self.focus == Focus::Chat && !self.show_help {
                     if self.chat.handle_input(&crossterm_event, &self.services) {
                         return;
                     }
                 }
-                // Fall through to global mapping
+                // Priority 4: Global keybindings
                 if let Some(action) = self.map_input_to_action(crossterm_event) {
                     self.handle_action(action);
                 }
@@ -168,13 +184,8 @@ impl AppState {
             };
         }
 
-        // When command palette is open, Esc closes it
-        if self.show_command_palette {
-            return match code {
-                KeyCode::Esc => Some(Action::CloseCommandPalette),
-                _ => None,
-            };
-        }
+        // Command palette is handled before map_input_to_action is called,
+        // so we don't need to check for it here.
 
         // Global keybindings
         match (modifiers, code) {
@@ -228,8 +239,19 @@ impl AppState {
             }
             Action::ShowHelp => self.show_help = true,
             Action::CloseHelp => self.show_help = false,
-            Action::OpenCommandPalette => self.show_command_palette = true,
-            Action::CloseCommandPalette => self.show_command_palette = false,
+            Action::NewChatSession => {
+                self.chat.cmd_new_session(&self.services);
+            }
+            Action::ClearChat => {
+                self.chat.cmd_clear(&self.services);
+            }
+            Action::OpenCommandPalette => {
+                self.command_palette =
+                    Some(CommandPaletteState::new(build_command_registry()));
+            }
+            Action::CloseCommandPalette => {
+                self.command_palette = None;
+            }
             Action::SendMessage(_msg) => {
                 // Handled directly by ChatState via input handling
             }
@@ -286,8 +308,8 @@ impl AppState {
             self.render_help_modal(frame, area);
         }
 
-        if self.show_command_palette {
-            self.render_command_palette(frame, area);
+        if let Some(ref palette) = self.command_palette {
+            palette.render(frame, area);
         }
     }
 
@@ -520,39 +542,6 @@ impl AppState {
         frame.render_widget(Paragraph::new(lines).block(block), modal);
     }
 
-    fn render_command_palette(&self, frame: &mut Frame, area: Rect) {
-        let modal = centered_rect(50, 40, area);
-
-        let lines = vec![
-            Line::raw(""),
-            Line::from(Span::styled(
-                " Command Palette",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            )),
-            Line::raw(""),
-            Line::from(Span::styled(
-                "  (fuzzy search coming soon)",
-                Style::default().fg(Color::DarkGray),
-            )),
-            Line::raw(""),
-            Line::from(vec![
-                Span::raw("  Press "),
-                Span::styled("Esc", Style::default().fg(Color::Cyan).bold()),
-                Span::raw(" to close"),
-            ]),
-        ];
-
-        let block = Block::default()
-            .title(" Commands ")
-            .title_alignment(Alignment::Center)
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan));
-
-        frame.render_widget(Clear, modal);
-        frame.render_widget(Paragraph::new(lines).block(block), modal);
-    }
 }
 
 /// Calculate a centered rect using percentage of parent area.
