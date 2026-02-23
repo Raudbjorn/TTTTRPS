@@ -1,4 +1,4 @@
-use crate::database::ChatMessageRecord;
+use crate::database::{ChatMessageRecord, NpcConversation, NpcRecord};
 
 /// Events flowing through the Elm-architecture event loop.
 #[derive(Debug, Clone)]
@@ -18,14 +18,69 @@ pub enum AppEvent {
         session_id: String,
         messages: Vec<ChatMessageRecord>,
     },
-    /// Voice audio playback finished.
+    /// Voice audio playback state change.
+    AudioPlayback(crate::tui::audio::AudioEvent),
+    /// Voice audio playback finished (legacy, kept for compatibility).
     AudioFinished,
     /// A resolved action to execute.
     Action(Action),
     /// Notification to display to the user.
     Notification(Notification),
+    /// OAuth PKCE flow result (Claude/Gemini).
+    OAuthFlowResult {
+        provider_id: String,
+        result: Result<String, String>,
+    },
+    /// Device Code flow update (Copilot).
+    DeviceFlowUpdate {
+        provider_id: String,
+        update: DeviceFlowUpdateKind,
+    },
+    /// Document ingestion progress update.
+    IngestionProgress {
+        library_item_id: String,
+        phase: IngestionProgressKind,
+    },
+    /// NPC conversation loaded from database.
+    NpcConversationLoaded {
+        npc: NpcRecord,
+        conversation: NpcConversation,
+    },
     /// Request to quit the application.
     Quit,
+}
+
+/// Progress phases during document ingestion.
+#[derive(Debug, Clone)]
+pub enum IngestionProgressKind {
+    /// Extracting text from the document.
+    Extracting { progress: f32, status: String },
+    /// Chunking the extracted text.
+    Chunking { chunk_count: usize },
+    /// Storing chunks in SurrealDB.
+    Storing { stored: usize, total: usize },
+    /// Ingestion completed successfully.
+    Complete { chunk_count: usize },
+    /// Ingestion failed.
+    Error(String),
+}
+
+/// Updates from the background device-code polling loop.
+#[derive(Debug, Clone)]
+pub enum DeviceFlowUpdateKind {
+    /// Device flow started — show user_code and verification_uri.
+    Started {
+        user_code: String,
+        verification_uri: String,
+    },
+    /// Background poll tick (still waiting).
+    Polling,
+    /// User authorized — GitHub token received, exchanging for Copilot token.
+    Completing,
+    /// Flow completed successfully.
+    Complete,
+    /// Flow failed.
+    Error(String),
 }
 
 /// High-level actions dispatched by the input mapper or command palette.
@@ -53,9 +108,13 @@ pub enum Action {
 
     // Settings
     RefreshSettings,
+    AddProvider,
+    EditProvider(String),
+    DeleteProvider(String),
 
     // Library
     RefreshLibrary,
+    IngestDocument,
 
     // Campaign
     RefreshCampaign,

@@ -1,6 +1,10 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
+
+use crate::core::llm::providers::ProviderConfig;
+use crate::core::voice::types::VoiceConfig;
 
 /// Top-level application configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -8,6 +12,19 @@ use serde::{Deserialize, Serialize};
 pub struct AppConfig {
     pub tui: TuiConfig,
     pub data: DataConfig,
+    pub llm: LlmConfig,
+    pub voice: VoiceConfig,
+}
+
+/// LLM provider configuration (persisted to disk).
+///
+/// API keys are NOT stored here — they live in the system keyring.
+/// This only stores provider type, model, host, and non-secret settings.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LlmConfig {
+    /// Configured providers, keyed by provider ID (e.g., "ollama", "openai").
+    pub providers: HashMap<String, ProviderConfig>,
 }
 
 /// TUI-specific configuration.
@@ -35,6 +52,8 @@ impl Default for AppConfig {
         Self {
             tui: TuiConfig::default(),
             data: DataConfig::default(),
+            llm: LlmConfig::default(),
+            voice: VoiceConfig::default(),
         }
     }
 }
@@ -96,6 +115,21 @@ impl AppConfig {
             })
     }
 
+    /// Save configuration to `~/.config/ttttrps/config.toml`.
+    pub fn save(&self) -> Result<(), String> {
+        let config_path = Self::config_path();
+        if let Some(parent) = config_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create config dir: {e}"))?;
+        }
+        let contents =
+            toml::to_string_pretty(self).map_err(|e| format!("Failed to serialize config: {e}"))?;
+        std::fs::write(&config_path, contents)
+            .map_err(|e| format!("Failed to write config: {e}"))?;
+        log::info!("Saved config to {}", config_path.display());
+        Ok(())
+    }
+
     fn config_path() -> PathBuf {
         dirs::config_dir()
             .map(|d| d.join("ttttrps").join("config.toml"))
@@ -143,5 +177,41 @@ mod tests {
         let serialized = toml::to_string(&config).unwrap();
         let deserialized: AppConfig = toml::from_str(&serialized).unwrap();
         assert_eq!(deserialized.tui.tick_rate_ms, config.tui.tick_rate_ms);
+    }
+
+    #[test]
+    fn test_llm_config_default_empty() {
+        let config = AppConfig::default();
+        assert!(config.llm.providers.is_empty());
+    }
+
+    #[test]
+    fn test_llm_config_roundtrip() {
+        use crate::core::llm::providers::ProviderConfig;
+
+        let mut config = AppConfig::default();
+        config.llm.providers.insert(
+            "ollama".to_string(),
+            ProviderConfig::Ollama {
+                host: "http://localhost:11434".to_string(),
+                model: "llama3.2".to_string(),
+            },
+        );
+        config.llm.providers.insert(
+            "openai".to_string(),
+            ProviderConfig::OpenAI {
+                api_key: String::new(), // Not persisted with actual key
+                model: "gpt-4o".to_string(),
+                max_tokens: 4096,
+                organization_id: None,
+                base_url: None,
+            },
+        );
+
+        let serialized = toml::to_string_pretty(&config).unwrap();
+        let deserialized: AppConfig = toml::from_str(&serialized).unwrap();
+        assert_eq!(deserialized.llm.providers.len(), 2);
+        assert!(deserialized.llm.providers.contains_key("ollama"));
+        assert!(deserialized.llm.providers.contains_key("openai"));
     }
 }

@@ -10,9 +10,12 @@ use crate::core::personality::application::PersonalityApplicationManager;
 use crate::core::personality_base::PersonalityStore;
 use crate::core::session_manager::SessionManager;
 use crate::core::storage::surrealdb::SurrealStorage;
+use crate::core::voice::manager::VoiceManager;
 use crate::core::voice::queue::events::QueueEventEmitter;
 use crate::core::voice::queue::SynthesisQueue;
 use crate::database::Database;
+
+use super::audio::AudioPlayer;
 
 use super::events::AppEvent;
 
@@ -28,6 +31,8 @@ pub struct Services {
     pub session: Arc<SessionManager>,
     pub personality: Arc<PersonalityApplicationManager>,
     pub voice: Arc<SynthesisQueue>,
+    pub voice_manager: Arc<tokio::sync::RwLock<VoiceManager>>,
+    pub audio: AudioPlayer,
     pub credentials: CredentialManager,
     pub event_tx: mpsc::UnboundedSender<AppEvent>,
 }
@@ -79,6 +84,14 @@ impl Services {
         // Voice synthesis queue
         let voice = Arc::new(SynthesisQueue::with_defaults());
 
+        // Voice manager (synthesis provider routing + cache)
+        let voice_manager = Arc::new(tokio::sync::RwLock::new(
+            VoiceManager::new(config.voice.clone()),
+        ));
+
+        // Audio player (dedicated playback thread)
+        let audio = AudioPlayer::new(event_tx.clone());
+
         Ok(Self {
             llm,
             storage,
@@ -86,6 +99,8 @@ impl Services {
             session,
             personality,
             voice,
+            voice_manager,
+            audio,
             credentials,
             event_tx,
         })

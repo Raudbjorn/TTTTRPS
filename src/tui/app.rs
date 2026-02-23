@@ -21,6 +21,7 @@ use super::views::command_palette::{
 };
 use super::views::campaign::{CampaignResult, CampaignState};
 use super::views::library::LibraryState;
+use super::views::personality::PersonalityState;
 use super::views::settings::SettingsState;
 
 /// Central application state (Elm architecture).
@@ -37,6 +38,8 @@ pub struct AppState {
     pub campaign: CampaignState,
     /// Settings view state.
     pub settings: SettingsState,
+    /// Personality view state.
+    pub personality: PersonalityState,
     /// Active notifications (max 3 visible).
     pub notifications: Vec<Notification>,
     /// Monotonic counter for notification IDs.
@@ -67,6 +70,7 @@ impl AppState {
             library: LibraryState::new(),
             campaign: CampaignState::new(),
             settings: SettingsState::new(),
+            personality: PersonalityState::new(),
             notifications: Vec::new(),
             notification_counter: 0,
             show_help: false,
@@ -158,6 +162,9 @@ impl AppState {
                         Focus::Settings => {
                             self.settings.handle_input(&crossterm_event, &self.services)
                         }
+                        Focus::Personality => {
+                            self.personality.handle_input(&crossterm_event, &self.services)
+                        }
                         _ => false,
                     };
                     if consumed {
@@ -186,8 +193,24 @@ impl AppState {
             } => {
                 self.chat.on_session_loaded(session_id, messages);
             }
+            AppEvent::NpcConversationLoaded { npc, conversation } => {
+                self.chat.on_npc_conversation_loaded(npc, conversation, &self.services);
+            }
+            AppEvent::AudioPlayback(ref event) => {
+                self.services.audio.update_state(event);
+                self.chat.on_audio_event(event);
+            }
             AppEvent::AudioFinished => {
-                // Will be handled when voice UI is implemented
+                // Legacy variant — no-op, AudioPlayback(Finished) handles it.
+            }
+            ref ingest @ AppEvent::IngestionProgress { .. } => {
+                self.library
+                    .handle_ingestion_event(ingest, &self.services);
+            }
+            ref oauth_event @ (AppEvent::OAuthFlowResult { .. }
+            | AppEvent::DeviceFlowUpdate { .. }) => {
+                self.settings
+                    .handle_oauth_event(oauth_event, &self.services);
             }
             AppEvent::Notification(notification) => {
                 self.push_notification(notification.message, notification.level);
@@ -268,7 +291,10 @@ impl AppState {
                 self.settings.load(&self.services);
             }
             Action::FocusGeneration => self.focus = Focus::Generation,
-            Action::FocusPersonality => self.focus = Focus::Personality,
+            Action::FocusPersonality => {
+                self.focus = Focus::Personality;
+                self.personality.load(&self.services);
+            }
             Action::TabNext => {
                 self.focus = self.focus.next();
                 self.on_focus_changed();
@@ -288,8 +314,21 @@ impl AppState {
             Action::RefreshSettings => {
                 self.settings.load(&self.services);
             }
+            Action::AddProvider => {
+                self.settings.open_add_modal();
+            }
+            Action::EditProvider(ref id) => {
+                self.settings.open_edit_modal(id, &self.services);
+            }
+            Action::DeleteProvider(ref id) => {
+                self.settings.open_delete_modal(id);
+            }
             Action::RefreshLibrary => {
                 self.library.load(&self.services);
+            }
+            Action::IngestDocument => {
+                self.library.open_ingest_modal();
+                self.focus = Focus::Library;
             }
             Action::RefreshCampaign => {
                 self.campaign.load(&self.services);
@@ -317,6 +356,7 @@ impl AppState {
             Focus::Library => self.library.load(&self.services),
             Focus::Campaign => self.campaign.load(&self.services),
             Focus::Settings => self.settings.load(&self.services),
+            Focus::Personality => self.personality.load(&self.services),
             _ => {}
         }
     }
@@ -353,6 +393,7 @@ impl AppState {
         self.library.poll();
         self.campaign.poll();
         self.settings.poll();
+        self.personality.poll();
     }
 
     // ── Rendering ───────────────────────────────────────────────────────
@@ -419,6 +460,7 @@ impl AppState {
             Focus::Library => self.library.render(frame, area),
             Focus::Campaign => self.campaign.render(frame, area),
             Focus::Settings => self.settings.render(frame, area),
+            Focus::Personality => self.personality.render(frame, area),
             _ => self.render_placeholder(frame, area),
         }
     }
@@ -555,6 +597,31 @@ impl AppState {
             ("G / g", "Jump to bottom / top"),
             ("/clear", "Clear messages"),
             ("/new", "New session"),
+            ("/speak <text>", "Speak text (TTS)"),
+            ("/pause /resume /stop", "Playback controls"),
+            ("/volume <0-100>", "Set volume"),
+            ("/voices", "List voice providers"),
+            ("", ""),
+            ("Library View:", ""),
+            ("a", "Ingest document"),
+            ("r", "Refresh data"),
+            ("j/k", "Scroll list"),
+            ("", ""),
+            ("Settings View:", ""),
+            ("a", "Add LLM provider"),
+            ("e", "Edit selected provider"),
+            ("d", "Delete selected provider"),
+            ("r", "Refresh data"),
+            ("j/k", "Navigate provider list"),
+            ("", ""),
+            ("Personality View:", ""),
+            ("a", "Add personality (preset/manual)"),
+            ("e", "Edit selected personality"),
+            ("d", "Delete selected personality"),
+            ("p", "Preview system prompt"),
+            ("Enter", "Toggle detail panel"),
+            ("r", "Refresh data"),
+            ("j/k", "Navigate list"),
         ];
 
         let mut lines = vec![
@@ -612,7 +679,7 @@ impl AppState {
 }
 
 /// Calculate a centered rect using percentage of parent area.
-fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
+pub(super) fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
     let popup_layout = Layout::vertical([
         Constraint::Percentage((100 - percent_y) / 2),
         Constraint::Percentage(percent_y),
