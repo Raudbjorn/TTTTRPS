@@ -22,6 +22,7 @@ use super::views::command_palette::{
 use super::views::campaign::{CampaignResult, CampaignState};
 use super::views::library::LibraryState;
 use super::views::personality::PersonalityState;
+use super::views::generation::GenerationState;
 use super::views::settings::SettingsState;
 
 /// Central application state (Elm architecture).
@@ -38,6 +39,8 @@ pub struct AppState {
     pub campaign: CampaignState,
     /// Settings view state.
     pub settings: SettingsState,
+    /// Character generation view state.
+    pub generation: GenerationState,
     /// Personality view state.
     pub personality: PersonalityState,
     /// Active notifications (max 3 visible).
@@ -70,6 +73,7 @@ impl AppState {
             library: LibraryState::new(),
             campaign: CampaignState::new(),
             settings: SettingsState::new(),
+            generation: GenerationState::new(),
             personality: PersonalityState::new(),
             notifications: Vec::new(),
             notification_counter: 0,
@@ -162,10 +166,12 @@ impl AppState {
                         Focus::Settings => {
                             self.settings.handle_input(&crossterm_event, &self.services)
                         }
+                        Focus::Generation => {
+                            self.generation.handle_input(&crossterm_event, &self.services)
+                        }
                         Focus::Personality => {
                             self.personality.handle_input(&crossterm_event, &self.services)
                         }
-                        _ => false,
                     };
                     if consumed {
                         return;
@@ -290,7 +296,10 @@ impl AppState {
                 self.focus = Focus::Settings;
                 self.settings.load(&self.services);
             }
-            Action::FocusGeneration => self.focus = Focus::Generation,
+            Action::FocusGeneration => {
+                self.focus = Focus::Generation;
+                self.generation.load(&self.services);
+            }
             Action::FocusPersonality => {
                 self.focus = Focus::Personality;
                 self.personality.load(&self.services);
@@ -356,8 +365,8 @@ impl AppState {
             Focus::Library => self.library.load(&self.services),
             Focus::Campaign => self.campaign.load(&self.services),
             Focus::Settings => self.settings.load(&self.services),
+            Focus::Generation => self.generation.load(&self.services),
             Focus::Personality => self.personality.load(&self.services),
-            _ => {}
         }
     }
 
@@ -393,6 +402,7 @@ impl AppState {
         self.library.poll();
         self.campaign.poll();
         self.settings.poll();
+        self.generation.poll();
         self.personality.poll();
     }
 
@@ -460,45 +470,9 @@ impl AppState {
             Focus::Library => self.library.render(frame, area),
             Focus::Campaign => self.campaign.render(frame, area),
             Focus::Settings => self.settings.render(frame, area),
+            Focus::Generation => self.generation.render(frame, area),
             Focus::Personality => self.personality.render(frame, area),
-            _ => self.render_placeholder(frame, area),
         }
-    }
-
-    fn render_placeholder(&self, frame: &mut Frame, area: Rect) {
-        let title = format!(" {} ", self.focus.label());
-        let block = Block::default()
-            .title(title)
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::DarkGray));
-
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
-
-        let placeholder = Paragraph::new(vec![
-            Line::raw(""),
-            Line::from(vec![
-                Span::raw("  "),
-                Span::styled(
-                    self.focus.label(),
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(" view — coming soon"),
-            ]),
-            Line::raw(""),
-            Line::from(vec![
-                Span::raw("  Press "),
-                Span::styled("?", Style::default().fg(Color::Cyan).bold()),
-                Span::raw(" for help, "),
-                Span::styled("Tab", Style::default().fg(Color::Cyan).bold()),
-                Span::raw(" to switch views, "),
-                Span::styled("q", Style::default().fg(Color::Red).bold()),
-                Span::raw(" to quit"),
-            ]),
-        ]);
-        frame.render_widget(placeholder, inner);
     }
 
     fn render_status_bar(&self, frame: &mut Frame, area: Rect) {
@@ -613,6 +587,16 @@ impl AppState {
             ("d", "Delete selected provider"),
             ("r", "Refresh data"),
             ("j/k", "Navigate provider list"),
+            ("", ""),
+            ("Generation View:", ""),
+            ("j/k", "Navigate systems / scroll"),
+            ("Enter", "Select system / generate"),
+            ("Esc", "Go back one phase"),
+            ("b", "Generate backstory (LLM)"),
+            ("s", "Save character"),
+            ("r", "Regenerate character"),
+            ("n", "New character"),
+            ("l", "Toggle saved characters"),
             ("", ""),
             ("Personality View:", ""),
             ("a", "Add personality (preset/manual)"),
