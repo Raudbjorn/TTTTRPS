@@ -34,6 +34,8 @@ pub type Result<T> = std::result::Result<T, CredentialError>;
 // Credential Types
 // ============================================================================
 
+/// Legacy credential format — kept for export/import and migration from old
+/// JSON-blob keyring entries. New code should use `store_provider_secret()`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LLMCredential {
     pub provider: String,
@@ -119,17 +121,68 @@ impl CredentialManager {
     }
 
     // ========================================================================
-    // LLM Credential Operations
+    // Provider Secret Operations (new — raw string storage)
     // ========================================================================
 
-    /// Store an LLM provider credential
+    /// Store a provider's API key as a raw string.
+    pub fn store_provider_secret(&self, provider_id: &str, api_key: &str) -> Result<()> {
+        let key = format!("llm_{provider_id}");
+        self.store_secret(&key, api_key)
+    }
+
+    /// Retrieve a provider's API key.
+    ///
+    /// Handles migration: if the stored value starts with `{`, it's the old
+    /// JSON `LLMCredential` format — extract `api_key` from it.
+    pub fn get_provider_secret(&self, provider_id: &str) -> Result<String> {
+        let key = format!("llm_{provider_id}");
+        let raw = self.get_secret(&key)?;
+
+        if raw.starts_with('{') {
+            // Old JSON format — extract the api_key field
+            if let Ok(cred) = serde_json::from_str::<LLMCredential>(&raw) {
+                if let Some(api_key) = cred.api_key {
+                    if !api_key.is_empty() {
+                        return Ok(api_key);
+                    }
+                }
+            }
+            // JSON but no usable api_key (e.g. OAuth metadata)
+            Err(CredentialError::NotFound(key))
+        } else {
+            Ok(raw)
+        }
+    }
+
+    /// Delete a provider's secret from keyring.
+    pub fn delete_provider_secret(&self, provider_id: &str) -> Result<()> {
+        let key = format!("llm_{provider_id}");
+        self.delete_secret(&key)
+    }
+
+    /// List provider IDs that have a secret stored in keyring.
+    /// Uses the canonical PROVIDERS table from the providers module.
+    pub fn list_providers_with_secrets(&self) -> Vec<String> {
+        use crate::core::llm::providers::PROVIDERS;
+        PROVIDERS
+            .iter()
+            .filter(|p| self.has_secret(&format!("llm_{}", p.id)))
+            .map(|p| p.id.to_string())
+            .collect()
+    }
+
+    // ========================================================================
+    // Legacy LLM Credential Operations (kept for export/import + migration)
+    // ========================================================================
+
+    /// Store an LLM provider credential (legacy JSON format)
     pub fn store_llm_credential(&self, credential: &LLMCredential) -> Result<()> {
         let key = format!("llm_{}", credential.provider);
         let json = serde_json::to_string(credential)?;
         self.store_secret(&key, &json)
     }
 
-    /// Get an LLM provider credential
+    /// Get an LLM provider credential (legacy JSON format)
     pub fn get_llm_credential(&self, provider: &str) -> Result<LLMCredential> {
         let key = format!("llm_{}", provider);
         let json = self.get_secret(&key)?;
@@ -143,14 +196,10 @@ impl CredentialManager {
         self.delete_secret(&key)
     }
 
-    /// List all stored LLM providers (by checking known providers)
+    /// List all stored LLM providers (by checking known providers).
+    /// Uses the canonical PROVIDERS table.
     pub fn list_llm_providers(&self) -> Vec<String> {
-        let known_providers = ["ollama", "claude", "gemini", "openai"];
-        known_providers
-            .iter()
-            .filter(|p| self.has_secret(&format!("llm_{}", p)))
-            .map(|s| s.to_string())
-            .collect()
+        self.list_providers_with_secrets()
     }
 
     // ========================================================================
@@ -184,9 +233,11 @@ impl CredentialManager {
 
     /// Clear all credentials for this service
     pub fn clear_all(&self) -> Result<()> {
-        // Clear LLM credentials
-        for provider in ["ollama", "claude", "gemini", "openai"] {
-            let _ = self.delete_llm_credential(provider);
+        use crate::core::llm::providers::PROVIDERS;
+
+        // Clear LLM credentials (covers both old JSON and new raw formats)
+        for p in PROVIDERS {
+            let _ = self.delete_provider_secret(p.id);
         }
 
         // Clear voice credentials
@@ -248,10 +299,12 @@ pub fn mask_api_key(key: &str) -> String {
 /// Validate an API key format
 pub fn validate_api_key(provider: &str, key: &str) -> bool {
     match provider {
-        "claude" => key.starts_with("sk-ant-"),
-        "gemini" => key.starts_with("AIza"),
+        "anthropic" => key.starts_with("sk-ant-"),
+        "google" => key.starts_with("AIza"),
         "openai" => key.starts_with("sk-"),
         "elevenlabs" => key.len() == 32, // ElevenLabs keys are 32 chars
+        // OAuth providers don't use API keys
+        "claude" | "gemini" | "copilot" => false,
         _ => !key.is_empty(),
     }
 }
@@ -268,9 +321,36 @@ mod tests {
 
     #[test]
     fn test_validate_api_key() {
-        assert!(validate_api_key("claude", "sk-ant-api03-test"));
-        assert!(!validate_api_key("claude", "invalid-key"));
-        assert!(validate_api_key("gemini", "AIzaSyTest123"));
-        assert!(!validate_api_key("gemini", "invalid"));
+        assert!(validate_api_key("anthropic", "sk-ant-api03-test"));
+        assert!(!validate_api_key("anthropic", "invalid-key"));
+        assert!(validate_api_key("google", "AIzaSyTest123"));
+        assert!(!validate_api_key("google", "invalid"));
+        // OAuth providers don't use API keys
+        assert!(!validate_api_key("claude", "anything"));
+        assert!(!validate_api_key("gemini", "anything"));
+        assert!(!validate_api_key("copilot", "anything"));
+    }
+
+    #[test]
+    fn test_get_provider_secret_migrates_old_json() {
+        // Simulate the old JSON format that get_provider_secret should handle
+        let json = r#"{"provider":"openai","api_key":"sk-test-123","host":null,"model":"gpt-4o","created_at":"2024-01-01","updated_at":"2024-01-01"}"#;
+        let cred: LLMCredential = serde_json::from_str(json).unwrap();
+        assert_eq!(cred.api_key.as_deref(), Some("sk-test-123"));
+
+        // Verify the migration logic extracts the key correctly
+        assert!(json.starts_with('{'));
+        let parsed: LLMCredential = serde_json::from_str(json).unwrap();
+        let key = parsed.api_key.unwrap();
+        assert_eq!(key, "sk-test-123");
+    }
+
+    #[test]
+    fn test_get_provider_secret_old_json_no_key() {
+        // OAuth providers stored JSON with api_key: null
+        let json = r#"{"provider":"claude","api_key":null,"host":null,"model":"claude-3","created_at":"2024-01-01","updated_at":"2024-01-01"}"#;
+        assert!(json.starts_with('{'));
+        let parsed: LLMCredential = serde_json::from_str(json).unwrap();
+        assert!(parsed.api_key.is_none());
     }
 }

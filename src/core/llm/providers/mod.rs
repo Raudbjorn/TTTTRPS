@@ -1,7 +1,12 @@
 //! LLM Provider Implementations
 //!
 //! This module contains concrete implementations of the `LLMProvider` trait
-//! for all supported LLM providers.
+//! for all supported LLM providers, plus the canonical provider metadata table.
+//!
+//! Adding a new provider requires:
+//! 1. A new enum variant in `ProviderConfig`
+//! 2. A new entry in `PROVIDERS`
+//! 3. The provider implementation file
 
 mod ollama;
 mod claude;
@@ -34,6 +39,155 @@ pub use meilisearch::MeilisearchProvider;
 use super::router::LLMProvider;
 use std::sync::Arc;
 
+// ── Auth method ─────────────────────────────────────────────────────────────
+
+/// How a provider authenticates.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum AuthMethod {
+    /// Standard API key input field.
+    ApiKey,
+    /// Host URL only (Ollama).
+    HostOnly,
+    /// Browser-based OAuth PKCE: open URL, user pastes authorization code.
+    OAuthPkce,
+    /// GitHub Device Code: display code, poll in background.
+    DeviceCode,
+}
+
+// ── Provider metadata ───────────────────────────────────────────────────────
+
+/// Static metadata for a known provider (display name, auth method, defaults).
+#[derive(Clone, Debug)]
+pub struct ProviderMeta {
+    pub id: &'static str,
+    pub display_name: &'static str,
+    pub auth_method: AuthMethod,
+    pub default_model: &'static str,
+    pub key_placeholder: &'static str,
+}
+
+impl ProviderMeta {
+    pub fn needs_api_key(&self) -> bool {
+        self.auth_method == AuthMethod::ApiKey
+    }
+
+    pub fn needs_host(&self) -> bool {
+        self.auth_method == AuthMethod::HostOnly
+    }
+
+    /// Short tag shown in the provider selector.
+    pub fn auth_tag(&self) -> &'static str {
+        match self.auth_method {
+            AuthMethod::ApiKey => "key",
+            AuthMethod::HostOnly => "local",
+            AuthMethod::OAuthPkce => "OAuth",
+            AuthMethod::DeviceCode => "device",
+        }
+    }
+}
+
+/// Canonical table of all known providers. Single source of truth.
+pub const PROVIDERS: &[ProviderMeta] = &[
+    ProviderMeta {
+        id: "ollama",
+        display_name: "Ollama (Local)",
+        auth_method: AuthMethod::HostOnly,
+        default_model: "llama3.2",
+        key_placeholder: "",
+    },
+    ProviderMeta {
+        id: "openai",
+        display_name: "OpenAI",
+        auth_method: AuthMethod::ApiKey,
+        default_model: "gpt-4o",
+        key_placeholder: "sk-...",
+    },
+    ProviderMeta {
+        id: "anthropic",
+        display_name: "Anthropic (API Key)",
+        auth_method: AuthMethod::ApiKey,
+        default_model: "claude-sonnet-4-20250514",
+        key_placeholder: "sk-ant-...",
+    },
+    ProviderMeta {
+        id: "google",
+        display_name: "Google AI (API Key)",
+        auth_method: AuthMethod::ApiKey,
+        default_model: "gemini-2.0-flash",
+        key_placeholder: "AIza...",
+    },
+    ProviderMeta {
+        id: "claude",
+        display_name: "Claude (OAuth)",
+        auth_method: AuthMethod::OAuthPkce,
+        default_model: "claude-sonnet-4-20250514",
+        key_placeholder: "",
+    },
+    ProviderMeta {
+        id: "gemini",
+        display_name: "Gemini (OAuth)",
+        auth_method: AuthMethod::OAuthPkce,
+        default_model: "gemini-2.0-flash",
+        key_placeholder: "",
+    },
+    ProviderMeta {
+        id: "copilot",
+        display_name: "GitHub Copilot",
+        auth_method: AuthMethod::DeviceCode,
+        default_model: "gpt-4o",
+        key_placeholder: "",
+    },
+    ProviderMeta {
+        id: "openrouter",
+        display_name: "OpenRouter",
+        auth_method: AuthMethod::ApiKey,
+        default_model: "anthropic/claude-3.5-sonnet",
+        key_placeholder: "sk-or-...",
+    },
+    ProviderMeta {
+        id: "mistral",
+        display_name: "Mistral",
+        auth_method: AuthMethod::ApiKey,
+        default_model: "mistral-large-latest",
+        key_placeholder: "",
+    },
+    ProviderMeta {
+        id: "groq",
+        display_name: "Groq",
+        auth_method: AuthMethod::ApiKey,
+        default_model: "llama-3.3-70b-versatile",
+        key_placeholder: "gsk_...",
+    },
+    ProviderMeta {
+        id: "together",
+        display_name: "Together AI",
+        auth_method: AuthMethod::ApiKey,
+        default_model: "meta-llama/Meta-Llama-3.1-70B",
+        key_placeholder: "",
+    },
+    ProviderMeta {
+        id: "cohere",
+        display_name: "Cohere",
+        auth_method: AuthMethod::ApiKey,
+        default_model: "command-r-plus",
+        key_placeholder: "",
+    },
+    ProviderMeta {
+        id: "deepseek",
+        display_name: "DeepSeek",
+        auth_method: AuthMethod::ApiKey,
+        default_model: "deepseek-chat",
+        key_placeholder: "sk-...",
+    },
+];
+
+/// Look up a provider's metadata by ID.
+pub fn find_provider_meta(id: &str) -> Option<&'static ProviderMeta> {
+    PROVIDERS.iter().find(|p| p.id == id)
+}
+
+// ── ProviderConfig ──────────────────────────────────────────────────────────
+
 /// Configuration for creating providers
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum ProviderConfig {
@@ -55,9 +209,9 @@ pub enum ProviderConfig {
     },
     /// Gemini (OAuth-based via Cloud Code API, no API key needed)
     Gemini {
-        storage_backend: String,  // Storage backend: "file", "keyring", "memory", "auto"
-        model: String,            // Model to use (e.g., "gemini-2.0-flash")
-        max_tokens: u32,          // Max tokens for responses (default 8192)
+        storage_backend: String,
+        model: String,
+        max_tokens: u32,
     },
     OpenRouter {
         api_key: String,
@@ -85,15 +239,15 @@ pub enum ProviderConfig {
     },
     /// Claude (OAuth-based, no API key needed)
     Claude {
-        storage_backend: String,  // Storage backend: "file", "keyring", "memory", "auto"
-        model: String,            // Model to use (e.g., "claude-sonnet-4-20250514")
-        max_tokens: u32,          // Max tokens for responses (default 8192)
+        storage_backend: String,
+        model: String,
+        max_tokens: u32,
     },
     /// Copilot (Device Code OAuth-based, no API key needed)
     Copilot {
-        storage_backend: String,  // Storage backend: "file", "keyring", "memory", "auto"
-        model: String,            // Model to use (e.g., "gpt-4o")
-        max_tokens: u32,          // Max tokens for responses (default 8192)
+        storage_backend: String,
+        model: String,
+        max_tokens: u32,
     },
     Meilisearch {
         host: String,
@@ -141,19 +295,15 @@ impl ProviderConfig {
                 Arc::new(DeepSeekProvider::new(api_key.clone(), model.clone()))
             }
             ProviderConfig::Claude { storage_backend, model, max_tokens } => {
-                // Attempt to create the provider; fall back to memory storage on failure
-                // In practice, the caller should validate configuration beforehand
                 match ClaudeProvider::from_storage_name(storage_backend, model.clone(), *max_tokens) {
                     Ok(provider) => Arc::new(provider),
                     Err(e) => {
-                        // Fall back to memory storage on error to avoid panicking
                         tracing::warn!("Failed to create Claude provider with {} storage: {}. Falling back to memory.", storage_backend, e);
                         Arc::new(ClaudeProvider::with_memory().expect("Memory storage should always work"))
                     }
                 }
             }
             ProviderConfig::Gemini { storage_backend, model, max_tokens } => {
-                // Attempt to create the OAuth-based Gemini provider; fall back to memory storage on failure
                 match GeminiProvider::from_storage_name(storage_backend, model.clone(), *max_tokens) {
                     Ok(provider) => Arc::new(provider),
                     Err(e) => {
@@ -163,7 +313,6 @@ impl ProviderConfig {
                 }
             }
             ProviderConfig::Copilot { storage_backend, model, max_tokens } => {
-                // Attempt to create the Device Code OAuth-based Copilot provider; fall back to memory storage on failure
                 match CopilotLLMProvider::from_storage_name(storage_backend, model.clone(), *max_tokens) {
                     Ok(provider) => Arc::new(provider),
                     Err(e) => {
@@ -202,16 +351,16 @@ impl ProviderConfig {
         match self {
             // Natively supported by Meilisearch
             ProviderConfig::OpenAI { .. } => false,
-            ProviderConfig::Google { .. } => false, // Meilisearch supports Google/Gemini natively
+            ProviderConfig::Google { .. } => false,
             ProviderConfig::Mistral { .. } => false,
-            ProviderConfig::Ollama { .. } => false, // Uses vLLM source which is supported
+            ProviderConfig::Ollama { .. } => false,
 
             // Others need proxy to look like OpenAI
             ProviderConfig::Claude { .. } => true,
-            ProviderConfig::Gemini { .. } => true, // OAuth-based Gemini needs proxy
-            ProviderConfig::Copilot { .. } => true, // Copilot uses OpenAI format but needs auth proxy
+            ProviderConfig::Gemini { .. } => true,
+            ProviderConfig::Copilot { .. } => true,
 
-            // OpenAI-compatible but might need header tweaking or proxy for consistency
+            // OpenAI-compatible but might need header tweaking or proxy
             ProviderConfig::OpenRouter { .. } => true,
             ProviderConfig::Groq { .. } => true,
             ProviderConfig::Together { .. } => true,
@@ -226,19 +375,211 @@ impl ProviderConfig {
     /// Get the model name for this configuration
     pub fn model_name(&self) -> String {
         match self {
-            ProviderConfig::Ollama { model, .. } => model.clone(),
-            ProviderConfig::Claude { model, .. } => model.clone(),
-            ProviderConfig::OpenAI { model, .. } => model.clone(),
-            ProviderConfig::Google { model, .. } => model.clone(),
-            ProviderConfig::Gemini { model, .. } => model.clone(),
-            ProviderConfig::Copilot { model, .. } => model.clone(),
-            ProviderConfig::OpenRouter { model, .. } => model.clone(),
-            ProviderConfig::Mistral { model, .. } => model.clone(),
-            ProviderConfig::Groq { model, .. } => model.clone(),
-            ProviderConfig::Together { model, .. } => model.clone(),
-            ProviderConfig::Cohere { model, .. } => model.clone(),
-            ProviderConfig::DeepSeek { model, .. } => model.clone(),
-            ProviderConfig::Meilisearch { model, .. } => model.clone(),
+            ProviderConfig::Ollama { model, .. }
+            | ProviderConfig::Claude { model, .. }
+            | ProviderConfig::OpenAI { model, .. }
+            | ProviderConfig::Google { model, .. }
+            | ProviderConfig::Gemini { model, .. }
+            | ProviderConfig::Copilot { model, .. }
+            | ProviderConfig::OpenRouter { model, .. }
+            | ProviderConfig::Mistral { model, .. }
+            | ProviderConfig::Groq { model, .. }
+            | ProviderConfig::Together { model, .. }
+            | ProviderConfig::Cohere { model, .. }
+            | ProviderConfig::DeepSeek { model, .. }
+            | ProviderConfig::Meilisearch { model, .. } => model.clone(),
+        }
+    }
+
+    /// Derive the auth method from the variant.
+    pub fn auth_method(&self) -> AuthMethod {
+        match self {
+            ProviderConfig::Ollama { .. } => AuthMethod::HostOnly,
+            ProviderConfig::Claude { .. } => AuthMethod::OAuthPkce,
+            ProviderConfig::Gemini { .. } => AuthMethod::OAuthPkce,
+            ProviderConfig::Copilot { .. } => AuthMethod::DeviceCode,
+            ProviderConfig::OpenAI { .. }
+            | ProviderConfig::Google { .. }
+            | ProviderConfig::OpenRouter { .. }
+            | ProviderConfig::Mistral { .. }
+            | ProviderConfig::Groq { .. }
+            | ProviderConfig::Together { .. }
+            | ProviderConfig::Cohere { .. }
+            | ProviderConfig::DeepSeek { .. }
+            | ProviderConfig::Meilisearch { .. } => AuthMethod::ApiKey,
+        }
+    }
+
+    /// Extract the API key if this variant carries one.
+    pub fn api_key(&self) -> Option<&str> {
+        match self {
+            ProviderConfig::OpenAI { api_key, .. }
+            | ProviderConfig::Google { api_key, .. }
+            | ProviderConfig::OpenRouter { api_key, .. }
+            | ProviderConfig::Mistral { api_key, .. }
+            | ProviderConfig::Groq { api_key, .. }
+            | ProviderConfig::Together { api_key, .. }
+            | ProviderConfig::Cohere { api_key, .. }
+            | ProviderConfig::DeepSeek { api_key, .. } => {
+                if api_key.is_empty() { None } else { Some(api_key) }
+            }
+            ProviderConfig::Meilisearch { api_key, .. } => api_key.as_deref(),
+            ProviderConfig::Ollama { .. }
+            | ProviderConfig::Claude { .. }
+            | ProviderConfig::Gemini { .. }
+            | ProviderConfig::Copilot { .. } => None,
+        }
+    }
+
+    /// Return a clone with the API key injected.
+    /// No-op for OAuth/HostOnly variants.
+    pub fn with_api_key(&self, key: &str) -> Self {
+        match self {
+            ProviderConfig::OpenAI { model, max_tokens, organization_id, base_url, .. } => {
+                ProviderConfig::OpenAI {
+                    api_key: key.to_string(),
+                    model: model.clone(),
+                    max_tokens: *max_tokens,
+                    organization_id: organization_id.clone(),
+                    base_url: base_url.clone(),
+                }
+            }
+            ProviderConfig::Google { model, .. } => {
+                ProviderConfig::Google { api_key: key.to_string(), model: model.clone() }
+            }
+            ProviderConfig::OpenRouter { model, .. } => {
+                ProviderConfig::OpenRouter { api_key: key.to_string(), model: model.clone() }
+            }
+            ProviderConfig::Mistral { model, .. } => {
+                ProviderConfig::Mistral { api_key: key.to_string(), model: model.clone() }
+            }
+            ProviderConfig::Groq { model, .. } => {
+                ProviderConfig::Groq { api_key: key.to_string(), model: model.clone() }
+            }
+            ProviderConfig::Together { model, .. } => {
+                ProviderConfig::Together { api_key: key.to_string(), model: model.clone() }
+            }
+            ProviderConfig::Cohere { model, .. } => {
+                ProviderConfig::Cohere { api_key: key.to_string(), model: model.clone() }
+            }
+            ProviderConfig::DeepSeek { model, .. } => {
+                ProviderConfig::DeepSeek { api_key: key.to_string(), model: model.clone() }
+            }
+            // OAuth, HostOnly, Meilisearch — no-op
+            other => other.clone(),
+        }
+    }
+
+    /// Return a clone safe for disk persistence (API key stripped).
+    pub fn without_secret(&self) -> Self {
+        match self {
+            ProviderConfig::OpenAI { model, max_tokens, organization_id, base_url, .. } => {
+                ProviderConfig::OpenAI {
+                    api_key: String::new(),
+                    model: model.clone(),
+                    max_tokens: *max_tokens,
+                    organization_id: organization_id.clone(),
+                    base_url: base_url.clone(),
+                }
+            }
+            ProviderConfig::Google { model, .. } => {
+                ProviderConfig::Google { api_key: String::new(), model: model.clone() }
+            }
+            ProviderConfig::OpenRouter { model, .. } => {
+                ProviderConfig::OpenRouter { api_key: String::new(), model: model.clone() }
+            }
+            ProviderConfig::Mistral { model, .. } => {
+                ProviderConfig::Mistral { api_key: String::new(), model: model.clone() }
+            }
+            ProviderConfig::Groq { model, .. } => {
+                ProviderConfig::Groq { api_key: String::new(), model: model.clone() }
+            }
+            ProviderConfig::Together { model, .. } => {
+                ProviderConfig::Together { api_key: String::new(), model: model.clone() }
+            }
+            ProviderConfig::Cohere { model, .. } => {
+                ProviderConfig::Cohere { api_key: String::new(), model: model.clone() }
+            }
+            ProviderConfig::DeepSeek { model, .. } => {
+                ProviderConfig::DeepSeek { api_key: String::new(), model: model.clone() }
+            }
+            // OAuth, HostOnly, Meilisearch — already safe
+            other => other.clone(),
+        }
+    }
+
+    /// Build a `ProviderConfig` from parts (provider ID + credentials).
+    ///
+    /// This is the single id-to-variant mapping point, replacing the old
+    /// `build_provider_config()` in settings.rs. Note: "anthropic" maps to
+    /// `OpenAI` with Anthropic's base_url (API-key compatible endpoint).
+    pub fn from_parts(provider_id: &str, api_key: &str, host: &str, model: &str) -> Self {
+        match provider_id {
+            "ollama" => ProviderConfig::Ollama {
+                host: host.to_string(),
+                model: model.to_string(),
+            },
+            "openai" => ProviderConfig::OpenAI {
+                api_key: api_key.to_string(),
+                model: model.to_string(),
+                max_tokens: 4096,
+                organization_id: None,
+                base_url: None,
+            },
+            "anthropic" => ProviderConfig::OpenAI {
+                api_key: api_key.to_string(),
+                model: model.to_string(),
+                max_tokens: 8192,
+                organization_id: None,
+                base_url: Some("https://api.anthropic.com/v1".to_string()),
+            },
+            "google" => ProviderConfig::Google {
+                api_key: api_key.to_string(),
+                model: model.to_string(),
+            },
+            "claude" => ProviderConfig::Claude {
+                storage_backend: "auto".to_string(),
+                model: model.to_string(),
+                max_tokens: 8192,
+            },
+            "gemini" => ProviderConfig::Gemini {
+                storage_backend: "auto".to_string(),
+                model: model.to_string(),
+                max_tokens: 8192,
+            },
+            "copilot" => ProviderConfig::Copilot {
+                storage_backend: "auto".to_string(),
+                model: model.to_string(),
+                max_tokens: 8192,
+            },
+            "openrouter" => ProviderConfig::OpenRouter {
+                api_key: api_key.to_string(),
+                model: model.to_string(),
+            },
+            "mistral" => ProviderConfig::Mistral {
+                api_key: api_key.to_string(),
+                model: model.to_string(),
+            },
+            "groq" => ProviderConfig::Groq {
+                api_key: api_key.to_string(),
+                model: model.to_string(),
+            },
+            "together" => ProviderConfig::Together {
+                api_key: api_key.to_string(),
+                model: model.to_string(),
+            },
+            "cohere" => ProviderConfig::Cohere {
+                api_key: api_key.to_string(),
+                model: model.to_string(),
+            },
+            "deepseek" => ProviderConfig::DeepSeek {
+                api_key: api_key.to_string(),
+                model: model.to_string(),
+            },
+            _ => ProviderConfig::Ollama {
+                host: host.to_string(),
+                model: model.to_string(),
+            },
         }
     }
 }
@@ -274,7 +615,6 @@ mod tests {
 
     #[test]
     fn test_provider_config_requires_proxy_native() {
-        // Native providers don't need proxy
         let openai = ProviderConfig::OpenAI {
             api_key: "test".to_string(),
             model: "gpt-4".to_string(),
@@ -299,7 +639,6 @@ mod tests {
 
     #[test]
     fn test_provider_config_requires_proxy_non_native() {
-        // Non-native providers need proxy
         let claude = ProviderConfig::Claude {
             storage_backend: "memory".to_string(),
             model: "claude-3-sonnet".to_string(),
@@ -318,5 +657,256 @@ mod tests {
             model: "anthropic/claude-3".to_string(),
         };
         assert!(openrouter.requires_proxy());
+    }
+
+    // ── AuthMethod / ProviderMeta tests ─────────────────────────────
+
+    #[test]
+    fn test_find_provider_meta() {
+        assert!(find_provider_meta("openai").is_some());
+        assert!(find_provider_meta("claude").is_some());
+        assert!(find_provider_meta("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_provider_meta_needs_api_key() {
+        let openai = find_provider_meta("openai").unwrap();
+        assert!(openai.needs_api_key());
+
+        let ollama = find_provider_meta("ollama").unwrap();
+        assert!(!ollama.needs_api_key());
+
+        let claude = find_provider_meta("claude").unwrap();
+        assert!(!claude.needs_api_key());
+    }
+
+    #[test]
+    fn test_provider_meta_auth_tag() {
+        assert_eq!(find_provider_meta("openai").unwrap().auth_tag(), "key");
+        assert_eq!(find_provider_meta("ollama").unwrap().auth_tag(), "local");
+        assert_eq!(find_provider_meta("claude").unwrap().auth_tag(), "OAuth");
+        assert_eq!(find_provider_meta("copilot").unwrap().auth_tag(), "device");
+    }
+
+    // ── with_api_key / without_secret / api_key tests ───────────────
+
+    #[test]
+    fn test_with_api_key_injects_key() {
+        let config = ProviderConfig::OpenAI {
+            api_key: String::new(),
+            model: "gpt-4o".to_string(),
+            max_tokens: 4096,
+            organization_id: None,
+            base_url: None,
+        };
+        let injected = config.with_api_key("sk-test-123");
+        assert_eq!(injected.api_key(), Some("sk-test-123"));
+        assert_eq!(injected.model_name(), "gpt-4o");
+    }
+
+    #[test]
+    fn test_with_api_key_noop_for_oauth() {
+        let config = ProviderConfig::Claude {
+            storage_backend: "auto".to_string(),
+            model: "claude-3-sonnet".to_string(),
+            max_tokens: 8192,
+        };
+        let result = config.with_api_key("sk-should-be-ignored");
+        assert!(result.api_key().is_none());
+        assert_eq!(result.provider_id(), "claude");
+    }
+
+    #[test]
+    fn test_with_api_key_noop_for_host_only() {
+        let config = ProviderConfig::Ollama {
+            host: "http://localhost:11434".to_string(),
+            model: "llama3".to_string(),
+        };
+        let result = config.with_api_key("sk-should-be-ignored");
+        assert!(result.api_key().is_none());
+        assert_eq!(result.provider_id(), "ollama");
+    }
+
+    #[test]
+    fn test_without_secret_strips_key() {
+        let config = ProviderConfig::OpenAI {
+            api_key: "sk-secret".to_string(),
+            model: "gpt-4o".to_string(),
+            max_tokens: 4096,
+            organization_id: None,
+            base_url: None,
+        };
+        let stripped = config.without_secret();
+        assert!(stripped.api_key().is_none());
+        assert_eq!(stripped.model_name(), "gpt-4o");
+    }
+
+    #[test]
+    fn test_without_secret_preserves_oauth() {
+        let config = ProviderConfig::Claude {
+            storage_backend: "auto".to_string(),
+            model: "claude-3-sonnet".to_string(),
+            max_tokens: 8192,
+        };
+        let stripped = config.without_secret();
+        assert_eq!(stripped.provider_id(), "claude");
+        assert_eq!(stripped.model_name(), "claude-3-sonnet");
+    }
+
+    #[test]
+    fn test_api_key_returns_none_for_empty() {
+        let config = ProviderConfig::OpenAI {
+            api_key: String::new(),
+            model: "gpt-4o".to_string(),
+            max_tokens: 4096,
+            organization_id: None,
+            base_url: None,
+        };
+        assert!(config.api_key().is_none());
+    }
+
+    #[test]
+    fn test_auth_method_derives_correctly() {
+        let ollama = ProviderConfig::Ollama { host: String::new(), model: String::new() };
+        assert_eq!(ollama.auth_method(), AuthMethod::HostOnly);
+
+        let openai = ProviderConfig::OpenAI {
+            api_key: String::new(), model: String::new(),
+            max_tokens: 0, organization_id: None, base_url: None,
+        };
+        assert_eq!(openai.auth_method(), AuthMethod::ApiKey);
+
+        let claude = ProviderConfig::Claude {
+            storage_backend: String::new(), model: String::new(), max_tokens: 0,
+        };
+        assert_eq!(claude.auth_method(), AuthMethod::OAuthPkce);
+
+        let copilot = ProviderConfig::Copilot {
+            storage_backend: String::new(), model: String::new(), max_tokens: 0,
+        };
+        assert_eq!(copilot.auth_method(), AuthMethod::DeviceCode);
+    }
+
+    // ── from_parts tests (moved from settings.rs) ───────────────────
+
+    #[test]
+    fn test_from_parts_ollama() {
+        let config = ProviderConfig::from_parts("ollama", "", "http://localhost:11434", "llama3.2");
+        assert_eq!(config.provider_id(), "ollama");
+        assert_eq!(config.model_name(), "llama3.2");
+    }
+
+    #[test]
+    fn test_from_parts_openai() {
+        let config = ProviderConfig::from_parts("openai", "sk-test", "", "gpt-4o");
+        assert_eq!(config.provider_id(), "openai");
+        assert_eq!(config.model_name(), "gpt-4o");
+    }
+
+    #[test]
+    fn test_from_parts_anthropic() {
+        let config = ProviderConfig::from_parts("anthropic", "sk-ant-test", "", "claude-sonnet-4-20250514");
+        assert_eq!(config.provider_id(), "openai"); // maps to OpenAI with base_url
+        assert_eq!(config.model_name(), "claude-sonnet-4-20250514");
+        if let ProviderConfig::OpenAI { base_url, max_tokens, .. } = &config {
+            assert_eq!(base_url.as_deref(), Some("https://api.anthropic.com/v1"));
+            assert_eq!(*max_tokens, 8192);
+        } else {
+            panic!("Expected OpenAI config for anthropic");
+        }
+    }
+
+    #[test]
+    fn test_from_parts_google() {
+        let config = ProviderConfig::from_parts("google", "AIzaTest", "", "gemini-2.0-flash");
+        assert_eq!(config.provider_id(), "google");
+        assert_eq!(config.model_name(), "gemini-2.0-flash");
+    }
+
+    #[test]
+    fn test_from_parts_claude_oauth() {
+        let config = ProviderConfig::from_parts("claude", "", "", "claude-sonnet-4-20250514");
+        assert_eq!(config.provider_id(), "claude");
+        assert_eq!(config.model_name(), "claude-sonnet-4-20250514");
+        if let ProviderConfig::Claude { storage_backend, max_tokens, .. } = &config {
+            assert_eq!(storage_backend, "auto");
+            assert_eq!(*max_tokens, 8192);
+        } else {
+            panic!("Expected Claude config");
+        }
+    }
+
+    #[test]
+    fn test_from_parts_gemini_oauth() {
+        let config = ProviderConfig::from_parts("gemini", "", "", "gemini-2.0-flash");
+        assert_eq!(config.provider_id(), "gemini");
+        if let ProviderConfig::Gemini { storage_backend, .. } = &config {
+            assert_eq!(storage_backend, "auto");
+        } else {
+            panic!("Expected Gemini config");
+        }
+    }
+
+    #[test]
+    fn test_from_parts_copilot() {
+        let config = ProviderConfig::from_parts("copilot", "", "", "gpt-4o");
+        assert_eq!(config.provider_id(), "copilot");
+        if let ProviderConfig::Copilot { storage_backend, .. } = &config {
+            assert_eq!(storage_backend, "auto");
+        } else {
+            panic!("Expected Copilot config");
+        }
+    }
+
+    #[test]
+    fn test_from_parts_all_providers() {
+        for p in PROVIDERS {
+            let api_key = if p.needs_api_key() { "test-key" } else { "" };
+            let host = if p.needs_host() {
+                "http://localhost:11434"
+            } else {
+                ""
+            };
+            let config = ProviderConfig::from_parts(p.id, api_key, host, p.default_model);
+            assert!(
+                !config.model_name().is_empty(),
+                "Model should be set for {}",
+                p.id
+            );
+        }
+    }
+
+    #[test]
+    fn test_with_api_key_all_api_key_providers() {
+        for p in PROVIDERS.iter().filter(|p| p.needs_api_key()) {
+            let config = ProviderConfig::from_parts(p.id, "", "", p.default_model);
+            let injected = config.with_api_key("test-key-123");
+            assert_eq!(
+                injected.api_key(),
+                Some("test-key-123"),
+                "with_api_key should inject key for {}",
+                p.id
+            );
+        }
+    }
+
+    #[test]
+    fn test_without_secret_roundtrip() {
+        for p in PROVIDERS.iter().filter(|p| p.needs_api_key()) {
+            let config = ProviderConfig::from_parts(p.id, "secret-key", "", p.default_model);
+            let stripped = config.without_secret();
+            assert!(
+                stripped.api_key().is_none(),
+                "without_secret should strip key for {}",
+                p.id
+            );
+            let restored = stripped.with_api_key("new-key");
+            assert_eq!(
+                restored.api_key(),
+                Some("new-key"),
+                "should be able to re-inject key for {}",
+                p.id
+            );
+        }
     }
 }
