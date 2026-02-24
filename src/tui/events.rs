@@ -86,19 +86,33 @@ pub enum DeviceFlowUpdateKind {
 /// High-level actions dispatched by the input mapper or command palette.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
-    // Navigation
+    // Navigation — legacy views
     FocusChat,
     FocusLibrary,
     FocusCampaign,
     FocusSettings,
     FocusGeneration,
     FocusPersonality,
+    // Navigation — new views
+    FocusCombat,
+    FocusNotes,
+    FocusNpcs,
+    FocusLocations,
+    FocusArchetypes,
+    FocusVoice,
+    FocusUsage,
+    FocusAudit,
+    // Navigation — cycling
     TabNext,
     TabPrev,
+    // Sidebar
+    ToggleSidebar,
 
     // Modals
     OpenCommandPalette,
     CloseCommandPalette,
+    OpenDiceRoller,
+    CloseDiceRoller,
     ShowHelp,
     CloseHelp,
 
@@ -120,6 +134,19 @@ pub enum Action {
     RefreshCampaign,
     SwitchChatSession(String),
 
+    // New view refreshes
+    RefreshNpcs,
+    RefreshUsage,
+    RefreshAudit,
+    RefreshLocations,
+    RefreshVoice,
+    RefreshArchetypes,
+
+    // Combat
+    StartCombat,
+    EndCombat,
+    NextTurn,
+
     // Application
     Quit,
     SendMessage(String),
@@ -128,32 +155,149 @@ pub enum Action {
 /// Which top-level view has focus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Focus {
+    // Session group
     Chat,
-    Library,
+    Combat,
+    Notes,
+    // World group
     Campaign,
-    Settings,
+    Npcs,
+    Locations,
+    Archetypes,
+    // Tools group
     Generation,
+    Voice,
+    // System group
+    Settings,
+    Library,
+    Usage,
+    Audit,
     Personality,
 }
 
+/// Sidebar navigation groups.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SidebarGroup {
+    Session,
+    World,
+    Tools,
+    System,
+}
+
+impl SidebarGroup {
+    pub const ALL: [SidebarGroup; 4] = [
+        SidebarGroup::Session,
+        SidebarGroup::World,
+        SidebarGroup::Tools,
+        SidebarGroup::System,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            SidebarGroup::Session => "SESSION",
+            SidebarGroup::World => "WORLD",
+            SidebarGroup::Tools => "TOOLS",
+            SidebarGroup::System => "SYSTEM",
+        }
+    }
+
+    /// Views belonging to this group, in display order.
+    pub fn views(self) -> &'static [Focus] {
+        match self {
+            SidebarGroup::Session => &[Focus::Chat, Focus::Combat, Focus::Notes],
+            SidebarGroup::World => &[
+                Focus::Campaign,
+                Focus::Npcs,
+                Focus::Locations,
+                Focus::Archetypes,
+            ],
+            SidebarGroup::Tools => &[Focus::Generation, Focus::Voice],
+            SidebarGroup::System => &[
+                Focus::Settings,
+                Focus::Library,
+                Focus::Usage,
+                Focus::Audit,
+                Focus::Personality,
+            ],
+        }
+    }
+}
+
 impl Focus {
-    pub const ALL: [Focus; 6] = [
+    /// All focus variants in sidebar display order.
+    pub const ALL: [Focus; 14] = [
+        // Session
         Focus::Chat,
-        Focus::Library,
+        Focus::Combat,
+        Focus::Notes,
+        // World
         Focus::Campaign,
-        Focus::Settings,
+        Focus::Npcs,
+        Focus::Locations,
+        Focus::Archetypes,
+        // Tools
         Focus::Generation,
+        Focus::Voice,
+        // System
+        Focus::Settings,
+        Focus::Library,
+        Focus::Usage,
+        Focus::Audit,
         Focus::Personality,
     ];
 
     pub fn label(self) -> &'static str {
         match self {
             Focus::Chat => "Chat",
-            Focus::Library => "Library",
+            Focus::Combat => "Combat",
+            Focus::Notes => "Notes",
             Focus::Campaign => "Campaign",
-            Focus::Settings => "Settings",
+            Focus::Npcs => "NPCs",
+            Focus::Locations => "Locations",
+            Focus::Archetypes => "Archetypes",
             Focus::Generation => "Generation",
+            Focus::Voice => "Voice",
+            Focus::Settings => "Settings",
+            Focus::Library => "Library",
+            Focus::Usage => "Usage",
+            Focus::Audit => "Audit",
             Focus::Personality => "Personality",
+        }
+    }
+
+    /// Single-character icon for collapsed sidebar.
+    pub fn icon(self) -> &'static str {
+        match self {
+            Focus::Chat => "💬",
+            Focus::Combat => "⚔",
+            Focus::Notes => "📝",
+            Focus::Campaign => "🗺",
+            Focus::Npcs => "👤",
+            Focus::Locations => "🏰",
+            Focus::Archetypes => "📖",
+            Focus::Generation => "🎲",
+            Focus::Voice => "🔊",
+            Focus::Settings => "⚙",
+            Focus::Library => "📚",
+            Focus::Usage => "📊",
+            Focus::Audit => "📋",
+            Focus::Personality => "🎭",
+        }
+    }
+
+    /// Which sidebar group this focus belongs to.
+    pub fn group(self) -> SidebarGroup {
+        match self {
+            Focus::Chat | Focus::Combat | Focus::Notes => SidebarGroup::Session,
+            Focus::Campaign | Focus::Npcs | Focus::Locations | Focus::Archetypes => {
+                SidebarGroup::World
+            }
+            Focus::Generation | Focus::Voice => SidebarGroup::Tools,
+            Focus::Settings
+            | Focus::Library
+            | Focus::Usage
+            | Focus::Audit
+            | Focus::Personality => SidebarGroup::System,
         }
     }
 
@@ -166,6 +310,33 @@ impl Focus {
         let idx = Focus::ALL.iter().position(|&f| f == self).unwrap_or(0);
         Focus::ALL[(idx + Focus::ALL.len() - 1) % Focus::ALL.len()]
     }
+
+    /// Map Focus to its Action variant.
+    pub fn to_action(self) -> Action {
+        match self {
+            Focus::Chat => Action::FocusChat,
+            Focus::Combat => Action::FocusCombat,
+            Focus::Notes => Action::FocusNotes,
+            Focus::Campaign => Action::FocusCampaign,
+            Focus::Npcs => Action::FocusNpcs,
+            Focus::Locations => Action::FocusLocations,
+            Focus::Archetypes => Action::FocusArchetypes,
+            Focus::Generation => Action::FocusGeneration,
+            Focus::Voice => Action::FocusVoice,
+            Focus::Settings => Action::FocusSettings,
+            Focus::Library => Action::FocusLibrary,
+            Focus::Usage => Action::FocusUsage,
+            Focus::Audit => Action::FocusAudit,
+            Focus::Personality => Action::FocusPersonality,
+        }
+    }
+}
+
+/// Whether the sidebar or main content has input focus.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AreaFocus {
+    Sidebar,
+    Main,
 }
 
 /// Notification level for the overlay system.

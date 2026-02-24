@@ -7672,6 +7672,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ratatui-textarea"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "de236b7cc74b3f7dea227b3fbad97bf459cddf552b6503d888fb9a106eda59ab"
+dependencies = [
+ "ratatui-core",
+ "ratatui-crossterm",
+ "ratatui-widgets",
+ "unicode-width 0.2.0",
+]
+
+[[package]]
 name = "ratatui-widgets"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10699,6 +10711,7 @@ dependencies = [
  "quick-xml 0.36.2",
  "rand 0.8.5",
  "ratatui",
+ "ratatui-textarea",
  "regex",
  "reqwest 0.11.27",
  "rodio",

@@ -7,11 +7,13 @@
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
     layout::{Alignment, Constraint, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
     Frame,
 };
+
+use crate::tui::theme;
 use tokio::sync::mpsc;
 
 use crate::core::personality_base::{
@@ -31,42 +33,7 @@ const PRESET_NAMES: &[(&str, &str)] = &[
 
 // ── Display types ───────────────────────────────────────────────────────────
 
-#[derive(Clone, Debug)]
-struct PersonalityDisplay {
-    id: String,
-    name: String,
-    source: String,
-    trait_summary: String,
-    tag_summary: String,
-    formality: u8,
-}
-
-impl PersonalityDisplay {
-    fn from_profile(p: &PersonalityProfile) -> Self {
-        let trait_summary = p
-            .traits
-            .iter()
-            .take(3)
-            .map(|t| t.trait_name.as_str())
-            .collect::<Vec<_>>()
-            .join(", ");
-
-        let tag_summary = if p.tags.is_empty() {
-            "—".to_string()
-        } else {
-            p.tags.iter().take(3).cloned().collect::<Vec<_>>().join(", ")
-        };
-
-        Self {
-            id: p.id.clone(),
-            name: p.name.clone(),
-            source: p.source.clone().unwrap_or_else(|| "custom".to_string()),
-            trait_summary,
-            tag_summary,
-            formality: p.speech_patterns.formality,
-        }
-    }
-}
+pub use super::shared::PersonalityDisplay;
 
 // ── Modal types ─────────────────────────────────────────────────────────────
 
@@ -774,7 +741,7 @@ impl PersonalityState {
         let block = Block::default()
             .title(" Personality ")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::DarkGray));
+            .border_style(Style::default().fg(theme::TEXT_MUTED));
 
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -786,7 +753,7 @@ impl PersonalityState {
                     Span::raw("  "),
                     Span::styled(
                         "Loading personalities...",
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(theme::TEXT_MUTED),
                     ),
                 ]),
             ]);
@@ -802,12 +769,12 @@ impl PersonalityState {
                 Span::raw("  "),
                 Span::styled(
                     "No personalities yet.",
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(theme::TEXT_MUTED),
                 ),
             ]));
             lines.push(Line::from(vec![
                 Span::raw("  Press "),
-                Span::styled("a", Style::default().fg(Color::Cyan).bold()),
+                Span::styled("a", Style::default().fg(theme::PRIMARY_LIGHT).bold()),
                 Span::raw(" to add a personality profile."),
             ]));
         } else {
@@ -817,7 +784,7 @@ impl PersonalityState {
                 Span::styled(
                     format!("  {:<20} {:>6}  {}", "Name", "Form.", "Traits"),
                     Style::default()
-                        .fg(Color::DarkGray)
+                        .fg(theme::TEXT_MUTED)
                         .add_modifier(Modifier::BOLD),
                 ),
             ]));
@@ -844,7 +811,7 @@ impl PersonalityState {
                     Span::styled(
                         cursor.to_string(),
                         if is_selected {
-                            Style::default().fg(Color::Yellow)
+                            Style::default().fg(theme::ACCENT)
                         } else {
                             Style::default()
                         },
@@ -855,12 +822,12 @@ impl PersonalityState {
                     ),
                     Span::styled(
                         format!("{:>3}/10", p.formality),
-                        Style::default().fg(Color::Cyan),
+                        Style::default().fg(theme::PRIMARY_LIGHT),
                     ),
                     Span::raw("  "),
-                    Span::styled(trait_display, Style::default().fg(Color::DarkGray)),
+                    Span::styled(trait_display, Style::default().fg(theme::TEXT_MUTED)),
                     Span::raw("  "),
-                    Span::styled(source_tag, Style::default().fg(Color::DarkGray)),
+                    Span::styled(source_tag, Style::default().fg(theme::TEXT_MUTED)),
                 ]));
             }
         }
@@ -869,29 +836,29 @@ impl PersonalityState {
         lines.push(Line::raw(""));
         lines.push(Line::from(Span::styled(
             format!("  {}", "─".repeat(inner.width.saturating_sub(4) as usize)),
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(theme::TEXT_MUTED),
         )));
         lines.push(Line::from(vec![
             Span::raw("  "),
             Span::styled(
                 format!("{} profiles", self.profiles.len()),
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(theme::TEXT_MUTED),
             ),
         ]));
         lines.push(Line::raw(""));
         lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled("a", Style::default().fg(Color::DarkGray)),
+            Span::styled("a", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":add "),
-            Span::styled("e", Style::default().fg(Color::DarkGray)),
+            Span::styled("e", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":edit "),
-            Span::styled("d", Style::default().fg(Color::DarkGray)),
+            Span::styled("d", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":delete "),
-            Span::styled("p", Style::default().fg(Color::DarkGray)),
+            Span::styled("p", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":preview "),
-            Span::styled("Enter", Style::default().fg(Color::DarkGray)),
+            Span::styled("Enter", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":detail "),
-            Span::styled("r", Style::default().fg(Color::DarkGray)),
+            Span::styled("r", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":refresh"),
         ]));
 
@@ -914,7 +881,7 @@ impl PersonalityState {
         let block = Block::default()
             .title(" Detail ")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::DarkGray));
+            .border_style(Style::default().fg(theme::TEXT_MUTED));
 
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -930,30 +897,30 @@ impl PersonalityState {
         // Basic info
         lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled("Name: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Name: ", Style::default().fg(theme::TEXT_MUTED)),
             Span::styled(
                 display.name.clone(),
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(theme::ACCENT)
                     .add_modifier(Modifier::BOLD),
             ),
         ]));
         lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled("Source: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Source: ", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(display.source.clone()),
         ]));
         lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled("Formality: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Formality: ", Style::default().fg(theme::TEXT_MUTED)),
             Span::styled(
                 format!("{}/10", display.formality),
-                Style::default().fg(Color::Cyan),
+                Style::default().fg(theme::PRIMARY_LIGHT),
             ),
         ]));
         lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled("Tags: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Tags: ", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(display.tag_summary.clone()),
         ]));
 
@@ -963,20 +930,20 @@ impl PersonalityState {
         lines.push(Line::from(Span::styled(
             "  TRAITS:",
             Style::default()
-                .fg(Color::Yellow)
+                .fg(theme::ACCENT)
                 .add_modifier(Modifier::BOLD),
         )));
 
         if display.trait_summary.is_empty() {
             lines.push(Line::from(vec![
                 Span::raw("    "),
-                Span::styled("(none)", Style::default().fg(Color::DarkGray)),
+                Span::styled("(none)", Style::default().fg(theme::TEXT_MUTED)),
             ]));
         } else {
             for trait_name in display.trait_summary.split(", ") {
                 lines.push(Line::from(vec![
                     Span::raw("    "),
-                    Span::styled("• ", Style::default().fg(Color::Cyan)),
+                    Span::styled("• ", Style::default().fg(theme::PRIMARY_LIGHT)),
                     Span::raw(trait_name.to_string()),
                 ]));
             }
@@ -985,11 +952,11 @@ impl PersonalityState {
         lines.push(Line::raw(""));
         lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled("Press ", Style::default().fg(Color::DarkGray)),
-            Span::styled("p", Style::default().fg(Color::Cyan).bold()),
+            Span::styled("Press ", Style::default().fg(theme::TEXT_MUTED)),
+            Span::styled("p", Style::default().fg(theme::PRIMARY_LIGHT).bold()),
             Span::styled(
                 " to preview system prompt",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(theme::TEXT_MUTED),
             ),
         ]));
 
@@ -1020,24 +987,24 @@ impl PersonalityState {
             Line::from(Span::styled(
                 "  Create Personality",
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(theme::ACCENT)
                     .add_modifier(Modifier::BOLD),
             )),
             Line::raw(""),
             Line::from(vec![
                 Span::raw("  "),
-                Span::styled("[P]", Style::default().fg(Color::Cyan).bold()),
+                Span::styled("[P]", Style::default().fg(theme::PRIMARY_LIGHT).bold()),
                 Span::raw("  From preset"),
             ]),
             Line::from(vec![
                 Span::raw("  "),
-                Span::styled("[M]", Style::default().fg(Color::Cyan).bold()),
+                Span::styled("[M]", Style::default().fg(theme::PRIMARY_LIGHT).bold()),
                 Span::raw("  Manual entry"),
             ]),
             Line::raw(""),
             Line::from(vec![
                 Span::raw("  "),
-                Span::styled("Esc", Style::default().fg(Color::DarkGray)),
+                Span::styled("Esc", Style::default().fg(theme::TEXT_MUTED)),
                 Span::raw(": cancel"),
             ]),
         ];
@@ -1046,7 +1013,7 @@ impl PersonalityState {
             .title(" New Personality ")
             .title_alignment(Alignment::Center)
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Yellow));
+            .border_style(Style::default().fg(theme::ACCENT));
 
         frame.render_widget(Clear, modal_area);
         frame.render_widget(Paragraph::new(lines).block(block), modal_area);
@@ -1060,7 +1027,7 @@ impl PersonalityState {
             Line::from(Span::styled(
                 "  Select Preset",
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(theme::ACCENT)
                     .add_modifier(Modifier::BOLD),
             )),
             Line::raw(""),
@@ -1073,7 +1040,7 @@ impl PersonalityState {
                 Span::styled(
                     format!("  {cursor}"),
                     if is_sel {
-                        Style::default().fg(Color::Yellow)
+                        Style::default().fg(theme::ACCENT)
                     } else {
                         Style::default()
                     },
@@ -1082,7 +1049,7 @@ impl PersonalityState {
                     display_name.to_string(),
                     if is_sel {
                         Style::default()
-                            .fg(Color::White)
+                            .fg(theme::TEXT)
                             .add_modifier(Modifier::BOLD)
                     } else {
                         Style::default()
@@ -1094,11 +1061,11 @@ impl PersonalityState {
         lines.push(Line::raw(""));
         lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled("j/k", Style::default().fg(Color::DarkGray)),
+            Span::styled("j/k", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":select "),
-            Span::styled("Enter", Style::default().fg(Color::DarkGray)),
+            Span::styled("Enter", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":create "),
-            Span::styled("Esc", Style::default().fg(Color::DarkGray)),
+            Span::styled("Esc", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":back"),
         ]));
 
@@ -1106,7 +1073,7 @@ impl PersonalityState {
             .title(" Presets ")
             .title_alignment(Alignment::Center)
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Yellow));
+            .border_style(Style::default().fg(theme::ACCENT));
 
         frame.render_widget(Clear, modal_area);
         frame.render_widget(Paragraph::new(lines).block(block), modal_area);
@@ -1120,7 +1087,7 @@ impl PersonalityState {
             Line::from(Span::styled(
                 format!("  {title}"),
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(theme::ACCENT)
                     .add_modifier(Modifier::BOLD),
             )),
             Line::raw(""),
@@ -1130,9 +1097,9 @@ impl PersonalityState {
             let is_focused = i == self.form.focused;
             let marker = if is_focused { "▸" } else { " " };
             let label_style = if is_focused {
-                Style::default().fg(Color::Yellow).bold()
+                Style::default().fg(theme::ACCENT).bold()
             } else {
-                Style::default().fg(Color::DarkGray)
+                Style::default().fg(theme::TEXT_MUTED)
             };
 
             if i == PersonalityForm::TRAITS_FIELD {
@@ -1166,15 +1133,15 @@ impl PersonalityState {
                                 Span::styled(
                                     format!("{sl}: "),
                                     if is_active {
-                                        Style::default().fg(Color::Yellow)
+                                        Style::default().fg(theme::ACCENT)
                                     } else {
-                                        Style::default().fg(Color::DarkGray)
+                                        Style::default().fg(theme::TEXT_MUTED)
                                     },
                                 ),
                                 Span::styled(
                                     display_val,
                                     if is_active {
-                                        Style::default().fg(Color::White)
+                                        Style::default().fg(theme::TEXT)
                                     } else {
                                         Style::default()
                                     },
@@ -1184,7 +1151,7 @@ impl PersonalityState {
                     } else {
                         lines.push(Line::from(vec![
                             Span::raw("      "),
-                            Span::styled("• ", Style::default().fg(Color::Cyan)),
+                            Span::styled("• ", Style::default().fg(theme::PRIMARY_LIGHT)),
                             Span::raw(format!(
                                 "{name} ({intensity}/10) — {manifestation}"
                             )),
@@ -1195,7 +1162,7 @@ impl PersonalityState {
                 if self.form.traits.is_empty() && !self.form.editing_trait {
                     lines.push(Line::from(vec![
                         Span::raw("      "),
-                        Span::styled("(none — press Enter to add)", Style::default().fg(Color::DarkGray)),
+                        Span::styled("(none — press Enter to add)", Style::default().fg(theme::TEXT_MUTED)),
                     ]));
                 }
             } else {
@@ -1212,9 +1179,9 @@ impl PersonalityState {
                 };
 
                 let val_style = if is_focused {
-                    Style::default().fg(Color::White)
+                    Style::default().fg(theme::TEXT)
                 } else if self.form.values[i].is_empty() {
-                    Style::default().fg(Color::DarkGray)
+                    Style::default().fg(theme::TEXT_MUTED)
                 } else {
                     Style::default()
                 };
@@ -1232,7 +1199,7 @@ impl PersonalityState {
             lines.push(Line::raw(""));
             lines.push(Line::from(vec![
                 Span::raw("  "),
-                Span::styled("⚠ Name is required", Style::default().fg(Color::Red)),
+                Span::styled("⚠ Name is required", Style::default().fg(theme::ERROR)),
             ]));
         }
 
@@ -1240,13 +1207,13 @@ impl PersonalityState {
         lines.push(Line::raw(""));
         lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled("Tab/↓↑", Style::default().fg(Color::DarkGray)),
+            Span::styled("Tab/↓↑", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":fields "),
-            Span::styled("Enter", Style::default().fg(Color::DarkGray)),
+            Span::styled("Enter", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":save "),
-            Span::styled("Ctrl+S", Style::default().fg(Color::DarkGray)),
+            Span::styled("Ctrl+S", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":save "),
-            Span::styled("Esc", Style::default().fg(Color::DarkGray)),
+            Span::styled("Esc", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":cancel"),
         ]));
 
@@ -1254,7 +1221,7 @@ impl PersonalityState {
             .title(format!(" {title} "))
             .title_alignment(Alignment::Center)
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Yellow));
+            .border_style(Style::default().fg(theme::ACCENT));
 
         frame.render_widget(Clear, modal_area);
         frame.render_widget(Paragraph::new(lines).block(block), modal_area);
@@ -1274,7 +1241,7 @@ impl PersonalityState {
             Line::from(Span::styled(
                 "  Confirm Deletion",
                 Style::default()
-                    .fg(Color::Red)
+                    .fg(theme::ERROR)
                     .add_modifier(Modifier::BOLD),
             )),
             Line::raw(""),
@@ -1283,7 +1250,7 @@ impl PersonalityState {
                 Span::styled(
                     name.to_string(),
                     Style::default()
-                        .fg(Color::Yellow)
+                        .fg(theme::ACCENT)
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::raw("?"),
@@ -1291,9 +1258,9 @@ impl PersonalityState {
             Line::raw(""),
             Line::from(vec![
                 Span::raw("  "),
-                Span::styled("[Y]", Style::default().fg(Color::Red).bold()),
+                Span::styled("[Y]", Style::default().fg(theme::ERROR).bold()),
                 Span::raw("es  "),
-                Span::styled("[N]", Style::default().fg(Color::Green).bold()),
+                Span::styled("[N]", Style::default().fg(theme::SUCCESS).bold()),
                 Span::raw("o"),
             ]),
         ];
@@ -1302,7 +1269,7 @@ impl PersonalityState {
             .title(" Delete ")
             .title_alignment(Alignment::Center)
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Red));
+            .border_style(Style::default().fg(theme::ERROR));
 
         frame.render_widget(Clear, modal_area);
         frame.render_widget(Paragraph::new(lines).block(block), modal_area);
@@ -1327,11 +1294,11 @@ impl PersonalityState {
         all_lines.push(Line::raw(""));
         all_lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled("j/k", Style::default().fg(Color::DarkGray)),
+            Span::styled("j/k", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":scroll "),
-            Span::styled("PgUp/PgDn", Style::default().fg(Color::DarkGray)),
+            Span::styled("PgUp/PgDn", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":page "),
-            Span::styled("Esc", Style::default().fg(Color::DarkGray)),
+            Span::styled("Esc", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":close"),
         ]));
 
@@ -1339,7 +1306,7 @@ impl PersonalityState {
             .title(format!(" Preview: {name} "))
             .title_alignment(Alignment::Center)
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan));
+            .border_style(Style::default().fg(theme::PRIMARY_LIGHT));
 
         frame.render_widget(Clear, modal_area);
         frame.render_widget(

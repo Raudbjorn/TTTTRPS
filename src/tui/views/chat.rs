@@ -6,11 +6,13 @@
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
     layout::{Constraint, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
     Frame,
 };
+
+use super::super::theme;
 
 use crate::core::llm::router::{ChatMessage, ChatRequest};
 use crate::core::voice::types::{SynthesisRequest, OutputFormat, VoiceProviderType};
@@ -142,7 +144,7 @@ impl DisplayMessage {
             raw_content: String::new(),
             rendered_lines: vec![Line::styled(
                 "▍",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(theme::TEXT_MUTED),
             )],
             created_at: record.created_at.clone(),
             is_streaming: true,
@@ -152,10 +154,10 @@ impl DisplayMessage {
 
     fn role_header(&self) -> Line<'static> {
         let (label, color) = match self.role {
-            MessageRole::User => ("You", Color::Green),
-            MessageRole::Assistant => ("Assistant", Color::Cyan),
-            MessageRole::System => ("System", Color::Yellow),
-            MessageRole::Error => ("Error", Color::Red),
+            MessageRole::User => ("You", theme::SUCCESS),
+            MessageRole::Assistant => ("Assistant", theme::PRIMARY_LIGHT),
+            MessageRole::System => ("System", theme::ACCENT),
+            MessageRole::Error => ("Error", theme::ERROR),
         };
         Line::from(Span::styled(
             format!("── {label} ──"),
@@ -183,8 +185,8 @@ fn render_chat_input(
     volume_pct: u8,
 ) -> Paragraph<'static> {
     let (border_color, title) = match mode {
-        ChatInputMode::Insert => (Color::Yellow, " Message (Esc to exit) "),
-        ChatInputMode::Normal => (Color::DarkGray, " Message "),
+        ChatInputMode::Insert => (theme::ACCENT, " Message (Esc to exit) "),
+        ChatInputMode::Normal => (theme::TEXT_MUTED, " Message "),
     };
 
     let text = input.text();
@@ -193,7 +195,7 @@ fn render_chat_input(
     let display = if text.is_empty() {
         Line::styled(
             "Type a message... (i to enter insert mode)",
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(theme::TEXT_MUTED),
         )
     } else {
         let before = &text[..cursor];
@@ -214,7 +216,7 @@ fn render_chat_input(
                 Span::raw(before.to_string()),
                 Span::styled(
                     cursor_char,
-                    Style::default().bg(Color::White).fg(Color::Black),
+                    Style::default().bg(theme::TEXT).fg(theme::BG_BASE),
                 ),
                 Span::raw(after_cursor.to_string()),
             ])
@@ -233,13 +235,13 @@ fn render_chat_input(
         PlaybackState::Playing => {
             block = block.title(Line::styled(
                 format!(" Playing vol:{volume_pct}% "),
-                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                Style::default().fg(theme::SUCCESS).add_modifier(Modifier::BOLD),
             ).alignment(ratatui::layout::Alignment::Right));
         }
         PlaybackState::Paused => {
             block = block.title(Line::styled(
                 format!(" Paused vol:{volume_pct}% "),
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                Style::default().fg(theme::ACCENT).add_modifier(Modifier::BOLD),
             ).alignment(ratatui::layout::Alignment::Right));
         }
         PlaybackState::Idle => {}
@@ -248,7 +250,7 @@ fn render_chat_input(
     if is_streaming {
         block = block.title_bottom(Line::styled(
             " streaming... ",
-            Style::default().fg(Color::Cyan),
+            Style::default().fg(theme::PRIMARY_LIGHT),
         ));
     }
 
@@ -1153,9 +1155,9 @@ impl ChatState {
                 if let Some(last_line) = rendered.last_mut() {
                     last_line
                         .spans
-                        .push(Span::styled("▍", Style::default().fg(Color::DarkGray)));
+                        .push(Span::styled("▍", Style::default().fg(theme::TEXT_MUTED)));
                 } else {
-                    rendered.push(Line::styled("▍", Style::default().fg(Color::DarkGray)));
+                    rendered.push(Line::styled("▍", Style::default().fg(theme::TEXT_MUTED)));
                 }
                 last.rendered_lines = rendered;
             }
@@ -1260,7 +1262,7 @@ impl ChatState {
                 last.raw_content = error.to_string();
                 last.rendered_lines = vec![Line::styled(
                     error.to_string(),
-                    Style::default().fg(Color::Red),
+                    Style::default().fg(theme::ERROR),
                 )];
             }
         }
@@ -1542,8 +1544,8 @@ impl ChatState {
             }
         };
         let border_color = match &self.context {
-            ChatContext::General => Color::DarkGray,
-            ChatContext::Npc { .. } => Color::Magenta,
+            ChatContext::General => theme::TEXT_MUTED,
+            ChatContext::Npc { .. } => theme::NPC,
         };
         let block = Block::default()
             .borders(Borders::ALL)
@@ -1556,7 +1558,7 @@ impl ChatState {
         if self.session_loading {
             let loading = Paragraph::new(Line::styled(
                 "  Loading session...",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(theme::TEXT_MUTED),
             ));
             frame.render_widget(loading, inner);
             return;
@@ -1569,17 +1571,17 @@ impl ChatState {
                     Line::styled(
                         format!("  Talking to {} ({})", npc.name, mode.label()),
                         Style::default()
-                            .fg(Color::Magenta)
+                            .fg(theme::NPC)
                             .add_modifier(Modifier::BOLD),
                     ),
                     Line::raw(""),
                     Line::styled(
                         "  Type a message to begin the conversation.",
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(theme::TEXT_MUTED),
                     ),
                     Line::styled(
                         "  /voice = roleplay, /about = development, /exit = leave",
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(theme::TEXT_MUTED),
                     ),
                 ]),
                 ChatContext::General => Paragraph::new(vec![
@@ -1587,17 +1589,17 @@ impl ChatState {
                     Line::styled(
                         "  Welcome to TTTTRPS Chat",
                         Style::default()
-                            .fg(Color::Yellow)
+                            .fg(theme::ACCENT)
                             .add_modifier(Modifier::BOLD),
                     ),
                     Line::raw(""),
                     Line::styled(
                         "  Press i or Enter to start typing.",
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(theme::TEXT_MUTED),
                     ),
                     Line::styled(
                         "  Type /help for available commands.",
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(theme::TEXT_MUTED),
                     ),
                 ]),
             };
@@ -1619,7 +1621,7 @@ impl ChatState {
                     if let Some(ref name) = npc_voice_name {
                         let mut lines = vec![Line::from(Span::styled(
                             format!("── {name} ──"),
-                            Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
+                            Style::default().fg(theme::NPC).add_modifier(Modifier::BOLD),
                         ))];
                         lines.extend(m.rendered_lines.clone());
                         lines.push(Line::raw(""));
@@ -1666,8 +1668,8 @@ impl ChatState {
             let indicator = Line::styled(
                 " ↓ new messages below ",
                 Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Yellow)
+                    .fg(theme::BG_BASE)
+                    .bg(theme::ACCENT)
                     .add_modifier(Modifier::BOLD),
             );
             let indicator_area = Rect::new(
@@ -1687,15 +1689,15 @@ impl ChatState {
                     Line::from(vec![
                         Span::styled(
                             " -- INSERT -- ",
-                            Style::default().fg(Color::Black).bg(Color::Yellow),
+                            Style::default().fg(theme::BG_BASE).bg(theme::ACCENT),
                         ),
                         Span::raw(" "),
-                        Span::styled("streaming...", Style::default().fg(Color::Cyan)),
+                        Span::styled("streaming...", Style::default().fg(theme::PRIMARY_LIGHT)),
                     ])
                 } else {
                     Line::from(Span::styled(
                         " -- INSERT -- ",
-                        Style::default().fg(Color::Black).bg(Color::Yellow),
+                        Style::default().fg(theme::BG_BASE).bg(theme::ACCENT),
                     ))
                 }
             }
@@ -1704,15 +1706,15 @@ impl ChatState {
                     Line::from(vec![
                         Span::styled(
                             " -- NORMAL -- ",
-                            Style::default().fg(Color::Black).bg(Color::DarkGray),
+                            Style::default().fg(theme::BG_BASE).bg(theme::TEXT_MUTED),
                         ),
                         Span::raw(" "),
-                        Span::styled("streaming...", Style::default().fg(Color::Cyan)),
+                        Span::styled("streaming...", Style::default().fg(theme::PRIMARY_LIGHT)),
                     ])
                 } else {
                     Line::from(Span::styled(
                         " -- NORMAL -- ",
-                        Style::default().fg(Color::Black).bg(Color::DarkGray),
+                        Style::default().fg(theme::BG_BASE).bg(theme::TEXT_MUTED),
                     ))
                 }
             }

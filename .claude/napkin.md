@@ -84,6 +84,17 @@
 - `typed_path` crate adds competing `AsRef<Utf8Path>` impl on `Cow<str>` — avoid `.as_ref()` on Cow, use `.to_string()`
 - on_focus_changed() helper centralizes load triggers for Tab/TabPrev navigation
 
+## Domain Notes — Personality TUI View
+- PersonalityStore is sync (RwLock<HashMap>) — `.list()`, `.get()`, `.create()`, `.update()`, `.delete()` all callable from sync context
+- PersonalityApplicationManager wraps Arc<PersonalityStore>, accessed via `.store()` method
+- `create_preset_personality(preset_id)` → Option<PersonalityProfile>; preset IDs: "tavern_keeper", "grumpy_merchant"
+- PersonalityProfile.to_system_prompt() generates full LLM system prompt string (sync, no async needed)
+- Nested structs: SpeechPatterns (formality u8 1-10, vocabulary_style, pacing, dialect_notes), PersonalityTrait (trait_name, intensity u8 1-10, manifestation), BehavioralTendencies (conflict/stranger/authority/help/general_attitude)
+- render() has no &Services — cache prompt text at modal-open time, not during render
+- Form state shared between Create(Form) and Edit modals — PersonalityForm with field-level focus cycling
+- Trait sub-editor: inline 3-field editor (name/intensity/manifestation) activated by Enter on traits field
+- `seeded: bool` flag prevents re-seeding presets on every load — only seeds if store is empty on first load
+
 ## Session Log
 - 2026-02-22: First napkin session. Repo had active meilisearch migration work (14 files).
 - 2026-02-22: Completed Phase 0 + Phase 1 (20 tasks). 4 commits: meilisearch migration, build.sh, Phase 0 scaffold, Phase 1 Elm architecture. TUI now has event loop, 6 navigable views, help modal, command palette stub, notification system, status bar.
@@ -110,3 +121,27 @@
 - wilysearch::error::Error has #[from] for io::Error and serde_json::Error — `?` works on both
 - LMDB "Stale file handle (os error 116)" in integration tests is pre-existing — affects any test calling `doc add` in temp dirs. Not fixable from CLI side.
 - Engine::with_config() already returns crate's Result<Engine>; map_err to Error::Internal for context
+
+- 2026-02-23: Completed Personality TUI View. Full CRUD (list/detail/create-preset/create-manual/edit/delete), system prompt preview modal, auto-seeded presets on empty store, form with trait sub-editor. 1 new file (personality.rs ~680L), 2 modified (app.rs, views/mod.rs). 0 errors, 7 new tests (70 total TUI tests pass). 5 pre-existing meilisearch integration failures unchanged.
+- 2026-02-24: TUI Overhaul — Completed Phase 1 (Foundation: theme+sidebar+layout), Phase 2 (theme migration), Phase 3 (dice roller modal), Phase 4 (combat tracker). Fixed untracked campaign_wizard.rs + character_gen.rs compilation: `shared.rs` had `pub pub struct`, legacy.rs needed `crate::tui::theme` path, campaign_wizard.rs called nonexistent `db.save_wizard_state()`. 3318 tests pass.
+- 2026-02-24: TUI Overhaul — Completed Phases 5-10. NPC management (CRUD+master-detail), Usage dashboard (real LLMRouter data), Audit viewer (AuditLogger local), Location generator (wizard skeleton), Voice manager (real SynthesisQueue/VoiceManager data), Archetype browser (tree view skeleton). 5 new files, all wired into app.rs. 3343 tests pass (25 new).
+
+## Domain Notes — TUI Overhaul
+- `ratatui-textarea 0.8.0` IS compatible with ratatui 0.30 (napkin entry about 0.7 was wrong version)
+- `campaign_wizard.rs` and `character_gen.rs` were untracked files with no mod.rs declarations — generation.rs imports them via `super::`
+- `WizardManager::save_wizard_state()` lives on WizardManager, NOT on Database — don't call `db.save_wizard_state()`
+- personality/ is a subdirectory now — use `crate::tui::theme` not `super::super::theme` from files inside personality/
+- personality/shared.rs exports shared types (PersonalityDisplay) for use by legacy.rs and future sub-modules
+- CombatState (core::session::combat): new(), add_combatant(), next_turn(), sort_initiative(), remove_combatant(), end()
+- Combatant: apply_damage()/heal(), hp/max_hp/ac/initiative/conditions
+- ConditionTemplates::list_names() returns &[&str], by_name() returns Option<AdvancedCondition>
+- AdvancedCondition: remaining_text() for display, name/effects/duration fields
+- DiceNotation::parse() returns Result, DiceRoller::roll() returns RollResult with is_critical()/is_critical_fail()
+- Linter auto-adds `pub mod` declarations for unregistered .rs files — revert if unwanted
+- QueueStats fields: pending_count, processing_count, completed_count (u64), failed_count (u64), canceled_count, avg_processing_ms, utilization, total_chars_processed
+- VoiceConfig fields: provider (VoiceProviderType), cache_dir (Option), default_voice_id (Option) — no `default_provider` or `cache_enabled`
+- AuditLogger is NOT in Services — views create local instance; real events won't flow until wired
+- LocationGenerator is NOT in Services — location view shows wizard skeleton only
+- ArchetypeRegistry is NOT in Services — archetype view shows placeholder categories
+- `&p.name` in `Vec<Line<'static>>` context causes lifetime error — use `.clone()` to own the data
+- All `#[derive]` enums used in assert_eq! tests need `Debug` derive

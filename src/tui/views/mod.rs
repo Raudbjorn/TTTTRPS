@@ -1,7 +1,17 @@
+pub mod archetypes;
+pub mod audit;
 pub mod campaign;
+pub mod campaign_wizard;
+pub mod character_gen;
 pub mod chat;
+pub mod combat;
 pub mod command_palette;
+pub mod dice_modal;
 pub mod generation;
 pub mod library;
+pub mod locations;
+pub mod npcs;
 pub mod personality;
 pub mod settings;
+pub mod usage;
+pub mod voice;

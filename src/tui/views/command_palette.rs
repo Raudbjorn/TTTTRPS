@@ -17,6 +17,7 @@ use ratatui::{
 };
 
 use crate::tui::events::Action;
+use crate::tui::theme;
 use crate::tui::widgets::input_buffer::InputBuffer;
 
 // ============================================================================
@@ -38,6 +39,8 @@ pub struct Command {
 pub enum CommandCategory {
     Navigation,
     Chat,
+    Combat,
+    Tools,
     System,
 }
 
@@ -46,15 +49,19 @@ impl CommandCategory {
         match self {
             Self::Navigation => "Navigation",
             Self::Chat => "Chat",
+            Self::Combat => "Combat",
+            Self::Tools => "Tools",
             Self::System => "System",
         }
     }
 
     fn color(self) -> Color {
         match self {
-            Self::Navigation => Color::Blue,
-            Self::Chat => Color::Green,
-            Self::System => Color::Magenta,
+            Self::Navigation => theme::INFO,
+            Self::Chat => theme::SUCCESS,
+            Self::Combat => theme::ERROR,
+            Self::Tools => theme::PRIMARY_LIGHT,
+            Self::System => theme::NPC,
         }
     }
 }
@@ -82,6 +89,7 @@ pub enum PaletteResult {
 
 pub fn build_command_registry() -> Vec<Command> {
     vec![
+        // ── Navigation ──────────────────────────────────────────────
         Command {
             label: "Go to Chat",
             description: "Switch to the Chat view",
@@ -125,6 +133,63 @@ pub fn build_command_registry() -> Vec<Command> {
             action: Action::FocusPersonality,
         },
         Command {
+            label: "Go to Combat",
+            description: "Switch to the Combat Tracker",
+            category: CommandCategory::Navigation,
+            keybinding: None,
+            action: Action::FocusCombat,
+        },
+        Command {
+            label: "Go to Notes",
+            description: "Switch to Session Notes",
+            category: CommandCategory::Navigation,
+            keybinding: None,
+            action: Action::FocusNotes,
+        },
+        Command {
+            label: "Go to NPCs",
+            description: "Switch to NPC Management",
+            category: CommandCategory::Navigation,
+            keybinding: None,
+            action: Action::FocusNpcs,
+        },
+        Command {
+            label: "Go to Locations",
+            description: "Switch to Location Generator",
+            category: CommandCategory::Navigation,
+            keybinding: None,
+            action: Action::FocusLocations,
+        },
+        Command {
+            label: "Go to Archetypes",
+            description: "Switch to Archetype Browser",
+            category: CommandCategory::Navigation,
+            keybinding: None,
+            action: Action::FocusArchetypes,
+        },
+        Command {
+            label: "Go to Voice",
+            description: "Switch to Voice Manager",
+            category: CommandCategory::Navigation,
+            keybinding: None,
+            action: Action::FocusVoice,
+        },
+        Command {
+            label: "Go to Usage",
+            description: "Switch to Usage Dashboard",
+            category: CommandCategory::Navigation,
+            keybinding: None,
+            action: Action::FocusUsage,
+        },
+        Command {
+            label: "Go to Audit",
+            description: "Switch to Audit Log Viewer",
+            category: CommandCategory::Navigation,
+            keybinding: None,
+            action: Action::FocusAudit,
+        },
+        // ── Chat ────────────────────────────────────────────────────
+        Command {
             label: "New Chat Session",
             description: "Archive current session and start fresh",
             category: CommandCategory::Chat,
@@ -138,6 +203,44 @@ pub fn build_command_registry() -> Vec<Command> {
             keybinding: None,
             action: Action::ClearChat,
         },
+        // ── Combat ──────────────────────────────────────────────────
+        Command {
+            label: "Start Combat",
+            description: "Begin a new combat encounter",
+            category: CommandCategory::Combat,
+            keybinding: None,
+            action: Action::StartCombat,
+        },
+        Command {
+            label: "End Combat",
+            description: "End the current combat encounter",
+            category: CommandCategory::Combat,
+            keybinding: None,
+            action: Action::EndCombat,
+        },
+        Command {
+            label: "Next Turn",
+            description: "Advance to the next combatant",
+            category: CommandCategory::Combat,
+            keybinding: None,
+            action: Action::NextTurn,
+        },
+        // ── Tools ───────────────────────────────────────────────────
+        Command {
+            label: "Open Dice Roller",
+            description: "Open the dice roller overlay",
+            category: CommandCategory::Tools,
+            keybinding: Some("Ctrl+D"),
+            action: Action::OpenDiceRoller,
+        },
+        Command {
+            label: "Toggle Sidebar",
+            description: "Collapse or expand the sidebar",
+            category: CommandCategory::Tools,
+            keybinding: Some("Ctrl+B"),
+            action: Action::ToggleSidebar,
+        },
+        // ── System ──────────────────────────────────────────────────
         Command {
             label: "Refresh Library",
             description: "Reload library data from SurrealDB",
@@ -349,7 +452,7 @@ impl CommandPaletteState {
             .title(" Command Palette ")
             .title_alignment(Alignment::Center)
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan));
+            .border_style(Style::default().fg(theme::PRIMARY_LIGHT));
 
         let inner = block.inner(modal);
         frame.render_widget(block, modal);
@@ -371,7 +474,7 @@ impl CommandPaletteState {
         // Separator
         let sep = Line::styled(
             "─".repeat(chunks[1].width as usize),
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(theme::TEXT_DIM),
         );
         frame.render_widget(Paragraph::new(sep), chunks[1]);
 
@@ -385,10 +488,10 @@ impl CommandPaletteState {
 
         let line = if text.is_empty() {
             Line::from(vec![
-                Span::styled("> ", Style::default().fg(Color::Cyan)),
+                Span::styled("> ", Style::default().fg(theme::PRIMARY_LIGHT)),
                 Span::styled(
                     "Type to search...",
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(theme::TEXT_DIM),
                 ),
             ])
         } else {
@@ -405,11 +508,11 @@ impl CommandPaletteState {
             };
 
             Line::from(vec![
-                Span::styled("> ", Style::default().fg(Color::Cyan)),
+                Span::styled("> ", Style::default().fg(theme::PRIMARY_LIGHT)),
                 Span::raw(before.to_string()),
                 Span::styled(
                     cursor_char,
-                    Style::default().bg(Color::White).fg(Color::Black),
+                    Style::default().bg(theme::TEXT).fg(theme::BG_BASE),
                 ),
                 Span::raw(after_cursor.to_string()),
             ])
@@ -422,7 +525,7 @@ impl CommandPaletteState {
         if self.filtered.is_empty() {
             let no_match = Line::styled(
                 "  No matching commands",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(theme::TEXT_DIM),
             );
             frame.render_widget(Paragraph::new(no_match), area);
             return;
@@ -495,7 +598,7 @@ impl CommandPaletteState {
         // Selection indicator
         let prefix = if is_selected { "▸ " } else { "  " };
         let prefix_style = if is_selected {
-            Style::default().fg(Color::Yellow).bold()
+            Style::default().fg(theme::ACCENT).bold()
         } else {
             Style::default()
         };
@@ -503,17 +606,17 @@ impl CommandPaletteState {
 
         // Label with match highlighting
         let base_style = if is_selected {
-            Style::default().fg(Color::White).bold()
+            Style::default().fg(theme::TEXT).bold()
         } else {
-            Style::default().fg(Color::White)
+            Style::default().fg(theme::TEXT)
         };
         let highlight_style = if is_selected {
             Style::default()
-                .fg(Color::Yellow)
+                .fg(theme::ACCENT)
                 .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
         } else {
             Style::default()
-                .fg(Color::Yellow)
+                .fg(theme::ACCENT)
                 .add_modifier(Modifier::BOLD)
         };
 
@@ -538,7 +641,7 @@ impl CommandPaletteState {
             }
             spans.push(Span::styled(
                 key_display,
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(theme::TEXT_DIM),
             ));
         }
 
@@ -572,7 +675,7 @@ mod tests {
     fn test_empty_input_shows_all() {
         let palette = make_palette();
         assert_eq!(palette.filtered.len(), palette.commands.len());
-        assert_eq!(palette.filtered.len(), 13);
+        assert_eq!(palette.filtered.len(), 26);
     }
 
     #[test]
@@ -657,10 +760,10 @@ mod tests {
         palette.input.insert_char('q');
         palette.refilter();
         let filtered_count = palette.filtered.len();
-        assert!(filtered_count < 13);
+        assert!(filtered_count < 26);
 
         palette.input.clear();
         palette.refilter();
-        assert_eq!(palette.filtered.len(), 13);
+        assert_eq!(palette.filtered.len(), 26);
     }
 }

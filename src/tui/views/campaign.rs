@@ -8,13 +8,14 @@
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
 use tokio::sync::mpsc;
 
+use super::super::theme;
 use crate::tui::services::Services;
 
 // ── Display types ────────────────────────────────────────────────────────────
@@ -227,7 +228,7 @@ impl CampaignState {
         let block = Block::default()
             .title(" Campaign ")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::DarkGray));
+            .border_style(Style::default().fg(theme::TEXT_MUTED));
 
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -239,7 +240,7 @@ impl CampaignState {
                     Span::raw("  "),
                     Span::styled(
                         "Loading sessions...",
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(theme::TEXT_MUTED),
                     ),
                 ]),
             ]);
@@ -254,7 +255,7 @@ impl CampaignState {
                     Span::raw("  "),
                     Span::styled(
                         "No data loaded. Press r to refresh.",
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(theme::TEXT_MUTED),
                     ),
                 ]),
             ]);
@@ -293,12 +294,12 @@ fn build_lines(data: &CampaignData, selected: usize) -> Vec<Line<'static>> {
     lines.push(Line::from(Span::styled(
         "  Chat Sessions",
         Style::default()
-            .fg(Color::Yellow)
+            .fg(theme::ACCENT)
             .add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from(Span::styled(
         format!("  {}", "─".repeat(70)),
-        Style::default().fg(Color::DarkGray),
+        Style::default().fg(theme::TEXT_MUTED),
     )));
 
     if data.sessions.is_empty() {
@@ -306,7 +307,7 @@ fn build_lines(data: &CampaignData, selected: usize) -> Vec<Line<'static>> {
             Span::raw("  "),
             Span::styled(
                 "No chat sessions. Start chatting to create one.",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(theme::TEXT_MUTED),
             ),
         ]));
     } else {
@@ -319,7 +320,7 @@ fn build_lines(data: &CampaignData, selected: usize) -> Vec<Line<'static>> {
                     "Status", "Created", "Updated", "Campaign"
                 ),
                 Style::default()
-                    .fg(Color::DarkGray)
+                    .fg(theme::TEXT_MUTED)
                     .add_modifier(Modifier::BOLD),
             ),
         ]));
@@ -329,9 +330,9 @@ fn build_lines(data: &CampaignData, selected: usize) -> Vec<Line<'static>> {
             let cursor = if is_selected { "▸ " } else { "  " };
 
             let status_color = if session.is_active {
-                Color::Green
+                theme::SUCCESS
             } else {
-                Color::DarkGray
+                theme::TEXT_MUTED
             };
 
             let campaign_display = if session.linked_campaign.len() > 16 {
@@ -350,7 +351,7 @@ fn build_lines(data: &CampaignData, selected: usize) -> Vec<Line<'static>> {
                 Span::styled(
                     cursor.to_string(),
                     if is_selected {
-                        Style::default().fg(Color::Yellow)
+                        Style::default().fg(theme::ACCENT)
                     } else {
                         Style::default()
                     },
@@ -372,36 +373,36 @@ fn build_lines(data: &CampaignData, selected: usize) -> Vec<Line<'static>> {
     lines.push(Line::raw(""));
     lines.push(Line::from(Span::styled(
         format!("  {}", "─".repeat(70)),
-        Style::default().fg(Color::DarkGray),
+        Style::default().fg(theme::TEXT_MUTED),
     )));
     lines.push(Line::from(vec![
         Span::raw("  "),
-        Span::styled("Total: ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Total: ", Style::default().fg(theme::TEXT_MUTED)),
         Span::raw(format!("{} sessions", data.total_count)),
-        Span::styled(" (", Style::default().fg(Color::DarkGray)),
+        Span::styled(" (", Style::default().fg(theme::TEXT_MUTED)),
         Span::styled(
             format!("{} active", data.active_count),
-            Style::default().fg(Color::Green),
+            Style::default().fg(theme::SUCCESS),
         ),
         Span::raw(", "),
         Span::styled(
             format!("{} archived", data.archived_count),
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(theme::TEXT_MUTED),
         ),
-        Span::styled(")", Style::default().fg(Color::DarkGray)),
+        Span::styled(")", Style::default().fg(theme::TEXT_MUTED)),
     ]));
 
     // Footer
     lines.push(Line::raw(""));
     lines.push(Line::from(vec![
         Span::raw("  "),
-        Span::styled("j/k", Style::default().fg(Color::DarkGray)),
+        Span::styled("j/k", Style::default().fg(theme::TEXT_MUTED)),
         Span::raw(":select "),
-        Span::styled("Enter", Style::default().fg(Color::DarkGray)),
+        Span::styled("Enter", Style::default().fg(theme::TEXT_MUTED)),
         Span::raw(":switch "),
-        Span::styled("G/g", Style::default().fg(Color::DarkGray)),
+        Span::styled("G/g", Style::default().fg(theme::TEXT_MUTED)),
         Span::raw(":bottom/top "),
-        Span::styled("r", Style::default().fg(Color::DarkGray)),
+        Span::styled("r", Style::default().fg(theme::TEXT_MUTED)),
         Span::raw(":refresh"),
     ]));
     lines.push(Line::raw(""));

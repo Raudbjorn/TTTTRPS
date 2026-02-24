@@ -9,11 +9,13 @@ use std::path::PathBuf;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
     layout::{Alignment, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
     Frame,
 };
+
+use super::super::theme;
 use tokio::sync::mpsc;
 
 use crate::core::storage::models::{create_library_item, LibraryItem};
@@ -647,7 +649,7 @@ impl LibraryState {
         let block = Block::default()
             .title(" Library ")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::DarkGray));
+            .border_style(Style::default().fg(theme::TEXT_MUTED));
 
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -659,7 +661,7 @@ impl LibraryState {
                     Span::raw("  "),
                     Span::styled(
                         "Loading library...",
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(theme::TEXT_MUTED),
                     ),
                 ]),
             ]);
@@ -674,7 +676,7 @@ impl LibraryState {
                     Span::raw("  "),
                     Span::styled(
                         "No data loaded. Press r to refresh, a to ingest.",
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(theme::TEXT_MUTED),
                     ),
                 ]),
             ]);
@@ -714,16 +716,16 @@ impl LibraryState {
             .title(" Ingest Document ")
             .title_alignment(Alignment::Center)
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Yellow));
+            .border_style(Style::default().fg(theme::ACCENT));
 
         // Build lines
         let mut lines = vec![Line::raw("")];
 
         // File Path field
         let fp_style = if focused_field == IngestionField::FilePath {
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+            Style::default().fg(theme::PRIMARY_LIGHT).add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(Color::DarkGray)
+            Style::default().fg(theme::TEXT_MUTED)
         };
         lines.push(Line::from(vec![
             Span::raw("  "),
@@ -742,9 +744,9 @@ impl LibraryState {
             format!("{path_text}{cursor_char}")
         };
         let path_style = if focused_field == IngestionField::FilePath {
-            Style::default().fg(Color::White)
+            Style::default().fg(theme::TEXT)
         } else {
-            Style::default().fg(Color::DarkGray)
+            Style::default().fg(theme::TEXT_MUTED)
         };
         lines.push(Line::from(vec![
             Span::raw("  "),
@@ -754,7 +756,7 @@ impl LibraryState {
                 } else {
                     "  "
                 },
-                Style::default().fg(Color::Yellow),
+                Style::default().fg(theme::ACCENT),
             ),
             Span::styled(path_display, path_style),
         ]));
@@ -762,9 +764,9 @@ impl LibraryState {
 
         // Title override field
         let title_style = if focused_field == IngestionField::TitleOverride {
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+            Style::default().fg(theme::PRIMARY_LIGHT).add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(Color::DarkGray)
+            Style::default().fg(theme::TEXT_MUTED)
         };
         lines.push(Line::from(vec![
             Span::raw("  "),
@@ -783,9 +785,9 @@ impl LibraryState {
             format!("{title_text}{title_cursor}")
         };
         let title_val_style = if focused_field == IngestionField::TitleOverride {
-            Style::default().fg(Color::White)
+            Style::default().fg(theme::TEXT)
         } else {
-            Style::default().fg(Color::DarkGray)
+            Style::default().fg(theme::TEXT_MUTED)
         };
         lines.push(Line::from(vec![
             Span::raw("  "),
@@ -795,7 +797,7 @@ impl LibraryState {
                 } else {
                     "  "
                 },
-                Style::default().fg(Color::Yellow),
+                Style::default().fg(theme::ACCENT),
             ),
             Span::styled(title_display, title_val_style),
         ]));
@@ -803,9 +805,9 @@ impl LibraryState {
 
         // Content Type selector
         let ct_style = if focused_field == IngestionField::ContentType {
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+            Style::default().fg(theme::PRIMARY_LIGHT).add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(Color::DarkGray)
+            Style::default().fg(theme::TEXT_MUTED)
         };
         let arrows = if focused_field == IngestionField::ContentType {
             format!("  ◀ {} ▶", content_type.label())
@@ -815,7 +817,7 @@ impl LibraryState {
         lines.push(Line::from(vec![
             Span::raw("  "),
             Span::styled("Content Type:", ct_style),
-            Span::styled(arrows, Style::default().fg(Color::White)),
+            Span::styled(arrows, Style::default().fg(theme::TEXT)),
         ]));
         lines.push(Line::raw(""));
 
@@ -823,7 +825,7 @@ impl LibraryState {
         if let Some(err) = error {
             lines.push(Line::from(vec![
                 Span::raw("  "),
-                Span::styled(err, Style::default().fg(Color::Red).bold()),
+                Span::styled(err, Style::default().fg(theme::ERROR).bold()),
             ]));
         } else {
             lines.push(Line::raw(""));
@@ -832,11 +834,11 @@ impl LibraryState {
         // Footer
         lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled("Tab", Style::default().fg(Color::DarkGray)),
+            Span::styled("Tab", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":next  "),
-            Span::styled("Enter", Style::default().fg(Color::DarkGray)),
+            Span::styled("Enter", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":ingest  "),
-            Span::styled("Esc", Style::default().fg(Color::DarkGray)),
+            Span::styled("Esc", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":cancel"),
         ]));
 
@@ -860,9 +862,9 @@ impl LibraryState {
         };
 
         let border_color = match phase {
-            IngestionPhase::Done { .. } => Color::Green,
-            IngestionPhase::Error(_) => Color::Red,
-            _ => Color::Yellow,
+            IngestionPhase::Done { .. } => theme::SUCCESS,
+            IngestionPhase::Error(_) => theme::ERROR,
+            _ => theme::ACCENT,
         };
 
         let block = Block::default()
@@ -877,7 +879,7 @@ impl LibraryState {
             IngestionPhase::Extracting { progress, status } => {
                 lines.push(Line::from(vec![
                     Span::raw("  "),
-                    Span::styled("Extracting text...", Style::default().fg(Color::Cyan)),
+                    Span::styled("Extracting text...", Style::default().fg(theme::PRIMARY_LIGHT)),
                 ]));
                 // Progress bar
                 let bar_width = 30;
@@ -888,11 +890,11 @@ impl LibraryState {
                     Span::raw("  ["),
                     Span::styled(
                         "█".repeat(filled),
-                        Style::default().fg(Color::Green),
+                        Style::default().fg(theme::SUCCESS),
                     ),
                     Span::styled(
                         "░".repeat(empty),
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(theme::TEXT_MUTED),
                     ),
                     Span::raw(format!("] {pct}%")),
                 ]));
@@ -904,13 +906,13 @@ impl LibraryState {
                 };
                 lines.push(Line::from(vec![
                     Span::raw("  "),
-                    Span::styled(status_display, Style::default().fg(Color::DarkGray)),
+                    Span::styled(status_display, Style::default().fg(theme::TEXT_MUTED)),
                 ]));
             }
             IngestionPhase::Chunking { chunk_count } => {
                 lines.push(Line::from(vec![
                     Span::raw("  "),
-                    Span::styled("Chunking text...", Style::default().fg(Color::Cyan)),
+                    Span::styled("Chunking text...", Style::default().fg(theme::PRIMARY_LIGHT)),
                 ]));
                 lines.push(Line::from(vec![
                     Span::raw("  "),
@@ -920,7 +922,7 @@ impl LibraryState {
             IngestionPhase::Storing { stored, total } => {
                 lines.push(Line::from(vec![
                     Span::raw("  "),
-                    Span::styled("Storing in database...", Style::default().fg(Color::Cyan)),
+                    Span::styled("Storing in database...", Style::default().fg(theme::PRIMARY_LIGHT)),
                 ]));
                 lines.push(Line::from(vec![
                     Span::raw("  "),
@@ -932,19 +934,19 @@ impl LibraryState {
                     Span::raw("  "),
                     Span::styled(
                         format!("Done! {chunk_count} chunks ingested."),
-                        Style::default().fg(Color::Green).bold(),
+                        Style::default().fg(theme::SUCCESS).bold(),
                     ),
                 ]));
                 lines.push(Line::raw(""));
                 lines.push(Line::from(vec![
                     Span::raw("  "),
-                    Span::styled("Press Enter or Esc to close", Style::default().fg(Color::DarkGray)),
+                    Span::styled("Press Enter or Esc to close", Style::default().fg(theme::TEXT_MUTED)),
                 ]));
             }
             IngestionPhase::Error(msg) => {
                 lines.push(Line::from(vec![
                     Span::raw("  "),
-                    Span::styled("Error:", Style::default().fg(Color::Red).bold()),
+                    Span::styled("Error:", Style::default().fg(theme::ERROR).bold()),
                 ]));
                 let error_display = if msg.len() > 44 {
                     format!("{}...", &msg[..41])
@@ -953,11 +955,11 @@ impl LibraryState {
                 };
                 lines.push(Line::from(vec![
                     Span::raw("  "),
-                    Span::styled(error_display, Style::default().fg(Color::Red)),
+                    Span::styled(error_display, Style::default().fg(theme::ERROR)),
                 ]));
                 lines.push(Line::from(vec![
                     Span::raw("  "),
-                    Span::styled("Press Enter or Esc to close", Style::default().fg(Color::DarkGray)),
+                    Span::styled("Press Enter or Esc to close", Style::default().fg(theme::TEXT_MUTED)),
                 ]));
             }
         }
@@ -972,7 +974,7 @@ impl LibraryState {
             lines.push(Line::raw(""));
             lines.push(Line::from(vec![
                 Span::raw("  "),
-                Span::styled("Esc", Style::default().fg(Color::DarkGray)),
+                Span::styled("Esc", Style::default().fg(theme::TEXT_MUTED)),
                 Span::raw(":dismiss (continues in background)"),
             ]));
         }
@@ -1001,12 +1003,12 @@ fn build_lines(data: &LibraryData) -> Vec<Line<'static>> {
     lines.push(Line::from(Span::styled(
         "  Documents",
         Style::default()
-            .fg(Color::Yellow)
+            .fg(theme::ACCENT)
             .add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from(Span::styled(
         format!("  {}", "─".repeat(70)),
-        Style::default().fg(Color::DarkGray),
+        Style::default().fg(theme::TEXT_MUTED),
     )));
 
     if data.items.is_empty() {
@@ -1014,7 +1016,7 @@ fn build_lines(data: &LibraryData) -> Vec<Line<'static>> {
             Span::raw("  "),
             Span::styled(
                 "No documents in library. Press a to ingest PDFs, EPUBs, or markdown.",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(theme::TEXT_MUTED),
             ),
         ]));
     } else {
@@ -1027,7 +1029,7 @@ fn build_lines(data: &LibraryData) -> Vec<Line<'static>> {
                     "Title", "Type", "Pages", "Chunks", "Status", "System"
                 ),
                 Style::default()
-                    .fg(Color::DarkGray)
+                    .fg(theme::TEXT_MUTED)
                     .add_modifier(Modifier::BOLD),
             ),
         ]));
@@ -1045,11 +1047,11 @@ fn build_lines(data: &LibraryData) -> Vec<Line<'static>> {
                 .unwrap_or_else(|| "—".to_string());
 
             let status_color = match item.status.as_str() {
-                "ready" => Color::Green,
-                "processing" => Color::Yellow,
-                "pending" => Color::DarkGray,
-                "error" => Color::Red,
-                _ => Color::DarkGray,
+                "ready" => theme::SUCCESS,
+                "processing" => theme::ACCENT,
+                "pending" => theme::TEXT_MUTED,
+                "error" => theme::ERROR,
+                _ => theme::TEXT_MUTED,
             };
 
             let system_display = if item.game_system.len() > 12 {
@@ -1062,7 +1064,7 @@ fn build_lines(data: &LibraryData) -> Vec<Line<'static>> {
                 Span::raw("  "),
                 Span::styled(
                     format!("{:<30}", title_display),
-                    Style::default().fg(Color::Cyan),
+                    Style::default().fg(theme::PRIMARY_LIGHT),
                 ),
                 Span::raw(format!(" {:>5} {:>6} {:>7} ", item.file_type, pages, item.chunk_count)),
                 Span::styled(
@@ -1078,41 +1080,41 @@ fn build_lines(data: &LibraryData) -> Vec<Line<'static>> {
     lines.push(Line::raw(""));
     lines.push(Line::from(Span::styled(
         format!("  {}", "─".repeat(70)),
-        Style::default().fg(Color::DarkGray),
+        Style::default().fg(theme::TEXT_MUTED),
     )));
     lines.push(Line::from(vec![
         Span::raw("  "),
-        Span::styled("Total: ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Total: ", Style::default().fg(theme::TEXT_MUTED)),
         Span::raw(format!("{} items", data.total_count)),
-        Span::styled(" (", Style::default().fg(Color::DarkGray)),
+        Span::styled(" (", Style::default().fg(theme::TEXT_MUTED)),
         Span::styled(
             format!("{} ready", data.ready_count),
-            Style::default().fg(Color::Green),
+            Style::default().fg(theme::SUCCESS),
         ),
         Span::raw(", "),
         Span::styled(
             format!("{} pending", data.pending_count),
-            Style::default().fg(Color::Yellow),
+            Style::default().fg(theme::ACCENT),
         ),
         Span::raw(", "),
         Span::styled(
             format!("{} error", data.error_count),
-            Style::default().fg(Color::Red),
+            Style::default().fg(theme::ERROR),
         ),
-        Span::styled(")", Style::default().fg(Color::DarkGray)),
+        Span::styled(")", Style::default().fg(theme::TEXT_MUTED)),
     ]));
 
     // Footer
     lines.push(Line::raw(""));
     lines.push(Line::from(vec![
         Span::raw("  "),
-        Span::styled("j/k", Style::default().fg(Color::DarkGray)),
+        Span::styled("j/k", Style::default().fg(theme::TEXT_MUTED)),
         Span::raw(":scroll "),
-        Span::styled("G/g", Style::default().fg(Color::DarkGray)),
+        Span::styled("G/g", Style::default().fg(theme::TEXT_MUTED)),
         Span::raw(":bottom/top "),
-        Span::styled("a", Style::default().fg(Color::DarkGray)),
+        Span::styled("a", Style::default().fg(theme::TEXT_MUTED)),
         Span::raw(":ingest "),
-        Span::styled("r", Style::default().fg(Color::DarkGray)),
+        Span::styled("r", Style::default().fg(theme::TEXT_MUTED)),
         Span::raw(":refresh"),
     ]));
     lines.push(Line::raw(""));

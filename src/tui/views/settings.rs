@@ -12,11 +12,13 @@
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
     layout::{Alignment, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
     Frame,
 };
+
+use super::super::theme;
 use tokio::sync::mpsc;
 
 use crate::config::AppConfig;
@@ -1231,7 +1233,7 @@ impl SettingsState {
         let block = Block::default()
             .title(" Settings ")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::DarkGray));
+            .border_style(Style::default().fg(theme::TEXT_MUTED));
 
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -1241,7 +1243,7 @@ impl SettingsState {
                 Line::raw(""),
                 Line::from(vec![
                     Span::raw("  "),
-                    Span::styled("Loading settings...", Style::default().fg(Color::DarkGray)),
+                    Span::styled("Loading settings...", Style::default().fg(theme::TEXT_MUTED)),
                 ]),
             ]);
             frame.render_widget(loading, inner);
@@ -1252,7 +1254,7 @@ impl SettingsState {
                     Span::raw("  "),
                     Span::styled(
                         "No data loaded. Press r to refresh.",
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(theme::TEXT_MUTED),
                     ),
                 ]),
             ]);
@@ -1323,13 +1325,13 @@ impl SettingsState {
             .title(" Add Provider ")
             .title_alignment(Alignment::Center)
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Yellow));
+            .border_style(Style::default().fg(theme::ACCENT));
 
         let mut lines = vec![
             Line::raw(""),
             Line::from(Span::styled(
                 "  Select a provider:",
-                Style::default().fg(Color::White),
+                Style::default().fg(theme::TEXT),
             )),
             Line::raw(""),
         ];
@@ -1338,16 +1340,16 @@ impl SettingsState {
             let marker = if i == selected { "  \u{25b8} " } else { "    " };
             let name_style = if i == selected {
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(theme::ACCENT)
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(Color::White)
+                Style::default().fg(theme::TEXT)
             };
             let tag_color = match p.auth_method {
-                AuthMethod::ApiKey => Color::DarkGray,
-                AuthMethod::HostOnly => Color::Blue,
-                AuthMethod::OAuthPkce => Color::Magenta,
-                AuthMethod::DeviceCode => Color::Cyan,
+                AuthMethod::ApiKey => theme::TEXT_MUTED,
+                AuthMethod::HostOnly => theme::INFO,
+                AuthMethod::OAuthPkce => theme::NPC,
+                AuthMethod::DeviceCode => theme::PRIMARY_LIGHT,
             };
             lines.push(Line::from(vec![
                 Span::raw(marker),
@@ -1359,11 +1361,11 @@ impl SettingsState {
         lines.push(Line::raw(""));
         lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled("j/k", Style::default().fg(Color::DarkGray)),
+            Span::styled("j/k", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":navigate  "),
-            Span::styled("Enter", Style::default().fg(Color::DarkGray)),
+            Span::styled("Enter", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":select  "),
-            Span::styled("Esc", Style::default().fg(Color::DarkGray)),
+            Span::styled("Esc", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":cancel"),
         ]));
 
@@ -1391,7 +1393,7 @@ impl SettingsState {
             .title(title)
             .title_alignment(Alignment::Center)
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Yellow));
+            .border_style(Style::default().fg(theme::ACCENT));
 
         let inner = block.inner(modal);
         let mut lines: Vec<Line<'static>> = vec![Line::raw("")];
@@ -1402,10 +1404,10 @@ impl SettingsState {
             // Label
             let label_style = if is_focused {
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(theme::ACCENT)
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(Color::Cyan)
+                Style::default().fg(theme::PRIMARY_LIGHT)
             };
             lines.push(Line::from(vec![
                 Span::raw("  "),
@@ -1438,18 +1440,18 @@ impl SettingsState {
             let marker = if is_focused { "\u{25b8} " } else { "  " };
 
             let value_style = if is_empty && !is_focused {
-                Style::default().fg(Color::DarkGray)
+                Style::default().fg(theme::TEXT_MUTED)
             } else if is_focused {
-                Style::default().fg(Color::White)
+                Style::default().fg(theme::TEXT)
             } else {
-                Style::default().fg(Color::Gray)
+                Style::default().fg(theme::TEXT_MUTED)
             };
 
             lines.push(Line::from(vec![
-                Span::styled(format!("  {marker}"), Style::default().fg(Color::Yellow)),
-                Span::styled("[", Style::default().fg(Color::DarkGray)),
+                Span::styled(format!("  {marker}"), Style::default().fg(theme::ACCENT)),
+                Span::styled("[", Style::default().fg(theme::TEXT_MUTED)),
                 Span::styled(truncated, value_style),
-                Span::styled("]", Style::default().fg(Color::DarkGray)),
+                Span::styled("]", Style::default().fg(theme::TEXT_MUTED)),
             ]));
 
             lines.push(Line::raw(""));
@@ -1459,18 +1461,18 @@ impl SettingsState {
         if let Some(err) = error {
             lines.push(Line::from(vec![
                 Span::raw("  "),
-                Span::styled(err.to_string(), Style::default().fg(Color::Red)),
+                Span::styled(err.to_string(), Style::default().fg(theme::ERROR)),
             ]));
         }
 
         // Footer
         lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled("Tab", Style::default().fg(Color::DarkGray)),
+            Span::styled("Tab", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":next  "),
-            Span::styled("Enter", Style::default().fg(Color::DarkGray)),
+            Span::styled("Enter", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":save  "),
-            Span::styled("Esc", Style::default().fg(Color::DarkGray)),
+            Span::styled("Esc", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":cancel"),
         ]));
 
@@ -1505,7 +1507,7 @@ impl SettingsState {
             .title(title)
             .title_alignment(Alignment::Center)
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Magenta));
+            .border_style(Style::default().fg(theme::NPC));
 
         let mut lines: Vec<Line<'static>> = vec![Line::raw("")];
 
@@ -1515,7 +1517,7 @@ impl SettingsState {
                     Span::raw("  "),
                     Span::styled(
                         "Browser opened for authorization",
-                        Style::default().fg(Color::White),
+                        Style::default().fg(theme::TEXT),
                     ),
                 ]));
                 lines.push(Line::raw(""));
@@ -1523,7 +1525,7 @@ impl SettingsState {
                     Span::raw("  "),
                     Span::styled(
                         "Paste authorization code:",
-                        Style::default().fg(Color::Cyan),
+                        Style::default().fg(theme::PRIMARY_LIGHT),
                     ),
                 ]));
                 // Input field
@@ -1535,17 +1537,17 @@ impl SettingsState {
                     format!("{:<width$}", code_display, width = field_width)
                 };
                 lines.push(Line::from(vec![
-                    Span::styled("  \u{25b8} ", Style::default().fg(Color::Yellow)),
-                    Span::styled("[", Style::default().fg(Color::DarkGray)),
-                    Span::styled(truncated, Style::default().fg(Color::White)),
-                    Span::styled("]", Style::default().fg(Color::DarkGray)),
+                    Span::styled("  \u{25b8} ", Style::default().fg(theme::ACCENT)),
+                    Span::styled("[", Style::default().fg(theme::TEXT_MUTED)),
+                    Span::styled(truncated, Style::default().fg(theme::TEXT)),
+                    Span::styled("]", Style::default().fg(theme::TEXT_MUTED)),
                 ]));
                 lines.push(Line::raw(""));
                 lines.push(Line::from(vec![
                     Span::raw("  "),
-                    Span::styled("Enter", Style::default().fg(Color::DarkGray)),
+                    Span::styled("Enter", Style::default().fg(theme::TEXT_MUTED)),
                     Span::raw(":submit  "),
-                    Span::styled("Esc", Style::default().fg(Color::DarkGray)),
+                    Span::styled("Esc", Style::default().fg(theme::TEXT_MUTED)),
                     Span::raw(":cancel"),
                 ]));
             }
@@ -1554,7 +1556,7 @@ impl SettingsState {
                     Span::raw("  "),
                     Span::styled(
                         "Exchanging authorization code...",
-                        Style::default().fg(Color::Yellow),
+                        Style::default().fg(theme::ACCENT),
                     ),
                 ]));
             }
@@ -1563,13 +1565,13 @@ impl SettingsState {
                     Span::raw("  "),
                     Span::styled(
                         "\u{2713} OAuth flow completed successfully!",
-                        Style::default().fg(Color::Green).bold(),
+                        Style::default().fg(theme::SUCCESS).bold(),
                     ),
                 ]));
                 lines.push(Line::raw(""));
                 lines.push(Line::from(vec![
                     Span::raw("  "),
-                    Span::styled("Enter", Style::default().fg(Color::DarkGray)),
+                    Span::styled("Enter", Style::default().fg(theme::TEXT_MUTED)),
                     Span::raw(":close"),
                 ]));
             }
@@ -1578,13 +1580,13 @@ impl SettingsState {
                     Span::raw("  "),
                     Span::styled(
                         format!("\u{2717} {msg}"),
-                        Style::default().fg(Color::Red),
+                        Style::default().fg(theme::ERROR),
                     ),
                 ]));
                 lines.push(Line::raw(""));
                 lines.push(Line::from(vec![
                     Span::raw("  "),
-                    Span::styled("Enter/Esc", Style::default().fg(Color::DarkGray)),
+                    Span::styled("Enter/Esc", Style::default().fg(theme::TEXT_MUTED)),
                     Span::raw(":close"),
                 ]));
             }
@@ -1618,7 +1620,7 @@ impl SettingsState {
             .title(title)
             .title_alignment(Alignment::Center)
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan));
+            .border_style(Style::default().fg(theme::PRIMARY_LIGHT));
 
         let mut lines: Vec<Line<'static>> = vec![Line::raw("")];
 
@@ -1631,7 +1633,7 @@ impl SettingsState {
                     Span::raw("  Visit: "),
                     Span::styled(
                         verification_uri.to_string(),
-                        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                        Style::default().fg(theme::PRIMARY_LIGHT).add_modifier(Modifier::BOLD),
                     ),
                 ]));
                 lines.push(Line::raw(""));
@@ -1640,7 +1642,7 @@ impl SettingsState {
                     Span::styled(
                         user_code.to_string(),
                         Style::default()
-                            .fg(Color::Yellow)
+                            .fg(theme::ACCENT)
                             .add_modifier(Modifier::BOLD),
                     ),
                 ]));
@@ -1649,13 +1651,13 @@ impl SettingsState {
                     Span::raw("  "),
                     Span::styled(
                         "Waiting for authorization...",
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(theme::TEXT_MUTED),
                     ),
                 ]));
                 lines.push(Line::raw(""));
                 lines.push(Line::from(vec![
                     Span::raw("  "),
-                    Span::styled("Esc", Style::default().fg(Color::DarkGray)),
+                    Span::styled("Esc", Style::default().fg(theme::TEXT_MUTED)),
                     Span::raw(":cancel"),
                 ]));
             }
@@ -1664,7 +1666,7 @@ impl SettingsState {
                     Span::raw("  "),
                     Span::styled(
                         "Completing authorization...",
-                        Style::default().fg(Color::Yellow),
+                        Style::default().fg(theme::ACCENT),
                     ),
                 ]));
             }
@@ -1673,13 +1675,13 @@ impl SettingsState {
                     Span::raw("  "),
                     Span::styled(
                         "\u{2713} Device code flow completed!",
-                        Style::default().fg(Color::Green).bold(),
+                        Style::default().fg(theme::SUCCESS).bold(),
                     ),
                 ]));
                 lines.push(Line::raw(""));
                 lines.push(Line::from(vec![
                     Span::raw("  "),
-                    Span::styled("Enter", Style::default().fg(Color::DarkGray)),
+                    Span::styled("Enter", Style::default().fg(theme::TEXT_MUTED)),
                     Span::raw(":close"),
                 ]));
             }
@@ -1688,13 +1690,13 @@ impl SettingsState {
                     Span::raw("  "),
                     Span::styled(
                         format!("\u{2717} {msg}"),
-                        Style::default().fg(Color::Red),
+                        Style::default().fg(theme::ERROR),
                     ),
                 ]));
                 lines.push(Line::raw(""));
                 lines.push(Line::from(vec![
                     Span::raw("  "),
-                    Span::styled("Enter/Esc", Style::default().fg(Color::DarkGray)),
+                    Span::styled("Enter/Esc", Style::default().fg(theme::TEXT_MUTED)),
                     Span::raw(":close"),
                 ]));
             }
@@ -1711,7 +1713,7 @@ impl SettingsState {
             .title(" Delete Provider ")
             .title_alignment(Alignment::Center)
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Red));
+            .border_style(Style::default().fg(theme::ERROR));
 
         let lines = vec![
             Line::raw(""),
@@ -1720,7 +1722,7 @@ impl SettingsState {
                 Span::styled(
                     format!("\"{provider_name}\""),
                     Style::default()
-                        .fg(Color::Yellow)
+                        .fg(theme::ACCENT)
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::raw(" and remove its"),
@@ -1729,9 +1731,9 @@ impl SettingsState {
             Line::raw(""),
             Line::from(vec![
                 Span::raw("  "),
-                Span::styled("y", Style::default().fg(Color::Red).bold()),
+                Span::styled("y", Style::default().fg(theme::ERROR).bold()),
                 Span::raw(":confirm  "),
-                Span::styled("n/Esc", Style::default().fg(Color::DarkGray)),
+                Span::styled("n/Esc", Style::default().fg(theme::TEXT_MUTED)),
                 Span::raw(":cancel"),
             ]),
         ];
@@ -1762,13 +1764,13 @@ fn build_lines(data: &SettingsData) -> Vec<Line<'static>> {
             Span::raw("  "),
             Span::styled(
                 "No providers configured",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(theme::TEXT_MUTED),
             ),
         ]));
         lines.push(Line::raw(""));
         lines.push(Line::from(vec![
             Span::raw("  Press "),
-            Span::styled("a", Style::default().fg(Color::Cyan).bold()),
+            Span::styled("a", Style::default().fg(theme::PRIMARY_LIGHT).bold()),
             Span::raw(" to add a provider"),
         ]));
     } else {
@@ -1781,7 +1783,7 @@ fn build_lines(data: &SettingsData) -> Vec<Line<'static>> {
                     "Name", "Model", "Health", "Circuit", "Reqs", "OK%", "Latency", "Cost"
                 ),
                 Style::default()
-                    .fg(Color::DarkGray)
+                    .fg(theme::TEXT_MUTED)
                     .add_modifier(Modifier::BOLD),
             ),
         ]));
@@ -1789,9 +1791,9 @@ fn build_lines(data: &SettingsData) -> Vec<Line<'static>> {
         for (i, p) in data.providers.iter().enumerate() {
             let health_icon = if p.is_healthy { "\u{2713}" } else { "\u{2717}" };
             let health_color = if p.is_healthy {
-                Color::Green
+                theme::SUCCESS
             } else {
-                Color::Red
+                theme::ERROR
             };
 
             let name_display = if p.name.len() > 12 {
@@ -1814,7 +1816,7 @@ fn build_lines(data: &SettingsData) -> Vec<Line<'static>> {
                 Span::raw(format!("  {marker}")),
                 Span::styled(
                     format!("{:<14}", name_display),
-                    Style::default().fg(Color::Cyan),
+                    Style::default().fg(theme::PRIMARY_LIGHT),
                 ),
                 Span::raw(format!("{:<20} ", model_display)),
                 Span::styled(
@@ -1841,7 +1843,7 @@ fn build_lines(data: &SettingsData) -> Vec<Line<'static>> {
                     ),
                     Span::styled(
                         format!("  uptime: {:.1}%", p.uptime),
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(theme::TEXT_MUTED),
                     ),
                 ]));
             }
@@ -1852,13 +1854,13 @@ fn build_lines(data: &SettingsData) -> Vec<Line<'static>> {
     lines.push(Line::raw(""));
     lines.push(Line::from(vec![
         Span::raw("  "),
-        Span::styled("a", Style::default().fg(Color::DarkGray)),
+        Span::styled("a", Style::default().fg(theme::TEXT_MUTED)),
         Span::raw(":add  "),
-        Span::styled("e", Style::default().fg(Color::DarkGray)),
+        Span::styled("e", Style::default().fg(theme::TEXT_MUTED)),
         Span::raw(":edit  "),
-        Span::styled("d", Style::default().fg(Color::DarkGray)),
+        Span::styled("d", Style::default().fg(theme::TEXT_MUTED)),
         Span::raw(":delete  "),
-        Span::styled("r", Style::default().fg(Color::DarkGray)),
+        Span::styled("r", Style::default().fg(theme::TEXT_MUTED)),
         Span::raw(":refresh"),
     ]));
 
@@ -1914,15 +1916,15 @@ fn build_lines(data: &SettingsData) -> Vec<Line<'static>> {
     lines.extend(section_header("Cost Summary"));
     let budget_icon = if data.within_budget { "\u{2713}" } else { "\u{2717}" };
     let budget_color = if data.within_budget {
-        Color::Green
+        theme::SUCCESS
     } else {
-        Color::Red
+        theme::ERROR
     };
     lines.push(Line::from(vec![
         Span::raw("  "),
         Span::styled(
             format!("{:<22}", "Budget Status"),
-            Style::default().fg(Color::Cyan),
+            Style::default().fg(theme::PRIMARY_LIGHT),
         ),
         Span::styled(
             format!(
@@ -1991,11 +1993,11 @@ fn build_lines(data: &SettingsData) -> Vec<Line<'static>> {
     lines.push(Line::raw(""));
     lines.push(Line::from(vec![
         Span::raw("  "),
-        Span::styled("j/k", Style::default().fg(Color::DarkGray)),
+        Span::styled("j/k", Style::default().fg(theme::TEXT_MUTED)),
         Span::raw(":scroll "),
-        Span::styled("G/g", Style::default().fg(Color::DarkGray)),
+        Span::styled("G/g", Style::default().fg(theme::TEXT_MUTED)),
         Span::raw(":bottom/top "),
-        Span::styled("r", Style::default().fg(Color::DarkGray)),
+        Span::styled("r", Style::default().fg(theme::TEXT_MUTED)),
         Span::raw(":refresh"),
     ]));
     lines.push(Line::raw(""));
@@ -2009,12 +2011,12 @@ fn section_header(title: &str) -> Vec<Line<'static>> {
         Line::from(Span::styled(
             format!("  {title}"),
             Style::default()
-                .fg(Color::Yellow)
+                .fg(theme::ACCENT)
                 .add_modifier(Modifier::BOLD),
         )),
         Line::from(Span::styled(
             format!("  {}", "\u{2500}".repeat(50)),
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(theme::TEXT_MUTED),
         )),
     ]
 }
@@ -2024,7 +2026,7 @@ fn kv_row(key: &str, value: &str) -> Line<'static> {
         Span::raw("  "),
         Span::styled(
             format!("{:<22}", key),
-            Style::default().fg(Color::Cyan),
+            Style::default().fg(theme::PRIMARY_LIGHT),
         ),
         Span::raw(value.to_string()),
     ])

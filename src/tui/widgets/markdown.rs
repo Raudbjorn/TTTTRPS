@@ -8,6 +8,8 @@ use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span},
 };
+
+use crate::tui::theme;
 use syntect::easy::HighlightLines;
 use syntect::util::LinesWithEndings;
 
@@ -36,13 +38,13 @@ pub fn markdown_to_lines(md: &str) -> Vec<Line<'static>> {
                 flush_line(&mut current_spans, &mut lines);
                 let style = match level {
                     pulldown_cmark::HeadingLevel::H1 => {
-                        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                        Style::default().fg(theme::ACCENT).add_modifier(Modifier::BOLD)
                     }
                     pulldown_cmark::HeadingLevel::H2 => {
-                        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+                        Style::default().fg(theme::PRIMARY_LIGHT).add_modifier(Modifier::BOLD)
                     }
-                    pulldown_cmark::HeadingLevel::H3 => Style::default().fg(Color::Green),
-                    _ => Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                    pulldown_cmark::HeadingLevel::H3 => Style::default().fg(theme::SUCCESS),
+                    _ => Style::default().fg(theme::TEXT).add_modifier(Modifier::BOLD),
                 };
                 style_stack.push(style);
                 in_heading = true;
@@ -73,7 +75,7 @@ pub fn markdown_to_lines(md: &str) -> Vec<Line<'static>> {
             Event::Code(code) => {
                 current_spans.push(Span::styled(
                     format!(" {} ", code),
-                    Style::default().fg(Color::White).bg(Color::DarkGray),
+                    Style::default().fg(theme::TEXT).bg(theme::BG_SURFACE),
                 ));
             }
 
@@ -113,7 +115,7 @@ pub fn markdown_to_lines(md: &str) -> Vec<Line<'static>> {
                 let indent = "  ".repeat(list_depth.saturating_sub(1));
                 current_spans.push(Span::styled(
                     format!("{indent}• "),
-                    Style::default().fg(Color::Cyan),
+                    Style::default().fg(theme::PRIMARY_LIGHT),
                 ));
             }
             Event::End(TagEnd::Item) => {
@@ -123,7 +125,7 @@ pub fn markdown_to_lines(md: &str) -> Vec<Line<'static>> {
             // ── Links ────────────────────────────────────────────
             Event::Start(Tag::Link { .. }) => {
                 let style = Style::default()
-                    .fg(Color::Blue)
+                    .fg(theme::INFO)
                     .add_modifier(Modifier::UNDERLINED);
                 style_stack.push(style);
             }
@@ -165,7 +167,7 @@ pub fn markdown_to_lines(md: &str) -> Vec<Line<'static>> {
                 flush_line(&mut current_spans, &mut lines);
                 lines.push(Line::styled(
                     "─".repeat(40),
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(theme::TEXT_DIM),
                 ));
                 lines.push(Line::raw(""));
             }
@@ -174,8 +176,8 @@ pub fn markdown_to_lines(md: &str) -> Vec<Line<'static>> {
             Event::Start(Tag::BlockQuote) => {
                 flush_line(&mut current_spans, &mut lines);
                 let base = current_style(&style_stack);
-                style_stack.push(base.fg(Color::Gray).add_modifier(Modifier::ITALIC));
-                current_spans.push(Span::styled("│ ", Style::default().fg(Color::DarkGray)));
+                style_stack.push(base.fg(theme::TEXT_MUTED).add_modifier(Modifier::ITALIC));
+                current_spans.push(Span::styled("│ ", Style::default().fg(theme::TEXT_DIM)));
             }
             Event::End(TagEnd::BlockQuote) => {
                 flush_line(&mut current_spans, &mut lines);
@@ -242,7 +244,7 @@ fn render_code_block(code: &str, lang: &str, lines: &mut Vec<Line<'static>>) {
             Err(_) => {
                 lines.push(Line::styled(
                     line_str.to_string(),
-                    Style::default().fg(Color::White).bg(Color::Rgb(43, 48, 59)),
+                    Style::default().fg(theme::TEXT).bg(Color::Rgb(43, 48, 59)),
                 ));
             }
         }
@@ -287,21 +289,21 @@ mod tests {
     fn test_headings() {
         let lines = markdown_to_lines("# Heading 1\n## Heading 2\n### Heading 3");
         assert!(lines.len() >= 3);
-        // H1 should be yellow + bold
+        // H1 should be accent + bold
         assert!(lines[0]
             .spans
             .iter()
-            .any(|s| s.style.fg == Some(Color::Yellow)));
-        // H2 should be cyan + bold
+            .any(|s| s.style.fg == Some(theme::ACCENT)));
+        // H2 should be primary_light + bold
         assert!(lines[1]
             .spans
             .iter()
-            .any(|s| s.style.fg == Some(Color::Cyan)));
-        // H3 should be green
+            .any(|s| s.style.fg == Some(theme::PRIMARY_LIGHT)));
+        // H3 should be success
         assert!(lines[2]
             .spans
             .iter()
-            .any(|s| s.style.fg == Some(Color::Green)));
+            .any(|s| s.style.fg == Some(theme::SUCCESS)));
     }
 
     #[test]
@@ -311,7 +313,7 @@ mod tests {
         assert!(lines[0]
             .spans
             .iter()
-            .any(|s| s.style.bg == Some(Color::DarkGray)));
+            .any(|s| s.style.bg == Some(theme::BG_SURFACE)));
     }
 
     #[test]
