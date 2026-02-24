@@ -425,7 +425,7 @@ mod tests {
     fn test_vocabulary_cultures_present() {
         let banks = AssetLoader::load_vocabulary_banks();
         let culture_banks: Vec<_> = banks.iter().filter(|b| b.culture.is_some()).collect();
-        assert_eq!(culture_banks.len(), 5, "5 culture vocabulary banks");
+        assert_eq!(culture_banks.len(), 6, "6 culture vocabulary banks (5 cultures + common style)");
     }
 
     #[test]

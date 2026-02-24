@@ -232,12 +232,20 @@ impl CampaignWizardState {
         db_wizard.campaign_draft.system = Some(system.clone());
         db_wizard.campaign_draft.player_count = Some(self.party_size);
 
-        // TODO: Wire WizardManager into Services for persistence
+        // Persist via CampaignManager
+        let mut campaign = services.campaign_manager.create_campaign(&name, &system);
+        campaign.description = Some(desc.clone());
+
+        // Update with description
+        if let Err(e) = services.campaign_manager.update_campaign(campaign.clone(), false) {
+            log::error!("Failed to update campaign description: {e}");
+        }
+
         log::info!(
-            "Campaign wizard submitted: name={}, system={}, party_size={}",
-            name, system, self.party_size
+            "Campaign created: id={}, name={}, system={}, party_size={}",
+            campaign.id, name, system, self.party_size
         );
-        let _ = (services, db_wizard); // suppress unused warnings
+        let _ = db_wizard; // WizardState for future expanded persistence
 
         // Reset wizard
         self.name_input = TextArea::default();

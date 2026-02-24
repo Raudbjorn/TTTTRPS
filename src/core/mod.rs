@@ -1,4 +1,5 @@
 
+pub mod assets;
 pub mod models;
 pub mod logging;
 pub mod voice;
@@ -19,8 +20,8 @@ pub mod location_gen;
 
 // Meilisearch-based search (replaces vector_store, keyword_search, hybrid_search, embedding_pipeline)
 // search_client.rs refactored into search/ module
-pub mod meilisearch_pipeline;
-pub mod meilisearch_chat;
+pub mod search_pipeline;
+pub mod search_chat;
 
 // Unified search module: Meilisearch client + hybrid search + embeddings + TTRPG synonyms
 pub mod search;
@@ -62,3 +63,5 @@ pub mod storage;
 // Query preprocessing: typo correction + synonym expansion
 pub mod preprocess;
 
+// Embedded Meilisearch Core (Wilysearch)
+pub mod wilysearch;

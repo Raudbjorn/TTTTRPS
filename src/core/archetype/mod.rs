@@ -112,7 +112,8 @@
 pub mod cache;
 pub mod error;
 pub mod integration;
-pub mod meilisearch;
+pub mod memory_registry;
+pub mod search;
 pub mod registry;
 pub mod resolution;
 pub mod resolver;
@@ -131,7 +132,7 @@ pub use error::{ArchetypeError, Result};
 // Re-exports: Meilisearch
 // ============================================================================
 
-pub use meilisearch::{
+pub use search::{
     archetype_index_name,
     get_archetype_settings,
     get_vocabulary_bank_settings,
@@ -206,6 +207,7 @@ pub use resolution::{
 // Re-exports: Registry and Resolver
 // ============================================================================
 
+pub use memory_registry::InMemoryArchetypeRegistry;
 pub use registry::{ArchetypeEvent, ArchetypeRegistry};
 pub use resolver::ArchetypeResolver;
 

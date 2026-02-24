@@ -21,8 +21,9 @@
 
 use super::context::GameplayContext;
 use super::errors::{BlendRuleError, PersonalityExtensionError};
-use super::meilisearch::{escape_filter_value, PersonalityIndexManager};
+
 use super::types::{BlendRule, BlendRuleDocument, BlendRuleId, PersonalityId};
+use super::search::{PersonalityIndexManager, escape_filter_value};
 use lru::LruCache;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

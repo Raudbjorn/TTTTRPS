@@ -54,7 +54,7 @@ pub struct TTRPGFilterableFields {
 }
 
 /// TTRPG-specific searchable document with game metadata
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TTRPGSearchDocument {
     /// Base document fields
     #[serde(flatten)]

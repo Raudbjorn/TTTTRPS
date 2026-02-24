@@ -32,21 +32,9 @@ pub enum SearchError {
     LlmProvider(String),
 }
 
-impl From<meilisearch_sdk::errors::Error> for SearchError {
-    fn from(e: meilisearch_sdk::errors::Error) -> Self {
+impl From<crate::core::wilysearch::error::Error> for SearchError {
+    fn from(e: crate::core::wilysearch::error::Error) -> Self {
         SearchError::MeilisearchError(e.to_string())
-    }
-}
-
-impl From<meilisearch_lib::Error> for SearchError {
-    fn from(e: meilisearch_lib::Error) -> Self {
-        match &e {
-            meilisearch_lib::Error::IndexNotFound(uid) => SearchError::IndexNotFound(uid.clone()),
-            meilisearch_lib::Error::DocumentNotFound(id) => {
-                SearchError::DocumentNotFound(id.clone())
-            }
-            _ => SearchError::MeilisearchError(e.to_string()),
-        }
     }
 }
 

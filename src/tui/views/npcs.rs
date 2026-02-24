@@ -2,6 +2,7 @@
 //!
 //! Master-detail layout: left side shows NPC list, right side shows detail panel.
 //! Press `a` to add, `e` to edit, `d` to delete, `Enter` toggles detail panel.
+//! Press `/` to filter by name, `Ctrl+G` to generate a random name (in form).
 //! Press `v` for voice mode, `t` for talk-about mode.
 
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -14,6 +15,7 @@ use ratatui::{
 };
 use tokio::sync::mpsc;
 
+use crate::core::name_gen::{NameCulture, NameGender, NameGenerator, NameOptions, NameType};
 use crate::database::{NpcOps, NpcRecord};
 use crate::tui::app::centered_rect;
 use crate::tui::services::Services;
@@ -55,6 +57,10 @@ pub struct NpcViewState {
     selected: usize,
     show_detail: bool,
 
+    // Filter
+    filter: InputBuffer,
+    filter_active: bool,
+
     // Modal
     modal: Option<NpcModal>,
     form_focus: usize,
@@ -62,6 +68,9 @@ pub struct NpcViewState {
     form_role: InputBuffer,
     form_notes: InputBuffer,
     editing_id: Option<String>,
+
+    // Name generation
+    name_gen: NameGenerator,
 
     // Error/status
     error: Option<String>,
@@ -78,12 +87,15 @@ impl NpcViewState {
             npcs: Vec::new(),
             selected: 0,
             show_detail: false,
+            filter: InputBuffer::new(),
+            filter_active: false,
             modal: None,
             form_focus: 0,
             form_name: InputBuffer::new(),
             form_role: InputBuffer::new(),
             form_notes: InputBuffer::new(),
             editing_id: None,
+            name_gen: NameGenerator::new(),
             error: None,
             data_tx,
             data_rx,
@@ -125,6 +137,22 @@ impl NpcViewState {
         }
     }
 
+    // ── Filtered NPC list ────────────────────────────────────────────────
+
+    /// Returns indices into `self.npcs` that match the current filter text.
+    fn filtered_indices(&self) -> Vec<usize> {
+        let query = self.filter.text().trim().to_lowercase();
+        if query.is_empty() {
+            return (0..self.npcs.len()).collect();
+        }
+        self.npcs
+            .iter()
+            .enumerate()
+            .filter(|(_, npc)| npc.name.to_lowercase().contains(&query))
+            .map(|(i, _)| i)
+            .collect()
+    }
+
     // ── Input handling ─────────────────────────────────────────────────────
 
     pub fn handle_input(&mut self, event: &Event, services: &Services) -> bool {
@@ -136,19 +164,36 @@ impl NpcViewState {
             return self.handle_modal_input(modal, *code, *modifiers, services);
         }
 
+        // When filter is active, route input to filter first
+        if self.filter_active {
+            return self.handle_filter_input(*code, *modifiers, services);
+        }
+
         self.handle_list_input(*code, *modifiers, services)
     }
 
     fn handle_list_input(&mut self, code: KeyCode, modifiers: KeyModifiers, services: &Services) -> bool {
+        let filtered = self.filtered_indices();
         match (modifiers, code) {
+            (KeyModifiers::NONE, KeyCode::Char('/')) => {
+                self.filter_active = true;
+                true
+            }
             (KeyModifiers::NONE, KeyCode::Char('j') | KeyCode::Down) => {
-                if !self.npcs.is_empty() {
-                    self.selected = (self.selected + 1).min(self.npcs.len() - 1);
+                if !filtered.is_empty() {
+                    // Find current position in filtered list and move forward
+                    let pos = filtered.iter().position(|&i| i == self.selected).unwrap_or(0);
+                    let next = (pos + 1).min(filtered.len() - 1);
+                    self.selected = filtered[next];
                 }
                 true
             }
             (KeyModifiers::NONE, KeyCode::Char('k') | KeyCode::Up) => {
-                self.selected = self.selected.saturating_sub(1);
+                if !filtered.is_empty() {
+                    let pos = filtered.iter().position(|&i| i == self.selected).unwrap_or(0);
+                    let prev = pos.saturating_sub(1);
+                    self.selected = filtered[prev];
+                }
                 true
             }
             (KeyModifiers::NONE, KeyCode::Enter) => {
@@ -174,6 +219,45 @@ impl NpcViewState {
                 true
             }
             _ => false,
+        }
+    }
+
+    fn handle_filter_input(&mut self, code: KeyCode, modifiers: KeyModifiers, services: &Services) -> bool {
+        match (modifiers, code) {
+            (KeyModifiers::NONE, KeyCode::Esc) => {
+                // Clear filter and deactivate
+                self.filter.clear();
+                self.filter_active = false;
+                // Reset selection to first item if current selection is not visible
+                if !self.npcs.is_empty() {
+                    self.selected = self.selected.min(self.npcs.len() - 1);
+                }
+                true
+            }
+            (KeyModifiers::NONE, KeyCode::Enter) => {
+                // Confirm filter — deactivate but keep text
+                self.filter_active = false;
+                // Snap selection to first filtered result
+                let filtered = self.filtered_indices();
+                if !filtered.is_empty() && !filtered.contains(&self.selected) {
+                    self.selected = filtered[0];
+                }
+                true
+            }
+            (KeyModifiers::NONE, KeyCode::Down) | (KeyModifiers::NONE, KeyCode::Up) => {
+                // Allow navigation while filter is active
+                self.filter_active = false; // hand off to list navigation
+                self.handle_list_input(code, modifiers, services)
+            }
+            _ => {
+                route_text_input(&mut self.filter, code, modifiers);
+                // After typing, snap selection to first visible match
+                let filtered = self.filtered_indices();
+                if !filtered.is_empty() && !filtered.contains(&self.selected) {
+                    self.selected = filtered[0];
+                }
+                true
+            }
         }
     }
 
@@ -206,6 +290,10 @@ impl NpcViewState {
             }
             (KeyModifiers::CONTROL, KeyCode::Enter) => {
                 self.submit_form(services);
+                true
+            }
+            (KeyModifiers::CONTROL, KeyCode::Char('g')) => {
+                self.generate_name_into_active_field();
                 true
             }
             _ => {
@@ -280,6 +368,26 @@ impl NpcViewState {
         }
     }
 
+    fn generate_name_into_active_field(&mut self) {
+        let options = NameOptions {
+            culture: Some(NameCulture::Fantasy),
+            gender: Some(NameGender::Neutral),
+            name_type: NameType::FullName,
+            ..Default::default()
+        };
+        let generated = self.name_gen.generate(&options);
+
+        let buf = match FORM_FIELDS[self.form_focus] {
+            FormField::Name => &mut self.form_name,
+            FormField::Role => &mut self.form_role,
+            FormField::Notes => &mut self.form_notes,
+        };
+        buf.clear();
+        for c in generated.name.chars() {
+            buf.insert_char(c);
+        }
+    }
+
     fn submit_form(&mut self, services: &Services) {
         let name = self.form_name.take();
         let role = self.form_role.take();
@@ -346,8 +454,16 @@ impl NpcViewState {
     }
 
     fn render_list(&self, frame: &mut Frame, area: Rect) {
+        let filtered = self.filtered_indices();
+        let filter_text = self.filter.text();
+        let title = if filter_text.trim().is_empty() {
+            format!(" NPCs ({}) ", self.npcs.len())
+        } else {
+            format!(" NPCs ({}/{}) ", filtered.len(), self.npcs.len())
+        };
+
         let block = Block::default()
-            .title(format!(" NPCs ({}) ", self.npcs.len()))
+            .title(title)
             .borders(Borders::ALL)
             .border_style(Style::default().fg(theme::TEXT_MUTED));
 
@@ -355,6 +471,28 @@ impl NpcViewState {
         frame.render_widget(block, area);
 
         let mut lines: Vec<Line<'static>> = Vec::new();
+
+        // Filter bar
+        if self.filter_active || !filter_text.is_empty() {
+            let filter_style = if self.filter_active {
+                Style::default().fg(theme::ACCENT)
+            } else {
+                Style::default().fg(theme::TEXT_MUTED)
+            };
+            let display_text = if self.filter_active {
+                format!("{}▎", filter_text)
+            } else {
+                filter_text.to_string()
+            };
+            lines.push(Line::from(vec![
+                Span::styled("  / ", filter_style),
+                Span::styled(display_text, Style::default().fg(theme::TEXT)),
+            ]));
+            lines.push(Line::from(Span::styled(
+                format!("  {}", "─".repeat(inner.width.saturating_sub(4) as usize)),
+                Style::default().fg(theme::TEXT_DIM),
+            )));
+        }
 
         if self.npcs.is_empty() {
             lines.push(Line::raw(""));
@@ -364,10 +502,17 @@ impl NpcViewState {
                 Span::styled("a", Style::default().fg(theme::ACCENT).add_modifier(Modifier::BOLD)),
                 Span::styled(" to create one.", Style::default().fg(theme::TEXT_MUTED)),
             ]));
+        } else if filtered.is_empty() {
+            lines.push(Line::raw(""));
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled("No matches.", Style::default().fg(theme::TEXT_MUTED)),
+            ]));
         } else {
             lines.push(Line::raw(""));
-            for (i, npc) in self.npcs.iter().enumerate() {
-                let is_selected = i == self.selected;
+            for &idx in &filtered {
+                let npc = &self.npcs[idx];
+                let is_selected = idx == self.selected;
                 let cursor = if is_selected { "▸ " } else { "  " };
 
                 let name_style = if is_selected {
@@ -395,6 +540,8 @@ impl NpcViewState {
         )));
         lines.push(Line::from(vec![
             Span::raw("  "),
+            Span::styled("/", Style::default().fg(theme::TEXT_MUTED)),
+            Span::raw(":filter "),
             Span::styled("a", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":add "),
             Span::styled("e", Style::default().fg(theme::TEXT_MUTED)),
@@ -474,6 +621,87 @@ impl NpcViewState {
                 Span::styled("Voice: ", Style::default().fg(theme::TEXT_MUTED)),
                 Span::raw(truncate(voice, 30)),
             ]));
+        }
+
+        // Stats (parsed from stats_json)
+        if let Some(ref stats_str) = npc.stats_json {
+            if let Ok(stats) = serde_json::from_str::<serde_json::Value>(stats_str) {
+                if let Some(obj) = stats.as_object() {
+                    if !obj.is_empty() {
+                        lines.push(Line::raw(""));
+                        lines.push(Line::from(Span::styled(
+                            "  STATS",
+                            Style::default().fg(theme::PRIMARY).add_modifier(Modifier::BOLD),
+                        )));
+                        for (key, val) in obj {
+                            let display_val = match val {
+                                serde_json::Value::Number(n) => n.to_string(),
+                                serde_json::Value::String(s) => s.clone(),
+                                other => other.to_string(),
+                            };
+                            lines.push(Line::from(vec![
+                                Span::raw("  "),
+                                Span::styled(format!("{}: ", capitalize(key)), Style::default().fg(theme::TEXT_MUTED)),
+                                Span::styled(display_val, Style::default().fg(theme::TEXT)),
+                            ]));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Personality traits (parsed from personality_json)
+        {
+            if let Ok(personality) = serde_json::from_str::<serde_json::Value>(&npc.personality_json) {
+                if let Some(obj) = personality.as_object() {
+                    // Show personality if it has meaningful data (not just "{}")
+                    let has_data = obj.values().any(|v| !v.is_null() && v != "");
+                    if has_data && !obj.is_empty() {
+                        lines.push(Line::raw(""));
+                        lines.push(Line::from(Span::styled(
+                            "  PERSONALITY",
+                            Style::default().fg(theme::NPC).add_modifier(Modifier::BOLD),
+                        )));
+                        for (key, val) in obj {
+                            match val {
+                                serde_json::Value::Array(arr) => {
+                                    let items: Vec<String> = arr
+                                        .iter()
+                                        .filter_map(|v| v.as_str().map(String::from))
+                                        .collect();
+                                    if !items.is_empty() {
+                                        lines.push(Line::from(vec![
+                                            Span::raw("  "),
+                                            Span::styled(
+                                                format!("{}: ", capitalize(key)),
+                                                Style::default().fg(theme::TEXT_MUTED),
+                                            ),
+                                            Span::styled(
+                                                items.join(", "),
+                                                Style::default().fg(theme::TEXT),
+                                            ),
+                                        ]));
+                                    }
+                                }
+                                serde_json::Value::String(s) if !s.is_empty() => {
+                                    lines.push(Line::from(vec![
+                                        Span::raw("  "),
+                                        Span::styled(
+                                            format!("{}: ", capitalize(key)),
+                                            Style::default().fg(theme::TEXT_MUTED),
+                                        ),
+                                        Span::styled(
+                                            truncate(s, 50),
+                                            Style::default().fg(theme::TEXT),
+                                        ),
+                                    ]));
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Quest hooks
@@ -602,6 +830,8 @@ impl NpcViewState {
             Span::raw("  "),
             Span::styled("Tab", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":field "),
+            Span::styled("Ctrl+G", Style::default().fg(theme::TEXT_MUTED)),
+            Span::raw(":gen name "),
             Span::styled("Ctrl+Enter", Style::default().fg(theme::TEXT_MUTED)),
             Span::raw(":save "),
             Span::styled("Esc", Style::default().fg(theme::TEXT_MUTED)),
@@ -667,6 +897,14 @@ fn route_text_input(buf: &mut InputBuffer, code: KeyCode, modifiers: KeyModifier
         (KeyModifiers::NONE, KeyCode::Home) => buf.move_home(),
         (KeyModifiers::NONE, KeyCode::End) => buf.move_end(),
         _ => {}
+    }
+}
+
+fn capitalize(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) => c.to_uppercase().to_string() + chars.as_str(),
+        None => String::new(),
     }
 }
 
@@ -778,5 +1016,85 @@ mod tests {
     fn test_format_datetime_invalid() {
         let dt = format_datetime("not-a-date");
         assert_eq!(dt, "not-a-date");
+    }
+
+    #[test]
+    fn test_filter_matching() {
+        let mut state = NpcViewState::new();
+        state.npcs = vec![
+            NpcRecord::new("1".into(), "Aldric the Bold".into(), "Merchant".into()),
+            NpcRecord::new("2".into(), "Brynn Silverleaf".into(), "Guard".into()),
+            NpcRecord::new("3".into(), "Cora Nightshade".into(), "Healer".into()),
+            NpcRecord::new("4".into(), "Aldric Junior".into(), "Squire".into()),
+        ];
+
+        // Empty filter matches all
+        assert_eq!(state.filtered_indices(), vec![0, 1, 2, 3]);
+
+        // Type "aldric" into filter — case-insensitive match
+        for c in "aldric".chars() {
+            state.filter.insert_char(c);
+        }
+        assert_eq!(state.filtered_indices(), vec![0, 3]);
+
+        // "brynn" — single match
+        state.filter.clear();
+        for c in "brynn".chars() {
+            state.filter.insert_char(c);
+        }
+        assert_eq!(state.filtered_indices(), vec![1]);
+
+        // "zzz" — no match
+        state.filter.clear();
+        for c in "zzz".chars() {
+            state.filter.insert_char(c);
+        }
+        assert!(state.filtered_indices().is_empty());
+    }
+
+    #[test]
+    fn test_name_generation_produces_non_empty() {
+        let mut state = NpcViewState::new();
+        state.modal = Some(NpcModal::Create);
+        state.form_focus = 0; // Name field
+
+        state.generate_name_into_active_field();
+
+        let name_text = state.form_name.text().to_string();
+        assert!(!name_text.is_empty(), "generated name must not be empty");
+        assert!(name_text.contains(' '), "FullName should have first and last name: {name_text}");
+    }
+
+    #[test]
+    fn test_filter_clear() {
+        let mut state = NpcViewState::new();
+        state.npcs = vec![
+            NpcRecord::new("1".into(), "Aldric".into(), "Merchant".into()),
+            NpcRecord::new("2".into(), "Brynn".into(), "Guard".into()),
+        ];
+
+        // Activate filter and type something
+        state.filter_active = true;
+        for c in "aldric".chars() {
+            state.filter.insert_char(c);
+        }
+        assert_eq!(state.filtered_indices().len(), 1);
+
+        // Clear the filter
+        state.filter.clear();
+        state.filter_active = false;
+
+        // All NPCs should be visible again
+        assert_eq!(state.filtered_indices(), vec![0, 1]);
+        assert!(!state.filter_active);
+        assert!(state.filter.text().is_empty());
+    }
+
+    #[test]
+    fn test_capitalize_helper() {
+        assert_eq!(capitalize("strength"), "Strength");
+        assert_eq!(capitalize(""), "");
+        assert_eq!(capitalize("a"), "A");
+        assert_eq!(capitalize("ABC"), "ABC");
     }
 }

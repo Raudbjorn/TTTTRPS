@@ -27,7 +27,8 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use meilisearch_lib::{Meilisearch, MeilisearchOptions};
+use crate::core::wilysearch::engine::Engine;
+use crate::core::wilysearch::core::MeilisearchOptions;
 
 use super::error::{Result, SearchError};
 
@@ -40,7 +41,7 @@ const DEFAULT_MAX_INDEX_SIZE: usize = 10 * 1024 * 1024 * 1024;
 /// Tauri command handlers and async tasks.
 #[derive(Clone)]
 pub struct EmbeddedSearch {
-    inner: Arc<Meilisearch>,
+    inner: Arc<Engine>,
 }
 
 impl EmbeddedSearch {
@@ -85,14 +86,14 @@ impl EmbeddedSearch {
         };
 
         let inner =
-            Meilisearch::new(options).map_err(|e| SearchError::InitError(e.to_string()))?;
+            Engine::new(options).map_err(|e| SearchError::InitError(e.to_string()))?;
 
         Ok(Self {
             inner: Arc::new(inner),
         })
     }
 
-    /// Get a reference to the inner `Meilisearch`.
+    /// Get a reference to the inner `Engine`.
     ///
     /// Use this for synchronous operations or when you need direct access
     /// to the search engine methods.
@@ -100,15 +101,15 @@ impl EmbeddedSearch {
     /// # Example
     ///
     /// ```rust,ignore
-    /// let meili = search.inner();
-    /// let indexes = meili.list_indexes()?;
+    /// let engine = search.inner();
+    /// let indexes = engine.list_indexes()?;
     /// ```
     #[inline]
-    pub fn inner(&self) -> &Meilisearch {
+    pub fn inner(&self) -> &Engine {
         &self.inner
     }
 
-    /// Clone the `Arc<Meilisearch>` for sharing across async tasks.
+    /// Clone the `Arc<Engine>` for sharing across async tasks.
     ///
     /// Use this when spawning tasks that need owned access to the search engine,
     /// such as streaming response handlers.
@@ -116,21 +117,21 @@ impl EmbeddedSearch {
     /// # Example
     ///
     /// ```rust,ignore
-    /// let meili = search.clone_inner();
+    /// let engine = search.clone_inner();
     /// tokio::spawn(async move {
-    ///     let results = meili.search("index", query)?;
+    ///     let results = engine.search("index", query)?;
     ///     // ...
     /// });
     /// ```
     #[inline]
-    pub fn clone_inner(&self) -> Arc<Meilisearch> {
+    pub fn clone_inner(&self) -> Arc<Engine> {
         Arc::clone(&self.inner)
     }
 
     /// Attempt to shutdown the embedded Meilisearch instance.
     ///
     /// This attempts to gracefully shutdown if this is the last reference to the
-    /// inner `Meilisearch`. If other references exist, this method succeeds
+    /// inner `Engine`. If other references exist, this method succeeds
     /// without performing shutdown - cleanup will occur when all references are dropped.
     ///
     /// # Behavior
@@ -144,9 +145,9 @@ impl EmbeddedSearch {
     /// Returns an error only if shutdown fails when this is the sole owner.
     pub fn shutdown(self) -> Result<()> {
         match Arc::try_unwrap(self.inner) {
-            Ok(meili) => {
+            Ok(engine) => {
                 tracing::info!("EmbeddedSearch: sole owner, performing shutdown");
-                drop(meili);
+                drop(engine);
                 Ok(())
             }
             Err(_arc) => {
@@ -162,7 +163,7 @@ impl EmbeddedSearch {
 impl std::fmt::Debug for EmbeddedSearch {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("EmbeddedSearch")
-            .field("inner", &"Arc<Meilisearch>")
+            .field("inner", &"Arc<Engine>")
             .finish()
     }
 }
@@ -185,14 +186,14 @@ mod tests {
 
         let search = search.unwrap();
         // Verify inner() returns a reference
-        let _meili = search.inner();
+        let _engine = search.inner();
 
         // Verify clone_inner() returns an Arc
-        let meili_arc = search.clone_inner();
-        assert_eq!(Arc::strong_count(&meili_arc), 2);
+        let engine_arc = search.clone_inner();
+        assert_eq!(Arc::strong_count(&engine_arc), 2);
 
         // Drop the extra Arc reference so shutdown can take ownership
-        drop(meili_arc);
+        drop(engine_arc);
 
         // Clean shutdown (takes ownership)
         search.shutdown().expect("Shutdown should succeed");
@@ -239,7 +240,7 @@ mod tests {
         let search = EmbeddedSearch::new(db_path).expect("Should create search");
         let debug_str = format!("{:?}", search);
         assert!(debug_str.contains("EmbeddedSearch"));
-        assert!(debug_str.contains("Arc<Meilisearch>"));
+        assert!(debug_str.contains("Arc<Engine>"));
 
         search.shutdown().expect("Shutdown should succeed");
     }

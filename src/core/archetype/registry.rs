@@ -26,11 +26,10 @@
 //! ```rust,ignore
 //! use crate::core::archetype::{ArchetypeRegistry, Archetype, ArchetypeCategory};
 //! use crate::core::search::EmbeddedSearch;
-//! use meilisearch_sdk::Client;
+//! use crate::core::archetype::{ArchetypeRegistry, Archetype, ArchetypeCategory};
+//! use std::sync::Arc;
 //!
-//! let search = EmbeddedSearch::new(db_path)?;
-//! let client = Client::new("http://localhost:7700", None::<String>)?;
-//! let registry = ArchetypeRegistry::new(search.clone_inner(), client).await?;
+//! let registry = ArchetypeRegistry::new(meili.clone()).await?;
 //!
 //! // Register an archetype
 //! let archetype = Archetype::new("knight", "Knight", ArchetypeCategory::Class);
@@ -46,15 +45,18 @@
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use std::time::Duration;
 
 use lru::LruCache;
-use meilisearch_lib::Meilisearch;
-use meilisearch_sdk::client::Client;
 use tokio::sync::RwLock;
 
+use crate::core::wilysearch::engine::Engine;
+use crate::core::wilysearch::traits::{Search, Documents};
+use crate::core::wilysearch::types::{SearchRequest, AddDocumentsQuery};
+use crate::core::archetype::{ArchetypeIndexManager, INDEX_ARCHETYPES};
+use crate::core::wilysearch::error::Error as WilySearchError;
+
 use super::error::{ArchetypeError, Result};
-use super::meilisearch::{ArchetypeIndexManager, INDEX_ARCHETYPES};
+
 use super::resolution::{ResolutionQuery, ResolvedArchetype};
 use super::setting_pack::{SettingPack, SettingPackSummary};
 use super::types::{Archetype, ArchetypeCategory, ArchetypeId, ArchetypeSummary};
@@ -155,8 +157,8 @@ pub struct ArchetypeRegistry {
     /// Caches resolved archetypes to avoid repeated resolution.
     cache: Arc<RwLock<LruCache<String, ResolvedArchetype>>>,
 
-    /// Meilisearch client for persistence and search.
-    meilisearch_client: Client,
+    /// Embedded Meilisearch instance for persistence and search.
+    meili: Arc<Engine>,
 
     /// Event listeners (stub for future event system).
     event_listeners: Arc<RwLock<Vec<Box<dyn Fn(ArchetypeEvent) + Send + Sync>>>>,
@@ -172,8 +174,7 @@ impl ArchetypeRegistry {
     ///
     /// # Arguments
     ///
-    /// * `meili` - Shared reference to embedded Meilisearch (for index management)
-    /// * `meilisearch_client` - Initialized Meilisearch SDK client (for document CRUD)
+    /// * `meili` - Shared reference to embedded Meilisearch
     ///
     /// # Errors
     ///
@@ -182,12 +183,10 @@ impl ArchetypeRegistry {
     /// # Example
     ///
     /// ```rust,ignore
-    /// let search = EmbeddedSearch::new(db_path)?;
-    /// let client = Client::new("http://localhost:7700", None::<String>)?;
-    /// let registry = ArchetypeRegistry::new(search.clone_inner(), client).await?;
+    /// let registry = ArchetypeRegistry::new(meili).await?;
     /// ```
-    pub async fn new(meili: Arc<Meilisearch>, meilisearch_client: Client) -> Result<Self> {
-        Self::with_cache_capacity(meili, meilisearch_client, DEFAULT_CACHE_CAPACITY).await
+    pub async fn new(meili: Arc<Engine>) -> Result<Self> {
+        Self::with_cache_capacity(meili, DEFAULT_CACHE_CAPACITY).await
     }
 
     /// Create a new registry with custom cache capacity.
@@ -195,17 +194,15 @@ impl ArchetypeRegistry {
     /// # Arguments
     ///
     /// * `meili` - Shared reference to embedded Meilisearch (for index management)
-    /// * `meilisearch_client` - Initialized Meilisearch SDK client (for document CRUD)
     /// * `cache_capacity` - Maximum number of resolved archetypes to cache
     pub async fn with_cache_capacity(
-        meili: Arc<Meilisearch>,
-        meilisearch_client: Client,
+        meili: Arc<Engine>,
         cache_capacity: usize,
     ) -> Result<Self> {
         // Ensure indexes exist (using embedded meilisearch-lib)
         // Run in spawn_blocking to avoid blocking the async runtime during
         // synchronous index creation/settings operations.
-        let index_manager = ArchetypeIndexManager::new(meili);
+        let index_manager = ArchetypeIndexManager::new(meili.clone());
         tokio::task::spawn_blocking(move || index_manager.ensure_indexes())
             .await
             .map_err(|e| ArchetypeError::Meilisearch(
@@ -219,7 +216,7 @@ impl ArchetypeRegistry {
             cache: Arc::new(RwLock::new(LruCache::new(
                 NonZeroUsize::new(cache_capacity.max(1)).unwrap(),
             ))),
-            meilisearch_client,
+            meili,
             event_listeners: Arc::new(RwLock::new(Vec::new())),
         };
 
@@ -732,38 +729,32 @@ impl ArchetypeRegistry {
 
     /// Load archetypes from Meilisearch into memory.
     async fn load_from_meilisearch(&self) -> Result<()> {
-        let index = self.meilisearch_client.index(INDEX_ARCHETYPES);
-
-        // Get all documents with pagination using search with empty query
         let mut offset = 0;
         let limit = 100;
 
         loop {
-            let results: meilisearch_sdk::search::SearchResults<Archetype> = index
-                .search()
-                .with_query("")
-                .with_limit(limit)
-                .with_offset(offset)
-                .execute()
-                .await?;
+            let req = SearchRequest::default()
+                .offset(offset as u32)
+                .limit(limit as u32);
+
+            let results = self.meili.search(INDEX_ARCHETYPES, &req)
+                .map_err(|e| ArchetypeError::Meilisearch(e.to_string()))?;
 
             let count = results.hits.len();
-
             if count == 0 {
                 break;
             }
 
             {
                 let mut archetypes = self.archetypes.write().await;
-                for hit in results.hits {
-                    let archetype = hit.result;
-                    archetypes.insert(archetype.id.to_string(), archetype);
+                for result_doc in results.hits {
+                    if let Ok(archetype) = serde_json::from_value::<Archetype>(result_doc) {
+                        archetypes.insert(archetype.id.to_string(), archetype);
+                    }
                 }
             }
 
             offset += count;
-
-            // Check if we've fetched all documents
             if count < limit {
                 break;
             }
@@ -774,32 +765,23 @@ impl ArchetypeRegistry {
 
     /// Persist an archetype to Meilisearch.
     async fn persist_archetype(&self, archetype: &Archetype) -> Result<()> {
-        let index = self.meilisearch_client.index(INDEX_ARCHETYPES);
+        let doc = serde_json::to_value(archetype)?;
 
-        let task = index.add_documents(&[archetype], Some("id")).await?;
+        let query = AddDocumentsQuery {
+            primary_key: Some("id".to_string()),
+            ..Default::default()
+        };
 
-        task.wait_for_completion(
-            &self.meilisearch_client,
-            Some(Duration::from_millis(TASK_POLL_INTERVAL_MS)),
-            Some(Duration::from_secs(TASK_TIMEOUT_SECS)),
-        )
-        .await?;
+        self.meili.add_or_replace_documents(INDEX_ARCHETYPES, &[doc], &query)
+            .map_err(|e| ArchetypeError::Meilisearch(e.to_string()))?;
 
         Ok(())
     }
 
     /// Delete an archetype from Meilisearch.
     async fn delete_from_meilisearch(&self, id: &str) -> Result<()> {
-        let index = self.meilisearch_client.index(INDEX_ARCHETYPES);
-
-        let task = index.delete_document(id).await?;
-
-        task.wait_for_completion(
-            &self.meilisearch_client,
-            Some(Duration::from_millis(TASK_POLL_INTERVAL_MS)),
-            Some(Duration::from_secs(TASK_TIMEOUT_SECS)),
-        )
-        .await?;
+        self.meili.delete_document(INDEX_ARCHETYPES, id)
+            .map_err(|e| ArchetypeError::Meilisearch(e.to_string()))?;
 
         Ok(())
     }

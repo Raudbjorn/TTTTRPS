@@ -16,7 +16,7 @@
 pub mod common;
 mod database;
 pub mod integration;
-mod meilisearch_integration_tests;
+
 pub mod mocks;
 mod property;
 pub mod unit;

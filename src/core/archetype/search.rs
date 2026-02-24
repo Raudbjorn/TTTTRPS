@@ -310,9 +310,9 @@ mod tests {
         let settings = build_archetype_settings();
         let sortable = settings.sortable_attributes.as_ref().expect("sortable should be set");
         assert_eq!(sortable.len(), 3, "Expected 3 sortable attributes");
-        assert!(sortable.contains("display_name"));
-        assert!(sortable.contains("category"));
-        assert!(sortable.contains("created_at"));
+        assert!(sortable.contains(&"display_name".to_string()));
+        assert!(sortable.contains(&"category".to_string()));
+        assert!(sortable.contains(&"created_at".to_string()));
     }
 
     #[test]
@@ -331,8 +331,8 @@ mod tests {
         let settings = build_vocabulary_bank_settings();
         let sortable = settings.sortable_attributes.as_ref().expect("sortable should be set");
         assert_eq!(sortable.len(), 2, "Expected 2 sortable attributes");
-        assert!(sortable.contains("display_name"));
-        assert!(sortable.contains("created_at"));
+        assert!(sortable.contains(&"display_name".to_string()));
+        assert!(sortable.contains(&"created_at".to_string()));
     }
 
     #[test]

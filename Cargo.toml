@@ -45,11 +45,25 @@ hmac = "0.12"
 pbkdf2 = "0.12"
 flate2 = "1.0"
 
-# Meilisearch for unified search (replaces lancedb + tantivy)
-# Using embedded meilisearch-lib for direct Rust integration (no HTTP server/sidecar)
-meilisearch-lib = { path = "../meili-dev/crates/meilisearch-lib" }
-# Keep meilisearch-sdk temporarily for existing code during migration
-meilisearch-sdk = "0.31"
+# Wilysearch vendored dependencies (milli core)
+meilisearch-types = { git = "https://github.com/meilisearch/meilisearch", rev = "a1e3c2cb8f99dd6ec9182b9d26927477eef3ef14" }
+milli = { git = "https://github.com/meilisearch/meilisearch", rev = "a1e3c2cb8f99dd6ec9182b9d26927477eef3ef14" }
+file-store = { git = "https://github.com/meilisearch/meilisearch", rev = "a1e3c2cb8f99dd6ec9182b9d26927477eef3ef14" }
+http-client = { git = "https://github.com/meilisearch/meilisearch", rev = "a1e3c2cb8f99dd6ec9182b9d26927477eef3ef14" }
+
+indexmap = { version = "2", features = ["serde"] }
+anyhow = "1.0"
+roaring = "0.10"
+crossbeam-channel = "0.5"
+rayon = "1.10"
+bumpalo = "3.16"
+fst = "0.4"
+unicode-normalization = "0.1"
+candle-core = "=0.9.1"
+candle-nn = "=0.9.1"
+candle-transformers = "=0.9.1"
+paste = "1.0.15"
+figment = { version = "0.10", features = ["toml", "env"] }
 
 # SurrealDB for unified document and graph database
 # Using embedded RocksDB storage (no external server required)
@@ -113,6 +127,7 @@ pin-project-lite = "0.2"
 urlencoding = "2.1"
 open = "5.3.3"
 ratatui-textarea = "0.8.0"
+serde_yaml = "0.9.34"
 
 
 # Platform-specific dependencies

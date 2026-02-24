@@ -240,6 +240,9 @@ impl AppState {
                 self.chat
                     .on_npc_conversation_loaded(npc, conversation, &self.services);
             }
+            AppEvent::RagChunksRetrieved(chunks) => {
+                self.chat.set_rag_chunks(chunks);
+            }
             AppEvent::AudioPlayback(ref event) => {
                 self.services.audio.update_state(event);
                 self.chat.on_audio_event(event);
@@ -420,15 +423,32 @@ impl AppState {
                 self.set_focus(Focus::Personality);
                 self.personality.load(&self.services);
             }
-            // New view focus actions (stubs — no load() yet)
             Action::FocusCombat => self.set_focus(Focus::Combat),
             Action::FocusNotes => self.set_focus(Focus::Notes),
-            Action::FocusNpcs => self.set_focus(Focus::Npcs),
-            Action::FocusLocations => self.set_focus(Focus::Locations),
-            Action::FocusArchetypes => self.set_focus(Focus::Archetypes),
-            Action::FocusVoice => self.set_focus(Focus::Voice),
-            Action::FocusUsage => self.set_focus(Focus::Usage),
-            Action::FocusAudit => self.set_focus(Focus::Audit),
+            Action::FocusNpcs => {
+                self.set_focus(Focus::Npcs);
+                self.npcs.load(&self.services);
+            }
+            Action::FocusLocations => {
+                self.set_focus(Focus::Locations);
+                self.locations.load(&self.services);
+            }
+            Action::FocusArchetypes => {
+                self.set_focus(Focus::Archetypes);
+                self.archetypes.load(&self.services);
+            }
+            Action::FocusVoice => {
+                self.set_focus(Focus::Voice);
+                self.voice.load(&self.services);
+            }
+            Action::FocusUsage => {
+                self.set_focus(Focus::Usage);
+                self.usage.load(&self.services);
+            }
+            Action::FocusAudit => {
+                self.set_focus(Focus::Audit);
+                self.audit.load(&self.services);
+            }
             Action::TabNext => {
                 self.focus = self.focus.next();
                 self.sidebar.sync_to_focus(self.focus);
@@ -497,19 +517,15 @@ impl AppState {
             Action::SendMessage(_msg) => {
                 // Handled directly by ChatState via input handling
             }
-            // New view refreshes — stubs
-            Action::RefreshNpcs
-            | Action::RefreshUsage
-            | Action::RefreshAudit
-            | Action::RefreshLocations
-            | Action::RefreshVoice
-            | Action::RefreshArchetypes => {
-                // TODO: wire when views are implemented
-            }
-            // Combat actions — stubs
-            Action::StartCombat | Action::EndCombat | Action::NextTurn => {
-                // TODO: wire when combat view is implemented
-            }
+            // View refreshes
+            Action::RefreshNpcs => self.npcs.load(&self.services),
+            Action::RefreshUsage => self.usage.load(&self.services),
+            Action::RefreshAudit => self.audit.load(&self.services),
+            Action::RefreshLocations => self.locations.load(&self.services),
+            Action::RefreshVoice => self.voice.load(&self.services),
+            Action::RefreshArchetypes => self.archetypes.load(&self.services),
+            // Combat actions — handled internally by combat view keybindings
+            Action::StartCombat | Action::EndCombat | Action::NextTurn => {}
         }
     }
 
@@ -812,6 +828,27 @@ impl AppState {
             ("Enter", "Toggle detail panel"),
             ("r", "Refresh data"),
             ("j/k", "Navigate list"),
+            ("", ""),
+            ("Combat View:", ""),
+            ("n", "Add combatant"),
+            ("d", "Remove combatant"),
+            ("Space", "Next turn"),
+            ("h", "Heal combatant"),
+            ("D", "Damage combatant"),
+            ("c", "Add condition"),
+            ("e", "End combat"),
+            ("", ""),
+            ("NPC View:", ""),
+            ("a", "Add NPC"),
+            ("e", "Edit selected NPC"),
+            ("d", "Delete NPC"),
+            ("Enter", "Toggle detail"),
+            ("s", "Search NPCs"),
+            ("", ""),
+            ("Voice View:", ""),
+            ("Tab", "Switch panels"),
+            ("j/k", "Navigate list"),
+            ("r", "Refresh data"),
         ];
 
         let mut lines = vec![

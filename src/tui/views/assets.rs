@@ -1,10 +1,10 @@
 //! World-building asset browser — read-only three-panel view for
 //! archetypes, setting packs, and vocabulary banks.
 //!
-//! Displays YAML-based archetype, setting pack, and vocabulary files
+//! Displays YAML-based archetype, setting pack, and vocabulary data
 //! with category tree navigation (left), item list (middle), and a
-//! detail pane (right). Currently populated with static/hardcoded
-//! data since `ArchetypeRegistry` is not yet wired through Services.
+//! detail pane (right). Data loads from `InMemoryArchetypeRegistry`
+//! and `AssetLoader` via Services.
 
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
@@ -14,8 +14,10 @@ use ratatui::{
     widgets::Paragraph,
     Frame,
 };
+use tokio::sync::mpsc;
 
 use super::super::theme;
+use crate::core::assets::AssetLoader;
 use crate::tui::services::Services;
 
 // ── Asset category ──────────────────────────────────────────────────────────
@@ -44,9 +46,9 @@ impl AssetCategory {
 
     fn icon(self) -> &'static str {
         match self {
-            Self::Archetypes => "◎",
-            Self::SettingPacks => "◈",
-            Self::Vocabulary => "◇",
+            Self::Archetypes => "\u{25ce}",
+            Self::SettingPacks => "\u{25c8}",
+            Self::Vocabulary => "\u{25c7}",
         }
     }
 }
@@ -80,292 +82,20 @@ struct AssetItem {
     details: Vec<(String, String)>,
 }
 
-// ── Static data ─────────────────────────────────────────────────────────────
+// ── Loaded data ─────────────────────────────────────────────────────────────
 
-fn archetype_items() -> Vec<AssetItem> {
-    vec![
-        AssetItem {
-            name: "Warrior".into(),
-            item_type: "category".into(),
-            description: "Combat-focused archetypes for martial NPCs.".into(),
-            details: vec![
-                (
-                    "Members".into(),
-                    "Knight, Barbarian, Ranger, Paladin, Fighter".into(),
-                ),
-                (
-                    "Personality Affinities".into(),
-                    "brave (0.8), loyal (0.7), stubborn (0.6)".into(),
-                ),
-                (
-                    "NPC Role Mappings".into(),
-                    "guard (0.9), mercenary (0.7), trainer (0.5)".into(),
-                ),
-            ],
-        },
-        AssetItem {
-            name: "Magic".into(),
-            item_type: "category".into(),
-            description: "Arcane and divine spellcasting archetypes.".into(),
-            details: vec![
-                (
-                    "Members".into(),
-                    "Wizard, Sorcerer, Warlock, Druid, Cleric".into(),
-                ),
-                (
-                    "Personality Affinities".into(),
-                    "curious (0.9), cautious (0.5), eccentric (0.7)".into(),
-                ),
-                (
-                    "NPC Role Mappings".into(),
-                    "sage (0.8), healer (0.6), enchanter (0.7)".into(),
-                ),
-            ],
-        },
-        AssetItem {
-            name: "Rogue".into(),
-            item_type: "category".into(),
-            description: "Stealth and subterfuge archetypes.".into(),
-            details: vec![
-                ("Members".into(), "Thief, Assassin, Bard, Scout, Spy".into()),
-                (
-                    "Personality Affinities".into(),
-                    "cunning (0.9), charming (0.6), paranoid (0.5)".into(),
-                ),
-                (
-                    "NPC Role Mappings".into(),
-                    "informant (0.8), fence (0.7), entertainer (0.5)".into(),
-                ),
-            ],
-        },
-        AssetItem {
-            name: "Social".into(),
-            item_type: "category".into(),
-            description: "Diplomacy and influence archetypes.".into(),
-            details: vec![
-                (
-                    "Members".into(),
-                    "Noble, Merchant, Diplomat, Scholar, Healer".into(),
-                ),
-                (
-                    "Personality Affinities".into(),
-                    "charismatic (0.8), perceptive (0.7), patient (0.6)".into(),
-                ),
-                (
-                    "NPC Role Mappings".into(),
-                    "merchant (0.9), noble (0.7), advisor (0.6)".into(),
-                ),
-            ],
-        },
-        AssetItem {
-            name: "Creature".into(),
-            item_type: "category".into(),
-            description: "Non-humanoid and monstrous archetypes.".into(),
-            details: vec![
-                (
-                    "Members".into(),
-                    "Beast, Undead, Fiend, Fey, Construct".into(),
-                ),
-                (
-                    "Personality Affinities".into(),
-                    "territorial (0.7), alien (0.8), instinctive (0.6)".into(),
-                ),
-                (
-                    "NPC Role Mappings".into(),
-                    "guardian (0.7), predator (0.8), familiar (0.4)".into(),
-                ),
-            ],
-        },
-    ]
+#[derive(Clone, Debug)]
+struct AssetData {
+    archetype_items: Vec<AssetItem>,
+    setting_items: Vec<AssetItem>,
+    vocabulary_items: Vec<AssetItem>,
 }
 
-fn setting_pack_items() -> Vec<AssetItem> {
-    vec![
-        AssetItem {
-            name: "dnd5e".into(),
-            item_type: "setting_pack".into(),
-            description: "Dungeons & Dragons 5th Edition core setting pack.".into(),
-            details: vec![
-                ("System".into(), "D&D 5e".into()),
-                ("Version".into(), "1.0.0".into()),
-                (
-                    "Description".into(),
-                    "Core races, classes, and monster archetypes for 5th Edition.".into(),
-                ),
-                ("Archetype Overrides".into(), "12".into()),
-                ("Custom Archetypes".into(), "8".into()),
-                (
-                    "Naming Cultures".into(),
-                    "6 (Common, Dwarvish, Elvish, Draconic, Infernal, Celestial)".into(),
-                ),
-            ],
-        },
-        AssetItem {
-            name: "pathfinder2e".into(),
-            item_type: "setting_pack".into(),
-            description: "Pathfinder 2nd Edition setting pack.".into(),
-            details: vec![
-                ("System".into(), "Pathfinder 2e".into()),
-                ("Version".into(), "1.0.0".into()),
-                (
-                    "Description".into(),
-                    "Ancestries, classes, and Golarion-specific archetypes.".into(),
-                ),
-                ("Archetype Overrides".into(), "15".into()),
-                ("Custom Archetypes".into(), "10".into()),
-                (
-                    "Naming Cultures".into(),
-                    "8 (Taldane, Kelish, Varisian, Shoanti, Tien, Osirian, Mwangi, Skald)".into(),
-                ),
-            ],
-        },
-        AssetItem {
-            name: "fate".into(),
-            item_type: "setting_pack".into(),
-            description: "Fate Core / Fate Accelerated setting pack.".into(),
-            details: vec![
-                ("System".into(), "Fate Core".into()),
-                ("Version".into(), "1.0.0".into()),
-                (
-                    "Description".into(),
-                    "Aspect-driven archetypes for narrative-focused play.".into(),
-                ),
-                ("Archetype Overrides".into(), "5".into()),
-                ("Custom Archetypes".into(), "4".into()),
-                ("Naming Cultures".into(), "2 (Generic, Pulp)".into()),
-            ],
-        },
-        AssetItem {
-            name: "savage_worlds".into(),
-            item_type: "setting_pack".into(),
-            description: "Savage Worlds Adventure Edition setting pack.".into(),
-            details: vec![
-                ("System".into(), "Savage Worlds".into()),
-                ("Version".into(), "1.0.0".into()),
-                (
-                    "Description".into(),
-                    "Edges, hindrances, and archetypes for fast-furious-fun play.".into(),
-                ),
-                ("Archetype Overrides".into(), "8".into()),
-                ("Custom Archetypes".into(), "6".into()),
-                (
-                    "Naming Cultures".into(),
-                    "3 (Modern, Fantasy, Sci-Fi)".into(),
-                ),
-            ],
-        },
-    ]
-}
-
-fn vocabulary_items() -> Vec<AssetItem> {
-    vec![
-        AssetItem {
-            name: "greetings".into(),
-            item_type: "phrase_category".into(),
-            description: "Opening phrases for NPC conversations.".into(),
-            details: vec![
-                ("Category".into(), "Greetings".into()),
-                ("Phrase Count".into(), "24".into()),
-                ("Example (Casual)".into(), "\"Hey there, traveler!\"".into()),
-                (
-                    "Example (Formal)".into(),
-                    "\"Well met, honored guest.\"".into(),
-                ),
-                (
-                    "Example (Hostile)".into(),
-                    "\"State your business, outsider.\"".into(),
-                ),
-            ],
-        },
-        AssetItem {
-            name: "farewells".into(),
-            item_type: "phrase_category".into(),
-            description: "Closing phrases for NPC conversations.".into(),
-            details: vec![
-                ("Category".into(), "Farewells".into()),
-                ("Phrase Count".into(), "18".into()),
-                ("Example (Casual)".into(), "\"See you around!\"".into()),
-                (
-                    "Example (Formal)".into(),
-                    "\"May the road rise to meet you.\"".into(),
-                ),
-                (
-                    "Example (Gruff)".into(),
-                    "\"Don't let the door hit you.\"".into(),
-                ),
-            ],
-        },
-        AssetItem {
-            name: "combat_cries".into(),
-            item_type: "phrase_category".into(),
-            description: "Battle shouts and war cries.".into(),
-            details: vec![
-                ("Category".into(), "Combat Cries".into()),
-                ("Phrase Count".into(), "16".into()),
-                (
-                    "Example (Warrior)".into(),
-                    "\"For glory and honor!\"".into(),
-                ),
-                (
-                    "Example (Berserker)".into(),
-                    "\"BLOOD AND THUNDER!\"".into(),
-                ),
-                (
-                    "Example (Paladin)".into(),
-                    "\"By the light, you shall fall!\"".into(),
-                ),
-            ],
-        },
-        AssetItem {
-            name: "insults".into(),
-            item_type: "phrase_category".into(),
-            description: "Taunts and provocations for hostile NPCs.".into(),
-            details: vec![
-                ("Category".into(), "Insults".into()),
-                ("Phrase Count".into(), "20".into()),
-                (
-                    "Example (Witty)".into(),
-                    "\"I've met smarter goblins.\"".into(),
-                ),
-                (
-                    "Example (Crude)".into(),
-                    "\"You fight like a dairy farmer!\"".into(),
-                ),
-                (
-                    "Example (Noble)".into(),
-                    "\"How quaint. Do you call that swordplay?\"".into(),
-                ),
-            ],
-        },
-        AssetItem {
-            name: "compliments".into(),
-            item_type: "phrase_category".into(),
-            description: "Praise and flattery for friendly NPCs.".into(),
-            details: vec![
-                ("Category".into(), "Compliments".into()),
-                ("Phrase Count".into(), "14".into()),
-                (
-                    "Example (Genuine)".into(),
-                    "\"That was truly impressive work.\"".into(),
-                ),
-                (
-                    "Example (Merchant)".into(),
-                    "\"A customer of impeccable taste!\"".into(),
-                ),
-                (
-                    "Example (Bardic)".into(),
-                    "\"Your deeds shall echo through the ages!\"".into(),
-                ),
-            ],
-        },
-    ]
-}
-
-fn items_for_category(category: AssetCategory) -> Vec<AssetItem> {
+fn build_items_from_registry(data: &AssetData, category: AssetCategory) -> &[AssetItem] {
     match category {
-        AssetCategory::Archetypes => archetype_items(),
-        AssetCategory::SettingPacks => setting_pack_items(),
-        AssetCategory::Vocabulary => vocabulary_items(),
+        AssetCategory::Archetypes => &data.archetype_items,
+        AssetCategory::SettingPacks => &data.setting_items,
+        AssetCategory::Vocabulary => &data.vocabulary_items,
     }
 }
 
@@ -373,49 +103,211 @@ fn items_for_category(category: AssetCategory) -> Vec<AssetItem> {
 
 pub struct AssetBrowserState {
     category: AssetCategory,
-    items: Vec<AssetItem>,
+    data: Option<AssetData>,
+    loading: bool,
     selected_category: usize,
     selected_item: usize,
     focus_panel: AssetPanel,
     detail_scroll: usize,
+    data_rx: mpsc::UnboundedReceiver<AssetData>,
+    data_tx: mpsc::UnboundedSender<AssetData>,
 }
 
 impl AssetBrowserState {
     pub fn new() -> Self {
-        let category = AssetCategory::Archetypes;
-        let items = items_for_category(category);
+        let (data_tx, data_rx) = mpsc::unbounded_channel();
         Self {
-            category,
-            items,
+            category: AssetCategory::Archetypes,
+            data: None,
+            loading: false,
             selected_category: 0,
             selected_item: 0,
             focus_panel: AssetPanel::Categories,
             detail_scroll: 0,
+            data_rx,
+            data_tx,
         }
     }
 
-    pub fn load(&mut self, _services: &Services) {
-        // ArchetypeRegistry not in Services yet — using static data
-        self.refresh_items();
+    pub fn load(&mut self, services: &Services) {
+        if self.loading {
+            return;
+        }
+        self.loading = true;
+        let tx = self.data_tx.clone();
+        let registry = services.archetype_registry.clone();
+
+        tokio::spawn(async move {
+            // Archetypes from registry (full detail)
+            let all_archetypes = registry.list_full(None).await;
+            let archetype_items: Vec<AssetItem> = all_archetypes
+                .iter()
+                .map(|a| {
+                    let mut details = Vec::new();
+                    details.push(("Category".into(), format!("{}", a.category)));
+                    details.push(("ID".into(), a.id.to_string()));
+
+                    if !a.personality_affinity.is_empty() {
+                        let traits: Vec<String> = a
+                            .personality_affinity
+                            .iter()
+                            .map(|pa| format!("{} ({:.0}%)", pa.trait_id, pa.weight * 100.0))
+                            .collect();
+                        details.push(("Personality".into(), traits.join(", ")));
+                    }
+
+                    if !a.npc_role_mapping.is_empty() {
+                        let roles: Vec<String> = a
+                            .npc_role_mapping
+                            .iter()
+                            .map(|rm| format!("{} ({:.0}%)", rm.role, rm.weight * 100.0))
+                            .collect();
+                        details.push(("NPC Roles".into(), roles.join(", ")));
+                    }
+
+                    if !a.naming_cultures.is_empty() {
+                        let cultures: Vec<String> = a
+                            .naming_cultures
+                            .iter()
+                            .map(|nc| format!("{} ({:.0}%)", nc.culture, nc.weight * 100.0))
+                            .collect();
+                        details.push(("Naming Cultures".into(), cultures.join(", ")));
+                    }
+
+                    if let Some(ref bank) = a.vocabulary_bank_id {
+                        details.push(("Vocabulary Bank".into(), bank.clone()));
+                    }
+
+                    AssetItem {
+                        name: a.display_name.to_string(),
+                        item_type: format!("{}", a.category),
+                        description: a
+                            .description
+                            .clone()
+                            .unwrap_or_else(|| format!("{} archetype", a.category)),
+                        details,
+                    }
+                })
+                .collect();
+
+            // Setting packs from registry
+            let all_packs = registry.list_setting_packs().await;
+            let setting_items: Vec<AssetItem> = all_packs
+                .iter()
+                .map(|summary| {
+                    let mut details = Vec::new();
+                    details.push(("ID".into(), summary.id.clone()));
+                    details.push(("Game System".into(), summary.game_system.clone()));
+                    details.push(("Version".into(), summary.version.clone()));
+                    if let Some(ref author) = summary.author {
+                        details.push(("Author".into(), author.clone()));
+                    }
+                    if !summary.tags.is_empty() {
+                        details.push(("Tags".into(), summary.tags.join(", ")));
+                    }
+
+                    AssetItem {
+                        name: summary.name.clone(),
+                        item_type: "setting_pack".into(),
+                        description: format!(
+                            "{} setting pack (v{})",
+                            summary.game_system, summary.version
+                        ),
+                        details,
+                    }
+                })
+                .collect();
+
+            // Vocabulary banks from AssetLoader
+            let vocab_banks = AssetLoader::load_vocabulary_banks();
+            let vocabulary_items: Vec<AssetItem> = vocab_banks
+                .iter()
+                .map(|bank| {
+                    let phrase_count = bank.phrase_count();
+                    let mut details = Vec::new();
+                    details.push(("Bank ID".into(), bank.id.clone()));
+                    if let Some(ref culture) = bank.culture {
+                        details.push(("Culture".into(), culture.clone()));
+                    }
+                    if let Some(ref role) = bank.role {
+                        details.push(("Role".into(), role.clone()));
+                    }
+                    details.push(("Phrase Count".into(), format!("{phrase_count}")));
+
+                    // Show phrase categories
+                    let categories: Vec<String> = bank
+                        .phrases
+                        .keys()
+                        .cloned()
+                        .collect();
+                    if !categories.is_empty() {
+                        details.push((
+                            "Categories".into(),
+                            categories.join(", "),
+                        ));
+                    }
+
+                    // Show sample phrases (up to 3 from first category)
+                    if let Some(first_phrases) = bank.phrases.values().next() {
+                        for (i, phrase) in first_phrases.iter().take(3).enumerate() {
+                            details.push((
+                                format!("Sample {}", i + 1),
+                                format!("\"{}\"", phrase.text),
+                            ));
+                        }
+                    }
+
+                    AssetItem {
+                        name: bank.display_name.clone(),
+                        item_type: "vocabulary_bank".into(),
+                        description: format!(
+                            "{} vocabulary bank with {} phrases",
+                            bank.culture.as_deref().unwrap_or("general"),
+                            phrase_count
+                        ),
+                        details,
+                    }
+                })
+                .collect();
+
+            let _ = tx.send(AssetData {
+                archetype_items,
+                setting_items,
+                vocabulary_items,
+            });
+        });
     }
 
     pub fn poll(&mut self) {
-        // No async data to poll
+        if let Ok(data) = self.data_rx.try_recv() {
+            self.data = Some(data);
+            self.loading = false;
+            self.selected_item = 0;
+            self.detail_scroll = 0;
+        }
     }
 
-    fn refresh_items(&mut self) {
-        self.items = items_for_category(self.category);
-        self.selected_item = self.selected_item.min(self.items.len().saturating_sub(1));
-        self.detail_scroll = 0;
+    fn items(&self) -> &[AssetItem] {
+        match &self.data {
+            Some(data) => build_items_from_registry(data, self.category),
+            None => &[],
+        }
     }
 
     fn current_item(&self) -> Option<&AssetItem> {
-        self.items.get(self.selected_item)
+        self.items().get(self.selected_item)
+    }
+
+    fn item_count_for_category(&self, cat: AssetCategory) -> usize {
+        match &self.data {
+            Some(data) => build_items_from_registry(data, cat).len(),
+            None => 0,
+        }
     }
 
     // ── Input ───────────────────────────────────────────────────────────
 
-    pub fn handle_input(&mut self, event: &Event, _services: &Services) -> bool {
+    pub fn handle_input(&mut self, event: &Event, services: &Services) -> bool {
         let Event::Key(KeyEvent {
             code,
             kind: KeyEventKind::Press,
@@ -484,6 +376,11 @@ impl AssetBrowserState {
                 }
                 true
             }
+            // Refresh
+            (KeyModifiers::NONE, KeyCode::Char('r')) => {
+                self.load(services);
+                true
+            }
             // Vertical navigation
             (KeyModifiers::NONE, KeyCode::Char('j') | KeyCode::Down) => {
                 match self.focus_panel {
@@ -492,11 +389,12 @@ impl AssetBrowserState {
                         if self.selected_category < max {
                             self.selected_category += 1;
                             self.category = AssetCategory::ALL[self.selected_category];
-                            self.refresh_items();
+                            self.selected_item = 0;
+                            self.detail_scroll = 0;
                         }
                     }
                     AssetPanel::Items => {
-                        let max = self.items.len().saturating_sub(1);
+                        let max = self.items().len().saturating_sub(1);
                         if self.selected_item < max {
                             self.selected_item += 1;
                             self.detail_scroll = 0;
@@ -514,7 +412,8 @@ impl AssetBrowserState {
                         if self.selected_category > 0 {
                             self.selected_category -= 1;
                             self.category = AssetCategory::ALL[self.selected_category];
-                            self.refresh_items();
+                            self.selected_item = 0;
+                            self.detail_scroll = 0;
                         }
                     }
                     AssetPanel::Items => {
@@ -564,7 +463,7 @@ impl AssetBrowserState {
         for (i, cat) in AssetCategory::ALL.iter().enumerate() {
             let is_selected = i == self.selected_category;
             let marker = if is_selected && is_focused {
-                "▸ "
+                "\u{25b8} "
             } else {
                 "  "
             };
@@ -577,7 +476,7 @@ impl AssetBrowserState {
                 Style::default().fg(theme::TEXT)
             };
 
-            let item_count = items_for_category(*cat).len();
+            let item_count = self.item_count_for_category(*cat);
 
             lines.push(Line::from(vec![
                 Span::styled(marker.to_string(), style),
@@ -592,18 +491,43 @@ impl AssetBrowserState {
 
         lines.push(Line::raw(""));
         lines.push(Line::from(Span::styled(
-            format!("  {}", "─".repeat(inner.width.saturating_sub(4) as usize)),
+            format!(
+                "  {}",
+                "\u{2500}".repeat(inner.width.saturating_sub(4) as usize)
+            ),
             Style::default().fg(theme::TEXT_DIM),
         )));
         lines.push(Line::raw(""));
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled("YAML-based assets", Style::default().fg(theme::TEXT_MUTED)),
-        ]));
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled("loaded from disk", Style::default().fg(theme::TEXT_DIM)),
-        ]));
+
+        if self.data.is_some() {
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(
+                    "YAML-based assets",
+                    Style::default().fg(theme::TEXT_MUTED),
+                ),
+            ]));
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(
+                    "loaded from registry",
+                    Style::default().fg(theme::TEXT_DIM),
+                ),
+            ]));
+        } else if self.loading {
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled("Loading...", Style::default().fg(theme::TEXT_MUTED)),
+            ]));
+        } else {
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(
+                    "Press 'r' to load assets",
+                    Style::default().fg(theme::TEXT_MUTED),
+                ),
+            ]));
+        }
 
         frame.render_widget(Paragraph::new(lines), inner);
     }
@@ -618,22 +542,25 @@ impl AssetBrowserState {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
+        let items = self.items();
         let mut lines: Vec<Line<'static>> = Vec::new();
         lines.push(Line::raw(""));
 
-        if self.items.is_empty() {
+        if items.is_empty() {
+            let msg = if self.data.is_some() {
+                "No items in this category."
+            } else {
+                "Press 'r' to load."
+            };
             lines.push(Line::from(vec![
                 Span::raw("  "),
-                Span::styled(
-                    "No items in this category.",
-                    Style::default().fg(theme::TEXT_MUTED),
-                ),
+                Span::styled(msg, Style::default().fg(theme::TEXT_MUTED)),
             ]));
         } else {
-            for (i, item) in self.items.iter().enumerate() {
+            for (i, item) in items.iter().enumerate() {
                 let is_selected = i == self.selected_item;
                 let marker = if is_selected && is_focused {
-                    "▸ "
+                    "\u{25b8} "
                 } else {
                     "  "
                 };
@@ -651,11 +578,14 @@ impl AssetBrowserState {
                     Span::styled(item.name.clone(), name_style),
                 ]));
 
-                // Show type label below the name, indented
+                // Show type label below
                 let type_label = match item.item_type.as_str() {
-                    "category" => "archetype category",
+                    "role" => "role archetype",
+                    "race" => "race archetype",
+                    "class" => "class archetype",
+                    "setting" => "setting archetype",
                     "setting_pack" => "setting pack",
-                    "phrase_category" => "phrase category",
+                    "vocabulary_bank" => "vocabulary bank",
                     other => other,
                 };
 
@@ -670,8 +600,7 @@ impl AssetBrowserState {
                     Span::styled(type_label.to_string(), desc_style),
                 ]));
 
-                // Add a small gap between items
-                if i < self.items.len() - 1 {
+                if i < items.len() - 1 {
                     lines.push(Line::raw(""));
                 }
             }
@@ -741,7 +670,6 @@ impl AssetBrowserState {
                 .fg(theme::PRIMARY)
                 .add_modifier(Modifier::BOLD),
         )));
-        // Word-wrap the description
         for wrapped in wrap_text(&item.description, sep_width) {
             lines.push(Line::from(vec![
                 Span::raw("  "),
@@ -751,7 +679,7 @@ impl AssetBrowserState {
 
         lines.push(Line::raw(""));
         lines.push(Line::from(Span::styled(
-            format!("  {}", "─".repeat(sep_width)),
+            format!("  {}", "\u{2500}".repeat(sep_width)),
             Style::default().fg(theme::TEXT_DIM),
         )));
         lines.push(Line::raw(""));
@@ -778,9 +706,9 @@ impl AssetBrowserState {
             lines.push(Line::raw(""));
         }
 
-        // Footer with keybindings
+        // Footer
         lines.push(Line::from(Span::styled(
-            format!("  {}", "─".repeat(sep_width)),
+            format!("  {}", "\u{2500}".repeat(sep_width)),
             Style::default().fg(theme::TEXT_DIM),
         )));
         lines.push(Line::from(vec![
@@ -790,7 +718,9 @@ impl AssetBrowserState {
             Span::styled("h/l", Style::default().fg(theme::TEXT_DIM)),
             Span::raw(":navigate  "),
             Span::styled("j/k", Style::default().fg(theme::TEXT_DIM)),
-            Span::raw(":select"),
+            Span::raw(":select  "),
+            Span::styled("r", Style::default().fg(theme::TEXT_DIM)),
+            Span::raw(":refresh"),
         ]));
 
         lines
@@ -845,39 +775,7 @@ mod tests {
         assert_eq!(state.selected_item, 0);
         assert_eq!(state.focus_panel, AssetPanel::Categories);
         assert_eq!(state.detail_scroll, 0);
-        assert!(!state.items.is_empty());
-    }
-
-    #[test]
-    fn test_category_items_populated() {
-        for cat in AssetCategory::ALL {
-            let items = items_for_category(*cat);
-            assert!(!items.is_empty(), "Category {:?} should have items", cat);
-            for item in &items {
-                assert!(!item.name.is_empty(), "Item name should not be empty");
-                assert!(
-                    !item.details.is_empty(),
-                    "Item '{}' should have detail entries",
-                    item.name
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_category_switching_resets_selection() {
-        let mut state = AssetBrowserState::new();
-        // Move to second item
-        state.selected_item = 2;
-
-        // Switch category
-        state.selected_category = 1;
-        state.category = AssetCategory::ALL[1];
-        state.refresh_items();
-
-        // selected_item should be clamped to valid range
-        assert!(state.selected_item < state.items.len());
-        assert_eq!(state.detail_scroll, 0);
+        assert!(state.data.is_none());
     }
 
     #[test]
@@ -922,27 +820,23 @@ mod tests {
         let mut state = AssetBrowserState::new();
         state.focus_panel = AssetPanel::Detail;
         state.detail_scroll = 0;
-        // Simulate pressing 'k' (up) in detail panel
         state.detail_scroll = state.detail_scroll.saturating_sub(1);
         assert_eq!(state.detail_scroll, 0);
     }
 
     #[test]
-    fn test_archetype_items_count() {
-        // Matches the 5 categories from archetypes.rs: warrior, magic, rogue, social, creature
-        let items = archetype_items();
-        assert_eq!(items.len(), 5);
+    fn test_empty_items_accessor() {
+        let state = AssetBrowserState::new();
+        assert!(state.items().is_empty());
+        assert!(state.current_item().is_none());
     }
 
     #[test]
-    fn test_setting_pack_items_count() {
-        let items = setting_pack_items();
-        assert_eq!(items.len(), 4);
-    }
-
-    #[test]
-    fn test_vocabulary_items_count() {
-        let items = vocabulary_items();
-        assert_eq!(items.len(), 5);
+    fn test_item_count_without_data() {
+        let state = AssetBrowserState::new();
+        assert_eq!(
+            state.item_count_for_category(AssetCategory::Archetypes),
+            0
+        );
     }
 }

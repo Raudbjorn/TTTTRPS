@@ -19,8 +19,6 @@
 //! ## Example
 //!
 //! ```rust,ignore
-//! use personality::template_store::SettingTemplateStore;
-//!
 //! // Create from an existing PersonalityIndexManager
 //! let store = SettingTemplateStore::from_manager(index_manager);
 //!
@@ -38,9 +36,10 @@
 //! ```
 
 use super::errors::{PersonalityExtensionError, TemplateError};
-use super::meilisearch::{escape_filter_value, PersonalityIndexManager};
+
 use super::templates::SettingTemplate;
 use super::types::{PersonalityId, TemplateDocument, TemplateId};
+use super::search::{PersonalityIndexManager, escape_filter_value};
 use crate::core::personality_base::PersonalityProfile;
 use lru::LruCache;
 use serde::{Deserialize, Serialize};
@@ -758,11 +757,11 @@ mod tests {
         capacity: usize,
     ) -> (tempfile::TempDir, SettingTemplateStore) {
         let temp_dir = tempfile::TempDir::new().unwrap();
-        let options = meilisearch_lib::MeilisearchOptions {
+        let options = crate::core::wilysearch::core::MeilisearchOptions {
             db_path: temp_dir.path().to_path_buf(),
             ..Default::default()
         };
-        let meili = Arc::new(meilisearch_lib::Meilisearch::new(options).unwrap());
+        let meili = Arc::new(crate::core::wilysearch::engine::Engine::new(options).unwrap());
         let index_manager = Arc::new(PersonalityIndexManager::new(meili));
         index_manager.initialize_indexes().unwrap();
         let store = SettingTemplateStore::from_manager_with_capacity(index_manager, capacity);

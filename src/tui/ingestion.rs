@@ -1,13 +1,15 @@
 //! Async ingestion pipeline orchestrator for TUI.
 //!
-//! Extracts text from a document, chunks it semantically, and stores
-//! the chunks in SurrealDB — sending progress events through the TUI
-//! event channel at each phase.
+//! Extracts text from a document, chunks it semantically, optionally
+//! generates embeddings, and stores the chunks in SurrealDB — sending
+//! progress events through the TUI event channel at each phase.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use tokio::sync::mpsc;
 
+use crate::core::search::embeddings::EmbeddingProvider;
 use crate::core::storage::ingestion::{ingest_chunks, ChunkData};
 use crate::core::storage::models::update_library_item_status;
 use crate::core::storage::surrealdb::SurrealStorage;
@@ -15,10 +17,15 @@ use crate::ingestion::chunker::SemanticChunker;
 use crate::ingestion::kreuzberg_extractor::DocumentExtractor;
 use crate::tui::events::{AppEvent, IngestionProgressKind};
 
-/// Run the full ingestion pipeline: extract → chunk → store.
+/// Batch size for embedding generation.
+const EMBEDDING_BATCH_SIZE: usize = 32;
+
+/// Run the full ingestion pipeline: extract -> chunk -> embed -> store.
 ///
 /// Sends `IngestionProgress` events through `event_tx` at each phase.
 /// On failure, sets the library item status to "error" and sends an `Error` event.
+///
+/// If `embedding_provider` is `None`, chunks are stored without embeddings.
 ///
 /// Returns the number of chunks stored on success.
 pub async fn run_ingestion_pipeline(
@@ -26,6 +33,7 @@ pub async fn run_ingestion_pipeline(
     library_item_id: String,
     content_type: String,
     storage: SurrealStorage,
+    embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     event_tx: mpsc::UnboundedSender<AppEvent>,
 ) -> Result<usize, String> {
     let db = storage.db();
@@ -75,7 +83,7 @@ pub async fn run_ingestion_pipeline(
     send_progress(IngestionProgressKind::Chunking { chunk_count });
 
     // ── 3. Convert to ChunkData ──────────────────────────────────────────
-    let chunk_data: Vec<ChunkData> = content_chunks
+    let mut chunk_data: Vec<ChunkData> = content_chunks
         .into_iter()
         .map(|cc| ChunkData {
             content: cc.content,
@@ -94,13 +102,54 @@ pub async fn run_ingestion_pipeline(
         })
         .collect();
 
-    let total = chunk_data.len();
-    send_progress(IngestionProgressKind::Storing {
-        stored: 0,
-        total,
-    });
+    // ── 4. Embed (optional) ──────────────────────────────────────────────
+    if let Some(ref provider) = embedding_provider {
+        let total = chunk_data.len();
+        send_progress(IngestionProgressKind::Embedding {
+            processed: 0,
+            total,
+        });
 
-    // ── 4. Store ─────────────────────────────────────────────────────────
+        let model_name = provider.name().to_string();
+        let mut processed = 0;
+
+        for batch_start in (0..total).step_by(EMBEDDING_BATCH_SIZE) {
+            let batch_end = (batch_start + EMBEDDING_BATCH_SIZE).min(total);
+            let texts: Vec<&str> = chunk_data[batch_start..batch_end]
+                .iter()
+                .map(|c| c.content.as_str())
+                .collect();
+
+            match provider.embed_batch(&texts).await {
+                Ok(embeddings) => {
+                    for (i, embedding) in embeddings.into_iter().enumerate() {
+                        chunk_data[batch_start + i].embedding = Some(embedding);
+                        chunk_data[batch_start + i].embedding_model =
+                            Some(model_name.clone());
+                    }
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Embedding batch {batch_start}..{batch_end} failed: {e} — storing without vectors"
+                    );
+                    // Continue without embeddings for this batch
+                }
+            }
+
+            processed = batch_end;
+            send_progress(IngestionProgressKind::Embedding { processed, total });
+        }
+
+        let embedded_count = chunk_data.iter().filter(|c| c.embedding.is_some()).count();
+        log::info!(
+            "Embedded {embedded_count}/{total} chunks with {model_name}"
+        );
+    }
+
+    // ── 5. Store ─────────────────────────────────────────────────────────
+    let total = chunk_data.len();
+    send_progress(IngestionProgressKind::Storing { stored: 0, total });
+
     // ingest_chunks auto-sets library_item status to "ready" on success
     let inserted = ingest_chunks(db, &library_item_id, chunk_data)
         .await
@@ -128,6 +177,7 @@ pub async fn run_ingestion_with_error_handling(
     library_item_id: String,
     content_type: String,
     storage: SurrealStorage,
+    embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     event_tx: mpsc::UnboundedSender<AppEvent>,
 ) {
     let storage_for_error = storage.clone();
@@ -138,6 +188,7 @@ pub async fn run_ingestion_with_error_handling(
         library_item_id,
         content_type,
         storage,
+        embedding_provider,
         event_tx.clone(),
     )
     .await

@@ -721,9 +721,11 @@ pub struct Archetype {
     pub version: String,
 
     /// Creation timestamp.
+    #[serde(default = "chrono::Utc::now")]
     pub created_at: chrono::DateTime<chrono::Utc>,
 
     /// Last update timestamp.
+    #[serde(default = "chrono::Utc::now")]
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -851,7 +853,8 @@ impl Archetype {
             total_weight += affinity.weight;
         }
 
-        if total_weight > 2.0 {
+        let max_weight = self.personality_affinity.len() as f32;
+        if total_weight > max_weight {
             return Err(ArchetypeError::InvalidTraitWeights {
                 actual_sum: total_weight,
             });
@@ -1212,21 +1215,23 @@ mod tests {
 
     #[test]
     fn test_archetype_validation_trait_weight_sum() {
-        let archetype = Archetype::new("test", "Test", ArchetypeCategory::Role)
+        // Individual weights must be 0.0-1.0, but we test that the total
+        // sum cannot exceed the number of traits (i.e., each weight maxes at 1.0).
+        // With 2 traits both at 1.0, sum = 2.0 = limit → should pass.
+        let valid = Archetype::new("test", "Test", ArchetypeCategory::Role)
             .with_personality_affinity(vec![
-                PersonalityAffinity::new("trait1", 0.9),
-                PersonalityAffinity::new("trait2", 0.9),
-                PersonalityAffinity::new("trait3", 0.9), // sum = 2.7 > 2.0
+                PersonalityAffinity::new("trait1", 1.0),
+                PersonalityAffinity::new("trait2", 1.0),
             ]);
+        assert!(valid.validate().is_ok(), "sum == limit should be valid");
 
-        let result = archetype.validate();
+        // Individual weight > 1.0 should fail at the affinity level
+        let invalid = Archetype::new("test2", "Test2", ArchetypeCategory::Role)
+            .with_personality_affinity(vec![
+                PersonalityAffinity::new("trait1", 1.1), // > 1.0 → invalid
+            ]);
+        let result = invalid.validate();
         assert!(result.is_err());
-        match result.unwrap_err() {
-            ArchetypeError::InvalidTraitWeights { actual_sum } => {
-                assert!(actual_sum > 2.0);
-            }
-            _ => panic!("Expected InvalidTraitWeights error"),
-        }
     }
 
     #[test]

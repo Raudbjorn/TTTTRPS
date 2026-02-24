@@ -20,7 +20,7 @@ mod groq;
 mod together;
 mod cohere;
 mod deepseek;
-mod meilisearch;
+mod search;
 
 pub use ollama::OllamaProvider;
 pub use claude::{ClaudeProvider, ClaudeStatus, StorageBackend};
@@ -34,7 +34,7 @@ pub use groq::GroqProvider;
 pub use together::TogetherProvider;
 pub use cohere::CohereProvider;
 pub use deepseek::DeepSeekProvider;
-pub use meilisearch::MeilisearchProvider;
+pub use search::MeilisearchProvider;
 
 use super::router::LLMProvider;
 use std::sync::Arc;
@@ -249,7 +249,7 @@ pub enum ProviderConfig {
         model: String,
         max_tokens: u32,
     },
-    Meilisearch {
+    Search {
         host: String,
         api_key: Option<String>,
         workspace_id: String,
@@ -321,7 +321,7 @@ impl ProviderConfig {
                     }
                 }
             }
-            ProviderConfig::Meilisearch { host, api_key, workspace_id, model } => {
+            ProviderConfig::Search { host, api_key, workspace_id, model } => {
                 Arc::new(MeilisearchProvider::new(host.clone(), api_key.clone(), workspace_id.clone(), model.clone()))
             }
         }
@@ -342,11 +342,11 @@ impl ProviderConfig {
             ProviderConfig::Together { .. } => "together",
             ProviderConfig::Cohere { .. } => "cohere",
             ProviderConfig::DeepSeek { .. } => "deepseek",
-            ProviderConfig::Meilisearch { .. } => "meilisearch",
+            ProviderConfig::Search { .. } => "meilisearch",
         }
     }
 
-    /// Check if this provider requires the LLM Proxy for Meilisearch chat
+    /// Check if this provider requires the LLM Proxy
     pub fn requires_proxy(&self) -> bool {
         match self {
             // Natively supported by Meilisearch
@@ -368,7 +368,7 @@ impl ProviderConfig {
             ProviderConfig::DeepSeek { .. } => true,
 
             // Meilisearch itself doesn't need proxy
-            ProviderConfig::Meilisearch { .. } => false,
+            ProviderConfig::Search { .. } => false,
         }
     }
 
@@ -387,7 +387,7 @@ impl ProviderConfig {
             | ProviderConfig::Together { model, .. }
             | ProviderConfig::Cohere { model, .. }
             | ProviderConfig::DeepSeek { model, .. }
-            | ProviderConfig::Meilisearch { model, .. } => model.clone(),
+            | ProviderConfig::Search { model, .. } => model.clone(),
         }
     }
 
@@ -406,7 +406,7 @@ impl ProviderConfig {
             | ProviderConfig::Together { .. }
             | ProviderConfig::Cohere { .. }
             | ProviderConfig::DeepSeek { .. }
-            | ProviderConfig::Meilisearch { .. } => AuthMethod::ApiKey,
+            | ProviderConfig::Search { .. } => AuthMethod::ApiKey,
         }
     }
 
@@ -423,7 +423,7 @@ impl ProviderConfig {
             | ProviderConfig::DeepSeek { api_key, .. } => {
                 if api_key.is_empty() { None } else { Some(api_key) }
             }
-            ProviderConfig::Meilisearch { api_key, .. } => api_key.as_deref(),
+            ProviderConfig::Search { api_key, .. } => api_key.as_deref(),
             ProviderConfig::Ollama { .. }
             | ProviderConfig::Claude { .. }
             | ProviderConfig::Gemini { .. }

@@ -1,15 +1,26 @@
 use std::sync::Arc;
 
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, RwLock};
 
 use crate::config::AppConfig;
+use crate::core::archetype::InMemoryArchetypeRegistry;
+use crate::core::budget::BudgetEnforcer;
+use crate::core::search::embeddings::EmbeddingProvider;
+use crate::core::campaign_manager::CampaignManager;
+use crate::core::cost_predictor::CostPredictor;
 use crate::core::credentials::CredentialManager;
 use crate::core::llm::providers::{AuthMethod, ProviderConfig};
 use crate::core::llm::router::LLMRouter;
+use crate::core::location_gen::LocationGenerator;
+use crate::core::npc_gen::{InMemoryNpcIndexes, NPCGenerator};
 use crate::core::personality::application::PersonalityApplicationManager;
 use crate::core::personality_base::PersonalityStore;
+use crate::core::plot_manager::PlotManager;
+use crate::core::preprocess::pipeline::QueryPipeline;
 use crate::core::session_manager::SessionManager;
+use crate::core::session_summary::SessionSummarizer;
 use crate::core::storage::surrealdb::SurrealStorage;
+use crate::core::transcription::TranscriptionManager;
 use crate::core::voice::manager::VoiceManager;
 use crate::core::voice::queue::events::QueueEventEmitter;
 use crate::core::voice::queue::SynthesisQueue;
@@ -25,16 +36,37 @@ use super::events::AppEvent;
 /// that need backend access. Clone-able fields are cloned directly;
 /// non-Clone fields are wrapped in Arc.
 pub struct Services {
+    // ---- Original services ----
     pub llm: LLMRouter,
     pub storage: SurrealStorage,
     pub database: Database,
     pub session: Arc<SessionManager>,
     pub personality: Arc<PersonalityApplicationManager>,
     pub voice: Arc<SynthesisQueue>,
-    pub voice_manager: Arc<tokio::sync::RwLock<VoiceManager>>,
+    pub voice_manager: Arc<RwLock<VoiceManager>>,
     pub audio: AudioPlayer,
     pub credentials: CredentialManager,
     pub event_tx: mpsc::UnboundedSender<AppEvent>,
+
+    // ---- Phase 3 additions ----
+    pub archetype_registry: Arc<InMemoryArchetypeRegistry>,
+    pub npc_indexes: Arc<InMemoryNpcIndexes>,
+    pub query_pipeline: Arc<RwLock<QueryPipeline>>,
+    pub budget: Arc<BudgetEnforcer>,
+    pub cost_predictor: Arc<CostPredictor>,
+    pub transcription: Arc<TranscriptionManager>,
+    pub session_summarizer: Arc<SessionSummarizer>,
+    pub npc_generator: Arc<NPCGenerator>,
+    pub campaign_manager: Arc<CampaignManager>,
+    pub plot_manager: Arc<PlotManager>,
+    pub location_generator: Arc<LocationGenerator>,
+
+    // ---- Phase 4 additions ----
+    pub embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
+
+    // ---- Phase 7 additions ----
+    pub input_validator: Arc<crate::core::input_validator::InputValidator>,
+    pub search_analytics: Arc<crate::core::search_analytics::SearchAnalytics>,
 }
 
 impl Services {
@@ -47,6 +79,10 @@ impl Services {
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let data_dir = config.data_dir();
         log::info!("Initializing services with data dir: {}", data_dir.display());
+
+        // ================================================================
+        // Storage layer
+        // ================================================================
 
         // SurrealDB (embedded RocksDB)
         let surreal_path = data_dir.join("surrealdb");
@@ -61,7 +97,47 @@ impl Services {
         let credentials = CredentialManager::new();
         log::info!("Credential manager initialized");
 
-        // LLM router — load saved providers from config + keyring
+        // ================================================================
+        // Asset-backed registries (Phase 1 + 2)
+        // ================================================================
+
+        let archetype_registry = Arc::new(InMemoryArchetypeRegistry::new().await);
+        log::info!(
+            "Archetype registry initialized: {} archetypes",
+            archetype_registry.count().await
+        );
+
+        let npc_indexes = Arc::new(InMemoryNpcIndexes::new());
+        log::info!("NPC indexes initialized (empty — populated on demand)");
+
+        // ================================================================
+        // Query preprocessing (Phase 3)
+        // ================================================================
+
+        // Load synonyms + preprocessing config from bundled assets
+        let query_pipeline = match crate::core::assets::AssetLoader::load_preprocessing_config() {
+            Ok(preprocess_config) => {
+                match QueryPipeline::new(preprocess_config) {
+                    Ok(pipeline) => {
+                        log::info!("Query pipeline initialized with typo correction + synonym expansion");
+                        Arc::new(RwLock::new(pipeline))
+                    }
+                    Err(e) => {
+                        log::warn!("Query pipeline init failed (using minimal): {e}");
+                        Arc::new(RwLock::new(QueryPipeline::new_minimal()))
+                    }
+                }
+            }
+            Err(e) => {
+                log::warn!("Preprocessing config load failed (using minimal): {e}");
+                Arc::new(RwLock::new(QueryPipeline::new_minimal()))
+            }
+        };
+
+        // ================================================================
+        // LLM providers
+        // ================================================================
+
         let mut llm = LLMRouter::with_defaults();
         for (id, provider_config) in &config.llm.providers {
             log::info!("Loading saved LLM provider: {id}");
@@ -74,23 +150,63 @@ impl Services {
             llm.provider_ids().len()
         );
 
-        // Session manager (in-memory)
-        let session = Arc::new(SessionManager::new());
+        // ================================================================
+        // Core gameplay services
+        // ================================================================
 
+        let session = Arc::new(SessionManager::new());
+        let session_summarizer = Arc::new(SessionSummarizer::new());
+        let campaign_manager = Arc::new(CampaignManager::with_data_dir(&data_dir));
+        let plot_manager = Arc::new(PlotManager::new());
+        let npc_generator = Arc::new(NPCGenerator::new());
+        let location_generator = Arc::new(LocationGenerator::new());
+
+        // ================================================================
+        // Budget and cost tracking
+        // ================================================================
+
+        let budget = Arc::new(BudgetEnforcer::new());
+        let cost_predictor = Arc::new(CostPredictor::new());
+
+        // ================================================================
         // Personality system
+        // ================================================================
+
         let personality_store = Arc::new(PersonalityStore::new());
         let personality = Arc::new(PersonalityApplicationManager::new(personality_store));
 
-        // Voice synthesis queue
-        let voice = Arc::new(SynthesisQueue::with_defaults());
+        // ================================================================
+        // Voice and transcription
+        // ================================================================
 
-        // Voice manager (synthesis provider routing + cache)
-        let voice_manager = Arc::new(tokio::sync::RwLock::new(
-            VoiceManager::new(config.voice.clone()),
-        ));
+        let voice = Arc::new(SynthesisQueue::with_defaults());
+        let voice_manager = Arc::new(RwLock::new(VoiceManager::new(config.voice.clone())));
+        let transcription = Arc::new(TranscriptionManager::new());
 
         // Audio player (dedicated playback thread)
         let audio = AudioPlayer::new(event_tx.clone());
+
+        // ================================================================
+        // Embedding provider (Phase 4)
+        // ================================================================
+
+        let embedding_provider: Option<Arc<dyn EmbeddingProvider>> = {
+            use crate::core::search::providers::ollama::OllamaEmbeddings;
+            let ollama = OllamaEmbeddings::new(
+                "http://localhost:11434",
+                "nomic-embed-text",
+                Some(768),
+            );
+            if ollama.health_check().await {
+                log::info!("Embedding provider: Ollama (nomic-embed-text, 768d)");
+                Some(Arc::new(ollama))
+            } else {
+                log::warn!("Ollama not available — embeddings disabled (chunks stored without vectors)");
+                None
+            }
+        };
+
+        log::info!("All services initialized");
 
         Ok(Self {
             llm,
@@ -103,6 +219,20 @@ impl Services {
             audio,
             credentials,
             event_tx,
+            archetype_registry,
+            npc_indexes,
+            query_pipeline,
+            budget,
+            cost_predictor,
+            transcription,
+            session_summarizer,
+            npc_generator,
+            campaign_manager,
+            plot_manager,
+            location_generator,
+            embedding_provider,
+            input_validator: Arc::new(crate::core::input_validator::InputValidator::new()),
+            search_analytics: Arc::new(crate::core::search_analytics::SearchAnalytics::new()),
         })
     }
 

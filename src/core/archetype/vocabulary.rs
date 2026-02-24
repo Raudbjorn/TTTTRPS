@@ -49,12 +49,14 @@
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-use meilisearch_sdk::client::Client;
+use crate::core::wilysearch::core::{Meilisearch, SearchQuery};
+use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 use super::error::{ArchetypeError, Result};
-use super::meilisearch::INDEX_VOCABULARY_BANKS;
+use crate::core::npc_gen::INDEX_VOCABULARY_BANKS;
+
 use super::setting_pack::{PhraseDefinition, VocabularyBankDefinition};
 
 // ============================================================================
@@ -274,7 +276,7 @@ pub struct VocabularyBankManager {
     session_usage: RwLock<HashMap<String, HashMap<String, HashMap<String, HashSet<String>>>>>,
 
     /// Optional Meilisearch client for persistence.
-    meilisearch_client: Option<Client>,
+    meili: Option<Arc<Meilisearch>>,
 }
 
 impl VocabularyBankManager {
@@ -283,16 +285,16 @@ impl VocabularyBankManager {
         Self {
             banks: RwLock::new(HashMap::new()),
             session_usage: RwLock::new(HashMap::new()),
-            meilisearch_client: None,
+            meili: None,
         }
     }
 
     /// Create a vocabulary bank manager with Meilisearch persistence.
-    pub fn with_meilisearch(client: Client) -> Self {
+    pub fn with_meilisearch(meili: Arc<Meilisearch>) -> Self {
         Self {
             banks: RwLock::new(HashMap::new()),
             session_usage: RwLock::new(HashMap::new()),
-            meilisearch_client: Some(client),
+            meili: Some(meili),
         }
     }
 
@@ -331,7 +333,7 @@ impl VocabularyBankManager {
         let id = bank.definition.id.clone();
 
         // Persist to Meilisearch if available
-        if let Some(ref client) = self.meilisearch_client {
+        if let Some(ref client) = self.meili {
             self.persist_bank(client, &bank).await?;
         }
 
@@ -430,8 +432,8 @@ impl VocabularyBankManager {
         bank.touch();
 
         // Persist to Meilisearch if available
-        if let Some(ref client) = self.meilisearch_client {
-            self.persist_bank(client, &bank).await?;
+        if let Some(ref meili) = self.meili {
+            self.persist_bank(meili, &bank).await?;
         }
 
         // Store in memory
@@ -486,8 +488,8 @@ impl VocabularyBankManager {
         }
 
         // Delete from Meilisearch if available
-        if let Some(ref client) = self.meilisearch_client {
-            self.delete_from_meilisearch(client, id).await?;
+        if let Some(ref meili) = self.meili {
+            self.delete_from_meilisearch(meili, id).await?;
         }
 
         // Remove from memory
@@ -768,27 +770,26 @@ impl VocabularyBankManager {
 
     /// Load banks from Meilisearch into memory.
     pub async fn load_from_meilisearch(&self) -> Result<()> {
-        let client = self
-            .meilisearch_client
+        let meili = self
+            .meili
             .as_ref()
             .ok_or_else(|| ArchetypeError::Meilisearch("No Meilisearch client configured".to_string()))?;
 
-        let index = client.index(INDEX_VOCABULARY_BANKS);
+        let index = meili.get_index(INDEX_VOCABULARY_BANKS)
+            .map_err(|e| ArchetypeError::Meilisearch(e.to_string()))?;
 
         let mut offset = 0;
         let limit = 100;
 
         loop {
-            let results: meilisearch_sdk::search::SearchResults<VocabularyBank> = index
-                .search()
-                .with_query("")
-                .with_limit(limit)
-                .with_offset(offset)
-                .execute()
-                .await?;
+            let mut query = SearchQuery::new("");
+            query.limit = limit;
+            query.offset = offset;
+
+            let results = index.search(&query)
+                .map_err(|e| ArchetypeError::Meilisearch(e.to_string()))?;
 
             let count = results.hits.len();
-
             if count == 0 {
                 break;
             }
@@ -796,8 +797,9 @@ impl VocabularyBankManager {
             {
                 let mut banks = self.banks.write().await;
                 for hit in results.hits {
-                    let bank = hit.result;
-                    banks.insert(bank.definition.id.clone(), bank);
+                    if let Ok(bank) = serde_json::from_value::<VocabularyBank>(hit.document) {
+                        banks.insert(bank.definition.id.clone(), bank);
+                    }
                 }
             }
 
@@ -837,33 +839,24 @@ impl VocabularyBankManager {
     }
 
     /// Persist a bank to Meilisearch.
-    async fn persist_bank(&self, client: &Client, bank: &VocabularyBank) -> Result<()> {
-        let index = client.index(INDEX_VOCABULARY_BANKS);
+    async fn persist_bank(&self, meili: &Arc<Meilisearch>, bank: &VocabularyBank) -> Result<()> {
+        let index = meili.get_index(INDEX_VOCABULARY_BANKS)
+            .map_err(|e| ArchetypeError::Meilisearch(e.to_string()))?;
 
-        let task = index.add_documents(&[bank], Some("definition.id")).await?;
-
-        task.wait_for_completion(
-            client,
-            Some(Duration::from_millis(TASK_POLL_INTERVAL_MS)),
-            Some(Duration::from_secs(TASK_TIMEOUT_SECS)),
-        )
-        .await?;
+        let doc = serde_json::to_value(bank)?;
+        index.add_documents(vec![doc], Some("definition.id"))
+            .map_err(|e| ArchetypeError::Meilisearch(e.to_string()))?;
 
         Ok(())
     }
 
     /// Delete a bank from Meilisearch.
-    async fn delete_from_meilisearch(&self, client: &Client, id: &str) -> Result<()> {
-        let index = client.index(INDEX_VOCABULARY_BANKS);
+    async fn delete_from_meilisearch(&self, meili: &Arc<Meilisearch>, id: &str) -> Result<()> {
+        let index = meili.get_index(INDEX_VOCABULARY_BANKS)
+            .map_err(|e| ArchetypeError::Meilisearch(e.to_string()))?;
 
-        let task = index.delete_document(id).await?;
-
-        task.wait_for_completion(
-            client,
-            Some(Duration::from_millis(TASK_POLL_INTERVAL_MS)),
-            Some(Duration::from_secs(TASK_TIMEOUT_SECS)),
-        )
-        .await?;
+        index.delete_document(id)
+            .map_err(|e| ArchetypeError::Meilisearch(e.to_string()))?;
 
         Ok(())
     }

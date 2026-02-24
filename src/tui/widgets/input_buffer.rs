@@ -83,6 +83,12 @@ impl InputBuffer {
         self.cursor = 0;
     }
 
+    /// Replace the entire buffer content and move cursor to end.
+    pub fn set_text(&mut self, text: &str) {
+        self.content = text.to_string();
+        self.cursor = self.content.len();
+    }
+
     pub fn is_empty(&self) -> bool {
         self.content.trim().is_empty()
     }

@@ -10,7 +10,9 @@
 
 use std::collections::BTreeSet;
 
-use meilisearch_lib::{Meilisearch, Settings};
+use crate::core::wilysearch::engine::Engine;
+use crate::core::wilysearch::traits::{Indexes, SettingsApi, System};
+use crate::core::wilysearch::types::{CreateIndexRequest, Settings};
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
@@ -135,14 +137,14 @@ pub struct ExclamationTemplateDocument {
 
 /// Build settings for the vocabulary banks index.
 fn vocabulary_settings() -> Settings {
-    Settings::new()
-        .with_searchable_attributes(vec![
+    Settings {
+        searchable_attributes: Some(vec![
             "phrase".to_string(),
             "category".to_string(),
             "bank_id".to_string(),
             "tags".to_string(),
-        ])
-        .with_filterable_attributes(vec![
+        ]),
+        filterable_attributes: Some(vec![
             "culture".to_string(),
             "role".to_string(),
             "race".to_string(),
@@ -150,41 +152,47 @@ fn vocabulary_settings() -> Settings {
             "formality".to_string(),
             "bank_id".to_string(),
             "tags".to_string(),
-        ])
-        .with_sortable_attributes(BTreeSet::from(["frequency".to_string()]))
+        ]),
+        sortable_attributes: Some(vec!["frequency".to_string()]),
+        ..Default::default()
+    }
 }
 
 /// Build settings for the name components index.
 fn name_components_settings() -> Settings {
-    Settings::new()
-        .with_searchable_attributes(vec![
+    Settings {
+        searchable_attributes: Some(vec![
             "component".to_string(),
             "meaning".to_string(),
             "phonetic_tags".to_string(),
-        ])
-        .with_filterable_attributes(vec![
+        ]),
+        filterable_attributes: Some(vec![
             "culture".to_string(),
             "component_type".to_string(),
             "gender".to_string(),
             "phonetic_tags".to_string(),
-        ])
-        .with_sortable_attributes(BTreeSet::from(["frequency".to_string()]))
+        ]),
+        sortable_attributes: Some(vec!["frequency".to_string()]),
+        ..Default::default()
+    }
 }
 
 /// Build settings for the exclamation templates index.
 fn exclamation_settings() -> Settings {
-    Settings::new()
-        .with_searchable_attributes(vec![
+    Settings {
+        searchable_attributes: Some(vec![
             "template".to_string(),
             "emotion".to_string(),
-        ])
-        .with_filterable_attributes(vec![
+        ]),
+        filterable_attributes: Some(vec![
             "culture".to_string(),
             "intensity".to_string(),
             "emotion".to_string(),
             "religious".to_string(),
-        ])
-        .with_sortable_attributes(BTreeSet::from(["frequency".to_string()]))
+        ]),
+        sortable_attributes: Some(vec!["frequency".to_string()]),
+        ..Default::default()
+    }
 }
 
 // ============================================================================
@@ -196,31 +204,37 @@ fn exclamation_settings() -> Settings {
 /// This is idempotent: calling it multiple times is safe. If the index
 /// already exists, only settings are updated.
 fn ensure_single_index(
-    meili: &Meilisearch,
+    meili: &Engine,
     uid: &str,
     settings: Settings,
 ) -> Result<(), NpcIndexError> {
-    if !meili.index_exists(uid) {
-        log::info!("Index '{}' not found, creating...", uid);
-        meili
-            .create_index(uid, Some("id"))
-            .map_err(|e| NpcIndexError::Create {
+    match meili.get_index(uid) {
+        Ok(_) => {
+            meili.update_settings(uid, &settings).map_err(|e| NpcIndexError::Settings {
                 index: uid.to_string(),
                 detail: e.to_string(),
             })?;
-    }
-
-    let index = meili.get_index(uid).map_err(|e| NpcIndexError::Settings {
-        index: uid.to_string(),
-        detail: e.to_string(),
-    })?;
-
-    index
-        .update_settings(&settings)
-        .map_err(|e| NpcIndexError::Settings {
+        }
+        Err(crate::core::wilysearch::error::Error::IndexNotFound(_)) => {
+            log::info!("Index '{}' not found, creating...", uid);
+            let req = CreateIndexRequest {
+                uid: uid.to_string(),
+                primary_key: Some("id".to_string()),
+            };
+            meili.create_index(&req).map_err(|e| NpcIndexError::Create {
+                index: uid.to_string(),
+                detail: e.to_string(),
+            })?;
+            meili.update_settings(uid, &settings).map_err(|e| NpcIndexError::Settings {
+                index: uid.to_string(),
+                detail: e.to_string(),
+            })?;
+        }
+        Err(e) => return Err(NpcIndexError::Check {
             index: uid.to_string(),
             detail: e.to_string(),
-        })?;
+        }),
+    }
 
     log::debug!("Configured index '{}'", uid);
     Ok(())
@@ -230,7 +244,7 @@ fn ensure_single_index(
 ///
 /// This function is idempotent - it can be called multiple times safely.
 /// Indexes that already exist will have their settings updated.
-pub fn ensure_npc_indexes(meili: &Meilisearch) -> Result<(), NpcIndexError> {
+pub fn ensure_npc_indexes(meili: &Engine) -> Result<(), NpcIndexError> {
     log::info!("Ensuring NPC generation indexes exist...");
 
     ensure_single_index(meili, INDEX_VOCABULARY_BANKS, vocabulary_settings())?;
@@ -260,12 +274,12 @@ pub struct NpcIndexStats {
 }
 
 /// Get statistics about NPC generation indexes.
-pub fn get_npc_index_stats(meili: &Meilisearch) -> Result<NpcIndexStats, NpcIndexError> {
+pub fn get_npc_index_stats(meili: &Engine) -> Result<NpcIndexStats, NpcIndexError> {
     let mut stats = NpcIndexStats::default();
 
     match meili.index_stats(INDEX_VOCABULARY_BANKS) {
         Ok(index_stats) => {
-            stats.vocabulary_phrase_count = index_stats.number_of_documents;
+            stats.vocabulary_phrase_count = index_stats.number_of_documents as u64;
         }
         Err(e) => {
             log::debug!(
@@ -278,7 +292,7 @@ pub fn get_npc_index_stats(meili: &Meilisearch) -> Result<NpcIndexStats, NpcInde
 
     match meili.index_stats(INDEX_NAME_COMPONENTS) {
         Ok(index_stats) => {
-            stats.name_component_count = index_stats.number_of_documents;
+            stats.name_component_count = index_stats.number_of_documents as u64;
         }
         Err(e) => {
             log::debug!(
@@ -291,7 +305,7 @@ pub fn get_npc_index_stats(meili: &Meilisearch) -> Result<NpcIndexStats, NpcInde
 
     match meili.index_stats(INDEX_EXCLAMATION_TEMPLATES) {
         Ok(index_stats) => {
-            stats.exclamation_template_count = index_stats.number_of_documents;
+            stats.exclamation_template_count = index_stats.number_of_documents as u64;
         }
         Err(e) => {
             log::debug!(
@@ -309,7 +323,7 @@ pub fn get_npc_index_stats(meili: &Meilisearch) -> Result<NpcIndexStats, NpcInde
 ///
 /// # Warning
 /// This will delete all indexed NPC generation data!
-pub fn clear_npc_indexes(meili: &Meilisearch) -> Result<(), NpcIndexError> {
+pub fn clear_npc_indexes(meili: &Engine) -> Result<(), NpcIndexError> {
     log::warn!("Clearing all NPC generation indexes!");
 
     for index_name in [
@@ -317,15 +331,18 @@ pub fn clear_npc_indexes(meili: &Meilisearch) -> Result<(), NpcIndexError> {
         INDEX_NAME_COMPONENTS,
         INDEX_EXCLAMATION_TEMPLATES,
     ] {
-        if meili.index_exists(index_name) {
-            log::info!("Deleting index '{}'...", index_name);
-            meili.delete_index(index_name).map_err(|e| NpcIndexError::Clear {
-                index: index_name.to_string(),
-                detail: e.to_string(),
-            })?;
-            log::info!("Deleted index '{}' successfully", index_name);
-        } else {
-            log::debug!("Index '{}' doesn't exist, skipping", index_name);
+        match meili.get_index(index_name) {
+            Ok(_) => {
+                log::info!("Deleting index '{}'...", index_name);
+                meili.delete_index(index_name).map_err(|e| NpcIndexError::Clear {
+                    index: index_name.to_string(),
+                    detail: e.to_string(),
+                })?;
+                log::info!("Deleted index '{}' successfully", index_name);
+            }
+            Err(_) => {
+                log::debug!("Index '{}' doesn't exist, skipping", index_name);
+            }
         }
     }
 

@@ -199,8 +199,8 @@ pub enum ArchetypeError {
     },
 }
 
-impl From<meilisearch_sdk::errors::Error> for ArchetypeError {
-    fn from(e: meilisearch_sdk::errors::Error) -> Self {
+impl From<crate::core::wilysearch::error::Error> for ArchetypeError {
+    fn from(e: crate::core::wilysearch::error::Error) -> Self {
         ArchetypeError::Meilisearch(e.to_string())
     }
 }

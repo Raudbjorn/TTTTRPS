@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::core::llm::providers::ProviderConfig;
+use crate::core::search::embeddings::EmbeddingConfig;
 use crate::core::voice::types::VoiceConfig;
 
 /// Top-level application configuration.
@@ -14,6 +15,39 @@ pub struct AppConfig {
     pub data: DataConfig,
     pub llm: LlmConfig,
     pub voice: VoiceConfig,
+    pub embedding: EmbeddingConfig,
+    pub budget: BudgetConfig,
+    pub transcription: TranscriptionConfig,
+}
+
+/// Budget enforcement configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BudgetConfig {
+    /// Enable budget enforcement.
+    pub enabled: bool,
+}
+
+impl Default for BudgetConfig {
+    fn default() -> Self {
+        Self { enabled: false }
+    }
+}
+
+/// Transcription provider configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TranscriptionConfig {
+    /// Preferred provider: "whisper" or "groq".
+    pub provider: String,
+}
+
+impl Default for TranscriptionConfig {
+    fn default() -> Self {
+        Self {
+            provider: "whisper".to_string(),
+        }
+    }
 }
 
 /// LLM provider configuration (persisted to disk).
@@ -54,6 +88,9 @@ impl Default for AppConfig {
             data: DataConfig::default(),
             llm: LlmConfig::default(),
             voice: VoiceConfig::default(),
+            embedding: EmbeddingConfig::default(),
+            budget: BudgetConfig::default(),
+            transcription: TranscriptionConfig::default(),
         }
     }
 }

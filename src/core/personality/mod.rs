@@ -111,7 +111,7 @@ pub mod context_keywords;
 /// Manages two indexes:
 /// - `ttrpg_personality_templates`: Setting-specific personality templates
 /// - `ttrpg_blend_rules`: Context-based blending rules
-pub mod meilisearch;
+pub mod search;
 
 // =============================================================================
 // Phase 2: Template System Modules
@@ -200,7 +200,7 @@ pub use context_keywords::{ContextDetector, ContextDetectionConfig};
 pub use errors::{
     BlendError, BlendRuleError, ContextDetectionError, PersonalityExtensionError, TemplateError,
 };
-pub use meilisearch::{
+pub use search::{
     PersonalityIndexError, PersonalityIndexManager, PersonalityIndexStats,
     INDEX_BLEND_RULES, INDEX_PERSONALITY_TEMPLATES,
 };

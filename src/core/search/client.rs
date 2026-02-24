@@ -2,17 +2,16 @@
 //!
 //! Core Meilisearch client implementation for document indexing and search operations.
 
-use meilisearch_sdk::client::Client;
-use meilisearch_sdk::indexes::Index;
-use meilisearch_sdk::search::SearchResults;
-use meilisearch_sdk::settings::Settings;
-use serde::Deserialize;
+use crate::core::wilysearch::engine::Engine;
+use crate::core::wilysearch::traits::{Documents, Indexes, SettingsApi, Search, System};
+use crate::core::wilysearch::types::{AddDocumentsQuery, DocumentQuery, SearchRequest, Settings};
+use crate::core::wilysearch::error::Error as WilySearchError;
+use std::sync::Arc;
 use std::collections::HashMap;
 
 use super::config::{
     all_indexes, build_embedder_json, ollama_embedding_dimensions, EmbedderConfig, INDEX_CHAT,
-    INDEX_DOCUMENTS, INDEX_FICTION, INDEX_LIBRARY_METADATA, INDEX_RULES, TASK_TIMEOUT_LONG_SECS,
-    TASK_TIMEOUT_SHORT_SECS,
+    INDEX_DOCUMENTS, INDEX_FICTION, INDEX_LIBRARY_METADATA, INDEX_RULES,
 };
 use super::error::{Result, SearchError};
 use super::library::LibraryRepositoryImpl;
@@ -26,28 +25,22 @@ use super::ttrpg::{
 // Search Client
 // ============================================================================
 
+/// Central client for interacting with the embedded Meilisearch instance.
+#[derive(Clone)]
 pub struct SearchClient {
-    client: Client,
-    host: String,
-    api_key: Option<String>,
+    /// Internal Arc-wrapped embedded engine
+    meili: Arc<Engine>,
 }
 
 impl SearchClient {
-    pub fn new(host: &str, api_key: Option<&str>) -> Self {
-        Self {
-            client: Client::new(host, api_key).expect("Failed to create Meilisearch client"),
-            host: host.to_string(),
-            api_key: api_key.map(|s| s.to_string()),
-        }
+    /// Initialize with an existing embedded Engine.
+    pub fn new(meili: Arc<Engine>) -> Self {
+        Self { meili }
     }
 
-    pub fn host(&self) -> &str {
-        &self.host
-    }
-
-    /// Get the underlying Meilisearch client
-    pub fn get_client(&self) -> &Client {
-        &self.client
+    /// Exposes the underlying embedded Meilisearch engine.
+    pub fn get_client(&self) -> Arc<Engine> {
+        self.meili.clone()
     }
 
     // ========================================================================
@@ -56,99 +49,68 @@ impl SearchClient {
 
     /// Check if Meilisearch is healthy
     pub async fn health_check(&self) -> bool {
-        // Use raw reqwest to avoid SDK parsing errors if version mismatch
-        let url = format!("{}/health", self.host);
-        let client = reqwest::Client::new();
-        match client.get(&url).send().await {
-            Ok(resp) => resp.status().is_success(),
-            Err(_) => false,
-        }
+        // Since it's embedded, it's generally always healthy once initialized
+        true
     }
 
     /// Wait for Meilisearch to become healthy
-    pub async fn wait_for_health(&self, timeout_secs: u64) -> bool {
-        let start = std::time::Instant::now();
-        let duration = std::time::Duration::from_secs(timeout_secs);
-        while start.elapsed() < duration {
-            if self.health_check().await {
-                return true;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        }
-        false
+    pub async fn wait_for_health(&self, _timeout_secs: u64) -> bool {
+        // Embedded engine is synchronous and ready when instantiated
+        true
     }
 
     // ========================================================================
     // Index Management
     // ========================================================================
 
-    /// Get an index by name
-    pub fn index(&self, name: &str) -> Index {
-        self.client.index(name)
-    }
-
     /// Create or get an index
-    pub async fn ensure_index(&self, name: &str, primary_key: Option<&str>) -> Result<Index> {
-        // Try to get existing index first
-        match self.client.get_index(name).await {
-            Ok(idx) => Ok(idx),
-            Err(_) => {
-                // Create new index
-                let task = self.client.create_index(name, primary_key).await?;
-                task.wait_for_completion(
-                    &self.client,
-                    Some(std::time::Duration::from_millis(100)),
-                    Some(std::time::Duration::from_secs(TASK_TIMEOUT_SHORT_SECS)),
-                )
-                .await?;
-                Ok(self.client.index(name))
+    pub async fn ensure_index(&self, name: &str, primary_key: Option<&str>) -> Result<()> {
+        match self.meili.get_index(name) {
+            Ok(idx) => {
+                if let Some(pk) = primary_key {
+                    let mut settings = self.meili.get_settings(name).map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
+                    // wait the embedded index engine does not allow changing primary_key on settings easily?
+                    // Primary key is typically set on document addition or index creation in milli.
+                    // If it exists, let's assume it's fine for now, or just update the index object wrapper itself.
+                    // milli's Index doesn't store primary_key in standard `settings`. It's done via `UpdateIndexRequest`.
+                    let req = crate::core::wilysearch::types::UpdateIndexRequest {
+                        primary_key: pk.to_string(),
+                    };
+                    let _ = self.meili.update_index(name, &req);
+                }
+                Ok(())
+            },
+            Err(e) if matches!(e, WilySearchError::IndexNotFound(_)) => {
+                let req = crate::core::wilysearch::types::CreateIndexRequest {
+                    uid: name.to_string(),
+                    primary_key: primary_key.map(|s| s.to_string()),
+                };
+                self.meili.create_index(&req)
+                    .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
+                Ok(())
             }
+            Err(e) => Err(SearchError::MeilisearchError(e.to_string())),
         }
     }
 
     /// Delete an index entirely
     pub async fn delete_index(&self, name: &str) -> Result<()> {
-        match self.client.delete_index(name).await {
-            Ok(task) => {
-                task.wait_for_completion(
-                    &self.client,
-                    Some(std::time::Duration::from_millis(100)),
-                    Some(std::time::Duration::from_secs(TASK_TIMEOUT_SHORT_SECS)),
-                )
-                .await?;
+        match self.meili.delete_index(name) {
+            Ok(_) => {
                 log::info!("Deleted index '{}'", name);
                 Ok(())
-            }
-            Err(meilisearch_sdk::errors::Error::Meilisearch(err))
-                if err.error_code == meilisearch_sdk::errors::ErrorCode::IndexNotFound =>
-            {
-                // Index doesn't exist - that's fine for deletion
+            },
+            Err(e) if matches!(e, WilySearchError::IndexNotFound(_)) => {
                 log::debug!("Index '{}' already doesn't exist", name);
                 Ok(())
             }
-            Err(e) => Err(e.into()),
+            Err(e) => Err(SearchError::MeilisearchError(e.to_string())),
         }
     }
 
     /// Initialize all specialized indexes with appropriate settings
     pub async fn initialize_indexes(&self) -> Result<()> {
-        // Enable experimental features (vectorStore) required for hybrid search
-        let url = format!("{}/experimental-features", self.host);
-        let client = reqwest::Client::new();
-        let mut request = client.patch(&url).json(&serde_json::json!({
-            "vectorStore": true,
-            "scoreDetails": true
-        }));
-
-        if let Some(key) = &self.api_key {
-            request = request.header("Authorization", format!("Bearer {}", key));
-        }
-
-        if let Err(e) = request.send().await {
-            log::warn!("Failed to enable experimental features: {}", e);
-        } else {
-            log::info!("Enabled Meilisearch experimental features (vectorStore, scoreDetails)");
-        }
+        log::info!("Initializing Meilisearch indexes (with embedded features)");
 
         // Create all content indexes
         for index_name in [INDEX_RULES, INDEX_FICTION, INDEX_CHAT, INDEX_DOCUMENTS] {
@@ -158,63 +120,46 @@ impl SearchClient {
         // Create library metadata index
         self.ensure_index(INDEX_LIBRARY_METADATA, Some("id")).await?;
 
-        // Configure settings for content indexes
-        let base_settings = Settings::new()
-            .with_searchable_attributes(["content", "source", "metadata"])
-            .with_filterable_attributes([
-                "source",
-                "source_type",
-                "campaign_id",
-                "session_id",
-                "created_at",
-            ])
-            .with_sortable_attributes(["created_at"]);
-
         // Apply settings to content indexes
         for index_name in [INDEX_RULES, INDEX_FICTION, INDEX_CHAT, INDEX_DOCUMENTS] {
-            let index = self.client.index(index_name);
-            let task = index.set_settings(&base_settings).await?;
-            task.wait_for_completion(
-                &self.client,
-                Some(std::time::Duration::from_millis(100)),
-                Some(std::time::Duration::from_secs(TASK_TIMEOUT_SHORT_SECS)),
-            )
-            .await?;
+            let mut settings = self.meili.get_settings(index_name)
+                .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
+
+            settings.searchable_attributes = Some(vec![
+                "content".to_string(), "source".to_string(), "metadata".to_string()
+            ]);
+            settings.filterable_attributes = Some(vec![
+                "source".to_string(), "source_type".to_string(), "campaign_id".to_string(),
+                "session_id".to_string(), "created_at".to_string()
+            ].into_iter().collect());
+            settings.sortable_attributes = Some(vec!["created_at".to_string()].into_iter().collect());
+
+            self.meili.update_settings(index_name, &settings)
+                .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
         }
 
         // Configure library metadata index settings
-        let library_settings = Settings::new()
-            .with_searchable_attributes([
-                "name",
-                "source_type",
-                "file_path",
-                // TTRPG metadata (searchable for discovery)
-                "game_system",
-                "setting",
-                "content_type",
-                "publisher",
-            ])
-            .with_filterable_attributes([
-                "source_type",
-                "status",
-                "content_index",
-                "ingested_at",
-                // TTRPG metadata (filterable for organization)
-                "game_system",
-                "setting",
-                "content_type",
-                "publisher",
-            ])
-            .with_sortable_attributes(["ingested_at", "name", "page_count", "chunk_count"]);
+        let mut library_settings = self.meili.get_settings(INDEX_LIBRARY_METADATA)
+            .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
 
-        let library_index = self.client.index(INDEX_LIBRARY_METADATA);
-        let task = library_index.set_settings(&library_settings).await?;
-        task.wait_for_completion(
-            &self.client,
-            Some(std::time::Duration::from_millis(100)),
-            Some(std::time::Duration::from_secs(30)),
-        )
-        .await?;
+        library_settings.searchable_attributes = Some(vec![
+            "name".to_string(), "source_type".to_string(), "file_path".to_string(),
+            // TTRPG metadata (searchable for discovery)
+            "game_system".to_string(), "setting".to_string(), "content_type".to_string(), "publisher".to_string()
+        ]);
+
+        library_settings.filterable_attributes = Some(vec![
+            "source_type".to_string(), "status".to_string(), "content_index".to_string(), "ingested_at".to_string(),
+            // TTRPG metadata (filterable for organization)
+            "game_system".to_string(), "setting".to_string(), "content_type".to_string(), "publisher".to_string()
+        ].into_iter().collect());
+
+        library_settings.sortable_attributes = Some(vec![
+            "ingested_at".to_string(), "name".to_string(), "page_count".to_string(), "chunk_count".to_string()
+        ].into_iter().collect());
+
+        self.meili.update_settings(INDEX_LIBRARY_METADATA, &library_settings)
+            .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
 
         log::info!(
             "Initialized Meilisearch indexes: rules, fiction, chat, documents, library_metadata"
@@ -233,32 +178,16 @@ impl SearchClient {
         embedder_name: &str,
         config: &EmbedderConfig,
     ) -> Result<()> {
-        let embedder_json = build_embedder_json(config);
+        let mut settings = self.meili.get_settings(index_name)
+            .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
 
-        // Use PATCH to update embedders setting
-        let url = format!("{}/indexes/{}/settings/embedders", self.host, index_name);
-        let client = reqwest::Client::new();
+        let mut embedders = settings.embedders.unwrap_or_default();
+        let wily_cfg: crate::core::wilysearch::types::EmbedderConfig = serde_json::from_value(build_embedder_json(config)).map_err(|e| SearchError::ConfigError(e.to_string()))?;
+        embedders.insert(embedder_name.to_string(), wily_cfg);
+        settings.embedders = Some(embedders);
 
-        let mut request = client
-            .patch(&url)
-            .json(&serde_json::json!({ embedder_name: embedder_json }));
-
-        if let Some(key) = &self.api_key {
-            request = request.header("Authorization", format!("Bearer {}", key));
-        }
-
-        let response = request
-            .send()
-            .await
+        self.meili.update_settings(index_name, &settings)
             .map_err(|e| SearchError::ConfigError(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_default();
-            return Err(SearchError::ConfigError(format!(
-                "Failed to configure embedder: {}",
-                error_text
-            )));
-        }
 
         log::info!(
             "Configured embedder '{}' for index '{}'",
@@ -357,29 +286,14 @@ impl SearchClient {
         &self,
         index_name: &str,
     ) -> Result<Option<serde_json::Value>> {
-        let url = format!("{}/indexes/{}/settings/embedders", self.host, index_name);
-        let client = reqwest::Client::new();
+        let settings = self.meili.get_settings(index_name)
+            .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
 
-        let mut request = client.get(&url);
-        if let Some(key) = &self.api_key {
-            request = request.header("Authorization", format!("Bearer {}", key));
+        if let Some(embedders) = settings.embedders {
+            Ok(Some(serde_json::to_value(embedders).unwrap_or_default()))
+        } else {
+            Ok(None)
         }
-
-        let response = request
-            .send()
-            .await
-            .map_err(|e| SearchError::ConfigError(e.to_string()))?;
-
-        if !response.status().is_success() {
-            return Ok(None);
-        }
-
-        let settings: serde_json::Value = response
-            .json()
-            .await
-            .map_err(|e| SearchError::ConfigError(e.to_string()))?;
-
-        Ok(Some(settings))
     }
 
     // ========================================================================
@@ -400,109 +314,61 @@ impl SearchClient {
             return Ok(());
         }
 
-        let index = self.client.index(index_name);
-        let task = index.add_documents(&documents, Some("id")).await?;
+        let json_docs: Vec<serde_json::Value> = documents
+            .into_iter()
+            .map(|doc| serde_json::to_value(doc).unwrap())
+            .collect();
 
-        // Wait with explicit timeout (10 minutes) and polling interval (100ms)
-        task.wait_for_completion(
-            &self.client,
-            Some(std::time::Duration::from_millis(100)),
-            Some(std::time::Duration::from_secs(TASK_TIMEOUT_LONG_SECS)),
-        )
-        .await?;
+        let query = AddDocumentsQuery {
+            primary_key: Some("id".to_string()),
+            ..Default::default()
+        };
+
+        self.meili.add_or_replace_documents(index_name, &json_docs, &query)
+            .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
 
         log::info!(
             "Added {} documents to index '{}'",
-            documents.len(),
+            json_docs.len(),
             index_name
         );
         Ok(())
     }
 
     /// Delete documents by filter
-    ///
-    /// Paginates through all matching documents to handle cases where more than
-    /// 1000 documents match the filter.
     pub async fn delete_by_filter(&self, index_name: &str, filter: &str) -> Result<()> {
-        let index = self.client.index(index_name);
-        let mut total_deleted = 0;
-        const PAGE_SIZE: usize = 1000;
+        let req = crate::core::wilysearch::types::DeleteDocumentsByFilterRequest {
+            filter: filter.to_string(),
+        };
 
-        loop {
-            // Search for documents matching the filter
-            let results: SearchResults<SearchDocument> = index
-                .search()
-                .with_filter(filter)
-                .with_limit(PAGE_SIZE)
-                .execute()
-                .await?;
+        self.meili.delete_documents_by_filter(index_name, &req)
+            .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
 
-            if results.hits.is_empty() {
-                break;
-            }
-
-            // Collect IDs and delete
-            let ids: Vec<&str> = results.hits.iter().map(|h| h.result.id.as_str()).collect();
-            let batch_count = ids.len();
-
-            let task = index.delete_documents(&ids).await?;
-            task.wait_for_completion(
-                &self.client,
-                Some(std::time::Duration::from_millis(100)),
-                Some(std::time::Duration::from_secs(TASK_TIMEOUT_LONG_SECS)),
-            )
-            .await?;
-
-            total_deleted += batch_count;
-
-            // If we got fewer than PAGE_SIZE results, we've processed all matching docs
-            if batch_count < PAGE_SIZE {
-                break;
-            }
-        }
-
-        if total_deleted > 0 {
-            log::info!(
-                "Deleted {} documents from index '{}' matching filter",
-                total_deleted,
-                index_name
-            );
-        }
+        log::info!(
+            "Deleted documents from index '{}' matching filter",
+            index_name
+        );
         Ok(())
     }
 
     /// Delete a document by ID
     pub async fn delete_document(&self, index_name: &str, doc_id: &str) -> Result<()> {
-        let index = self.client.index(index_name);
-        let task = index.delete_document(doc_id).await?;
-        task.wait_for_completion(
-            &self.client,
-            Some(std::time::Duration::from_millis(100)),
-            Some(std::time::Duration::from_secs(TASK_TIMEOUT_SHORT_SECS)),
-        )
-        .await?;
+        self.meili.delete_document(index_name, doc_id)
+            .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
         Ok(())
     }
 
     /// Get document count for an index
     pub async fn document_count(&self, index_name: &str) -> Result<u64> {
-        let index = self.client.index(index_name);
-        let stats = index.get_stats().await?;
-        Ok(stats.number_of_documents as u64)
+        let stats = self.meili.index_stats(index_name)
+            .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
+        Ok(stats.number_of_documents)
     }
 
     /// Clear all documents from an index
     pub async fn clear_index(&self, index_name: &str) -> Result<()> {
-        let index = self.client.index(index_name);
-        let task = index.delete_all_documents().await?;
-
-        // Wait with explicit timeout (10 minutes) and polling interval (100ms)
-        task.wait_for_completion(
-            &self.client,
-            Some(std::time::Duration::from_millis(100)),
-            Some(std::time::Duration::from_secs(TASK_TIMEOUT_LONG_SECS)),
-        )
-        .await?;
+        self.meili.delete_all_documents(index_name)
+            .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
 
         log::info!("Cleared all documents from index '{}'", index_name);
         Ok(())
@@ -520,27 +386,30 @@ impl SearchClient {
         limit: usize,
         filter: Option<&str>,
     ) -> Result<Vec<SearchResult>> {
-        let index = self.client.index(index_name);
-
-        let mut search = index.search();
-        search.with_query(query).with_limit(limit);
+        let mut req = SearchRequest::default()
+            .query(query)
+            .limit(limit as u32);
 
         if let Some(f) = filter {
-            search.with_filter(f);
+            req = req.filter(serde_json::json!(f));
         }
 
-        let results: SearchResults<SearchDocument> = search.execute().await?;
+        let results = self.meili.search(index_name, &req)
+            .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
 
         let search_results: Vec<SearchResult> = results
             .hits
             .into_iter()
             .enumerate()
-            .map(|(i, hit)| SearchResult {
-                document: hit.result,
-                // Meilisearch doesn't give explicit scores in basic search
-                // Use position-based scoring
-                score: 1.0 - (i as f32 * 0.1).min(0.9),
-                index: index_name.to_string(),
+            .map(|(i, hit)| {
+                let doc: SearchDocument = serde_json::from_value(hit).unwrap_or_default();
+                SearchResult {
+                    document: doc,
+                    // Meilisearch doesn't give explicit scores in basic search
+                    // Use position-based scoring
+                    score: 1.0 - (i as f32 * 0.1).min(0.9),
+                    index: index_name.to_string(),
+                }
             })
             .collect();
 
@@ -556,56 +425,30 @@ impl SearchClient {
         semantic_ratio: f32,
         embedder: Option<&str>,
     ) -> Result<Vec<SearchResult>> {
-        // Build hybrid search request manually via HTTP
-        // as the SDK may not fully support hybrid search syntax
-        let url = format!("{}/indexes/{}/search", self.host, index_name);
-        let client = reqwest::Client::new();
-
-        let body = serde_json::json!({
-            "q": query,
-            "limit": limit,
-            "hybrid": {
+        let req = SearchRequest::default()
+            .query(query)
+            .limit(limit as u32)
+            .hybrid(serde_json::json!({
                 "semanticRatio": semantic_ratio,
                 "embedder": embedder.unwrap_or("default")
-            }
-        });
+            }));
 
-        let mut request = client.post(&url).json(&body);
+        let response = match self.meili.search(index_name, &req) {
+            Ok(res) => res,
+            Err(_) => return self.search(index_name, query, limit, None).await, // Fallback to regular search
+        };
 
-        if let Some(key) = &self.api_key {
-            request = request.header("Authorization", format!("Bearer {}", key));
-        }
-
-        let response = request
-            .send()
-            .await
-            .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
-
-        if !response.status().is_success() {
-            // Fall back to regular search if hybrid not supported
-            return self.search(index_name, query, limit, None).await;
-        }
-
-        #[derive(Deserialize)]
-        struct HybridResponse {
-            hits: Vec<SearchDocument>,
-            #[serde(rename = "processingTimeMs")]
-            _processing_time_ms: Option<u64>,
-        }
-
-        let result: HybridResponse = response
-            .json()
-            .await
-            .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
-
-        let search_results: Vec<SearchResult> = result
+        let search_results: Vec<SearchResult> = response
             .hits
             .into_iter()
             .enumerate()
-            .map(|(i, doc)| SearchResult {
-                document: doc,
-                score: 1.0 - (i as f32 * 0.1).min(0.9),
-                index: index_name.to_string(),
+            .map(|(i, hit)| {
+                let doc: SearchDocument = serde_json::from_value(hit).unwrap_or_default();
+                SearchResult {
+                    document: doc,
+                    score: 1.0 - (i as f32 * 0.1).min(0.9),
+                    index: index_name.to_string(),
+                }
             })
             .collect();
 
@@ -676,7 +519,6 @@ impl SearchClient {
     pub async fn get_all_stats(&self) -> Result<HashMap<String, u64>> {
         let mut stats = HashMap::new();
 
-        // Get all indexes from Meilisearch with pagination to ensure we don't miss any
         let all_meili_indexes: Vec<String> = match self.list_all_index_names().await {
             Ok(indexes) => indexes,
             Err(e) => {
@@ -703,74 +545,24 @@ impl SearchClient {
         Ok(stats)
     }
 
-    /// List all index names with proper pagination handling
+    /// List all index names
     async fn list_all_index_names(&self) -> Result<Vec<String>> {
-        let client = reqwest::Client::new();
-        let mut all_names = Vec::new();
-        let mut offset = 0u32;
-        const PAGE_SIZE: u32 = 100;
+        let query = crate::core::wilysearch::types::PaginationQuery {
+            offset: None,
+            limit: Some(100), // milli indexes list gets all on the node realistically.
+        };
+        let index_list = self.meili.list_indexes(&query)
+            .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
 
-        loop {
-            let url = format!("{}/indexes?limit={}&offset={}", self.host, PAGE_SIZE, offset);
-            let mut request = client.get(&url);
-
-            if let Some(key) = &self.api_key {
-                request = request.header("Authorization", format!("Bearer {}", key));
-            }
-
-            let response = request
-                .send()
-                .await
-                .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
-
-            if !response.status().is_success() {
-                return Err(SearchError::MeilisearchError(format!(
-                    "Failed to list indexes: HTTP {}",
-                    response.status()
-                )));
-            }
-
-            #[derive(Deserialize)]
-            struct IndexInfo {
-                uid: String,
-            }
-
-            #[derive(Deserialize)]
-            struct IndexesResponse {
-                results: Vec<IndexInfo>,
-            }
-
-            let data: IndexesResponse = response
-                .json()
-                .await
-                .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
-
-            let count = data.results.len();
-            all_names.extend(data.results.into_iter().map(|idx| idx.uid));
-
-            // If we got fewer than PAGE_SIZE, we've reached the end
-            if (count as u32) < PAGE_SIZE {
-                break;
-            }
-
-            offset += PAGE_SIZE;
-
-            // Safety limit to prevent infinite loops (unlikely but defensive)
-            if offset > 10000 {
-                log::warn!("Hit safety limit while paginating indexes");
-                break;
-            }
-        }
-
-        Ok(all_names)
+        Ok(index_list.results.into_iter().map(|idx| idx.uid).collect())
     }
 
     // ========================================================================
     // Library Document Operations (delegated to LibraryRepositoryImpl)
     // ========================================================================
 
-    fn library_repo(&self) -> LibraryRepositoryImpl<'_> {
-        LibraryRepositoryImpl::new(&self.client, &self.host)
+    pub fn library_repo(&self) -> LibraryRepositoryImpl {
+        LibraryRepositoryImpl::new(&self.meili, "")
     }
 
     /// Save library document metadata to Meilisearch
@@ -819,19 +611,13 @@ impl SearchClient {
     pub async fn configure_ttrpg_index(&self, index_name: &str) -> Result<()> {
         self.ensure_index(index_name, Some("id")).await?;
 
-        let settings = Settings::new()
-            .with_searchable_attributes(TTRPG_SEARCHABLE_ATTRIBUTES.to_vec())
-            .with_filterable_attributes(TTRPG_FILTERABLE_ATTRIBUTES.to_vec())
-            .with_sortable_attributes(TTRPG_SORTABLE_ATTRIBUTES.to_vec());
+        let mut settings = self.meili.get_settings(index_name).map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
+        settings.searchable_attributes = Some(TTRPG_SEARCHABLE_ATTRIBUTES.iter().map(|s| s.to_string()).collect());
+        settings.filterable_attributes = Some(TTRPG_FILTERABLE_ATTRIBUTES.iter().map(|s| s.to_string()).collect());
+        settings.sortable_attributes = Some(TTRPG_SORTABLE_ATTRIBUTES.iter().map(|s| s.to_string()).collect());
 
-        let index = self.client.index(index_name);
-        let task = index.set_settings(&settings).await?;
-        task.wait_for_completion(
-            &self.client,
-            Some(std::time::Duration::from_millis(100)),
-            Some(std::time::Duration::from_secs(30)),
-        )
-        .await?;
+        self.meili.update_settings(index_name, &settings)
+            .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
 
         log::info!("Configured TTRPG index '{}'", index_name);
         Ok(())
@@ -839,80 +625,73 @@ impl SearchClient {
 
     /// Configure a raw document index for the two-phase ingestion pipeline.
     /// Raw indexes store page-level documents and need sorting by page_number.
-    pub async fn ensure_raw_index(&self, index_name: &str) -> Result<Index> {
+    pub async fn ensure_raw_index(&self, index_name: &str) -> Result<()> {
         // Create index if it doesn't exist
-        let index = self.ensure_index(index_name, Some("id")).await?;
+        self.ensure_index(index_name, Some("id")).await?;
 
         // Configure settings for raw document indexes
-        let settings = Settings::new()
-            .with_searchable_attributes(["raw_content", "source_slug"])
-            .with_sortable_attributes(["page_number"]);
+        let mut settings = self.meili.get_settings(index_name).map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
+        settings.searchable_attributes = Some(vec!["raw_content".to_string(), "source_slug".to_string()]);
+        settings.sortable_attributes = Some(vec!["page_number".to_string()].into_iter().collect());
 
-        let task = index.set_settings(&settings).await?;
-        task.wait_for_completion(
-            &self.client,
-            Some(std::time::Duration::from_millis(100)),
-            Some(std::time::Duration::from_secs(30)),
-        )
-        .await?;
+        self.meili.update_settings(index_name, &settings)
+            .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
 
         log::info!("Configured raw index '{}'", index_name);
-        Ok(index)
+        Ok(())
     }
 
     /// Configure a chunks index for the two-phase ingestion pipeline.
     /// Chunks indexes store semantic chunks with TTRPG metadata.
-    pub async fn ensure_chunks_index(&self, index_name: &str) -> Result<Index> {
+    pub async fn ensure_chunks_index(&self, index_name: &str) -> Result<()> {
         // Create index if it doesn't exist
-        let index = self.ensure_index(index_name, Some("id")).await?;
+        self.ensure_index(index_name, Some("id")).await?;
 
         // Configure settings for chunked document indexes with v2 enhanced metadata
-        let settings = Settings::new()
-            .with_searchable_attributes([
-                "content",
-                "embedding_content", // Context-injected content for better semantic search
-                "source_slug",
-                "book_title",
-                "game_system",
-                "section_path",
-                "semantic_keywords",
-            ])
-            .with_filterable_attributes([
-                // v2 enhanced TTRPG filters
-                "element_type",     // stat_block, random_table, spell, item, etc.
-                "content_mode",     // crunch, fluff, mixed, example, optional, fiction
-                "section_depth",    // 0=root, 1=chapter, 2=section, etc.
-                "parent_sections",  // ["Chapter 1", "Monsters"]
-                "cross_refs",       // ["page:47", "chapter:3"]
-                "dice_expressions", // ["2d6", "1d20+5"]
-                // Existing TTRPG metadata
-                "game_system",
-                "game_system_id",
-                "content_category", // rulebook, adventure, setting, bestiary
-                "mechanic_type",    // skill_check, combat, damage, etc.
-                // Page/chunk tracking
-                "page_start",
-                "page_end",
-                "source_slug",
-                "source", // Filter/search by source document
-            ])
-            .with_sortable_attributes([
-                "page_start",
-                "chunk_index",
-                "section_depth",
-                "classification_confidence",
-            ]);
+        let mut settings = self.meili.get_settings(index_name).map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
+        settings.searchable_attributes = Some(vec![
+            "content".to_string(),
+            "embedding_content".to_string(), // Context-injected content for better semantic search
+            "source_slug".to_string(),
+            "book_title".to_string(),
+            "game_system".to_string(),
+            "setting".to_string(),
+            "campaign_id".to_string(),
+            "session_id".to_string(),
+            "tags".to_string(),
+            "semantic_keywords".to_string(),
+        ]);
+        settings.filterable_attributes = Some(vec![
+            // v2 enhanced TTRPG filters
+            "element_type".to_string(),     // stat_block, random_table, spell, item, etc.
+            "content_mode".to_string(),     // crunch, fluff, mixed, example, optional, fiction
+            "section_depth".to_string(),    // 0=root, 1=chapter, 2=section, etc.
+            "parent_sections".to_string(),  // ["Chapter 1", "Monsters"]
+            "cross_refs".to_string(),       // ["page:47", "chapter:3"]
+            "dice_expressions".to_string(), // ["2d6", "1d20+5"]
+            // Existing TTRPG metadata
+            "game_system".to_string(),
+            "game_system_id".to_string(),
+            "content_category".to_string(), // rulebook, adventure, setting, bestiary
+            "mechanic_type".to_string(),    // skill_check, combat, damage, etc.
+            // Page/chunk tracking
+            "page_start".to_string(),
+            "page_end".to_string(),
+            "source_slug".to_string(),
+            "source".to_string(), // Filter/search by source document
+        ].into_iter().collect());
+        settings.sortable_attributes = Some(vec![
+            "page_start".to_string(),
+            "chunk_index".to_string(),
+            "section_depth".to_string(),
+            "classification_confidence".to_string(),
+        ].into_iter().collect());
 
-        let task = index.set_settings(&settings).await?;
-        task.wait_for_completion(
-            &self.client,
-            Some(std::time::Duration::from_millis(100)),
-            Some(std::time::Duration::from_secs(30)),
-        )
-        .await?;
+        self.meili.update_settings(index_name, &settings)
+            .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
 
         log::info!("Configured chunks index '{}'", index_name);
-        Ok(index)
+        Ok(())
     }
 
     /// Add TTRPG documents with game-specific metadata
@@ -925,19 +704,22 @@ impl SearchClient {
             return Ok(());
         }
 
-        let index = self.client.index(index_name);
-        let task = index.add_documents(&documents, Some("id")).await?;
+        let json_docs: Vec<serde_json::Value> = documents
+            .into_iter()
+            .map(|doc| serde_json::to_value(doc).unwrap())
+            .collect();
 
-        task.wait_for_completion(
-            &self.client,
-            Some(std::time::Duration::from_millis(100)),
-            Some(std::time::Duration::from_secs(TASK_TIMEOUT_LONG_SECS)),
-        )
-        .await?;
+        let query = AddDocumentsQuery {
+            primary_key: Some("id".to_string()),
+            ..Default::default()
+        };
+
+        self.meili.add_or_replace_documents(index_name, &json_docs, &query)
+            .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
 
         log::info!(
             "Added {} TTRPG documents to index '{}'",
-            documents.len(),
+            json_docs.len(),
             index_name
         );
         Ok(())
@@ -951,25 +733,28 @@ impl SearchClient {
         limit: usize,
         filter: Option<&str>,
     ) -> Result<Vec<TTRPGSearchResult>> {
-        let index = self.client.index(index_name);
-
-        let mut search = index.search();
-        search.with_query(query).with_limit(limit);
+        let mut req = SearchRequest::default()
+            .query(query)
+            .limit(limit as u32);
 
         if let Some(f) = filter {
-            search.with_filter(f);
+            req = req.filter(serde_json::json!(f));
         }
 
-        let results: SearchResults<TTRPGSearchDocument> = search.execute().await?;
+        let results = self.meili.search(index_name, &req)
+            .map_err(|e| SearchError::MeilisearchError(e.to_string()))?;
 
         let search_results: Vec<TTRPGSearchResult> = results
             .hits
             .into_iter()
             .enumerate()
-            .map(|(i, hit)| TTRPGSearchResult {
-                document: hit.result,
-                score: 1.0 - (i as f32 * 0.1).min(0.9),
-                index: index_name.to_string(),
+            .filter_map(|(i, hit)| {
+                let doc: TTRPGSearchDocument = serde_json::from_value(hit).ok()?;
+                Some(TTRPGSearchResult {
+                    document: doc,
+                    score: 1.0 - (i as f32 * 0.1).min(0.9),
+                    index: index_name.to_string(),
+                })
             })
             .collect();
 

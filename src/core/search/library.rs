@@ -4,7 +4,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use meilisearch_sdk::search::SearchResults;
+use crate::core::wilysearch::engine::Engine;
+use crate::core::wilysearch::traits::{Documents, Indexes, Search, Tasks, System};
+use crate::core::wilysearch::types::{AddDocumentsQuery, DocumentQuery, Index, SearchRequest, TaskInfo};
 
 use super::config::{
     all_indexes, INDEX_CHAT, INDEX_FICTION, INDEX_LIBRARY_METADATA, INDEX_RULES,
@@ -44,26 +46,26 @@ pub trait LibraryRepository: Send + Sync {
 
 /// Implementation helper functions for LibraryRepository
 pub struct LibraryRepositoryImpl<'a> {
-    client: &'a meilisearch_sdk::client::Client,
+    meili: &'a Engine,
     #[allow(dead_code)] // Reserved for future use (e.g., raw HTTP calls)
     host: &'a str,
 }
 
 impl<'a> LibraryRepositoryImpl<'a> {
-    pub fn new(client: &'a meilisearch_sdk::client::Client, host: &'a str) -> Self {
-        Self { client, host }
+    pub fn new(meili: &'a Engine, host: &'a str) -> Self {
+        Self { meili, host }
     }
 
     /// Save library document metadata to Meilisearch
     pub async fn save(&self, doc: &LibraryDocumentMetadata) -> Result<()> {
-        let index = self.client.index(INDEX_LIBRARY_METADATA);
-        let task = index.add_documents(&[doc], Some("id")).await?;
-        task.wait_for_completion(
-            self.client,
-            Some(std::time::Duration::from_millis(100)),
-            Some(std::time::Duration::from_secs(TASK_TIMEOUT_SHORT_SECS)),
-        )
-        .await?;
+        let req = AddDocumentsQuery {
+            primary_key: Some("id".to_string()),
+            csv_delimiter: None,
+        };
+        let docs = [serde_json::to_value(doc).unwrap_or_default()];
+        self.meili.add_or_replace_documents(INDEX_LIBRARY_METADATA, &docs, &req).map_err(|e| {
+            SearchError::MeilisearchError(format!("Failed to save doc: {}", e))
+        })?;
         log::info!(
             "Saved library document metadata: {} ({})",
             doc.name,
@@ -76,30 +78,31 @@ impl<'a> LibraryRepositoryImpl<'a> {
     ///
     /// Paginates through all documents to avoid truncation at any fixed limit.
     pub async fn list(&self) -> Result<Vec<LibraryDocumentMetadata>> {
-        let index = self.client.index(INDEX_LIBRARY_METADATA);
         let mut all_docs = Vec::new();
         let mut offset = 0;
         const PAGE_SIZE: usize = 1000;
 
         loop {
-            // Use search with empty query to get documents, sorted by ingested_at
-            let results: SearchResults<LibraryDocumentMetadata> = index
-                .search()
-                .with_query("")
-                .with_limit(PAGE_SIZE)
-                .with_offset(offset)
-                .with_sort(&["ingested_at:desc"])
-                .execute()
-                .await?;
+            let req = SearchRequest::default()
+                .limit(PAGE_SIZE as u32)
+                .offset(offset as u32)
+                .sort(vec!["ingested_at:desc".to_string()]);
+
+            let results = self.meili.search(INDEX_LIBRARY_METADATA, &req).map_err(|e| {
+                SearchError::MeilisearchError(format!("Failed to search library metadata: {}", e))
+            })?;
 
             let batch_size = results.hits.len();
-            all_docs.extend(results.hits.into_iter().map(|hit| hit.result));
+            for hit in results.hits {
+                let v = serde_json::to_value(&hit).unwrap_or_default();
+                if let Ok(doc) = serde_json::from_value(v) {
+                    all_docs.push(doc);
+                }
+            }
 
-            // If we got fewer than PAGE_SIZE results, we've fetched all documents
             if batch_size < PAGE_SIZE {
                 break;
             }
-
             offset += PAGE_SIZE;
         }
 
@@ -108,57 +111,45 @@ impl<'a> LibraryRepositoryImpl<'a> {
 
     /// Get a single library document by ID
     pub async fn get(&self, doc_id: &str) -> Result<Option<LibraryDocumentMetadata>> {
-        let index = self.client.index(INDEX_LIBRARY_METADATA);
-
-        match index
-            .get_document::<LibraryDocumentMetadata>(doc_id)
-            .await
-        {
-            Ok(doc) => Ok(Some(doc)),
-            Err(meilisearch_sdk::errors::Error::Meilisearch(e))
-                if e.error_code == meilisearch_sdk::errors::ErrorCode::DocumentNotFound =>
-            {
-                Ok(None)
+        let q = DocumentQuery::default();
+        match self.meili.get_document(INDEX_LIBRARY_METADATA, doc_id, &q) {
+            Ok(doc) => {
+                let v = serde_json::to_value(&doc).unwrap_or_default();
+                let parsed: LibraryDocumentMetadata = serde_json::from_value(v).map_err(|e| {
+                    SearchError::MeilisearchError(format!("Parse error: {}", e))
+                })?;
+                Ok(Some(parsed))
             }
-            Err(e) => Err(SearchError::from(e)),
+            Err(crate::core::wilysearch::error::Error::DocumentNotFound(_)) => Ok(None),
+            Err(e) => Err(SearchError::MeilisearchError(e.to_string())),
         }
     }
 
     /// Delete a library document from Meilisearch (metadata only)
     pub async fn delete(&self, doc_id: &str) -> Result<()> {
-        let index = self.client.index(INDEX_LIBRARY_METADATA);
-        let task = index.delete_document(doc_id).await?;
-        task.wait_for_completion(
-            self.client,
-            Some(std::time::Duration::from_millis(100)),
-            Some(std::time::Duration::from_secs(TASK_TIMEOUT_SHORT_SECS)),
-        )
-        .await?;
+        let req = crate::core::wilysearch::types::DeleteDocumentsByFilterRequest {
+            filter: format!("id = '{}'", doc_id),
+        };
+        self.meili.delete_documents_by_filter(INDEX_LIBRARY_METADATA, &req).map_err(|e| {
+            SearchError::MeilisearchError(format!("Failed to delete doc: {}", e))
+        })?;
         log::info!("Deleted library document metadata: {}", doc_id);
         Ok(())
     }
 
     /// Delete an index entirely (helper for delete_with_content)
     pub async fn delete_index(&self, name: &str) -> Result<()> {
-        match self.client.delete_index(name).await {
-            Ok(task) => {
-                task.wait_for_completion(
-                    self.client,
-                    Some(std::time::Duration::from_millis(100)),
-                    Some(std::time::Duration::from_secs(TASK_TIMEOUT_SHORT_SECS)),
-                )
-                .await?;
+        match self.meili.delete_index(name) {
+            Ok(_) => {
                 log::info!("Deleted index '{}'", name);
                 Ok(())
             }
-            Err(meilisearch_sdk::errors::Error::Meilisearch(err))
-                if err.error_code == meilisearch_sdk::errors::ErrorCode::IndexNotFound =>
-            {
+            Err(crate::core::wilysearch::error::Error::IndexNotFound(_)) => {
                 // Index doesn't exist - that's fine for deletion
                 log::debug!("Index '{}' already doesn't exist", name);
                 Ok(())
             }
-            Err(e) => Err(e.into()),
+            Err(e) => Err(SearchError::MeilisearchError(e.to_string())),
         }
     }
 
@@ -189,16 +180,17 @@ impl<'a> LibraryRepositoryImpl<'a> {
 
     /// Get library document count
     pub async fn count(&self) -> Result<u64> {
-        let index = self.client.index(INDEX_LIBRARY_METADATA);
-        let stats = index.get_stats().await?;
+        let stats = self.meili.index_stats(INDEX_LIBRARY_METADATA).map_err(|e| {
+            SearchError::MeilisearchError(format!("Failed to get stats: {}", e))
+        })?;
         Ok(stats.number_of_documents as u64)
     }
 
-    /// Get document count for an index (helper)
     async fn document_count(&self, index_name: &str) -> Result<u64> {
-        let index = self.client.index(index_name);
-        let stats = index.get_stats().await?;
-        Ok(stats.number_of_documents as u64)
+        match self.meili.index_stats(index_name) {
+            Ok(stats) => Ok(stats.number_of_documents as u64),
+            Err(_) => Ok(0),
+        }
     }
 
     /// Rebuild library metadata from existing content indices.
@@ -236,33 +228,38 @@ impl<'a> LibraryRepositoryImpl<'a> {
 
             // Get all unique sources by querying with facets
             // Meilisearch doesn't have direct facet aggregation, so we'll paginate through docs
-            let index = self.client.index(index_name);
             let mut offset = 0;
             let limit = 1000;
 
             loop {
-                let results: SearchResults<SearchDocument> = index
-                    .search()
-                    .with_query("")
-                    .with_limit(limit)
-                    .with_offset(offset)
-                    .execute()
-                    .await?;
+                let req = SearchRequest::default()
+                    .limit(limit)
+                    .offset(offset);
+
+                let results = match self.meili.search(index_name, &req) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        log::warn!("Failed to query {} during rebuild: {}", index_name, e);
+                        break;
+                    }
+                };
 
                 if results.hits.is_empty() {
                     break;
                 }
 
                 for hit in results.hits {
-                    let doc = hit.result;
-                    let entry = discovered_sources
-                        .entry(doc.source.clone())
-                        .or_insert((index_name.to_string(), 0, 0, 0));
-                    entry.1 += 1; // chunk count
-                    entry.2 += doc.content.len() as u64; // character count
-                    // Track max page number to estimate total pages
-                    if let Some(page_num) = doc.page_number {
-                        entry.3 = entry.3.max(page_num);
+                    let v = serde_json::to_value(&hit).unwrap_or_default();
+                    if let Ok(doc) = serde_json::from_value::<SearchDocument>(v) {
+                        let entry = discovered_sources
+                            .entry(doc.source.clone())
+                            .or_insert((index_name.to_string(), 0, 0, 0));
+                        entry.1 += 1; // chunk count
+                        entry.2 += doc.content.len() as u64; // character count
+                        // Track max page number to estimate total pages
+                        if let Some(page_num) = doc.page_number {
+                            entry.3 = entry.3.max(page_num);
+                        }
                     }
                 }
 

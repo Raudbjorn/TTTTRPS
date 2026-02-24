@@ -8,8 +8,8 @@ pub mod world_state;
 pub mod relationships;
 
 // Campaign Generation modules (TASK-CAMP-001 through TASK-CAMP-017)
-pub mod meilisearch_indexes;
-pub mod meilisearch_client;
+pub mod search_indexes;
+pub mod search_client;
 pub mod migration;
 pub mod arc_types;
 pub mod phase_types;
@@ -51,12 +51,12 @@ pub use relationships::{
 };
 
 // Campaign Generation re-exports
-pub use meilisearch_indexes::{
+pub use search_indexes::{
     IndexConfig, CampaignArcsIndexConfig, SessionPlansIndexConfig, PlotPointsIndexConfig,
     INDEX_CAMPAIGN_ARCS, INDEX_SESSION_PLANS, INDEX_PLOT_POINTS,
     all_campaign_indexes, get_index_configs,
 };
-pub use meilisearch_client::{
+pub use search_client::{
     MeilisearchCampaignClient, MeilisearchCampaignError, MEILISEARCH_BATCH_SIZE,
 };
 pub use migration::{

@@ -26,6 +26,10 @@ struct UsageData {
     daily_budget: Option<f64>,
     within_budget: bool,
     providers: Vec<ProviderRow>,
+    // Search analytics snapshot
+    search_total: u64,
+    search_zero_results: usize,
+    search_popular: Vec<(String, u32)>,
 }
 
 struct ProviderRow {
@@ -97,6 +101,12 @@ impl UsageViewState {
         let tx = self.data_tx.clone();
         let llm = services.llm.clone();
 
+        // Capture search analytics snapshot (sync, in-memory)
+        let analytics_summary = services.search_analytics.get_summary(24);
+        let search_total = analytics_summary.total_searches as u64;
+        let search_zero_results = services.search_analytics.get_zero_result_queries(24).len();
+        let search_popular = services.search_analytics.get_popular_queries(5);
+
         tokio::spawn(async move {
             let cost_summary = llm.get_cost_summary().await;
             let all_stats = llm.get_all_stats().await;
@@ -123,6 +133,9 @@ impl UsageViewState {
                 daily_budget: cost_summary.daily_budget,
                 within_budget: cost_summary.is_within_budget,
                 providers,
+                search_total,
+                search_zero_results,
+                search_popular,
             };
 
             let _ = tx.send(data);
@@ -428,6 +441,44 @@ impl UsageViewState {
                 "  No providers configured",
                 Style::default().fg(theme::TEXT_DIM),
             )));
+        }
+
+        // Search analytics
+        lines.push(Line::raw(""));
+        lines.push(Line::from(Span::styled(
+            "  SEARCH (24h)",
+            Style::default()
+                .fg(theme::ACCENT)
+                .add_modifier(Modifier::BOLD),
+        )));
+        lines.push(Line::raw(""));
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled("Queries: ", Style::default().fg(theme::TEXT_MUTED)),
+            Span::styled(
+                format!("{}", data.search_total),
+                Style::default().fg(theme::TEXT),
+            ),
+            Span::raw("  "),
+            Span::styled("Zero-result: ", Style::default().fg(theme::TEXT_MUTED)),
+            Span::styled(
+                format!("{}", data.search_zero_results),
+                Style::default().fg(if data.search_zero_results > 0 { theme::WARNING } else { theme::TEXT }),
+            ),
+        ]));
+        if !data.search_popular.is_empty() {
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled("Popular: ", Style::default().fg(theme::TEXT_MUTED)),
+                Span::styled(
+                    data.search_popular
+                        .iter()
+                        .map(|(q, c)| format!("{q} ({c})"))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    Style::default().fg(theme::TEXT_DIM),
+                ),
+            ]));
         }
 
         // Hints

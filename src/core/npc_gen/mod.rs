@@ -69,6 +69,9 @@ pub mod file_utils;
 /// Meilisearch index configurations for NPC data.
 pub mod indexes;
 
+/// In-memory index replacements for NPC data (no Meilisearch required).
+pub mod memory_indexes;
+
 /// Vocabulary bank data models and phrase selection.
 pub mod vocabulary;
 
@@ -104,6 +107,12 @@ pub use indexes::{
     ExclamationTemplateDocument, NameComponentDocument, NpcIndexError, NpcIndexStats,
     VocabularyPhraseDocument, INDEX_EXCLAMATION_TEMPLATES, INDEX_NAME_COMPONENTS,
     INDEX_VOCABULARY_BANKS,
+};
+
+// In-memory index replacements
+pub use memory_indexes::{
+    InMemoryExclamationIndex, InMemoryNameComponentIndex, InMemoryNpcIndexes,
+    InMemoryVocabularyIndex,
 };
 
 // Vocabulary types
@@ -202,7 +211,7 @@ impl NPCVoiceConfig {
 /// * `Ok(())` - Initialization successful
 /// * `Err(String)` - If index creation fails
 pub fn initialize_npc_system(
-    meili: &meilisearch_lib::Meilisearch,
+    meili: &crate::core::wilysearch::engine::Engine,
 ) -> std::result::Result<(), String> {
     log::info!("Initializing NPC generation system...");
 
@@ -215,7 +224,7 @@ pub fn initialize_npc_system(
 
 /// Get statistics about the NPC generation data.
 pub fn get_system_stats(
-    meili: &meilisearch_lib::Meilisearch,
+    meili: &crate::core::wilysearch::engine::Engine,
 ) -> std::result::Result<NpcIndexStats, String> {
     get_npc_index_stats(meili).map_err(|e| e.to_string())
 }

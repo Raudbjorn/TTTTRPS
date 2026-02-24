@@ -26,3 +26,6 @@ dev-resources/
 # Generated shell completions
 .completions/
 TTTRPS/
+
+# Wilysearch
+wilysearch/

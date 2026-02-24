@@ -46,8 +46,23 @@ pub enum AppEvent {
         npc: NpcRecord,
         conversation: NpcConversation,
     },
+    /// RAG context chunks retrieved for the chat pane.
+    RagChunksRetrieved(Vec<RagChunkDisplay>),
     /// Request to quit the application.
     Quit,
+}
+
+/// A retrieved RAG context chunk displayed in the RAG pane.
+#[derive(Debug, Clone)]
+pub struct RagChunkDisplay {
+    /// Source document slug (e.g. "phb-2024").
+    pub source: String,
+    /// Page number within the source document.
+    pub page: Option<i32>,
+    /// Relevance score (0.0 - 1.0).
+    pub relevance: f32,
+    /// Truncated content preview.
+    pub preview: String,
 }
 
 /// Progress phases during document ingestion.
@@ -57,6 +72,8 @@ pub enum IngestionProgressKind {
     Extracting { progress: f32, status: String },
     /// Chunking the extracted text.
     Chunking { chunk_count: usize },
+    /// Generating embeddings for chunks.
+    Embedding { processed: usize, total: usize },
     /// Storing chunks in SurrealDB.
     Storing { stored: usize, total: usize },
     /// Ingestion completed successfully.

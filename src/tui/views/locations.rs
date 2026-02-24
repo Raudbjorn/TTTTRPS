@@ -1,8 +1,8 @@
 //! Location generator — wizard-style location creation and browsing.
 //!
-//! Uses the LocationGenerator backend for quick (template) and detailed (LLM)
-//! location generation. Currently shows the wizard UI skeleton; generation
-//! will be wired when LocationGenerator is added to Services.
+//! Uses `LocationGenerator::generate_quick()` for template-based generation.
+//! Displays generated locations with atmosphere, features, inhabitants,
+//! secrets, encounters, and loot.
 
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
@@ -14,6 +14,7 @@ use ratatui::{
 };
 
 use super::super::theme;
+use crate::core::location_gen::{Location, LocationGenerationOptions};
 use crate::tui::services::Services;
 
 // ── Location type list ─────────────────────────────────────────────────────
@@ -47,7 +48,7 @@ pub struct LocationViewState {
     phase: Phase,
     selected_type: usize,
     scroll: usize,
-    generated_preview: Option<String>,
+    generated: Option<Location>,
 }
 
 impl LocationViewState {
@@ -56,19 +57,19 @@ impl LocationViewState {
             phase: Phase::TypeSelect,
             selected_type: 0,
             scroll: 0,
-            generated_preview: None,
+            generated: None,
         }
     }
 
     pub fn load(&mut self, _services: &Services) {
-        // LocationGenerator not in Services yet
+        // No async loading needed — generation is on-demand via Enter key
     }
 
     pub fn poll(&mut self) {
-        // No async data to poll yet
+        // No async data to poll
     }
 
-    pub fn handle_input(&mut self, event: &Event, _services: &Services) -> bool {
+    pub fn handle_input(&mut self, event: &Event, services: &Services) -> bool {
         let Event::Key(KeyEvent {
             code,
             kind: KeyEventKind::Press,
@@ -80,12 +81,17 @@ impl LocationViewState {
         };
 
         match self.phase {
-            Phase::TypeSelect => self.handle_type_select(*modifiers, *code),
-            Phase::Preview => self.handle_preview(*modifiers, *code),
+            Phase::TypeSelect => self.handle_type_select(*modifiers, *code, services),
+            Phase::Preview => self.handle_preview(*modifiers, *code, services),
         }
     }
 
-    fn handle_type_select(&mut self, mods: KeyModifiers, code: KeyCode) -> bool {
+    fn handle_type_select(
+        &mut self,
+        mods: KeyModifiers,
+        code: KeyCode,
+        services: &Services,
+    ) -> bool {
         match (mods, code) {
             (KeyModifiers::NONE, KeyCode::Char('j') | KeyCode::Down) => {
                 if self.selected_type + 1 < LOCATION_TYPES.len() {
@@ -98,32 +104,51 @@ impl LocationViewState {
                 true
             }
             (KeyModifiers::NONE, KeyCode::Enter) => {
-                let (name, desc) = LOCATION_TYPES[self.selected_type];
-                self.generated_preview = Some(format!(
-                    "Location Type: {name}\n\n\
-                     {desc}\n\n\
-                     [Generation not yet connected]\n\n\
-                     When LocationGenerator is wired to Services,\n\
-                     this will generate a full location with:\n\
-                     - Atmosphere and description\n\
-                     - Notable features\n\
-                     - Inhabitants and NPCs\n\
-                     - Secrets and encounters\n\
-                     - Connected locations\n\
-                     - Loot potential"
-                ));
+                let (type_name, _) = LOCATION_TYPES[self.selected_type];
+                let options = LocationGenerationOptions {
+                    location_type: Some(type_name.to_lowercase()),
+                    include_inhabitants: true,
+                    include_secrets: true,
+                    include_encounters: true,
+                    include_loot: true,
+                    ..Default::default()
+                };
+                let location = services.location_generator.generate_quick(&options);
+                self.generated = Some(location);
                 self.phase = Phase::Preview;
+                self.scroll = 0;
                 true
             }
             _ => false,
         }
     }
 
-    fn handle_preview(&mut self, mods: KeyModifiers, code: KeyCode) -> bool {
+    fn handle_preview(
+        &mut self,
+        mods: KeyModifiers,
+        code: KeyCode,
+        services: &Services,
+    ) -> bool {
         match (mods, code) {
             (KeyModifiers::NONE, KeyCode::Esc | KeyCode::Char('q')) => {
                 self.phase = Phase::TypeSelect;
-                self.generated_preview = None;
+                self.generated = None;
+                true
+            }
+            (KeyModifiers::NONE, KeyCode::Char('r')) => {
+                // Re-generate with same type
+                if let Some(ref loc) = self.generated {
+                    let options = LocationGenerationOptions {
+                        location_type: Some(format!("{:?}", loc.location_type).to_lowercase()),
+                        include_inhabitants: true,
+                        include_secrets: true,
+                        include_encounters: true,
+                        include_loot: true,
+                        ..Default::default()
+                    };
+                    self.generated = Some(services.location_generator.generate_quick(&options));
+                    self.scroll = 0;
+                }
                 true
             }
             (KeyModifiers::NONE, KeyCode::Char('j') | KeyCode::Down) => {
@@ -159,7 +184,7 @@ impl LocationViewState {
         let mut lines: Vec<Line<'static>> = Vec::new();
         for (i, (name, _)) in LOCATION_TYPES.iter().enumerate() {
             let is_selected = i == self.selected_type;
-            let marker = if is_selected { "▸ " } else { "  " };
+            let marker = if is_selected { "\u{25b8} " } else { "  " };
             let style = if is_selected {
                 Style::default()
                     .fg(theme::ACCENT)
@@ -210,31 +235,208 @@ impl LocationViewState {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
-        let text = self
-            .generated_preview
-            .as_deref()
-            .unwrap_or("No location generated");
+        let Some(ref loc) = self.generated else {
+            return;
+        };
 
         let mut lines: Vec<Line<'static>> = Vec::new();
+
+        // Header
         lines.push(Line::raw(""));
-        for line in text.lines() {
+        lines.push(Line::from(Span::styled(
+            format!("  {} ({:?})", loc.name, loc.location_type),
+            Style::default()
+                .fg(theme::ACCENT)
+                .add_modifier(Modifier::BOLD),
+        )));
+        if !loc.tags.is_empty() {
+            lines.push(Line::from(vec![
+                Span::raw("  Tags: "),
+                Span::styled(loc.tags.join(", "), Style::default().fg(theme::TEXT_DIM)),
+            ]));
+        }
+
+        // Description
+        lines.push(Line::raw(""));
+        section_header(&mut lines, "DESCRIPTION");
+        for part in loc.description.lines() {
             lines.push(Line::from(Span::styled(
-                format!("  {line}"),
+                format!("  {part}"),
                 Style::default().fg(theme::TEXT),
             )));
         }
+
+        // Atmosphere
+        lines.push(Line::raw(""));
+        section_header(&mut lines, "ATMOSPHERE");
+        lines.push(detail_line("Mood", &loc.atmosphere.mood));
+        lines.push(detail_line("Lighting", &loc.atmosphere.lighting));
+        if !loc.atmosphere.sounds.is_empty() {
+            lines.push(detail_line("Sounds", &loc.atmosphere.sounds.join(", ")));
+        }
+        if !loc.atmosphere.smells.is_empty() {
+            lines.push(detail_line("Smells", &loc.atmosphere.smells.join(", ")));
+        }
+
+        // Notable features
+        if !loc.notable_features.is_empty() {
+            lines.push(Line::raw(""));
+            section_header(&mut lines, "NOTABLE FEATURES");
+            for feat in &loc.notable_features {
+                let flags = match (feat.interactive, feat.hidden) {
+                    (true, true) => " [interactive, hidden]",
+                    (true, false) => " [interactive]",
+                    (false, true) => " [hidden]",
+                    (false, false) => "",
+                };
+                lines.push(Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled(
+                        format!("{}{flags}", feat.name),
+                        Style::default()
+                            .fg(theme::PRIMARY_LIGHT)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                ]));
+                lines.push(Line::from(Span::styled(
+                    format!("    {}", feat.description),
+                    Style::default().fg(theme::TEXT),
+                )));
+            }
+        }
+
+        // Inhabitants
+        if !loc.inhabitants.is_empty() {
+            lines.push(Line::raw(""));
+            section_header(&mut lines, "INHABITANTS");
+            for npc in &loc.inhabitants {
+                lines.push(Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled(
+                        format!("{} — {}", npc.name, npc.role),
+                        Style::default()
+                            .fg(theme::PRIMARY_LIGHT)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        format!(" ({:?})", npc.disposition),
+                        Style::default().fg(theme::TEXT_DIM),
+                    ),
+                ]));
+                lines.push(Line::from(Span::styled(
+                    format!("    {}", npc.description),
+                    Style::default().fg(theme::TEXT),
+                )));
+                if !npc.services.is_empty() {
+                    lines.push(Line::from(Span::styled(
+                        format!("    Services: {}", npc.services.join(", ")),
+                        Style::default().fg(theme::TEXT_DIM),
+                    )));
+                }
+            }
+        }
+
+        // Secrets
+        if !loc.secrets.is_empty() {
+            lines.push(Line::raw(""));
+            section_header(&mut lines, "SECRETS");
+            for secret in &loc.secrets {
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        format!("  [{:?}] ", secret.difficulty_to_discover),
+                        Style::default().fg(theme::TEXT_DIM),
+                    ),
+                    Span::styled(
+                        secret.description.clone(),
+                        Style::default().fg(theme::TEXT),
+                    ),
+                ]));
+                if !secret.clues.is_empty() {
+                    lines.push(Line::from(Span::styled(
+                        format!("    Clues: {}", secret.clues.join("; ")),
+                        Style::default().fg(theme::TEXT_DIM),
+                    )));
+                }
+            }
+        }
+
+        // Encounters
+        if !loc.encounters.is_empty() {
+            lines.push(Line::raw(""));
+            section_header(&mut lines, "ENCOUNTERS");
+            for enc in &loc.encounters {
+                let opt = if enc.optional { " (optional)" } else { "" };
+                lines.push(Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled(
+                        format!("{}{opt}", enc.name),
+                        Style::default()
+                            .fg(theme::PRIMARY_LIGHT)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        format!(" [{:?}]", enc.difficulty),
+                        Style::default().fg(theme::TEXT_DIM),
+                    ),
+                ]));
+                lines.push(Line::from(Span::styled(
+                    format!("    {}", enc.description),
+                    Style::default().fg(theme::TEXT),
+                )));
+                lines.push(Line::from(Span::styled(
+                    format!("    Trigger: {}", enc.trigger),
+                    Style::default().fg(theme::TEXT_DIM),
+                )));
+            }
+        }
+
+        // Loot
+        if let Some(ref loot) = loc.loot_potential {
+            lines.push(Line::raw(""));
+            section_header(&mut lines, "LOOT POTENTIAL");
+            lines.push(detail_line("Level", &format!("{:?}", loot.treasure_level)));
+            if !loot.notable_items.is_empty() {
+                lines.push(detail_line("Items", &loot.notable_items.join(", ")));
+            }
+            if loot.hidden_caches > 0 {
+                lines.push(detail_line(
+                    "Caches",
+                    &format!("{} hidden cache(s)", loot.hidden_caches),
+                ));
+            }
+        }
+
+        // Footer
         lines.push(Line::raw(""));
         lines.push(Line::from(Span::styled(
-            "  [Esc] back  [j/k] scroll",
+            "  [Esc] back  [r] regenerate  [j/k] scroll",
             Style::default().fg(theme::TEXT_DIM),
         )));
 
-        let visible = inner.height as usize;
-        let max_scroll = lines.len().saturating_sub(visible);
-        let scroll = self.scroll.min(max_scroll);
-
-        frame.render_widget(Paragraph::new(lines).scroll((scroll as u16, 0)), inner);
+        frame.render_widget(
+            Paragraph::new(lines).scroll((self.scroll as u16, 0)),
+            inner,
+        );
     }
+}
+
+fn section_header(lines: &mut Vec<Line<'static>>, title: &str) {
+    lines.push(Line::from(Span::styled(
+        format!("  {title}"),
+        Style::default()
+            .fg(theme::PRIMARY)
+            .add_modifier(Modifier::BOLD),
+    )));
+}
+
+fn detail_line(label: &str, value: &str) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(
+            format!("  {:<12}", label),
+            Style::default().fg(theme::TEXT_MUTED),
+        ),
+        Span::styled(value.to_string(), Style::default().fg(theme::TEXT)),
+    ])
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -248,17 +450,15 @@ mod tests {
         let state = LocationViewState::new();
         assert_eq!(state.phase, Phase::TypeSelect);
         assert_eq!(state.selected_type, 0);
-        assert!(state.generated_preview.is_none());
+        assert!(state.generated.is_none());
     }
 
     #[test]
     fn test_type_selection_bounds() {
         let mut state = LocationViewState::new();
-        // Can't go below 0
         state.selected_type = 0;
         state.selected_type = state.selected_type.saturating_sub(1);
         assert_eq!(state.selected_type, 0);
-        // Can go up to LOCATION_TYPES.len() - 1
         state.selected_type = LOCATION_TYPES.len() - 1;
         assert_eq!(state.selected_type, LOCATION_TYPES.len() - 1);
     }

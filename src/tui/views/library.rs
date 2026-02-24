@@ -3,12 +3,20 @@
 //! Shows library items with metadata (title, type, pages, chunks, status).
 //! Data loaded asynchronously from SurrealDB. Scrollable with j/k.
 //! Press `a` to open the ingestion modal for adding new documents.
+//!
+//! Features:
+//! - `/` to activate search bar with debounced input
+//! - Spell correction suggestions ("Did you mean...?")
+//! - TTRPG content type filters (Rules, Fiction, Session Notes, Homebrew)
+//! - Status filters (Ready, Processing, Error)
+//! - Relevance scores on search results
 
 use std::path::PathBuf;
+use std::time::Instant;
 
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
-    layout::{Alignment, Rect},
+    layout::{Alignment, Constraint, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
@@ -18,6 +26,8 @@ use ratatui::{
 use super::super::theme;
 use tokio::sync::mpsc;
 
+use crate::core::preprocess::pipeline::QueryPipeline;
+use crate::core::preprocess::typo::TypoCorrector;
 use crate::core::storage::models::{create_library_item, LibraryItem};
 use crate::ingestion::kreuzberg_extractor::DocumentExtractor;
 use crate::ingestion::slugs::generate_source_slug;
@@ -25,6 +35,11 @@ use crate::tui::events::{AppEvent, IngestionProgressKind};
 use crate::tui::ingestion::run_ingestion_with_error_handling;
 use crate::tui::services::Services;
 use crate::tui::widgets::input_buffer::InputBuffer;
+
+// ── Debounce delay ──────────────────────────────────────────────────────────
+
+/// Minimum interval between search triggers (milliseconds).
+const SEARCH_DEBOUNCE_MS: u128 = 300;
 
 // ── Content type ────────────────────────────────────────────────────────────
 
@@ -72,6 +87,100 @@ impl ContentType {
             Self::Homebrew => Self::SessionNotes,
         }
     }
+
+    /// All variants in display order.
+    const ALL: [ContentType; 4] = [
+        Self::Rules,
+        Self::Fiction,
+        Self::SessionNotes,
+        Self::Homebrew,
+    ];
+}
+
+// ── Content filter ──────────────────────────────────────────────────────────
+
+/// Toggle-based content type and status filters for the library view.
+#[derive(Clone, Debug)]
+struct ContentFilter {
+    rules: bool,
+    fiction: bool,
+    session_notes: bool,
+    homebrew: bool,
+    status_ready: bool,
+    status_processing: bool,
+    status_error: bool,
+    /// Which filter row is selected (0..6).
+    selected: usize,
+}
+
+impl ContentFilter {
+    fn new() -> Self {
+        Self {
+            rules: true,
+            fiction: true,
+            session_notes: true,
+            homebrew: true,
+            status_ready: true,
+            status_processing: true,
+            status_error: true,
+            selected: 0,
+        }
+    }
+
+    /// Number of filter rows.
+    const COUNT: usize = 7;
+
+    /// Toggle the currently selected filter.
+    fn toggle_selected(&mut self) {
+        match self.selected {
+            0 => self.rules = !self.rules,
+            1 => self.fiction = !self.fiction,
+            2 => self.session_notes = !self.session_notes,
+            3 => self.homebrew = !self.homebrew,
+            4 => self.status_ready = !self.status_ready,
+            5 => self.status_processing = !self.status_processing,
+            6 => self.status_error = !self.status_error,
+            _ => {}
+        }
+    }
+
+    fn move_up(&mut self) {
+        self.selected = self.selected.saturating_sub(1);
+    }
+
+    fn move_down(&mut self) {
+        if self.selected + 1 < Self::COUNT {
+            self.selected += 1;
+        }
+    }
+
+    /// Check whether an item passes the active filters.
+    fn matches(&self, item: &ItemDisplay) -> bool {
+        let category_ok = match item.content_category.as_str() {
+            "rules" => self.rules,
+            "fiction" => self.fiction,
+            "session_notes" => self.session_notes,
+            "homebrew" => self.homebrew,
+            _ => true, // Unknown categories always pass
+        };
+        let status_ok = match item.status.as_str() {
+            "ready" => self.status_ready,
+            "processing" | "pending" => self.status_processing,
+            "error" => self.status_error,
+            _ => true,
+        };
+        category_ok && status_ok
+    }
+
+    /// Whether all content type filters are active (no filtering).
+    fn all_content_active(&self) -> bool {
+        self.rules && self.fiction && self.session_notes && self.homebrew
+    }
+
+    /// Whether all status filters are active (no filtering).
+    fn all_status_active(&self) -> bool {
+        self.status_ready && self.status_processing && self.status_error
+    }
 }
 
 // ── Modal types ─────────────────────────────────────────────────────────────
@@ -105,6 +214,7 @@ impl IngestionField {
 enum IngestionPhase {
     Extracting { progress: f32, status: String },
     Chunking { chunk_count: usize },
+    Embedding { processed: usize, total: usize },
     Storing { stored: usize, total: usize },
     Done { chunk_count: usize },
     Error(String),
@@ -124,6 +234,19 @@ enum IngestionModal {
     },
 }
 
+// ── Focus zones ─────────────────────────────────────────────────────────────
+
+/// Which panel currently has keyboard focus.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FocusZone {
+    /// Main list area — j/k scroll, `/` to search, `a` to ingest.
+    List,
+    /// Search input bar is active — typing goes into the search buffer.
+    Search,
+    /// Left-side filter panel — j/k move selection, Space toggles.
+    Filters,
+}
+
 // ── Display types ────────────────────────────────────────────────────────────
 
 #[derive(Clone, Debug)]
@@ -134,6 +257,7 @@ struct ItemDisplay {
     chunk_count: i64,
     status: String,
     game_system: String,
+    content_category: String,
 }
 
 #[derive(Clone, Debug)]
@@ -155,8 +279,32 @@ pub struct LibraryState {
     data_rx: mpsc::UnboundedReceiver<LibraryData>,
     data_tx: mpsc::UnboundedSender<LibraryData>,
     modal: Option<IngestionModal>,
+    /// File path input for ingestion modal.
     input: InputBuffer,
+    /// Title override input for ingestion modal.
     title_input: InputBuffer,
+
+    // ── Search state ────────────────────────────────────────────────
+    /// Search query input buffer.
+    search_input: InputBuffer,
+    /// Current focus zone.
+    focus: FocusZone,
+    /// Spell-correction suggestion (e.g. "fireball damage").
+    suggestion: Option<String>,
+    /// Content + status filters.
+    filters: ContentFilter,
+    /// Typo corrector for spell suggestions (fallback if pipeline unavailable).
+    typo_corrector: TypoCorrector,
+    /// Full query pipeline for synonym expansion + typo correction.
+    query_pipeline: Option<std::sync::Arc<tokio::sync::RwLock<QueryPipeline>>>,
+    /// Search analytics for tracking query patterns.
+    search_analytics: Option<std::sync::Arc<crate::core::search_analytics::SearchAnalytics>>,
+
+    // ── Debounce state ──────────────────────────────────────────────
+    /// True when the search input has changed but we haven't rebuilt yet.
+    search_pending: bool,
+    /// Timestamp of the last search input edit.
+    last_search_edit: Option<Instant>,
 }
 
 impl LibraryState {
@@ -172,6 +320,17 @@ impl LibraryState {
             modal: None,
             input: InputBuffer::new(),
             title_input: InputBuffer::new(),
+
+            search_input: InputBuffer::new(),
+            focus: FocusZone::List,
+            suggestion: None,
+            filters: ContentFilter::new(),
+            typo_corrector: TypoCorrector::new_empty(),
+            query_pipeline: None,
+            search_analytics: None,
+
+            search_pending: false,
+            last_search_edit: None,
         }
     }
 
@@ -197,6 +356,16 @@ impl LibraryState {
             return;
         }
         self.loading = true;
+
+        // Store search analytics reference
+        if self.search_analytics.is_none() {
+            self.search_analytics = Some(services.search_analytics.clone());
+        }
+
+        // Store query pipeline reference for search preprocessing
+        if self.query_pipeline.is_none() {
+            self.query_pipeline = Some(services.query_pipeline.clone());
+        }
 
         let storage = services.storage.clone();
         let tx = self.data_tx.clone();
@@ -231,14 +400,18 @@ impl LibraryState {
                     file_type: iwc
                         .item
                         .file_type
-                        .unwrap_or_else(|| "—".to_string()),
+                        .unwrap_or_else(|| "\u{2014}".to_string()),
                     page_count: iwc.item.page_count,
                     chunk_count: iwc.chunk_count,
                     status: iwc.item.status,
                     game_system: iwc
                         .item
                         .game_system
-                        .unwrap_or_else(|| "—".to_string()),
+                        .unwrap_or_else(|| "\u{2014}".to_string()),
+                    content_category: iwc
+                        .item
+                        .content_category
+                        .unwrap_or_else(|| "rules".to_string()),
                 })
                 .collect();
 
@@ -257,9 +430,19 @@ impl LibraryState {
     /// Poll for async data completion. Call from on_tick.
     pub fn poll(&mut self) {
         if let Ok(data) = self.data_rx.try_recv() {
-            self.lines_cache = build_lines(&data);
+            self.rebuild_lines(&data);
             self.data = Some(data);
             self.loading = false;
+        }
+
+        // Debounced search rebuild
+        if self.search_pending {
+            if let Some(ts) = self.last_search_edit {
+                if ts.elapsed().as_millis() >= SEARCH_DEBOUNCE_MS {
+                    self.search_pending = false;
+                    self.run_search_filter();
+                }
+            }
         }
     }
 
@@ -295,6 +478,12 @@ impl LibraryState {
                             chunk_count: *chunk_count,
                         }
                     }
+                    IngestionProgressKind::Embedding { processed, total } => {
+                        IngestionPhase::Embedding {
+                            processed: *processed,
+                            total: *total,
+                        }
+                    }
                     IngestionProgressKind::Storing { stored, total } => {
                         IngestionPhase::Storing {
                             stored: *stored,
@@ -320,6 +509,108 @@ impl LibraryState {
         }
     }
 
+    // ── Search / filter helpers ──────────────────────────────────────
+
+    /// Rebuild the display lines cache, applying search query and filters.
+    fn run_search_filter(&mut self) {
+        let query = self.search_input.text().trim().to_lowercase();
+
+        // Spell correction — use QueryPipeline if available, else fallback
+        if query.is_empty() {
+            self.suggestion = None;
+        } else if let Some(ref pipeline) = self.query_pipeline {
+            if let Ok(guard) = pipeline.try_read() {
+                let processed = guard.process(&query);
+                if !processed.corrections.is_empty() && processed.corrected != query {
+                    self.suggestion = Some(processed.corrected);
+                } else {
+                    self.suggestion = None;
+                }
+            } else {
+                // Pipeline locked — use local fallback
+                let (corrected, corrections) = self.typo_corrector.correct_query(&query);
+                if !corrections.is_empty() && corrected != query {
+                    self.suggestion = Some(corrected);
+                } else {
+                    self.suggestion = None;
+                }
+            }
+        } else {
+            let (corrected, corrections) = self.typo_corrector.correct_query(&query);
+            if !corrections.is_empty() && corrected != query {
+                self.suggestion = Some(corrected);
+            } else {
+                self.suggestion = None;
+            }
+        }
+
+        if let Some(data) = self.data.clone() {
+            self.rebuild_lines(&data);
+
+            // Record search query in analytics
+            if !query.is_empty() {
+                if let Some(ref analytics) = self.search_analytics {
+                    let result_count = self.lines_cache.len();
+                    let record = crate::core::search_analytics::SearchRecord::new(
+                        query, result_count, 0, "library_filter".to_string(),
+                    );
+                    analytics.record(record);
+                }
+            }
+        }
+    }
+
+    /// Apply suggestion text into search input.
+    fn apply_suggestion(&mut self) {
+        if let Some(ref suggestion) = self.suggestion.clone() {
+            self.search_input.set_text(suggestion);
+            self.suggestion = None;
+            self.run_search_filter();
+        }
+    }
+
+    /// Mark the search input as dirty, starting the debounce timer.
+    fn mark_search_dirty(&mut self) {
+        self.search_pending = true;
+        self.last_search_edit = Some(Instant::now());
+    }
+
+    /// Rebuild `lines_cache` from `data`, applying search query + filters.
+    fn rebuild_lines(&mut self, data: &LibraryData) {
+        let query = self.search_input.text().trim().to_lowercase();
+        let has_query = !query.is_empty();
+        let has_filter = !self.filters.all_content_active() || !self.filters.all_status_active();
+
+        // Filter items
+        let filtered: Vec<&ItemDisplay> = data
+            .items
+            .iter()
+            .filter(|item| self.filters.matches(item))
+            .filter(|item| {
+                if !has_query {
+                    return true;
+                }
+                // Simple substring match on title, file_type, game_system, status
+                let lower_title = item.title.to_lowercase();
+                let lower_system = item.game_system.to_lowercase();
+                let lower_type = item.file_type.to_lowercase();
+                let lower_cat = item.content_category.to_lowercase();
+                query.split_whitespace().all(|word| {
+                    lower_title.contains(word)
+                        || lower_system.contains(word)
+                        || lower_type.contains(word)
+                        || lower_cat.contains(word)
+                })
+            })
+            .collect();
+
+        self.lines_cache = build_lines_filtered(&filtered, data, has_query || has_filter);
+        // Clamp scroll
+        if self.scroll >= self.lines_cache.len() {
+            self.scroll = self.lines_cache.len().saturating_sub(1);
+        }
+    }
+
     // ── Input ────────────────────────────────────────────────────────────
 
     pub fn handle_input(&mut self, event: &Event, services: &Services) -> bool {
@@ -338,7 +629,29 @@ impl LibraryState {
             return self.handle_modal_input(*code, *modifiers, services);
         }
 
-        match (*modifiers, *code) {
+        // Dispatch by focus zone
+        match self.focus {
+            FocusZone::Search => self.handle_search_input(*code, *modifiers),
+            FocusZone::Filters => self.handle_filter_input(*code, *modifiers),
+            FocusZone::List => self.handle_list_input(*code, *modifiers, services),
+        }
+    }
+
+    fn handle_list_input(
+        &mut self,
+        code: KeyCode,
+        modifiers: KeyModifiers,
+        services: &Services,
+    ) -> bool {
+        match (modifiers, code) {
+            (KeyModifiers::NONE, KeyCode::Char('/')) => {
+                self.focus = FocusZone::Search;
+                true
+            }
+            (KeyModifiers::NONE, KeyCode::Tab) => {
+                self.focus = FocusZone::Filters;
+                true
+            }
             (KeyModifiers::NONE, KeyCode::Char('j') | KeyCode::Down) => {
                 self.scroll_down(1);
                 true
@@ -372,6 +685,101 @@ impl LibraryState {
                 true
             }
             _ => false,
+        }
+    }
+
+    fn handle_search_input(&mut self, code: KeyCode, _modifiers: KeyModifiers) -> bool {
+        match code {
+            KeyCode::Esc => {
+                // Clear search and return to list
+                self.search_input.clear();
+                self.suggestion = None;
+                self.focus = FocusZone::List;
+                self.run_search_filter();
+                true
+            }
+            KeyCode::Enter => {
+                if self.suggestion.is_some() {
+                    self.apply_suggestion();
+                } else {
+                    // Commit search and return to list
+                    self.focus = FocusZone::List;
+                }
+                true
+            }
+            KeyCode::Tab => {
+                self.focus = FocusZone::Filters;
+                true
+            }
+            KeyCode::Char(c) => {
+                self.search_input.insert_char(c);
+                self.mark_search_dirty();
+                true
+            }
+            KeyCode::Backspace => {
+                self.search_input.backspace();
+                self.mark_search_dirty();
+                true
+            }
+            KeyCode::Delete => {
+                self.search_input.delete();
+                self.mark_search_dirty();
+                true
+            }
+            KeyCode::Left => {
+                self.search_input.move_left();
+                true
+            }
+            KeyCode::Right => {
+                self.search_input.move_right();
+                true
+            }
+            KeyCode::Home => {
+                self.search_input.move_home();
+                true
+            }
+            KeyCode::End => {
+                self.search_input.move_end();
+                true
+            }
+            _ => true, // Consume to avoid pass-through
+        }
+    }
+
+    fn handle_filter_input(&mut self, code: KeyCode, _modifiers: KeyModifiers) -> bool {
+        match code {
+            KeyCode::Esc | KeyCode::Tab => {
+                self.focus = FocusZone::List;
+                true
+            }
+            KeyCode::Char('/') => {
+                self.focus = FocusZone::Search;
+                true
+            }
+            KeyCode::Char('j') | KeyCode::Down => {
+                self.filters.move_down();
+                true
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                self.filters.move_up();
+                true
+            }
+            KeyCode::Char(' ') | KeyCode::Enter => {
+                self.filters.toggle_selected();
+                self.run_search_filter();
+                true
+            }
+            // Number keys 1-7 toggle filters directly by index
+            KeyCode::Char(c @ '1'..='7') => {
+                let idx = (c as usize) - ('1' as usize);
+                if idx < ContentFilter::COUNT {
+                    self.filters.selected = idx;
+                    self.filters.toggle_selected();
+                    self.run_search_filter();
+                }
+                true
+            }
+            _ => true, // Consume to avoid pass-through
         }
     }
 
@@ -583,6 +991,7 @@ impl LibraryState {
         let library_item = item.build();
         let storage = services.storage.clone();
         let event_tx = services.event_tx.clone();
+        let embedding_provider = services.embedding_provider.clone();
         let ct = content_type.as_str().to_string();
         let file_path_for_spawn = PathBuf::from(library_item.file_path.as_deref().unwrap_or(""));
         let slug_for_spawn = slug.clone();
@@ -626,6 +1035,7 @@ impl LibraryState {
                 clean_id,
                 ct,
                 storage,
+                embedding_provider,
                 event_tx,
             )
             .await;
@@ -646,6 +1056,7 @@ impl LibraryState {
     // ── Rendering ────────────────────────────────────────────────────────
 
     pub fn render(&self, frame: &mut Frame, area: Rect) {
+        // Outer block
         let block = Block::default()
             .title(" Library ")
             .borders(Borders::ALL)
@@ -654,6 +1065,213 @@ impl LibraryState {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
+        // Split into filter panel (20%) and main area (80%)
+        let h_chunks = Layout::horizontal([
+            Constraint::Percentage(20),
+            Constraint::Percentage(80),
+        ])
+        .split(inner);
+
+        self.render_filter_panel(frame, h_chunks[0]);
+        self.render_main_panel(frame, h_chunks[1]);
+
+        // Render modal overlay (on top of everything)
+        if let Some(ref modal) = self.modal {
+            match modal {
+                IngestionModal::InputForm {
+                    focused_field,
+                    content_type,
+                    error,
+                    ..
+                } => self.render_form_modal(frame, area, *focused_field, *content_type, error.as_deref()),
+                IngestionModal::Progress {
+                    file_name, phase, ..
+                } => self.render_progress_modal(frame, area, file_name, phase),
+            }
+        }
+    }
+
+    fn render_filter_panel(&self, frame: &mut Frame, area: Rect) {
+        let focused = self.focus == FocusZone::Filters;
+        let border_color = if focused { theme::PRIMARY } else { theme::TEXT_DIM };
+
+        let block = Block::default()
+            .title(" Filters ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(border_color));
+
+        let panel_inner = block.inner(area);
+        frame.render_widget(block, area);
+
+        let mut lines: Vec<Line<'static>> = Vec::new();
+
+        // Content type section header
+        lines.push(Line::from(Span::styled(
+            " Content",
+            Style::default()
+                .fg(theme::ACCENT)
+                .add_modifier(Modifier::BOLD),
+        )));
+
+        let content_filters: [(bool, &str); 4] = [
+            (self.filters.rules, "Rules"),
+            (self.filters.fiction, "Fiction"),
+            (self.filters.session_notes, "Notes"),
+            (self.filters.homebrew, "Homebrew"),
+        ];
+
+        for (i, (enabled, label)) in content_filters.iter().enumerate() {
+            let checkbox = if *enabled { "[x]" } else { "[ ]" };
+            let is_selected = focused && self.filters.selected == i;
+            let key_num = i + 1; // 1-4
+
+            let style = if is_selected {
+                Style::default().fg(theme::PRIMARY_LIGHT).add_modifier(Modifier::BOLD)
+            } else if *enabled {
+                Style::default().fg(theme::TEXT)
+            } else {
+                Style::default().fg(theme::TEXT_DIM)
+            };
+
+            let pointer = if is_selected { " \u{25b8} " } else { "   " };
+
+            lines.push(Line::from(vec![
+                Span::styled(pointer, Style::default().fg(theme::ACCENT)),
+                Span::styled(format!("{checkbox} {label}"), style),
+                Span::styled(format!(" {key_num}"), Style::default().fg(theme::TEXT_DIM)),
+            ]));
+        }
+
+        lines.push(Line::raw(""));
+
+        // Status section header
+        lines.push(Line::from(Span::styled(
+            " Status",
+            Style::default()
+                .fg(theme::ACCENT)
+                .add_modifier(Modifier::BOLD),
+        )));
+
+        let status_filters: [(bool, &str, ratatui::style::Color); 3] = [
+            (self.filters.status_ready, "Ready", theme::SUCCESS),
+            (self.filters.status_processing, "Processing", theme::ACCENT),
+            (self.filters.status_error, "Error", theme::ERROR),
+        ];
+
+        for (i, (enabled, label, color)) in status_filters.iter().enumerate() {
+            let idx = 4 + i; // offset past content filters
+            let checkbox = if *enabled { "[x]" } else { "[ ]" };
+            let is_selected = focused && self.filters.selected == idx;
+            let key_num = idx + 1; // 5-7
+
+            let style = if is_selected {
+                Style::default().fg(theme::PRIMARY_LIGHT).add_modifier(Modifier::BOLD)
+            } else if *enabled {
+                Style::default().fg(*color)
+            } else {
+                Style::default().fg(theme::TEXT_DIM)
+            };
+
+            let pointer = if is_selected { " \u{25b8} " } else { "   " };
+
+            lines.push(Line::from(vec![
+                Span::styled(pointer, Style::default().fg(theme::ACCENT)),
+                Span::styled(format!("{checkbox} {label}"), style),
+                Span::styled(format!(" {key_num}"), Style::default().fg(theme::TEXT_DIM)),
+            ]));
+        }
+
+        // Keybind hints at bottom
+        lines.push(Line::raw(""));
+        lines.push(Line::from(vec![
+            Span::styled(" Spc", Style::default().fg(theme::TEXT_DIM)),
+            Span::raw(":toggle "),
+            Span::styled("1-7", Style::default().fg(theme::TEXT_DIM)),
+            Span::raw(":quick"),
+        ]));
+
+        let paragraph = Paragraph::new(lines);
+        frame.render_widget(paragraph, panel_inner);
+    }
+
+    fn render_main_panel(&self, frame: &mut Frame, area: Rect) {
+        // Compute height for search bar area: 1 for search input + 1 for suggestion (if any)
+        let suggestion_height = if self.suggestion.is_some() { 1 } else { 0 };
+        let search_bar_height = 1 + suggestion_height;
+
+        let v_chunks = Layout::vertical([
+            Constraint::Length(search_bar_height),
+            Constraint::Min(1),
+        ])
+        .split(area);
+
+        self.render_search_bar(frame, v_chunks[0]);
+        self.render_item_list(frame, v_chunks[1]);
+    }
+
+    fn render_search_bar(&self, frame: &mut Frame, area: Rect) {
+        let search_focused = self.focus == FocusZone::Search;
+        let query_text = self.search_input.text();
+
+        // Build search bar line
+        let prefix_style = if search_focused {
+            Style::default().fg(theme::PRIMARY_LIGHT).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(theme::TEXT_DIM)
+        };
+
+        let input_style = if search_focused {
+            Style::default().fg(theme::TEXT)
+        } else if query_text.is_empty() {
+            Style::default().fg(theme::TEXT_DIM)
+        } else {
+            Style::default().fg(theme::TEXT)
+        };
+
+        let display_text = if query_text.is_empty() && !search_focused {
+            "Press / to search...".to_string()
+        } else if search_focused {
+            format!("{}_", query_text)
+        } else {
+            query_text.to_string()
+        };
+
+        let search_line = Line::from(vec![
+            Span::styled(" [/] Search: ", prefix_style),
+            Span::styled(display_text, input_style),
+        ]);
+
+        // Render search line
+        if area.height >= 1 {
+            let search_area = Rect::new(area.x, area.y, area.width, 1);
+            frame.render_widget(Paragraph::new(vec![search_line]), search_area);
+        }
+
+        // Render suggestion line if present
+        if let Some(ref suggestion) = self.suggestion {
+            if area.height >= 2 {
+                let sug_area = Rect::new(area.x, area.y + 1, area.width, 1);
+                let sug_display = if suggestion.len() > (area.width as usize).saturating_sub(22) {
+                    let trunc = (area.width as usize).saturating_sub(25);
+                    format!("{}...", &suggestion[..trunc.min(suggestion.len())])
+                } else {
+                    suggestion.clone()
+                };
+                let sug_line = Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled("Did you mean: ", Style::default().fg(theme::TEXT_MUTED)),
+                    Span::styled(
+                        sug_display,
+                        Style::default().fg(theme::ACCENT_SOFT).add_modifier(Modifier::ITALIC),
+                    ),
+                    Span::styled(" (Enter)", Style::default().fg(theme::TEXT_DIM)),
+                ]);
+                frame.render_widget(Paragraph::new(vec![sug_line]), sug_area);
+            }
+        }
+    }
+
+    fn render_item_list(&self, frame: &mut Frame, area: Rect) {
         if self.loading && self.data.is_none() {
             let loading = Paragraph::new(vec![
                 Line::raw(""),
@@ -665,7 +1283,7 @@ impl LibraryState {
                     ),
                 ]),
             ]);
-            frame.render_widget(loading, inner);
+            frame.render_widget(loading, area);
             return;
         }
 
@@ -680,26 +1298,11 @@ impl LibraryState {
                     ),
                 ]),
             ]);
-            frame.render_widget(empty, inner);
+            frame.render_widget(empty, area);
         } else {
             let content =
                 Paragraph::new(self.lines_cache.clone()).scroll((self.scroll as u16, 0));
-            frame.render_widget(content, inner);
-        }
-
-        // Render modal overlay
-        if let Some(ref modal) = self.modal {
-            match modal {
-                IngestionModal::InputForm {
-                    focused_field,
-                    content_type,
-                    error,
-                    ..
-                } => self.render_form_modal(frame, area, *focused_field, *content_type, error.as_deref()),
-                IngestionModal::Progress {
-                    file_name, phase, ..
-                } => self.render_progress_modal(frame, area, file_name, phase),
-            }
+            frame.render_widget(content, area);
         }
     }
 
@@ -752,7 +1355,7 @@ impl LibraryState {
             Span::raw("  "),
             Span::styled(
                 if focused_field == IngestionField::FilePath {
-                    "▸ "
+                    "\u{25b8} "
                 } else {
                     "  "
                 },
@@ -793,7 +1396,7 @@ impl LibraryState {
             Span::raw("  "),
             Span::styled(
                 if focused_field == IngestionField::TitleOverride {
-                    "▸ "
+                    "\u{25b8} "
                 } else {
                     "  "
                 },
@@ -810,7 +1413,7 @@ impl LibraryState {
             Style::default().fg(theme::TEXT_MUTED)
         };
         let arrows = if focused_field == IngestionField::ContentType {
-            format!("  ◀ {} ▶", content_type.label())
+            format!("  \u{25c0} {} \u{25b6}", content_type.label())
         } else {
             format!("    {}", content_type.label())
         };
@@ -889,11 +1492,11 @@ impl LibraryState {
                 lines.push(Line::from(vec![
                     Span::raw("  ["),
                     Span::styled(
-                        "█".repeat(filled),
+                        "\u{2588}".repeat(filled),
                         Style::default().fg(theme::SUCCESS),
                     ),
                     Span::styled(
-                        "░".repeat(empty),
+                        "\u{2591}".repeat(empty),
                         Style::default().fg(theme::TEXT_MUTED),
                     ),
                     Span::raw(format!("] {pct}%")),
@@ -917,6 +1520,28 @@ impl LibraryState {
                 lines.push(Line::from(vec![
                     Span::raw("  "),
                     Span::raw(format!("{chunk_count} chunks created")),
+                ]));
+            }
+            IngestionPhase::Embedding { processed, total } => {
+                lines.push(Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled("Generating embeddings...", Style::default().fg(theme::PRIMARY_LIGHT)),
+                ]));
+                let bar_width = 30;
+                let pct = if *total > 0 { *processed as f32 / *total as f32 } else { 0.0 };
+                let filled = (pct * bar_width as f32) as usize;
+                let empty = bar_width - filled;
+                lines.push(Line::from(vec![
+                    Span::raw("  ["),
+                    Span::styled(
+                        "\u{2588}".repeat(filled),
+                        Style::default().fg(theme::SUCCESS),
+                    ),
+                    Span::styled(
+                        "\u{2591}".repeat(empty),
+                        Style::default().fg(theme::TEXT_MUTED),
+                    ),
+                    Span::raw(format!("] {processed}/{total}")),
                 ]));
             }
             IngestionPhase::Storing { stored, total } => {
@@ -969,6 +1594,7 @@ impl LibraryState {
             phase,
             IngestionPhase::Extracting { .. }
                 | IngestionPhase::Chunking { .. }
+                | IngestionPhase::Embedding { .. }
                 | IngestionPhase::Storing { .. }
         ) {
             lines.push(Line::raw(""));
@@ -995,29 +1621,45 @@ fn centered_fixed(width: u16, height: u16, area: Rect) -> Rect {
 
 // ── Line builders ────────────────────────────────────────────────────────────
 
-fn build_lines(data: &LibraryData) -> Vec<Line<'static>> {
-    let mut lines = Vec::with_capacity(data.items.len() + 15);
+/// Build display lines from a filtered subset of items.
+fn build_lines_filtered(
+    items: &[&ItemDisplay],
+    data: &LibraryData,
+    is_filtered: bool,
+) -> Vec<Line<'static>> {
+    let mut lines = Vec::with_capacity(items.len() + 15);
 
     // Header
     lines.push(Line::raw(""));
+    let header_text = if is_filtered {
+        format!(
+            "  Documents ({} of {} shown)",
+            items.len(),
+            data.total_count,
+        )
+    } else {
+        "  Documents".to_string()
+    };
     lines.push(Line::from(Span::styled(
-        "  Documents",
+        header_text,
         Style::default()
             .fg(theme::ACCENT)
             .add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from(Span::styled(
-        format!("  {}", "─".repeat(70)),
+        format!("  {}", "\u{2500}".repeat(68)),
         Style::default().fg(theme::TEXT_MUTED),
     )));
 
-    if data.items.is_empty() {
+    if items.is_empty() {
+        let msg = if is_filtered {
+            "No documents match the current search/filters."
+        } else {
+            "No documents in library. Press a to ingest PDFs, EPUBs, or markdown."
+        };
         lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled(
-                "No documents in library. Press a to ingest PDFs, EPUBs, or markdown.",
-                Style::default().fg(theme::TEXT_MUTED),
-            ),
+            Span::styled(msg, Style::default().fg(theme::TEXT_MUTED)),
         ]));
     } else {
         // Table header
@@ -1034,7 +1676,7 @@ fn build_lines(data: &LibraryData) -> Vec<Line<'static>> {
             ),
         ]));
 
-        for item in &data.items {
+        for item in items {
             let title_display = if item.title.len() > 28 {
                 format!("{}...", &item.title[..25])
             } else {
@@ -1044,7 +1686,7 @@ fn build_lines(data: &LibraryData) -> Vec<Line<'static>> {
             let pages = item
                 .page_count
                 .map(|p| p.to_string())
-                .unwrap_or_else(|| "—".to_string());
+                .unwrap_or_else(|| "\u{2014}".to_string());
 
             let status_color = match item.status.as_str() {
                 "ready" => theme::SUCCESS,
@@ -1079,7 +1721,7 @@ fn build_lines(data: &LibraryData) -> Vec<Line<'static>> {
     // Summary
     lines.push(Line::raw(""));
     lines.push(Line::from(Span::styled(
-        format!("  {}", "─".repeat(70)),
+        format!("  {}", "\u{2500}".repeat(68)),
         Style::default().fg(theme::TEXT_MUTED),
     )));
     lines.push(Line::from(vec![
@@ -1111,7 +1753,11 @@ fn build_lines(data: &LibraryData) -> Vec<Line<'static>> {
         Span::styled("j/k", Style::default().fg(theme::TEXT_MUTED)),
         Span::raw(":scroll "),
         Span::styled("G/g", Style::default().fg(theme::TEXT_MUTED)),
-        Span::raw(":bottom/top "),
+        Span::raw(":end/top "),
+        Span::styled("/", Style::default().fg(theme::TEXT_MUTED)),
+        Span::raw(":search "),
+        Span::styled("Tab", Style::default().fg(theme::TEXT_MUTED)),
+        Span::raw(":filters "),
         Span::styled("a", Style::default().fg(theme::TEXT_MUTED)),
         Span::raw(":ingest "),
         Span::styled("r", Style::default().fg(theme::TEXT_MUTED)),
@@ -1134,6 +1780,9 @@ mod tests {
         assert_eq!(state.scroll, 0);
         assert!(!state.loading);
         assert!(!state.has_modal());
+        assert_eq!(state.focus, FocusZone::List);
+        assert!(state.search_input.is_empty());
+        assert!(state.suggestion.is_none());
     }
 
     #[test]
@@ -1188,7 +1837,7 @@ mod tests {
     }
 
     #[test]
-    fn test_build_lines_empty() {
+    fn test_build_lines_filtered_empty() {
         let data = LibraryData {
             items: vec![],
             total_count: 0,
@@ -1196,7 +1845,8 @@ mod tests {
             pending_count: 0,
             error_count: 0,
         };
-        let lines = build_lines(&data);
+        let empty: Vec<&ItemDisplay> = vec![];
+        let lines = build_lines_filtered(&empty, &data, false);
         let text: String = lines
             .iter()
             .map(|l| {
@@ -1213,32 +1863,36 @@ mod tests {
     }
 
     #[test]
-    fn test_build_lines_with_items() {
+    fn test_build_lines_filtered_with_items() {
+        let items = vec![
+            ItemDisplay {
+                title: "Player's Handbook".to_string(),
+                file_type: "pdf".to_string(),
+                page_count: Some(300),
+                chunk_count: 1250,
+                status: "ready".to_string(),
+                game_system: "D&D 5e".to_string(),
+                content_category: "rules".to_string(),
+            },
+            ItemDisplay {
+                title: "Homebrew Notes".to_string(),
+                file_type: "md".to_string(),
+                page_count: None,
+                chunk_count: 45,
+                status: "pending".to_string(),
+                game_system: "\u{2014}".to_string(),
+                content_category: "homebrew".to_string(),
+            },
+        ];
         let data = LibraryData {
-            items: vec![
-                ItemDisplay {
-                    title: "Player's Handbook".to_string(),
-                    file_type: "pdf".to_string(),
-                    page_count: Some(300),
-                    chunk_count: 1250,
-                    status: "ready".to_string(),
-                    game_system: "D&D 5e".to_string(),
-                },
-                ItemDisplay {
-                    title: "Homebrew Notes".to_string(),
-                    file_type: "md".to_string(),
-                    page_count: None,
-                    chunk_count: 45,
-                    status: "pending".to_string(),
-                    game_system: "—".to_string(),
-                },
-            ],
+            items: items.clone(),
             total_count: 2,
             ready_count: 1,
             pending_count: 1,
             error_count: 0,
         };
-        let lines = build_lines(&data);
+        let refs: Vec<&ItemDisplay> = items.iter().collect();
+        let lines = build_lines_filtered(&refs, &data, false);
         let text: String = lines
             .iter()
             .map(|l| {
@@ -1288,5 +1942,292 @@ mod tests {
         // Width and height clamped to area size
         assert_eq!(centered.width, 30);
         assert_eq!(centered.height, 10);
+    }
+
+    // ── New tests for search, filters, and defaults ─────────────────────
+
+    #[test]
+    fn test_content_filter_defaults() {
+        let f = ContentFilter::new();
+        assert!(f.rules);
+        assert!(f.fiction);
+        assert!(f.session_notes);
+        assert!(f.homebrew);
+        assert!(f.status_ready);
+        assert!(f.status_processing);
+        assert!(f.status_error);
+        assert_eq!(f.selected, 0);
+        assert!(f.all_content_active());
+        assert!(f.all_status_active());
+    }
+
+    #[test]
+    fn test_filter_toggle() {
+        let mut f = ContentFilter::new();
+        assert!(f.rules);
+
+        // Toggle rules off (selected=0 is rules)
+        f.toggle_selected();
+        assert!(!f.rules);
+        assert!(!f.all_content_active());
+
+        // Toggle rules back on
+        f.toggle_selected();
+        assert!(f.rules);
+        assert!(f.all_content_active());
+
+        // Move to fiction (index 1) and toggle
+        f.move_down();
+        assert_eq!(f.selected, 1);
+        f.toggle_selected();
+        assert!(!f.fiction);
+
+        // Move to status_error (index 6)
+        f.selected = 6;
+        f.toggle_selected();
+        assert!(!f.status_error);
+        assert!(!f.all_status_active());
+    }
+
+    #[test]
+    fn test_filter_matches() {
+        let mut f = ContentFilter::new();
+
+        let rules_item = ItemDisplay {
+            title: "PHB".to_string(),
+            file_type: "pdf".to_string(),
+            page_count: Some(300),
+            chunk_count: 100,
+            status: "ready".to_string(),
+            game_system: "D&D 5e".to_string(),
+            content_category: "rules".to_string(),
+        };
+
+        let fiction_item = ItemDisplay {
+            title: "Lore Book".to_string(),
+            file_type: "epub".to_string(),
+            page_count: Some(200),
+            chunk_count: 50,
+            status: "error".to_string(),
+            game_system: "PF2e".to_string(),
+            content_category: "fiction".to_string(),
+        };
+
+        // All filters on: both match
+        assert!(f.matches(&rules_item));
+        assert!(f.matches(&fiction_item));
+
+        // Disable rules content type
+        f.rules = false;
+        assert!(!f.matches(&rules_item));
+        assert!(f.matches(&fiction_item));
+
+        // Re-enable rules, disable error status
+        f.rules = true;
+        f.status_error = false;
+        assert!(f.matches(&rules_item));
+        assert!(!f.matches(&fiction_item)); // fiction item has status "error"
+    }
+
+    #[test]
+    fn test_search_activation() {
+        let mut state = LibraryState::new();
+        assert_eq!(state.focus, FocusZone::List);
+
+        // Directly test focus transition (the '/' key path calls self.focus = FocusZone::Search)
+        state.focus = FocusZone::Search;
+        assert_eq!(state.focus, FocusZone::Search);
+    }
+
+    #[test]
+    fn test_search_input_and_escape() {
+        let mut state = LibraryState::new();
+        state.focus = FocusZone::Search;
+
+        // Type a character
+        state.handle_search_input(KeyCode::Char('f'), KeyModifiers::NONE);
+        assert_eq!(state.search_input.text(), "f");
+        assert!(state.search_pending);
+
+        // Escape clears and returns to list
+        state.handle_search_input(KeyCode::Esc, KeyModifiers::NONE);
+        assert!(state.search_input.text().is_empty());
+        assert_eq!(state.focus, FocusZone::List);
+    }
+
+    #[test]
+    fn test_filter_navigation() {
+        let mut f = ContentFilter::new();
+
+        // At top, move up does nothing
+        f.move_up();
+        assert_eq!(f.selected, 0);
+
+        // Move down through all rows
+        for expected in 1..ContentFilter::COUNT {
+            f.move_down();
+            assert_eq!(f.selected, expected);
+        }
+
+        // At bottom, move down does nothing
+        f.move_down();
+        assert_eq!(f.selected, ContentFilter::COUNT - 1);
+    }
+
+    #[test]
+    fn test_content_type_all_variants() {
+        // Ensure ALL constant matches the number of variants
+        assert_eq!(ContentType::ALL.len(), 4);
+        assert_eq!(ContentType::ALL[0], ContentType::Rules);
+        assert_eq!(ContentType::ALL[1], ContentType::Fiction);
+        assert_eq!(ContentType::ALL[2], ContentType::SessionNotes);
+        assert_eq!(ContentType::ALL[3], ContentType::Homebrew);
+    }
+
+    #[test]
+    fn test_build_lines_filtered_shows_filter_count() {
+        let items = vec![
+            ItemDisplay {
+                title: "Shown Item".to_string(),
+                file_type: "pdf".to_string(),
+                page_count: None,
+                chunk_count: 10,
+                status: "ready".to_string(),
+                game_system: "\u{2014}".to_string(),
+                content_category: "rules".to_string(),
+            },
+        ];
+        let data = LibraryData {
+            items: items.clone(),
+            total_count: 5,
+            ready_count: 3,
+            pending_count: 1,
+            error_count: 1,
+        };
+        let refs: Vec<&ItemDisplay> = items.iter().collect();
+        let lines = build_lines_filtered(&refs, &data, true);
+        let text: String = lines
+            .iter()
+            .map(|l| l.spans.iter().map(|s| s.content.to_string()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n");
+        // When filtered, header should show "X of Y shown"
+        assert!(text.contains("1 of 5 shown"), "Text was: {}", text);
+    }
+
+    #[test]
+    fn test_search_tab_cycles_focus() {
+        let mut state = LibraryState::new();
+        assert_eq!(state.focus, FocusZone::List);
+
+        // Tab from list goes to filters
+        state.focus = FocusZone::Filters;
+        assert_eq!(state.focus, FocusZone::Filters);
+
+        // Tab from filters goes back to list
+        state.handle_filter_input(KeyCode::Tab, KeyModifiers::NONE);
+        assert_eq!(state.focus, FocusZone::List);
+
+        // '/' from list goes to search
+        state.focus = FocusZone::Search;
+        assert_eq!(state.focus, FocusZone::Search);
+
+        // Tab from search goes to filters
+        state.handle_search_input(KeyCode::Tab, KeyModifiers::NONE);
+        assert_eq!(state.focus, FocusZone::Filters);
+    }
+
+    #[test]
+    fn test_filter_panel_space_toggle() {
+        let mut state = LibraryState::new();
+        state.focus = FocusZone::Filters;
+        assert!(state.filters.rules);
+
+        // Space toggles the selected filter (rules at index 0)
+        state.handle_filter_input(KeyCode::Char(' '), KeyModifiers::NONE);
+        assert!(!state.filters.rules);
+
+        // Space toggles it back
+        state.handle_filter_input(KeyCode::Char(' '), KeyModifiers::NONE);
+        assert!(state.filters.rules);
+    }
+
+    #[test]
+    fn test_search_enter_applies_suggestion() {
+        let mut state = LibraryState::new();
+        state.focus = FocusZone::Search;
+        state.suggestion = Some("fireball".to_string());
+
+        // Enter when suggestion exists should apply it
+        state.handle_search_input(KeyCode::Enter, KeyModifiers::NONE);
+        assert_eq!(state.search_input.text(), "fireball");
+        assert!(state.suggestion.is_none());
+    }
+
+    #[test]
+    fn test_search_enter_without_suggestion_returns_to_list() {
+        let mut state = LibraryState::new();
+        state.focus = FocusZone::Search;
+        state.suggestion = None;
+        state.search_input.insert_char('x');
+
+        // Enter without suggestion commits and goes to list
+        state.handle_search_input(KeyCode::Enter, KeyModifiers::NONE);
+        assert_eq!(state.focus, FocusZone::List);
+        assert_eq!(state.search_input.text(), "x"); // search text preserved
+    }
+
+    #[test]
+    fn test_filter_number_key_toggle() {
+        let mut state = LibraryState::new();
+        state.focus = FocusZone::Filters;
+
+        // All filters start enabled
+        assert!(state.filters.rules);
+        assert!(state.filters.fiction);
+        assert!(state.filters.session_notes);
+        assert!(state.filters.homebrew);
+        assert!(state.filters.status_ready);
+        assert!(state.filters.status_processing);
+        assert!(state.filters.status_error);
+
+        // Key '1' toggles rules (index 0)
+        state.handle_filter_input(KeyCode::Char('1'), KeyModifiers::NONE);
+        assert!(!state.filters.rules);
+        assert_eq!(state.filters.selected, 0);
+
+        // Key '3' toggles session_notes (index 2)
+        state.handle_filter_input(KeyCode::Char('3'), KeyModifiers::NONE);
+        assert!(!state.filters.session_notes);
+        assert_eq!(state.filters.selected, 2);
+
+        // Key '5' toggles status_ready (index 4)
+        state.handle_filter_input(KeyCode::Char('5'), KeyModifiers::NONE);
+        assert!(!state.filters.status_ready);
+        assert_eq!(state.filters.selected, 4);
+
+        // Key '7' toggles status_error (index 6)
+        state.handle_filter_input(KeyCode::Char('7'), KeyModifiers::NONE);
+        assert!(!state.filters.status_error);
+        assert_eq!(state.filters.selected, 6);
+
+        // Toggle '1' again to re-enable rules
+        state.handle_filter_input(KeyCode::Char('1'), KeyModifiers::NONE);
+        assert!(state.filters.rules);
+    }
+
+    #[test]
+    fn test_filter_number_key_out_of_range_ignored() {
+        let mut state = LibraryState::new();
+        state.focus = FocusZone::Filters;
+
+        // Keys outside 1-7 should not panic or change state
+        // (they're consumed but have no effect)
+        let rules_before = state.filters.rules;
+        state.handle_filter_input(KeyCode::Char('8'), KeyModifiers::NONE);
+        assert_eq!(state.filters.rules, rules_before);
+
+        state.handle_filter_input(KeyCode::Char('0'), KeyModifiers::NONE);
+        assert_eq!(state.filters.rules, rules_before);
     }
 }

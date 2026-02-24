@@ -5,7 +5,7 @@
 
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
-    layout::{Constraint, Layout, Rect},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
@@ -14,11 +14,12 @@ use ratatui::{
 
 use super::super::theme;
 
+use crate::core::campaign::dice::{DiceNotation, DiceRoller};
 use crate::core::llm::router::{ChatMessage, ChatRequest};
 use crate::core::voice::types::{SynthesisRequest, OutputFormat, VoiceProviderType};
 use crate::database::{ChatMessageRecord, ConversationMessage, MessageRole, NpcConversation, NpcRecord};
 use crate::tui::audio::{AudioEvent, PlaybackState};
-use crate::tui::events::{AppEvent, Notification, NotificationLevel};
+use crate::tui::events::{AppEvent, Notification, NotificationLevel, RagChunkDisplay};
 use crate::tui::services::Services;
 use crate::tui::widgets::input_buffer::InputBuffer;
 use crate::tui::widgets::markdown::markdown_to_lines;
@@ -87,6 +88,35 @@ fn parse_npc_extended_data(npc: &NpcRecord) -> NpcExtendedData {
         .as_ref()
         .and_then(|json| serde_json::from_str(json).ok())
         .unwrap_or_default()
+}
+
+/// Detect inline dice notation enclosed in `[[...]]` brackets within a message.
+///
+/// Returns a vec of `(original_match, notation_str)` pairs.
+/// For example, `"I attack with [[2d6+3]] damage"` yields `[("[[2d6+3]]", "2d6+3")]`.
+fn detect_inline_dice(text: &str) -> Vec<(String, String)> {
+    let mut results = Vec::new();
+    let mut search_from = 0;
+
+    while let Some(start) = text[search_from..].find("[[") {
+        let abs_start = search_from + start;
+        let inner_start = abs_start + 2;
+        if let Some(end_offset) = text[inner_start..].find("]]") {
+            let abs_end = inner_start + end_offset;
+            let notation = text[inner_start..abs_end].trim();
+            if !notation.is_empty() {
+                results.push((
+                    text[abs_start..abs_end + 2].to_string(),
+                    notation.to_string(),
+                ));
+            }
+            search_from = abs_end + 2;
+        } else {
+            break;
+        }
+    }
+
+    results
 }
 
 struct DisplayMessage {
@@ -415,6 +445,10 @@ pub struct ChatState {
     volume_pct: u8,
     /// Text currently being spoken (for status display).
     speaking_text: Option<String>,
+    /// Whether the RAG context pane is visible (Ctrl+R toggle).
+    rag_pane_open: bool,
+    /// Retrieved context chunks shown in the RAG pane.
+    rag_chunks: Vec<RagChunkDisplay>,
 }
 
 impl ChatState {
@@ -434,6 +468,8 @@ impl ChatState {
             playback_state: PlaybackState::Idle,
             volume_pct: 75,
             speaking_text: None,
+            rag_pane_open: false,
+            rag_chunks: Vec::new(),
         }
     }
 
@@ -443,6 +479,21 @@ impl ChatState {
 
     pub fn is_streaming(&self) -> bool {
         self.active_stream_id.is_some()
+    }
+
+    /// Whether the RAG context pane is currently visible.
+    pub fn rag_pane_open(&self) -> bool {
+        self.rag_pane_open
+    }
+
+    /// Replace the RAG chunks shown in the context pane.
+    pub fn set_rag_chunks(&mut self, chunks: Vec<RagChunkDisplay>) {
+        self.rag_chunks = chunks;
+    }
+
+    /// Clear the RAG context pane.
+    pub fn clear_rag_chunks(&mut self) {
+        self.rag_chunks.clear();
     }
 
     // ── Session loading ──────────────────────────────────────────────
@@ -571,6 +622,10 @@ impl ChatState {
                 self.input.move_end();
                 true
             }
+            (KeyModifiers::CONTROL, KeyCode::Char('r')) => {
+                self.rag_pane_open = !self.rag_pane_open;
+                true
+            }
             (_, KeyCode::Char(c)) => {
                 self.input.insert_char(c);
                 true
@@ -580,6 +635,12 @@ impl ChatState {
     }
 
     fn handle_normal_input(&mut self, code: KeyCode, modifiers: KeyModifiers) -> bool {
+        // Ctrl+R: toggle RAG context pane (works regardless of modifier filter below)
+        if modifiers == KeyModifiers::CONTROL && code == KeyCode::Char('r') {
+            self.rag_pane_open = !self.rag_pane_open;
+            return true;
+        }
+
         if modifiers != KeyModifiers::NONE && modifiers != KeyModifiers::SHIFT {
             return false;
         }
@@ -636,6 +697,10 @@ impl ChatState {
                 "voice" => self.cmd_set_npc_mode(NpcChatMode::Voice, services),
                 "about" => self.cmd_set_npc_mode(NpcChatMode::About, services),
                 "exit" => self.cmd_exit_npc(services),
+                "roll" => {
+                    let notation = parts.get(1).unwrap_or(&"").trim();
+                    self.cmd_roll(notation, services);
+                }
                 "speak" => {
                     let text = parts.get(1).unwrap_or(&"").trim();
                     self.cmd_speak(text, services);
@@ -658,6 +723,17 @@ impl ChatState {
                 }
             }
         } else {
+            // Check for inline dice notation: [[2d6+3]], [[d20]], etc.
+            let inline_rolls = detect_inline_dice(text);
+            if !inline_rolls.is_empty() {
+                let roller = DiceRoller::new();
+                for (_, notation_str) in &inline_rolls {
+                    if let Ok(parsed) = DiceNotation::parse(notation_str) {
+                        let result = roller.roll(&parsed);
+                        self.append_dice_result(&format!("{result}"));
+                    }
+                }
+            }
             self.send_message(text, services);
         }
     }
@@ -740,10 +816,10 @@ impl ChatState {
     fn cmd_help(&self, services: &Services) {
         let msg = match self.context {
             ChatContext::General => {
-                "Commands: /clear /new /npc <name> /npcs /speak <text> /pause /resume /stop /volume <0-100> /voices /help"
+                "Commands: /clear /new /roll <dice> /npc <name> /npcs /speak <text> /pause /resume /stop /volume <0-100> /voices /help | Ctrl+R: RAG pane | [[2d6+3]]: inline roll"
             }
             ChatContext::Npc { .. } => {
-                "NPC Commands: /voice /about /exit /speak [text] /pause /resume /stop /volume <0-100> /voices /clear /help"
+                "NPC Commands: /voice /about /exit /roll <dice> /speak [text] /pause /resume /stop /volume <0-100> /voices /clear /help | Ctrl+R: RAG pane"
             }
         };
         let _ = services.event_tx.send(AppEvent::Notification(Notification {
@@ -982,6 +1058,18 @@ impl ChatState {
             self.finalize_response();
         }
 
+        // Validate input (security: XSS, injection, length)
+        if let Err(e) = services.input_validator.validate_text(text) {
+            log::warn!("Chat input rejected: {e}");
+            let _ = services.event_tx.send(AppEvent::Notification(Notification {
+                id: 0,
+                message: format!("Input rejected: {e}"),
+                level: NotificationLevel::Warning,
+                ttl_ticks: 100,
+            }));
+            return;
+        }
+
         let is_npc = matches!(self.context, ChatContext::Npc { .. });
 
         // For General mode, we need a session_id
@@ -1061,14 +1149,36 @@ impl ChatState {
                 .collect()
         };
 
-        let system_prompt = self.build_system_prompt();
-        let request = ChatRequest::new(chat_messages).with_system(&system_prompt);
+        let base_system_prompt = self.build_system_prompt();
+        let user_query = text.to_string();
 
-        // 4. Spawn streaming task
+        // 4. Spawn streaming task (with optional RAG retrieval for General mode)
         let llm = services.llm.clone();
         let tx = services.event_tx.clone();
+        let storage = services.storage.clone();
+        let embedding_provider = services.embedding_provider.clone();
 
         tokio::spawn(async move {
+            // RAG: retrieve context if embeddings available and not NPC mode
+            let system_prompt = if !is_npc {
+                if let Some(ref provider) = embedding_provider {
+                    match try_rag_retrieval(
+                        &storage, provider.as_ref(), &user_query, &tx,
+                    ).await {
+                        Some(rag_prompt) => {
+                            format!("{base_system_prompt}\n\n{rag_prompt}")
+                        }
+                        None => base_system_prompt,
+                    }
+                } else {
+                    base_system_prompt
+                }
+            } else {
+                base_system_prompt
+            };
+
+            let request = ChatRequest::new(chat_messages).with_system(&system_prompt);
+
             match llm.stream_chat(request).await {
                 Ok(mut rx) => {
                     while let Some(chunk_result) = rx.recv().await {
@@ -1497,6 +1607,63 @@ impl ChatState {
         });
     }
 
+    // ── Dice commands ──────────────────────────────────────────────
+
+    fn cmd_roll(&mut self, notation: &str, services: &Services) {
+        if notation.is_empty() {
+            let _ = services.event_tx.send(AppEvent::Notification(Notification {
+                id: 0,
+                message: "Usage: /roll <dice> (e.g. /roll 2d6+3)".to_string(),
+                level: NotificationLevel::Warning,
+                ttl_ticks: 80,
+            }));
+            return;
+        }
+
+        match DiceNotation::parse(notation) {
+            Ok(parsed) => {
+                let roller = DiceRoller::new();
+                let result = roller.roll(&parsed);
+                let result_text = format!("{result}");
+                self.append_dice_result(&result_text);
+            }
+            Err(e) => {
+                let _ = services.event_tx.send(AppEvent::Notification(Notification {
+                    id: 0,
+                    message: format!("Invalid dice notation: {e}"),
+                    level: NotificationLevel::Error,
+                    ttl_ticks: 80,
+                }));
+            }
+        }
+    }
+
+    /// Append a dice roll result as a System message in the chat.
+    fn append_dice_result(&mut self, result_text: &str) {
+        let session_id = self
+            .session_id
+            .as_deref()
+            .unwrap_or("dice");
+        let record = ChatMessageRecord::with_role(
+            session_id.to_string(),
+            MessageRole::System,
+            result_text.to_string(),
+        );
+        let display = DisplayMessage {
+            id: record.id.clone(),
+            role: MessageRole::System,
+            raw_content: result_text.to_string(),
+            rendered_lines: vec![Line::styled(
+                format!("🎲 {result_text}"),
+                Style::default().fg(theme::ACCENT).add_modifier(Modifier::BOLD),
+            )],
+            created_at: record.created_at,
+            is_streaming: false,
+        };
+        self.messages.push(display);
+        self.scroll_to_bottom();
+    }
+
     // ── Scrolling ────────────────────────────────────────────────────
 
     fn total_content_lines(&self) -> usize {
@@ -1527,12 +1694,22 @@ impl ChatState {
 
     pub fn render(&self, frame: &mut Frame, area: Rect) {
         let chunks = Layout::vertical([
-            Constraint::Min(1),    // Messages
+            Constraint::Min(1),    // Messages (+ optional RAG pane)
             Constraint::Length(4), // Mode indicator + input
         ])
         .split(area);
 
-        self.render_messages(frame, chunks[0]);
+        if self.rag_pane_open {
+            let hsplit = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+                .split(chunks[0]);
+            self.render_messages(frame, hsplit[0]);
+            self.render_rag_pane(frame, hsplit[1]);
+        } else {
+            self.render_messages(frame, chunks[0]);
+        }
+
         self.render_input(frame, chunks[1]);
     }
 
@@ -1682,6 +1859,89 @@ impl ChatState {
         }
     }
 
+    fn render_rag_pane(&self, frame: &mut Frame, area: Rect) {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(theme::PRIMARY_DARK))
+            .title(" RAG Context (Ctrl+R) ");
+
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+
+        if self.rag_chunks.is_empty() {
+            let empty = Paragraph::new(vec![
+                Line::raw(""),
+                Line::styled(
+                    "  No context chunks",
+                    Style::default().fg(theme::TEXT_MUTED),
+                ),
+                Line::styled(
+                    "  retrieved yet.",
+                    Style::default().fg(theme::TEXT_MUTED),
+                ),
+                Line::raw(""),
+                Line::styled(
+                    "  Context will appear",
+                    Style::default().fg(theme::TEXT_DIM),
+                ),
+                Line::styled(
+                    "  here when the LLM",
+                    Style::default().fg(theme::TEXT_DIM),
+                ),
+                Line::styled(
+                    "  retrieves from your",
+                    Style::default().fg(theme::TEXT_DIM),
+                ),
+                Line::styled(
+                    "  indexed library.",
+                    Style::default().fg(theme::TEXT_DIM),
+                ),
+            ]);
+            frame.render_widget(empty, inner);
+            return;
+        }
+
+        let mut lines: Vec<Line<'static>> = Vec::new();
+
+        for (i, chunk) in self.rag_chunks.iter().enumerate() {
+            // Header: [N] source (p.X) — score: 0.XX
+            let page_str = chunk
+                .page
+                .map(|p| format!(" (p.{p})"))
+                .unwrap_or_default();
+            let header = format!("[{}] {}{}", i + 1, chunk.source, page_str);
+            let score = format!(" {:.0}%", chunk.relevance * 100.0);
+
+            lines.push(Line::from(vec![
+                Span::styled(
+                    header,
+                    Style::default()
+                        .fg(theme::PRIMARY_LIGHT)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(score, Style::default().fg(theme::ACCENT)),
+            ]));
+
+            // Preview text — truncate to fit pane width
+            let max_preview = inner.width.saturating_sub(2) as usize;
+            let preview = if chunk.preview.len() > max_preview {
+                format!("{}...", &chunk.preview[..max_preview.saturating_sub(3)])
+            } else {
+                chunk.preview.clone()
+            };
+            lines.push(Line::styled(
+                format!("  {preview}"),
+                Style::default().fg(theme::TEXT_MUTED),
+            ));
+            lines.push(Line::raw(""));
+        }
+
+        let visible_height = inner.height as usize;
+        let visible: Vec<Line> = lines.into_iter().take(visible_height).collect();
+        let paragraph = Paragraph::new(visible);
+        frame.render_widget(paragraph, inner);
+    }
+
     fn render_input(&self, frame: &mut Frame, area: Rect) {
         let mode_line = match self.input_mode {
             ChatInputMode::Insert => {
@@ -1738,6 +1998,73 @@ impl ChatState {
             chunks[1],
         );
     }
+}
+
+// ── RAG retrieval helper (runs inside spawned task) ──────────────────────
+
+/// Attempt to retrieve RAG context for the user's query.
+///
+/// Returns the formatted RAG system prompt section on success, or `None`
+/// if embedding or search fails (graceful degradation — chat proceeds without RAG).
+async fn try_rag_retrieval(
+    storage: &crate::core::storage::surrealdb::SurrealStorage,
+    embedding_provider: &dyn crate::core::search::embeddings::EmbeddingProvider,
+    query: &str,
+    tx: &tokio::sync::mpsc::UnboundedSender<AppEvent>,
+) -> Option<String> {
+    use crate::core::storage::rag::{RagConfig, format_context, build_system_prompt as build_rag_prompt};
+    use crate::core::storage::search::hybrid_search;
+
+    // 1. Embed the user query
+    let embedding = match embedding_provider.embed(query).await {
+        Ok(emb) => emb,
+        Err(e) => {
+            log::debug!("RAG: embedding failed (proceeding without context): {e}");
+            return None;
+        }
+    };
+
+    // 2. Hybrid search (BM25 + vector)
+    let rag_config = RagConfig::default();
+    let results = match hybrid_search(
+        storage.db(),
+        query,
+        embedding,
+        &rag_config.search_config,
+        None,
+    ).await {
+        Ok(r) => r,
+        Err(e) => {
+            log::debug!("RAG: hybrid search failed (proceeding without context): {e}");
+            return None;
+        }
+    };
+
+    if results.is_empty() {
+        return None;
+    }
+
+    // 3. Build chunk display for the RAG pane
+    let chunks: Vec<RagChunkDisplay> = results
+        .iter()
+        .take(rag_config.max_context_chunks)
+        .map(|r| RagChunkDisplay {
+            source: if r.source.is_empty() { "unknown".into() } else { r.source.clone() },
+            page: r.page_number,
+            relevance: r.linear_score.unwrap_or(r.score),
+            preview: r.content.chars().take(120).collect(),
+        })
+        .collect();
+
+    let _ = tx.send(AppEvent::RagChunksRetrieved(chunks));
+
+    // 4. Format context into system prompt section
+    let formatted = format_context(&results, &rag_config);
+    if formatted.total_bytes == 0 {
+        return None;
+    }
+
+    Some(build_rag_prompt(&formatted.text, rag_config.system_prompt_template.as_deref()))
 }
 
 #[cfg(test)]
@@ -1834,5 +2161,120 @@ mod tests {
     fn test_build_system_prompt_general() {
         let state = ChatState::new();
         assert_eq!(state.build_system_prompt(), DEFAULT_SYSTEM_PROMPT);
+    }
+
+    // ── RAG pane tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_rag_pane_default_closed() {
+        let state = ChatState::new();
+        assert!(!state.rag_pane_open());
+    }
+
+    #[test]
+    fn test_rag_pane_toggle() {
+        let mut state = ChatState::new();
+        assert!(!state.rag_pane_open);
+        state.rag_pane_open = !state.rag_pane_open;
+        assert!(state.rag_pane_open);
+        state.rag_pane_open = !state.rag_pane_open;
+        assert!(!state.rag_pane_open);
+    }
+
+    #[test]
+    fn test_set_rag_chunks() {
+        let mut state = ChatState::new();
+        assert!(state.rag_chunks.is_empty());
+
+        state.set_rag_chunks(vec![
+            RagChunkDisplay {
+                source: "phb-2024".into(),
+                page: Some(251),
+                relevance: 0.95,
+                preview: "Flanking gives advantage on attack rolls.".into(),
+            },
+            RagChunkDisplay {
+                source: "dmg-2024".into(),
+                page: None,
+                relevance: 0.72,
+                preview: "Optional rules for flanking.".into(),
+            },
+        ]);
+        assert_eq!(state.rag_chunks.len(), 2);
+        assert_eq!(state.rag_chunks[0].source, "phb-2024");
+        assert_eq!(state.rag_chunks[1].page, None);
+
+        state.clear_rag_chunks();
+        assert!(state.rag_chunks.is_empty());
+    }
+
+    // ── Inline dice detection tests ─────────────────────────────────
+
+    #[test]
+    fn test_detect_inline_dice_single() {
+        let results = detect_inline_dice("I deal [[2d6+3]] damage");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0, "[[2d6+3]]");
+        assert_eq!(results[0].1, "2d6+3");
+    }
+
+    #[test]
+    fn test_detect_inline_dice_multiple() {
+        let results = detect_inline_dice("Roll [[d20]] to hit then [[3d8+5]] damage");
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].1, "d20");
+        assert_eq!(results[1].1, "3d8+5");
+    }
+
+    #[test]
+    fn test_detect_inline_dice_none() {
+        let results = detect_inline_dice("Just a normal message with no dice");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_detect_inline_dice_empty_brackets() {
+        let results = detect_inline_dice("Empty [[]] brackets");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_detect_inline_dice_unclosed() {
+        let results = detect_inline_dice("Unclosed [[2d6 bracket");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_detect_inline_dice_whitespace() {
+        let results = detect_inline_dice("Padded [[ d20 ]] notation");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].1, "d20");
+    }
+
+    #[test]
+    fn test_detect_inline_dice_adjacent() {
+        let results = detect_inline_dice("[[d20]][[2d6]]");
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].1, "d20");
+        assert_eq!(results[1].1, "2d6");
+    }
+
+    #[test]
+    fn test_detect_inline_dice_with_negative_modifier() {
+        let results = detect_inline_dice("Roll [[d20-2]] for stealth");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].1, "d20-2");
+    }
+
+    #[test]
+    fn test_inline_dice_rolls_produce_valid_results() {
+        let text = "Attack with [[2d6+3]] fire damage";
+        let inline = detect_inline_dice(text);
+        assert_eq!(inline.len(), 1);
+
+        let notation = DiceNotation::parse(&inline[0].1).unwrap();
+        let roller = DiceRoller::new();
+        let result = roller.roll(&notation);
+        assert!(result.total >= 5 && result.total <= 15);
     }
 }

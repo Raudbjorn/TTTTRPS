@@ -1168,6 +1168,11 @@ impl SettingsState {
         if meta.needs_api_key() && api_key.is_empty() {
             return Err("API key is required".to_string());
         }
+        if meta.needs_api_key() && !api_key.is_empty() {
+            if let Err(e) = services.input_validator.validate_api_key(meta.id, &api_key) {
+                return Err(format!("Invalid API key: {e}"));
+            }
+        }
         if meta.needs_host() && host.is_empty() {
             return Err("Host URL is required".to_string());
         }

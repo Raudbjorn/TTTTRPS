@@ -72,7 +72,7 @@ pub fn router_builder() -> LLMRouterBuilder {
 // LLM Manager
 // ============================================================================
 
-use crate::core::meilisearch_chat::{
+use crate::core::search_chat::{
     ChatPrompts, ChatProviderConfig, MeilisearchChatClient,
 };
 use std::sync::Arc;
@@ -275,7 +275,7 @@ impl LLMManager {
     pub async fn get_workspace_settings(
         &self,
         workspace_id: &str,
-    ) -> std::result::Result<Option<crate::core::meilisearch_chat::ChatWorkspaceSettings>, String> {
+    ) -> std::result::Result<Option<crate::core::search_chat::ChatWorkspaceSettings>, String> {
         let chat_client = self.chat_client.read().await;
         let client = chat_client
             .as_ref()
@@ -383,8 +383,8 @@ impl LLMManager {
             .ok_or("Meilisearch chat client not configured")?;
 
         // Convert router messages to Meilisearch messages
-        let meili_messages: Vec<crate::core::meilisearch_chat::ChatMessage> = messages.into_iter().map(|m| {
-            crate::core::meilisearch_chat::ChatMessage {
+        let meili_messages: Vec<crate::core::search_chat::ChatMessage> = messages.into_iter().map(|m| {
+            crate::core::search_chat::ChatMessage {
                 role: m.role.to_string().to_lowercase(),
                 content: m.content,
             }
@@ -409,14 +409,14 @@ impl LLMManager {
             .ok_or("Meilisearch chat client not configured")?;
 
         // Convert router messages to Meilisearch messages
-        let meili_messages: Vec<crate::core::meilisearch_chat::ChatMessage> = messages.into_iter().map(|m| {
-            crate::core::meilisearch_chat::ChatMessage {
+        let meili_messages: Vec<crate::core::search_chat::ChatMessage> = messages.into_iter().map(|m| {
+            crate::core::search_chat::ChatMessage {
                 role: m.role.to_string().to_lowercase(),
                 content: m.content,
             }
         }).collect();
 
-        let request = crate::core::meilisearch_chat::ChatCompletionRequest {
+        let request = crate::core::search_chat::ChatCompletionRequest {
             model: model.to_string(),
             messages: meili_messages,
             stream: true,
