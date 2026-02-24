@@ -1,0 +1,157 @@
+# Halfling Culture Vocabulary Bank
+# Speech patterns reflecting halfling culture and values
+
+id: culture_halfling
+displayName: Halfling Speech
+description: |
+  Vocabulary reflecting halfling culture - emphasis on food, comfort,
+  family, and cheerful good nature. Warm, welcoming, and homey.
+
+culture: halfling
+race: halfling
+version: "1.0.0"
+
+phrases:
+  greetings:
+    - text: "Welcome, welcome! Come in and rest your feet!"
+      formality: 4
+      toneMarkers: [warm, enthusiastic]
+      priority: 10
+    - text: "You look like you could use a good meal."
+      formality: 3
+      toneMarkers: [caring, observant]
+      priority: 8
+    - text: "A new face! How exciting!"
+      formality: 3
+      toneMarkers: [enthusiastic, curious]
+      priority: 7
+    - text: "Any friend of good food is a friend of mine."
+      formality: 3
+      toneMarkers: [friendly, welcoming]
+      priority: 8
+    - text: "The kettle's on, if you'd care for tea."
+      formality: 4
+      toneMarkers: [hospitable, warm]
+      priority: 7
+
+  farewells:
+    - text: "May your larder never be empty!"
+      formality: 4
+      toneMarkers: [blessing, warm]
+      priority: 10
+    - text: "Safe travels, and don't forget to eat!"
+      formality: 3
+      toneMarkers: [caring, cheerful]
+      priority: 9
+    - text: "Come back for second breakfast anytime!"
+      formality: 3
+      toneMarkers: [inviting, playful]
+      priority: 8
+    - text: "May the road rise to meet your feet."
+      formality: 5
+      toneMarkers: [blessing, sincere]
+      priority: 7
+    - text: "Remember us when you're far from home."
+      formality: 4
+      toneMarkers: [warm, sentimental]
+      priority: 6
+
+  affirmations:
+    - text: "Splendid! Absolutely splendid!"
+      formality: 4
+      toneMarkers: [enthusiastic, happy]
+      priority: 9
+    - text: "Now that's a sensible idea."
+      formality: 4
+      toneMarkers: [approving, practical]
+      priority: 8
+    - text: "I like the cut of your jib!"
+      formality: 3
+      toneMarkers: [approving, cheerful]
+      priority: 7
+    - text: "You've got a good head on those shoulders."
+      formality: 4
+      toneMarkers: [complimentary, warm]
+      priority: 7
+
+  denials:
+    - text: "Oh my, no, that won't do at all."
+      formality: 4
+      toneMarkers: [worried, polite]
+      priority: 8
+    - text: "I'd rather face a hungry dragon, if it's all the same."
+      formality: 3
+      toneMarkers: [nervous, humorous]
+      priority: 7
+    - text: "That sounds dreadfully uncomfortable."
+      formality: 4
+      toneMarkers: [worried, reluctant]
+      priority: 7
+    - text: "Perhaps after elevenses? Or... never?"
+      formality: 3
+      toneMarkers: [nervous, deflecting]
+      priority: 6
+
+  expressions:
+    - text: "Adventure is well and good, but nothing beats home."
+      formality: 4
+      toneMarkers: [philosophical, homesick]
+      priority: 8
+    - text: "Never trust a skipped meal."
+      formality: 3
+      toneMarkers: [wise, humorous]
+      priority: 7
+    - text: "Family is where the hearth is."
+      formality: 4
+      toneMarkers: [warm, traditional]
+      priority: 8
+    - text: "A full belly makes for a happy heart."
+      formality: 3
+      toneMarkers: [content, wise]
+      priority: 7
+
+  about_food:
+    - text: "Have you tried the pie? It's grandmother's recipe."
+      formality: 3
+      toneMarkers: [proud, sharing]
+      priority: 9
+    - text: "Six meals a day keeps the troubles away."
+      formality: 3
+      toneMarkers: [cheerful, wise]
+      priority: 8
+    - text: "Nothing says welcome like fresh-baked bread."
+      formality: 4
+      toneMarkers: [warm, content]
+      priority: 8
+    - text: "One must always have time for tea."
+      formality: 4
+      toneMarkers: [firm, practical]
+      priority: 7
+
+  about_adventure:
+    - text: "Adventures are nasty, disturbing things that make you late for dinner."
+      formality: 4
+      toneMarkers: [worried, humorous]
+      priority: 8
+    - text: "I prefer my excitement in small doses, thank you."
+      formality: 4
+      toneMarkers: [nervous, polite]
+      priority: 7
+    - text: "If there must be danger, at least let there be snacks."
+      formality: 3
+      toneMarkers: [practical, resigned]
+      priority: 7
+
+  about_home:
+    - text: "There's no place quite like home."
+      formality: 4
+      toneMarkers: [homesick, warm]
+      priority: 8
+    - text: "A good hole is a happy hole."
+      formality: 3
+      toneMarkers: [content, traditional]
+      priority: 7
+    - text: "Home is where they have to take you in."
+      formality: 4
+      toneMarkers: [philosophical, warm]
+      priority: 6

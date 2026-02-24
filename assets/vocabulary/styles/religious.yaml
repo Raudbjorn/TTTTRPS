@@ -1,0 +1,138 @@
+# Religious Speech Style Vocabulary Bank
+# Pious, reverent speech patterns
+
+id: style_religious
+displayName: Religious Speech
+description: |
+  Reverent vocabulary and phrases used by priests, clerics, and religious
+  figures. Invocations of deities, blessings, and spiritual guidance.
+
+role: priest
+version: "1.0.0"
+
+phrases:
+  greetings:
+    - text: "Blessings upon you, child."
+      formality: 7
+      toneMarkers: [benevolent, warm]
+      priority: 10
+    - text: "The divine light guides you here."
+      formality: 8
+      toneMarkers: [mystical, welcoming]
+      priority: 9
+    - text: "You are welcome in this sacred place."
+      formality: 7
+      toneMarkers: [welcoming, reverent]
+      priority: 8
+    - text: "What troubles bring you to seek guidance?"
+      formality: 6
+      toneMarkers: [compassionate, curious]
+      priority: 8
+    - text: "May the gods look favorably upon our meeting."
+      formality: 8
+      toneMarkers: [formal, pious]
+      priority: 7
+
+  farewells:
+    - text: "Go with the blessing of the divine."
+      formality: 8
+      toneMarkers: [sincere, benevolent]
+      priority: 10
+    - text: "May faith light your path."
+      formality: 7
+      toneMarkers: [encouraging, pious]
+      priority: 9
+    - text: "The gods watch over you."
+      formality: 7
+      toneMarkers: [reassuring, sincere]
+      priority: 8
+    - text: "Peace be upon you."
+      formality: 7
+      toneMarkers: [calm, benevolent]
+      priority: 9
+    - text: "Return when your spirit needs succor."
+      formality: 7
+      toneMarkers: [inviting, compassionate]
+      priority: 7
+
+  blessings:
+    - text: "May the gods grant you strength."
+      formality: 7
+      toneMarkers: [sincere, empowering]
+      priority: 9
+    - text: "Divine protection be upon you."
+      formality: 8
+      toneMarkers: [formal, protective]
+      priority: 9
+    - text: "May your wounds be healed and your spirit restored."
+      formality: 7
+      toneMarkers: [compassionate, healing]
+      priority: 8
+    - text: "The light shields the faithful."
+      formality: 8
+      toneMarkers: [reassuring, pious]
+      priority: 7
+
+  affirmations:
+    - text: "Your faith is strong. It pleases the divine."
+      formality: 7
+      toneMarkers: [approving, encouraging]
+      priority: 8
+    - text: "This is in accordance with divine will."
+      formality: 8
+      toneMarkers: [authoritative, pious]
+      priority: 9
+    - text: "The gods smile upon such deeds."
+      formality: 7
+      toneMarkers: [approving, benevolent]
+      priority: 8
+
+  denials:
+    - text: "This path leads away from the light."
+      formality: 7
+      toneMarkers: [warning, concerned]
+      priority: 9
+    - text: "I cannot condone such actions."
+      formality: 7
+      toneMarkers: [disapproving, firm]
+      priority: 8
+    - text: "The gods would not favor such a course."
+      formality: 8
+      toneMarkers: [warning, authoritative]
+      priority: 8
+    - text: "My conscience forbids this."
+      formality: 6
+      toneMarkers: [firm, apologetic]
+      priority: 7
+
+  expressions:
+    - text: "By the grace of the divine!"
+      formality: 6
+      toneMarkers: [surprised, pious]
+      priority: 8
+    - text: "Truly, the gods work in mysterious ways."
+      formality: 7
+      toneMarkers: [philosophical, awed]
+      priority: 7
+    - text: "This is a sign from above."
+      formality: 6
+      toneMarkers: [reverent, certain]
+      priority: 7
+    - text: "Evil must be confronted, not fled from."
+      formality: 6
+      toneMarkers: [resolute, righteous]
+      priority: 8
+
+  counsel:
+    - text: "Look within for the answer you seek."
+      formality: 7
+      toneMarkers: [wise, guiding]
+      priority: 9
+    - text: "Faith and patience will see you through."
+      formality: 7
+      toneMarkers: [encouraging, wise]
+      priority: 8
+    - text: "The divine tests us so we may grow stronger."
+      formality: 7
+      toneMarkers: [philosophical, comforting]
+      priority: 7

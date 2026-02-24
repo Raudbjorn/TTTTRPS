@@ -1,0 +1,129 @@
+# Formal Speech Style Vocabulary Bank
+# Courtly, noble, and formal speech patterns
+
+id: style_formal
+displayName: Formal Speech
+description: |
+  Elevated vocabulary and phrases used by nobility, diplomats, and
+  those in positions of authority. High formality, proper etiquette,
+  refined expressions.
+
+role: noble
+version: "1.0.0"
+
+phrases:
+  greetings:
+    - text: "I bid you welcome to my presence."
+      formality: 9
+      toneMarkers: [regal, formal]
+      priority: 10
+    - text: "It is my pleasure to make your acquaintance."
+      formality: 8
+      toneMarkers: [polite, gracious]
+      priority: 9
+    - text: "Your arrival honors us."
+      formality: 9
+      toneMarkers: [respectful, welcoming]
+      priority: 8
+    - text: "I trust your journey was without incident."
+      formality: 8
+      toneMarkers: [polite, concerned]
+      priority: 7
+    - text: "Greetings, esteemed visitor."
+      formality: 8
+      toneMarkers: [formal, respectful]
+      priority: 8
+    - text: "You stand in the presence of nobility."
+      formality: 10
+      toneMarkers: [haughty, formal]
+      priority: 6
+
+  farewells:
+    - text: "May fortune attend your endeavors."
+      formality: 8
+      toneMarkers: [gracious, sincere]
+      priority: 9
+    - text: "Until such time as we meet again."
+      formality: 9
+      toneMarkers: [formal, hopeful]
+      priority: 8
+    - text: "I grant you leave to depart."
+      formality: 10
+      toneMarkers: [regal, dismissive]
+      priority: 6
+    - text: "Go with my blessing."
+      formality: 8
+      toneMarkers: [gracious, benevolent]
+      priority: 8
+    - text: "May your path be clear and your purpose true."
+      formality: 8
+      toneMarkers: [sincere, encouraging]
+      priority: 7
+
+  affirmations:
+    - text: "You speak with wisdom."
+      formality: 8
+      toneMarkers: [respectful, agreeable]
+      priority: 8
+    - text: "This meets with my approval."
+      formality: 9
+      toneMarkers: [authoritative, satisfied]
+      priority: 9
+    - text: "Your proposal has merit."
+      formality: 8
+      toneMarkers: [considered, approving]
+      priority: 7
+    - text: "It shall be as you say."
+      formality: 8
+      toneMarkers: [agreeable, formal]
+      priority: 8
+
+  denials:
+    - text: "I must respectfully decline."
+      formality: 8
+      toneMarkers: [polite, firm]
+      priority: 9
+    - text: "This matter is not open for discussion."
+      formality: 9
+      toneMarkers: [authoritative, final]
+      priority: 8
+    - text: "I find your proposal... wanting."
+      formality: 8
+      toneMarkers: [disapproving, measured]
+      priority: 7
+    - text: "That would be beneath my station."
+      formality: 9
+      toneMarkers: [haughty, dismissive]
+      priority: 5
+
+  expressions:
+    - text: "How curious."
+      formality: 7
+      toneMarkers: [interested, measured]
+      priority: 8
+    - text: "This bears further consideration."
+      formality: 8
+      toneMarkers: [thoughtful, diplomatic]
+      priority: 7
+    - text: "One must maintain certain standards."
+      formality: 9
+      toneMarkers: [superior, instructive]
+      priority: 6
+    - text: "The court shall decide this matter."
+      formality: 9
+      toneMarkers: [authoritative, formal]
+      priority: 7
+
+  commands:
+    - text: "You will attend to this immediately."
+      formality: 9
+      toneMarkers: [commanding, urgent]
+      priority: 9
+    - text: "See that it is done."
+      formality: 8
+      toneMarkers: [commanding, expectant]
+      priority: 8
+    - text: "I shall expect a full accounting."
+      formality: 9
+      toneMarkers: [demanding, formal]
+      priority: 7

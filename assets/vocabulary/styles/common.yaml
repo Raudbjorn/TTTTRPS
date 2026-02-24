@@ -1,0 +1,129 @@
+# Common Speech Style Vocabulary Bank
+# Everyday speech patterns used by common folk
+
+id: style_common
+displayName: Common Speech
+description: |
+  Standard vocabulary and phrases used by common folk, townspeople,
+  and everyday NPCs. Balanced formality, friendly tone, practical
+  expressions.
+
+culture: common
+version: "1.0.0"
+
+phrases:
+  greetings:
+    - text: "Hello there!"
+      formality: 5
+      toneMarkers: [friendly]
+      priority: 10
+    - text: "Good day to you."
+      formality: 6
+      toneMarkers: [polite, neutral]
+      priority: 8
+    - text: "Well met, traveler."
+      formality: 5
+      toneMarkers: [friendly, welcoming]
+      priority: 9
+    - text: "Ah, a fresh face!"
+      formality: 4
+      toneMarkers: [curious, friendly]
+      priority: 6
+    - text: "What can I do for you?"
+      formality: 5
+      toneMarkers: [helpful, businesslike]
+      priority: 8
+    - text: "Welcome, welcome!"
+      formality: 4
+      toneMarkers: [enthusiastic, welcoming]
+      priority: 7
+
+  farewells:
+    - text: "Safe travels."
+      formality: 5
+      toneMarkers: [sincere, friendly]
+      priority: 9
+    - text: "Take care of yourself."
+      formality: 4
+      toneMarkers: [caring, warm]
+      priority: 8
+    - text: "Until we meet again."
+      formality: 6
+      toneMarkers: [formal, hopeful]
+      priority: 7
+    - text: "Best of luck to you."
+      formality: 5
+      toneMarkers: [sincere, encouraging]
+      priority: 8
+    - text: "Come back soon!"
+      formality: 4
+      toneMarkers: [friendly, welcoming]
+      priority: 7
+
+  affirmations:
+    - text: "Aye, that's the way of it."
+      formality: 4
+      toneMarkers: [agreeable]
+      priority: 8
+    - text: "You have the right of it."
+      formality: 5
+      toneMarkers: [agreeable, respectful]
+      priority: 7
+    - text: "That I can do."
+      formality: 4
+      toneMarkers: [confident, helpful]
+      priority: 8
+    - text: "Consider it done."
+      formality: 5
+      toneMarkers: [confident, reassuring]
+      priority: 7
+
+  denials:
+    - text: "I'm afraid not."
+      formality: 5
+      toneMarkers: [apologetic, polite]
+      priority: 8
+    - text: "That's beyond my means."
+      formality: 5
+      toneMarkers: [honest, regretful]
+      priority: 7
+    - text: "I can't help you with that."
+      formality: 4
+      toneMarkers: [honest, firm]
+      priority: 6
+    - text: "Not this time, I'm afraid."
+      formality: 5
+      toneMarkers: [apologetic]
+      priority: 7
+
+  expressions:
+    - text: "By the gods!"
+      formality: 3
+      toneMarkers: [surprised, exclamatory]
+      priority: 8
+    - text: "Well now, isn't that something."
+      formality: 4
+      toneMarkers: [impressed, curious]
+      priority: 7
+    - text: "Times are what they are."
+      formality: 5
+      toneMarkers: [resigned, philosophical]
+      priority: 6
+    - text: "Fortune favors the bold, they say."
+      formality: 5
+      toneMarkers: [encouraging, wise]
+      priority: 7
+
+  warnings:
+    - text: "Mind yourself out there."
+      formality: 4
+      toneMarkers: [concerned, serious]
+      priority: 8
+    - text: "I'd be careful if I were you."
+      formality: 5
+      toneMarkers: [warning, sincere]
+      priority: 9
+    - text: "Things aren't what they seem."
+      formality: 5
+      toneMarkers: [mysterious, warning]
+      priority: 7

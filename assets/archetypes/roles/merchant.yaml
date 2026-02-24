@@ -1,0 +1,72 @@
+# Merchant Role Archetype
+# A trader, shopkeeper, or traveling merchant
+
+id: merchant
+displayName: Merchant
+category: role
+description: |
+  A merchant deals in goods and services, whether running a permanent shop
+  or traveling between settlements. They are skilled negotiators with
+  extensive knowledge of trade goods and market conditions.
+
+personalityAffinity:
+  - traitId: shrewd
+    weight: 0.85
+    defaultIntensity: 7
+  - traitId: opportunistic
+    weight: 0.7
+    defaultIntensity: 5
+  - traitId: charismatic
+    weight: 0.75
+    defaultIntensity: 6
+  - traitId: patient
+    weight: 0.6
+    defaultIntensity: 5
+  - traitId: observant
+    weight: 0.65
+    defaultIntensity: 6
+  - traitId: greedy
+    weight: 0.4
+    defaultIntensity: 4
+
+npcRoleMapping:
+  - role: shopkeeper
+    weight: 0.9
+    context: Operates a permanent shop or stall
+  - role: informant
+    weight: 0.5
+    context: Hears rumors from customers and travelers
+  - role: fence
+    weight: 0.3
+    context: May deal in questionable goods
+  - role: quest_giver
+    weight: 0.4
+    context: Needs deliveries made or rare items found
+
+vocabularyBankId: style_mercantile
+
+namingCultures:
+  - culture: common
+    weight: 0.8
+  - culture: trade_tongue
+    weight: 0.2
+
+statTendencies:
+  modifiers:
+    charisma: 2
+    intelligence: 1
+  minimums:
+    charisma: 10
+  priorityOrder:
+    - charisma
+    - intelligence
+    - wisdom
+
+tags:
+  - commerce
+  - social
+  - urban
+  - traveler
+
+gameSystem: generic
+version: "1.0.0"

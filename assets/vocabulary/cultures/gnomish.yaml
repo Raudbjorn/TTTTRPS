@@ -1,0 +1,157 @@
+# Gnomish Culture Vocabulary Bank
+# Speech patterns reflecting gnomish culture and values
+
+id: culture_gnomish
+displayName: Gnomish Speech
+description: |
+  Vocabulary reflecting gnomish culture - emphasis on invention, discovery,
+  curiosity, and enthusiastic (sometimes scattered) expression.
+
+culture: gnomish
+race: gnome
+version: "1.0.0"
+
+phrases:
+  greetings:
+    - text: "Oh! A visitor! Perfect timing - I need a test subject!"
+      formality: 3
+      toneMarkers: [enthusiastic, alarming]
+      priority: 9
+    - text: "Fascinating! You're just the sort of person I wanted to study!"
+      formality: 4
+      toneMarkers: [curious, enthusiastic]
+      priority: 8
+    - text: "Quick, quick, come see what I've invented!"
+      formality: 3
+      toneMarkers: [excited, urgent]
+      priority: 8
+    - text: "Ah, a fellow curious mind, I hope?"
+      formality: 5
+      toneMarkers: [hopeful, curious]
+      priority: 7
+    - text: "Watch your step - the floor is occasionally... reactive."
+      formality: 4
+      toneMarkers: [warning, casual]
+      priority: 6
+
+  farewells:
+    - text: "May your curiosity never be sated!"
+      formality: 5
+      toneMarkers: [blessing, enthusiastic]
+      priority: 10
+    - text: "Do come back if you find anything interesting!"
+      formality: 4
+      toneMarkers: [hopeful, friendly]
+      priority: 8
+    - text: "I'll have something new to show you next time!"
+      formality: 4
+      toneMarkers: [excited, promising]
+      priority: 8
+    - text: "Remember - if it explodes, take notes!"
+      formality: 3
+      toneMarkers: [instructive, playful]
+      priority: 7
+
+  affirmations:
+    - text: "Brilliant! Simply brilliant!"
+      formality: 4
+      toneMarkers: [enthusiastic, impressed]
+      priority: 10
+    - text: "Now that's thinking with your brain-cogs!"
+      formality: 3
+      toneMarkers: [approving, quirky]
+      priority: 8
+    - text: "Yes, yes, I see where you're going with this..."
+      formality: 4
+      toneMarkers: [thoughtful, excited]
+      priority: 7
+    - text: "That's the sort of lateral thinking I appreciate!"
+      formality: 5
+      toneMarkers: [impressed, approving]
+      priority: 7
+
+  denials:
+    - text: "That's not how the laws of thaumaturgy work!"
+      formality: 5
+      toneMarkers: [exasperated, correcting]
+      priority: 8
+    - text: "Hmm, no, that would violate at least three principles."
+      formality: 5
+      toneMarkers: [thoughtful, dismissive]
+      priority: 7
+    - text: "Tried that. Explosion. Big explosion. Moving on."
+      formality: 3
+      toneMarkers: [dismissive, casual]
+      priority: 7
+    - text: "Interesting theory, completely wrong premise."
+      formality: 5
+      toneMarkers: [correcting, interested]
+      priority: 6
+
+  expressions:
+    - text: "Eureka! No wait, false alarm. Carry on."
+      formality: 3
+      toneMarkers: [excited, disappointed]
+      priority: 8
+    - text: "Everything is an experiment if you're brave enough!"
+      formality: 4
+      toneMarkers: [philosophical, enthusiastic]
+      priority: 8
+    - text: "Failure is just success with additional data."
+      formality: 5
+      toneMarkers: [philosophical, optimistic]
+      priority: 7
+    - text: "The universe is full of questions. I intend to answer them all."
+      formality: 5
+      toneMarkers: [determined, ambitious]
+      priority: 7
+    - text: "Hmm, that's not supposed to be on fire..."
+      formality: 3
+      toneMarkers: [worried, casual]
+      priority: 6
+
+  about_inventions:
+    - text: "I've been working on this for seventeen years. It's almost stable."
+      formality: 5
+      toneMarkers: [proud, casual]
+      priority: 8
+    - text: "The prototype only exploded twice!"
+      formality: 4
+      toneMarkers: [proud, enthusiastic]
+      priority: 8
+    - text: "With a few minor adjustments and some luck..."
+      formality: 4
+      toneMarkers: [optimistic, excited]
+      priority: 7
+    - text: "Don't touch that. Or that. Especially not that."
+      formality: 3
+      toneMarkers: [warning, anxious]
+      priority: 8
+
+  about_curiosity:
+    - text: "The only bad question is the one not asked!"
+      formality: 4
+      toneMarkers: [enthusiastic, encouraging]
+      priority: 9
+    - text: "I must know how that works. I MUST."
+      formality: 4
+      toneMarkers: [obsessive, determined]
+      priority: 8
+    - text: "Every mystery is just a discovery waiting to happen."
+      formality: 5
+      toneMarkers: [philosophical, optimistic]
+      priority: 7
+
+  about_illusions:
+    - text: "Reality is merely a suggestion to those who know the tricks."
+      formality: 5
+      toneMarkers: [mysterious, playful]
+      priority: 8
+    - text: "Now you see it... now you see something better!"
+      formality: 3
+      toneMarkers: [playful, proud]
+      priority: 7
+    - text: "What's the point of magic if you can't have a little fun?"
+      formality: 4
+      toneMarkers: [playful, philosophical]
+      priority: 7

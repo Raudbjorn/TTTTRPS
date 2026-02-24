@@ -1,0 +1,70 @@
+# Halfling Race Archetype
+# A small, nimble, community-loving folk
+
+id: halfling
+displayName: Halfling
+category: race
+description: |
+  Halflings are a small, cheerful folk who value comfort, community,
+  and good food. They are naturally lucky, surprisingly brave when
+  needed, and possess a talent for going unnoticed when they wish.
+
+personalityAffinity:
+  - traitId: cheerful
+    weight: 0.85
+    defaultIntensity: 7
+  - traitId: friendly
+    weight: 0.8
+    defaultIntensity: 7
+  - traitId: curious
+    weight: 0.7
+    defaultIntensity: 6
+  - traitId: brave
+    weight: 0.6
+    defaultIntensity: 5
+  - traitId: practical
+    weight: 0.7
+    defaultIntensity: 6
+  - traitId: lucky
+    weight: 0.75
+    defaultIntensity: 6
+
+npcRoleMapping:
+  - role: innkeeper
+    weight: 0.6
+    context: Love hospitality and good food
+  - role: farmer
+    weight: 0.5
+    context: Excellent agriculturalists
+  - role: scout
+    weight: 0.4
+    context: Small and stealthy when needed
+
+vocabularyBankId: style_common
+
+namingCultures:
+  - culture: halfling
+    weight: 0.9
+  - culture: common
+    weight: 0.1
+
+statTendencies:
+  modifiers:
+    dexterity: 2
+    charisma: 1
+    strength: -1
+  minimums:
+    dexterity: 10
+  priorityOrder:
+    - dexterity
+    - charisma
+    - constitution
+
+tags:
+  - small
+  - cheerful
+  - community
+  - lucky
+
+gameSystem: generic
+version: "1.0.0"

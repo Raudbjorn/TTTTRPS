@@ -1,0 +1,73 @@
+# Orc Race Archetype
+# A fierce, tribal, warrior folk
+
+id: orc
+displayName: Orc
+category: race
+description: |
+  Orcs are a fierce and powerful people, often misjudged by other races.
+  They value strength, honor in battle, and loyalty to their tribe.
+  While capable of great violence, they also possess a rich oral
+  tradition and deep bonds of kinship.
+
+personalityAffinity:
+  - traitId: fierce
+    weight: 0.85
+    defaultIntensity: 7
+  - traitId: proud
+    weight: 0.8
+    defaultIntensity: 7
+  - traitId: tribal
+    weight: 0.75
+    defaultIntensity: 6
+  - traitId: direct
+    weight: 0.7
+    defaultIntensity: 6
+  - traitId: passionate
+    weight: 0.65
+    defaultIntensity: 6
+  - traitId: intimidating
+    weight: 0.6
+    defaultIntensity: 5
+
+npcRoleMapping:
+  - role: warrior
+    weight: 0.8
+    context: Natural fighters and raiders
+  - role: hunter
+    weight: 0.6
+    context: Skilled trackers and survivalists
+  - role: shaman
+    weight: 0.4
+    context: Spiritual leaders of the tribe
+
+vocabularyBankId: culture_orcish
+
+namingCultures:
+  - culture: orcish
+    weight: 0.9
+    patternOverrides:
+      epithetProbability: 0.6
+  - culture: common
+    weight: 0.1
+
+statTendencies:
+  modifiers:
+    strength: 2
+    constitution: 1
+    intelligence: -1
+  minimums:
+    strength: 12
+  priorityOrder:
+    - strength
+    - constitution
+    - dexterity
+
+tags:
+  - tribal
+  - fierce
+  - warrior
+  - primal
+
+gameSystem: generic
+version: "1.0.0"

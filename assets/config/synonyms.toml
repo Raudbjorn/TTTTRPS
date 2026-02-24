@@ -1,0 +1,170 @@
+# TTRPG Synonym Configuration
+#
+# This file defines domain-specific synonyms for search query expansion.
+# Synonyms help users find content even when using different terminology.
+#
+# Format:
+#   [multi_way] - All terms are interchangeable (bidirectional)
+#   [one_way]   - Source expands to targets but not reverse
+
+max_expansions = 5
+
+[multi_way]
+# Character Stats (abbreviations ↔ full names)
+hp = ["hit points", "health", "life"]
+ac = ["armor class", "armour class"]
+str = ["strength"]
+dex = ["dexterity"]
+con = ["constitution"]
+int = ["intelligence"]
+wis = ["wisdom"]
+cha = ["charisma"]
+
+# Core Mechanics
+dc = ["difficulty class"]
+cr = ["challenge rating"]
+xp = ["experience points", "experience"]
+init = ["initiative"]
+proficiency = ["prof", "proficiency bonus"]
+save = ["saving throw"]
+check = ["ability check"]
+
+# Actions and Combat
+aoo = ["attack of opportunity", "opportunity attack"]
+crit = ["critical hit", "nat 20", "natural 20"]
+melee = ["melee attack", "close combat"]
+ranged = ["ranged attack", "distance attack"]
+bonus_action = ["bonus", "ba"]
+reaction = ["react"]
+
+# Roles
+dm = ["dungeon master", "game master", "gm"]
+pc = ["player character"]
+npc = ["non-player character"]
+
+# Conditions
+prone = ["knocked down", "lying down"]
+grappled = ["grabbed", "held"]
+stunned = ["stun"]
+frightened = ["scared", "afraid"]
+paralyzed = ["paralysed"]
+invisible = ["invis", "unseen"]
+unconscious = ["ko", "knocked out"]
+incapacitated = ["incap"]
+exhaustion = ["exhausted", "fatigue"]
+charmed = ["charm"]
+blinded = ["blind"]
+deafened = ["deaf"]
+poisoned = ["poison status"]
+petrified = ["turned to stone"]
+restrained = ["restrain", "immobilized"]
+
+# Book Abbreviations
+phb = ["player's handbook", "players handbook"]
+dmg = ["dungeon master's guide", "dm guide", "dmguide"]
+mm = ["monster manual"]
+xge = ["xanathar's guide", "xanathar", "xgte"]
+tce = ["tasha's cauldron", "tasha", "tcoe"]
+vgm = ["volo's guide", "volo", "vgtm"]
+mtof = ["mordenkainen's tome", "mordenkainen", "mtf"]
+scag = ["sword coast adventurer's guide"]
+ftod = ["fizban's treasury", "fizban"]
+
+# Damage Types
+fire_damage = ["flame damage", "burning"]
+cold_damage = ["frost damage", "ice damage", "freezing"]
+lightning_damage = ["electric damage", "shock", "electricity"]
+thunder_damage = ["sonic damage"]
+necrotic_damage = ["necrotic", "death damage"]
+radiant_damage = ["radiant", "holy damage", "divine damage"]
+psychic_damage = ["psychic", "mental damage", "psionic damage"]
+poison_damage = ["poison", "toxic damage", "venom"]
+force_damage = ["force", "raw magic"]
+acid_damage = ["acid", "corrosive"]
+bludgeoning = ["blunt damage", "crushing"]
+slashing = ["slash", "cutting"]
+piercing = ["pierce", "stabbing"]
+
+# Spell Components
+verbal = ["v", "verbal component"]
+somatic = ["s", "somatic component"]
+material = ["m", "material component"]
+
+# Common Spell Names
+magic_missile = ["mm spell", "force bolts"]
+fireball = ["fire ball"]
+lightning_bolt = ["lb", "lightning"]
+shield = ["shield spell"]
+cure_wounds = ["healing spell", "heal wounds"]
+healing_word = ["heal word"]
+sleep = ["sleep spell"]
+charm_person = ["charm"]
+hold_person = ["paralyze person"]
+counterspell = ["counter"]
+dispel_magic = ["dispel"]
+teleport = ["teleportation"]
+wish = ["wish spell"]
+
+# Currency
+gp = ["gold", "gold pieces"]
+sp = ["silver", "silver pieces"]
+cp = ["copper", "copper pieces"]
+ep = ["electrum", "electrum pieces"]
+pp = ["platinum", "platinum pieces"]
+
+# Equipment
+longsword = ["long sword"]
+shortsword = ["short sword"]
+greataxe = ["great axe"]
+longbow = ["long bow"]
+shortbow = ["short bow"]
+crossbow = ["cross bow"]
+studded_leather = ["studded"]
+chain_mail = ["chainmail"]
+plate_armor = ["plate mail", "full plate"]
+
+# Classes
+barbarian = ["barb"]
+bard = ["brd"]
+cleric = ["clr"]
+druid = ["drd"]
+fighter = ["ftr"]
+monk = ["mnk"]
+paladin = ["pal"]
+ranger = ["rgr"]
+rogue = ["rog"]
+sorcerer = ["sorc"]
+warlock = ["lock"]
+wizard = ["wiz"]
+artificer = ["art"]
+
+# Races/Species
+dwarf = ["dwarven", "dwarfish"]
+elf = ["elven", "elfish"]
+halfling = ["hobbit"]
+human = ["mankind"]
+dragonborn = ["dragonkin"]
+gnome = ["gnomish"]
+half_elf = ["half-elf"]
+half_orc = ["half-orc"]
+tiefling = ["infernal"]
+
+[one_way]
+# Creature hierarchies (broader term expands to specifics, but not reverse)
+dragon = ["wyrm", "drake", "wyvern"]
+undead = ["zombie", "skeleton", "vampire", "lich", "ghost", "wight", "wraith", "specter"]
+demon = ["fiend", "devil", "yugoloth"]
+elemental = ["fire elemental", "water elemental", "earth elemental", "air elemental"]
+giant = ["hill giant", "stone giant", "frost giant", "fire giant", "cloud giant", "storm giant"]
+goblinoid = ["goblin", "hobgoblin", "bugbear"]
+aberration = ["mind flayer", "beholder", "aboleth"]
+
+# Terrain types
+dungeon = ["underground", "cavern", "crypt", "tomb"]
+wilderness = ["forest", "jungle", "plains", "swamp", "desert", "mountain"]
+urban = ["city", "town", "village", "settlement"]
+
+# Adventure types
+combat_encounter = ["fight", "battle", "skirmish"]
+social_encounter = ["roleplay", "conversation", "negotiation"]
+exploration = ["travel", "journey", "hex crawl"]

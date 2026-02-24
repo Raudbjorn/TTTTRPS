@@ -1,0 +1,71 @@
+# Gnome Race Archetype
+# A small, inventive, illusion-loving folk
+
+id: gnome
+displayName: Gnome
+category: race
+description: |
+  Gnomes are curious and inventive, delighting in discovery and creation.
+  They have a natural affinity for illusion magic and mechanical devices.
+  Their boundless enthusiasm can sometimes lead them into trouble, but
+  their quick wits usually get them out again.
+
+personalityAffinity:
+  - traitId: curious
+    weight: 0.9
+    defaultIntensity: 8
+  - traitId: inventive
+    weight: 0.85
+    defaultIntensity: 7
+  - traitId: eccentric
+    weight: 0.7
+    defaultIntensity: 6
+  - traitId: enthusiastic
+    weight: 0.75
+    defaultIntensity: 6
+  - traitId: clever
+    weight: 0.8
+    defaultIntensity: 7
+  - traitId: mischievous
+    weight: 0.55
+    defaultIntensity: 5
+
+npcRoleMapping:
+  - role: craftsman
+    weight: 0.7
+    context: Skilled inventors and tinkerers
+  - role: sage
+    weight: 0.6
+    context: Scholars of arcane and mechanical arts
+  - role: illusionist
+    weight: 0.5
+    context: Natural talent for illusions
+
+vocabularyBankId: style_common
+
+namingCultures:
+  - culture: gnomish
+    weight: 0.85
+  - culture: common
+    weight: 0.15
+
+statTendencies:
+  modifiers:
+    intelligence: 2
+    dexterity: 1
+    strength: -1
+  minimums:
+    intelligence: 10
+  priorityOrder:
+    - intelligence
+    - dexterity
+    - constitution
+
+tags:
+  - small
+  - inventive
+  - curious
+  - magical
+
+gameSystem: generic
+version: "1.0.0"

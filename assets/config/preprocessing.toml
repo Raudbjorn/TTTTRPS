@@ -1,0 +1,40 @@
+# Query Preprocessing Configuration
+#
+# This file configures typo correction and synonym expansion for search queries.
+# Settings are designed to match Meilisearch's typo tolerance behavior.
+
+[typo]
+# Whether typo correction is enabled
+enabled = true
+
+# Minimum word length to allow 1 typo (Meilisearch default: 5)
+min_word_size_one_typo = 5
+
+# Minimum word length to allow 2 typos (Meilisearch default: 9)
+min_word_size_two_typos = 9
+
+# Words where typo tolerance is disabled entirely
+# These are common TTRPG abbreviations that should never be corrected
+disabled_on_words = [
+    "dnd", "5e", "4e", "3e", "2e", "1e",
+    "phb", "dmg", "mm", "xge", "tce", "vgm", "mtof",
+    "ac", "hp", "dc", "cr", "xp", "gp", "sp", "cp", "ep", "pp",
+    "str", "dex", "con", "int", "wis", "cha",
+    "pc", "npc", "dm", "gm",
+]
+
+# Corpus frequency boost (domain terms are boosted by this multiplier)
+corpus_frequency_boost = 10
+
+[synonyms]
+# Whether synonym expansion is enabled
+enabled = true
+
+# Maximum number of synonym expansions per term (prevents query explosion)
+max_expansions = 5
+
+# Whether to use built-in TTRPG synonyms as a baseline
+use_default_ttrpg_synonyms = true
+
+# Path to custom synonyms file (optional, relative to config dir)
+# synonyms_path = "synonyms.toml"

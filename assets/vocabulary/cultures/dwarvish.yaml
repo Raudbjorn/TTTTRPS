@@ -1,0 +1,149 @@
+# Dwarvish Culture Vocabulary Bank
+# Speech patterns reflecting dwarven culture and values
+
+id: culture_dwarvish
+displayName: Dwarvish Speech
+description: |
+  Vocabulary reflecting dwarven culture - emphasis on craft, stone, clan,
+  honor, and ancient traditions. Tends toward gruff but sincere expression.
+
+culture: dwarvish
+race: dwarf
+version: "1.0.0"
+
+phrases:
+  greetings:
+    - text: "Stone and steel to you, friend."
+      formality: 5
+      toneMarkers: [traditional, friendly]
+      priority: 10
+    - text: "May your beard grow ever longer."
+      formality: 6
+      toneMarkers: [respectful, traditional]
+      priority: 8
+    - text: "Well met, rock-friend."
+      formality: 5
+      toneMarkers: [friendly, casual]
+      priority: 7
+    - text: "What brings you to the mountain?"
+      formality: 5
+      toneMarkers: [curious, neutral]
+      priority: 6
+    - text: "By the ancestors, a visitor!"
+      formality: 5
+      toneMarkers: [surprised, welcoming]
+      priority: 6
+
+  farewells:
+    - text: "May your forge never grow cold."
+      formality: 6
+      toneMarkers: [blessing, traditional]
+      priority: 10
+    - text: "May the stone shelter you."
+      formality: 6
+      toneMarkers: [blessing, sincere]
+      priority: 9
+    - text: "Until the mountains crumble."
+      formality: 6
+      toneMarkers: [sincere, traditional]
+      priority: 8
+    - text: "Walk with honor, friend."
+      formality: 5
+      toneMarkers: [sincere, friendly]
+      priority: 7
+
+  affirmations:
+    - text: "That's solid as granite."
+      formality: 4
+      toneMarkers: [approving, emphatic]
+      priority: 9
+    - text: "Aye, you've the right of it."
+      formality: 4
+      toneMarkers: [agreeable, gruff]
+      priority: 8
+    - text: "On my clan's honor."
+      formality: 6
+      toneMarkers: [serious, binding]
+      priority: 9
+    - text: "A dwarf's word is iron."
+      formality: 5
+      toneMarkers: [serious, traditional]
+      priority: 8
+
+  denials:
+    - text: "That's as likely as an elf in a mine."
+      formality: 3
+      toneMarkers: [dismissive, humorous]
+      priority: 7
+    - text: "Not while I draw breath."
+      formality: 5
+      toneMarkers: [firm, serious]
+      priority: 8
+    - text: "My clan would never abide such."
+      formality: 6
+      toneMarkers: [firm, traditional]
+      priority: 8
+    - text: "Bah! Nonsense."
+      formality: 2
+      toneMarkers: [dismissive, gruff]
+      priority: 6
+
+  expressions:
+    - text: "By my beard!"
+      formality: 3
+      toneMarkers: [surprised, exclamatory]
+      priority: 9
+    - text: "Ancestors preserve us."
+      formality: 5
+      toneMarkers: [worried, reverent]
+      priority: 8
+    - text: "Deeper we delve, richer the vein."
+      formality: 5
+      toneMarkers: [philosophical, traditional]
+      priority: 7
+    - text: "Gold speaks, but iron decides."
+      formality: 5
+      toneMarkers: [wise, traditional]
+      priority: 7
+    - text: "The old ways endure."
+      formality: 5
+      toneMarkers: [proud, traditional]
+      priority: 6
+
+  oaths:
+    - text: "By the stone halls of my fathers..."
+      formality: 7
+      toneMarkers: [solemn, traditional]
+      priority: 9
+    - text: "On the honor of my clan..."
+      formality: 7
+      toneMarkers: [serious, binding]
+      priority: 9
+    - text: "May my forge go dark if I lie."
+      formality: 6
+      toneMarkers: [sincere, binding]
+      priority: 8
+
+  about_craft:
+    - text: "Now that's proper craftsmanship."
+      formality: 5
+      toneMarkers: [approving, impressed]
+      priority: 9
+    - text: "Shoddy work, that. I could do better in my sleep."
+      formality: 3
+      toneMarkers: [critical, proud]
+      priority: 6
+    - text: "The grain of the metal tells a story."
+      formality: 5
+      toneMarkers: [knowledgeable, proud]
+      priority: 7
+
+  about_elves:
+    - text: "Elves? Flighty tree-huggers, the lot of them."
+      formality: 2
+      toneMarkers: [dismissive, prejudiced]
+      priority: 5
+    - text: "We have... a complicated history with the fair folk."
+      formality: 6
+      toneMarkers: [diplomatic, uncomfortable]
+      priority: 7

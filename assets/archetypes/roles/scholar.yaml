@@ -1,0 +1,73 @@
+# Scholar Role Archetype
+# A sage, researcher, librarian, or academic
+
+id: scholar
+displayName: Scholar
+category: role
+description: |
+  A scholar dedicates their life to the pursuit of knowledge. They may
+  work in libraries, universities, or private collections, researching
+  ancient texts, cataloging artifacts, or teaching the next generation.
+
+personalityAffinity:
+  - traitId: curious
+    weight: 0.9
+    defaultIntensity: 8
+  - traitId: methodical
+    weight: 0.8
+    defaultIntensity: 7
+  - traitId: introverted
+    weight: 0.65
+    defaultIntensity: 5
+  - traitId: pedantic
+    weight: 0.55
+    defaultIntensity: 5
+  - traitId: patient
+    weight: 0.7
+    defaultIntensity: 6
+  - traitId: absent_minded
+    weight: 0.4
+    defaultIntensity: 4
+
+npcRoleMapping:
+  - role: sage
+    weight: 0.9
+    context: Expert in arcane or historical matters
+  - role: quest_giver
+    weight: 0.6
+    context: Needs research materials or fieldwork done
+  - role: mentor
+    weight: 0.5
+    context: Can teach skills or share knowledge
+  - role: informant
+    weight: 0.4
+    context: Knows obscure lore and histories
+
+vocabularyBankId: style_scholarly
+
+namingCultures:
+  - culture: common
+    weight: 0.6
+  - culture: academic
+    weight: 0.4
+
+statTendencies:
+  modifiers:
+    intelligence: 3
+    wisdom: 1
+    strength: -1
+  minimums:
+    intelligence: 14
+  priorityOrder:
+    - intelligence
+    - wisdom
+    - charisma
+
+tags:
+  - academic
+  - knowledge
+  - urban
+  - magic_adjacent
+
+gameSystem: generic
+version: "1.0.0"

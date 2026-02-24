@@ -1,0 +1,153 @@
+# Orcish Culture Vocabulary Bank
+# Speech patterns reflecting orcish culture and values
+
+id: culture_orcish
+displayName: Orcish Speech
+description: |
+  Vocabulary reflecting orcish culture - emphasis on strength, honor,
+  tribe, and direct communication. Fierce but not unintelligent.
+
+culture: orcish
+race: orc
+version: "1.0.0"
+
+phrases:
+  greetings:
+    - text: "Strength guide you."
+      formality: 5
+      toneMarkers: [traditional, respectful]
+      priority: 10
+    - text: "What brings you to our fire?"
+      formality: 4
+      toneMarkers: [curious, neutral]
+      priority: 8
+    - text: "Stand where I can see you."
+      formality: 4
+      toneMarkers: [suspicious, direct]
+      priority: 7
+    - text: "You have courage to come here."
+      formality: 5
+      toneMarkers: [impressed, neutral]
+      priority: 7
+    - text: "Speak. I listen."
+      formality: 4
+      toneMarkers: [direct, patient]
+      priority: 8
+
+  farewells:
+    - text: "May your enemies fall before you."
+      formality: 6
+      toneMarkers: [blessing, traditional]
+      priority: 10
+    - text: "Hunt well, and return strong."
+      formality: 5
+      toneMarkers: [encouraging, traditional]
+      priority: 9
+    - text: "The tribe remembers those who prove themselves."
+      formality: 6
+      toneMarkers: [formal, meaningful]
+      priority: 7
+    - text: "Go. Before I change my mind."
+      formality: 3
+      toneMarkers: [gruff, playful]
+      priority: 5
+
+  affirmations:
+    - text: "You have strength. Good."
+      formality: 4
+      toneMarkers: [approving, direct]
+      priority: 9
+    - text: "This is the way of the strong."
+      formality: 5
+      toneMarkers: [agreeable, traditional]
+      priority: 8
+    - text: "Your words have honor."
+      formality: 5
+      toneMarkers: [respectful, approving]
+      priority: 8
+    - text: "I will do this. It is decided."
+      formality: 5
+      toneMarkers: [resolute, direct]
+      priority: 9
+
+  denials:
+    - text: "This is weakness. I will not."
+      formality: 4
+      toneMarkers: [dismissive, firm]
+      priority: 8
+    - text: "You insult my tribe with such words."
+      formality: 5
+      toneMarkers: [offended, threatening]
+      priority: 7
+    - text: "Only a coward takes that path."
+      formality: 4
+      toneMarkers: [contemptuous, direct]
+      priority: 7
+    - text: "No. My answer is final."
+      formality: 5
+      toneMarkers: [firm, direct]
+      priority: 9
+
+  expressions:
+    - text: "Blood calls to blood."
+      formality: 5
+      toneMarkers: [philosophical, traditional]
+      priority: 8
+    - text: "The strong survive. This is truth."
+      formality: 5
+      toneMarkers: [philosophical, direct]
+      priority: 8
+    - text: "Glory is earned, not given."
+      formality: 5
+      toneMarkers: [proud, instructive]
+      priority: 7
+    - text: "The spirits watch. Always."
+      formality: 5
+      toneMarkers: [reverent, warning]
+      priority: 7
+    - text: "Words are wind. Actions speak."
+      formality: 4
+      toneMarkers: [philosophical, practical]
+      priority: 8
+
+  challenges:
+    - text: "You think yourself strong? Prove it."
+      formality: 4
+      toneMarkers: [challenging, testing]
+      priority: 9
+    - text: "Face me, if you dare."
+      formality: 4
+      toneMarkers: [challenging, aggressive]
+      priority: 8
+    - text: "We shall see who deserves respect."
+      formality: 5
+      toneMarkers: [challenging, formal]
+      priority: 7
+
+  about_tribe:
+    - text: "The tribe is all. Without tribe, we are nothing."
+      formality: 5
+      toneMarkers: [serious, traditional]
+      priority: 9
+    - text: "My blood is my tribe's blood."
+      formality: 6
+      toneMarkers: [proud, loyal]
+      priority: 8
+    - text: "A true orc never abandons their own."
+      formality: 5
+      toneMarkers: [instructive, proud]
+      priority: 8
+
+  about_honor:
+    - text: "Better to die with honor than live in shame."
+      formality: 5
+      toneMarkers: [philosophical, serious]
+      priority: 8
+    - text: "My word is my bond, sealed in blood."
+      formality: 6
+      toneMarkers: [serious, binding]
+      priority: 9
+    - text: "Treachery is met with steel."
+      formality: 5
+      toneMarkers: [warning, serious]
+      priority: 8

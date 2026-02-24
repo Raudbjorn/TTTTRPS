@@ -1,0 +1,73 @@
+# Dwarf Race Archetype
+# A stout, sturdy, mountain or hill-dwelling folk
+
+id: dwarf
+displayName: Dwarf
+category: race
+description: |
+  Dwarves are a proud and hardy folk, known for their craftsmanship,
+  mining expertise, and stubborn determination. They hold grudges for
+  generations and honor their ancestors and clan above all else.
+
+personalityAffinity:
+  - traitId: stubborn
+    weight: 0.85
+    defaultIntensity: 7
+  - traitId: loyal
+    weight: 0.8
+    defaultIntensity: 7
+  - traitId: traditional
+    weight: 0.75
+    defaultIntensity: 6
+  - traitId: proud
+    weight: 0.7
+    defaultIntensity: 6
+  - traitId: honorable
+    weight: 0.7
+    defaultIntensity: 6
+  - traitId: gruff
+    weight: 0.6
+    defaultIntensity: 5
+
+npcRoleMapping:
+  - role: craftsman
+    weight: 0.8
+    context: Renowned smiths and artisans
+  - role: warrior
+    weight: 0.6
+    context: Fierce defenders of their holds
+  - role: merchant
+    weight: 0.5
+    context: Trade in metals, gems, and crafted goods
+
+vocabularyBankId: culture_dwarvish
+
+namingCultures:
+  - culture: dwarvish
+    weight: 0.95
+    patternOverrides:
+      titleProbability: 0.2
+      clanFormat: "{name} of Clan {clan}"
+  - culture: common
+    weight: 0.05
+
+statTendencies:
+  modifiers:
+    constitution: 2
+    wisdom: 1
+    charisma: -1
+  minimums:
+    constitution: 12
+  priorityOrder:
+    - constitution
+    - strength
+    - wisdom
+
+tags:
+  - mountain
+  - craftsman
+  - hardy
+  - traditional
+
+gameSystem: generic
+version: "1.0.0"

@@ -1,0 +1,72 @@
+# Innkeeper Role Archetype
+# A tavern keeper, inn proprietor, or barkeep
+
+id: innkeeper
+displayName: Innkeeper
+category: role
+description: |
+  An innkeeper runs an establishment offering food, drink, and lodging.
+  They are the heart of local social life, privy to gossip and secrets,
+  and skilled at managing both rowdy customers and business affairs.
+
+personalityAffinity:
+  - traitId: hospitable
+    weight: 0.9
+    defaultIntensity: 7
+  - traitId: observant
+    weight: 0.75
+    defaultIntensity: 6
+  - traitId: patient
+    weight: 0.7
+    defaultIntensity: 6
+  - traitId: shrewd
+    weight: 0.6
+    defaultIntensity: 5
+  - traitId: gossipy
+    weight: 0.65
+    defaultIntensity: 5
+  - traitId: protective
+    weight: 0.5
+    defaultIntensity: 5
+
+npcRoleMapping:
+  - role: innkeeper
+    weight: 1.0
+    context: Runs the establishment
+  - role: informant
+    weight: 0.7
+    context: Hears all manner of gossip and rumors
+  - role: quest_giver
+    weight: 0.5
+    context: May need problems solved or have leads
+  - role: fence
+    weight: 0.2
+    context: Sometimes knows discreet buyers
+
+vocabularyBankId: style_common
+
+namingCultures:
+  - culture: common
+    weight: 0.9
+  - culture: regional
+    weight: 0.1
+
+statTendencies:
+  modifiers:
+    charisma: 1
+    wisdom: 1
+  minimums:
+    charisma: 10
+  priorityOrder:
+    - charisma
+    - wisdom
+    - constitution
+
+tags:
+  - social
+  - urban
+  - hospitality
+  - information
+
+gameSystem: generic
+version: "1.0.0"

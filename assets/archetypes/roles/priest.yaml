@@ -1,0 +1,75 @@
+# Priest Role Archetype
+# A clergy member, temple attendant, or religious figure
+
+id: priest
+displayName: Priest
+category: role
+description: |
+  A priest serves a deity or religious organization, providing spiritual
+  guidance, performing rituals, and caring for their community. They may
+  be healers, teachers, or even crusaders depending on their faith.
+
+personalityAffinity:
+  - traitId: devout
+    weight: 0.9
+    defaultIntensity: 8
+  - traitId: compassionate
+    weight: 0.75
+    defaultIntensity: 6
+  - traitId: wise
+    weight: 0.7
+    defaultIntensity: 6
+  - traitId: judgmental
+    weight: 0.5
+    defaultIntensity: 5
+  - traitId: serene
+    weight: 0.65
+    defaultIntensity: 6
+  - traitId: zealous
+    weight: 0.4
+    defaultIntensity: 5
+
+npcRoleMapping:
+  - role: healer
+    weight: 0.7
+    context: Provides healing and blessings
+  - role: quest_giver
+    weight: 0.6
+    context: May need aid against threats to the faith
+  - role: sage
+    weight: 0.5
+    context: Knows religious lore and history
+  - role: authority
+    weight: 0.4
+    context: Religious authority in the community
+
+vocabularyBankId: style_religious
+
+namingCultures:
+  - culture: common
+    weight: 0.5
+  - culture: religious
+    weight: 0.5
+    patternOverrides:
+      titleProbability: 0.8
+      epithetProbability: 0.1
+
+statTendencies:
+  modifiers:
+    wisdom: 2
+    charisma: 1
+  minimums:
+    wisdom: 14
+  priorityOrder:
+    - wisdom
+    - charisma
+    - constitution
+
+tags:
+  - religious
+  - spiritual
+  - healer
+  - community
+
+gameSystem: generic
+version: "1.0.0"
